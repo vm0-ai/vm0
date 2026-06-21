@@ -22,6 +22,7 @@ import {
   gmailDefaultAllowed,
   gmailCategories,
   gmailCategoryOrder,
+  gmailDefaultUnknownPolicy,
   gmailFirewall,
 } from "./gmail.generated";
 import {
@@ -898,6 +899,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
+  gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
 };
 

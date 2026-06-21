@@ -151,7 +151,7 @@ describe("chat message action cards", () => {
 
   it("automatically retries permission action loading before showing an error", async () => {
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -184,7 +184,7 @@ describe("chat message action cards", () => {
         {
           id: "msg-user-permission-load-retry",
           role: "user",
-          content: "Allow Gmail modification",
+          content: "Allow Gmail message writes",
           runId: "run-permission-load-retry",
           createdAt: "2026-06-09T11:00:00Z",
         },
@@ -208,7 +208,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Gmail permissions"),
     ).toBeInTheDocument();
     expect(
-      within(permissionCard).getByText("Allow gmail.modify"),
+      within(permissionCard).getByText("Allow messages.write"),
     ).toBeInTheDocument();
 
     await waitForButtonByText("Confirm", permissionCard);
@@ -226,7 +226,7 @@ describe("chat message action cards", () => {
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
         connectorRef: "gmail",
-        permission: "gmail.modify",
+        permission: "messages.write",
         action: "allow",
         expiresIn: "1h",
       });
@@ -234,7 +234,7 @@ describe("chat message action cards", () => {
   });
 
   it("does not retry non-transient permission action loading failures", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail.modify&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       listRequests += 1;
@@ -253,7 +253,7 @@ describe("chat message action cards", () => {
         {
           id: "msg-user-permission-load-forbidden",
           role: "user",
-          content: "Allow Gmail modification",
+          content: "Allow Gmail message writes",
           runId: "run-permission-load-forbidden",
           createdAt: "2026-06-09T11:00:00Z",
         },

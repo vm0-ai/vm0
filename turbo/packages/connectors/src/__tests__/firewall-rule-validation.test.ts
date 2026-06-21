@@ -291,6 +291,53 @@ describe("builtin firewall base overlap guard", () => {
 });
 
 describe("known endpoint-scoped firewall bases", () => {
+  it("keeps Gmail permission names resource-oriented instead of OAuth-scope based", () => {
+    const names = new Set(
+      getConnectorFirewall("gmail").apis.flatMap((api) => {
+        return (
+          api.permissions?.map((permission) => {
+            return permission.name;
+          }) ?? []
+        );
+      }),
+    );
+
+    expect(names).toContain("messages.send");
+    expect(names).toContain("drafts.write");
+    expect(names).toContain("settings.sharing");
+    expect(names).not.toContain("gmail.send");
+    expect(names).not.toContain("gmail.modify");
+    expect(
+      [...names].filter((name) => {
+        return name.startsWith("gmail.");
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps Gmail send routes out of draft write permission", () => {
+    const firewall = getConnectorFirewall("gmail");
+    const rulesByPermission = new Map<string, Set<string>>();
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        const rules = rulesByPermission.get(permission.name) ?? new Set();
+        for (const rule of permission.rules) {
+          rules.add(`${api.base} ${rule}`);
+        }
+        rulesByPermission.set(permission.name, rules);
+      }
+    }
+
+    expect([...rulesByPermission.get("messages.send")!].sort()).toEqual([
+      "https://gmail.googleapis.com/gmail POST /v1/users/{userId}/messages/send",
+      "https://gmail.googleapis.com/resumable/upload/gmail POST /v1/users/{userId}/messages/send",
+      "https://gmail.googleapis.com/upload/gmail POST /v1/users/{userId}/messages/send",
+    ]);
+    expect(rulesByPermission.get("drafts.write")).not.toContain(
+      "https://gmail.googleapis.com/gmail POST /v1/users/{userId}/drafts/send",
+    );
+  });
+
   it("keeps Google Search Console off the shared www.googleapis.com root", () => {
     const bases = apiBases(getConnectorFirewall("google-search-console"));
 

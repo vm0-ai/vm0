@@ -93,6 +93,7 @@ import { generate as generateFreshdesk } from "./freshdesk";
 import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGemini } from "./gemini";
+import { generate as generateGmail } from "./gmail";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGoogleCloud } from "./google-cloud";
@@ -529,6 +530,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
   "google-drive": generateGoogleDrive,
+  gmail: generateGmail,
 };
 
 async function main(): Promise<void> {
