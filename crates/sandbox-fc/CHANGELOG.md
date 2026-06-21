@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.52](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.51...sandbox-fc-v0.37.52) (2026-06-21)
+
+
+### Refactoring
+
+* expose structured remote exec termination ([#18382](https://github.com/vm0-ai/vm0/issues/18382)) ([7f1dfa6](https://github.com/vm0-ai/vm0/commit/7f1dfa6f58379465d770d0fcf0c43fc7e91d9473))
+
 ## [0.37.51](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.50...sandbox-fc-v0.37.51) (2026-06-20)
 
 
