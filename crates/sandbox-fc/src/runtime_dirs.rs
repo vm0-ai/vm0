@@ -18,17 +18,7 @@ pub(crate) fn checked_runtime_sock_dir(
     validate_runtime_sock_id(sock_id)?;
     let sock_dir = runtime_paths.sock_dir(sock_id);
     let sock_paths = SockPaths::new(sock_dir.clone());
-    let vsock_path = sock_paths.vsock();
-    let vsock_path_len = vsock_path.as_os_str().as_bytes().len();
-    if vsock_path_len > MAX_UNIX_SOCKET_PATH_BYTES {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "runtime socket id {sock_id:?} makes vsock path too long: {} bytes (max {})",
-                vsock_path_len, MAX_UNIX_SOCKET_PATH_BYTES
-            ),
-        ));
-    }
+    validate_runtime_vsock_path_len(sock_id, &sock_paths.vsock())?;
     Ok(sock_dir)
 }
 
@@ -59,7 +49,7 @@ fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> i
     })?;
 
     let mut components = relative.components();
-    let Some(Component::Normal(_sock_id)) = components.next() else {
+    let Some(Component::Normal(sock_id)) = components.next() else {
         return Err(invalid_vsock_dir_shape(sock_base, vsock_bind_dir));
     };
     let Some(Component::Normal(vsock_dir)) = components.next() else {
@@ -68,6 +58,11 @@ fn prepare_private_vsock_dir_under(sock_base: &Path, vsock_bind_dir: &Path) -> i
     if vsock_dir != "vsock" || components.next().is_some() {
         return Err(invalid_vsock_dir_shape(sock_base, vsock_bind_dir));
     }
+    let sock_id = sock_id
+        .to_str()
+        .ok_or_else(|| invalid_runtime_sock_id(&sock_id.to_string_lossy()))?;
+    validate_runtime_sock_id(sock_id)?;
+    validate_runtime_vsock_path_len(sock_id, &vsock_bind_dir.join("vsock.sock"))?;
 
     ensure_private_runtime_dir(sock_base)?;
     let sock_dir = vsock_bind_dir.parent().ok_or_else(|| {
@@ -187,6 +182,20 @@ fn validate_runtime_sock_id(sock_id: &str) -> io::Result<()> {
     };
     if components.next().is_some() {
         return Err(invalid_runtime_sock_id(sock_id));
+    }
+    Ok(())
+}
+
+fn validate_runtime_vsock_path_len(sock_id: &str, vsock_path: &Path) -> io::Result<()> {
+    let vsock_path_len = vsock_path.as_os_str().as_bytes().len();
+    if vsock_path_len > MAX_UNIX_SOCKET_PATH_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "runtime socket id {sock_id:?} makes vsock path too long: {} bytes (max {})",
+                vsock_path_len, MAX_UNIX_SOCKET_PATH_BYTES
+            ),
+        ));
     }
     Ok(())
 }
@@ -383,6 +392,28 @@ mod tests {
         let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
 
         assert!(err.to_string().contains("is outside socket base"));
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_unsafe_socket_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = sock_base.join("snapshot test").join("vsock");
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("runtime socket id must be"));
+    }
+
+    #[test]
+    fn prepare_private_vsock_dir_under_rejects_overlong_vsock_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_base = tmp.path().join("sock");
+        let vsock_dir = sock_base.join("a".repeat(200)).join("vsock");
+
+        let err = prepare_private_vsock_dir_under(&sock_base, &vsock_dir).unwrap_err();
+
+        assert!(err.to_string().contains("vsock path too long"));
     }
 
     #[test]
