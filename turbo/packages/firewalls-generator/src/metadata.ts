@@ -27,6 +27,7 @@ interface ConnectorCategories {
 
 interface GeneratedFirewallSource {
   readonly type: FirewallConnectorType;
+  readonly firewallExportName: string;
   readonly firewall: FirewallConfig;
   readonly label: string;
   readonly categories: ConnectorCategories | null;
@@ -84,6 +85,21 @@ function getRequiredGeneratedExport<T>(
   suffix: string,
   isExpected: (value: unknown) => value is T,
 ): T {
+  const [, value] = getRequiredGeneratedExportEntry(
+    moduleExports,
+    type,
+    suffix,
+    isExpected,
+  );
+  return value;
+}
+
+function getRequiredGeneratedExportEntry<T>(
+  moduleExports: Readonly<Record<string, unknown>>,
+  type: FirewallConnectorType,
+  suffix: string,
+  isExpected: (value: unknown) => value is T,
+): readonly [string, T] {
   const matches = generatedExportCandidates(moduleExports, suffix);
   if (matches.length !== 1) {
     throw new Error(
@@ -102,7 +118,7 @@ function getRequiredGeneratedExport<T>(
       `Unexpected ${name} export shape for firewall metadata: ${type}`,
     );
   }
-  return value;
+  return [name, value];
 }
 
 function getOptionalGeneratedExport<T>(
@@ -268,7 +284,7 @@ async function loadGeneratedFirewallSource(
   const moduleExports = await importModule(
     path.join(firewallsDir, generatedDetailFileName(type)),
   );
-  const firewall = getRequiredGeneratedExport(
+  const [firewallExportName, firewall] = getRequiredGeneratedExportEntry(
     moduleExports,
     type,
     "Firewall",
@@ -294,6 +310,7 @@ async function loadGeneratedFirewallSource(
 
   return {
     type,
+    firewallExportName,
     firewall,
     label: loadConnectorLabel(connectorsDir, type),
     categories:
@@ -406,6 +423,10 @@ function generatedDetailFileName(type: FirewallConnectorType): string {
 
 function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
   return `./details/${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
+}
+
+function generatedRuntimeModuleSpecifier(type: FirewallConnectorType): string {
+  return `./${generatedDetailFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function replaceGeneratedPath(
@@ -676,6 +697,58 @@ export async function loadGeneratedFirewallPermissionMetadata(
 `;
 }
 
+function renderRuntimeLoaderFile(
+  sources: readonly GeneratedFirewallSource[],
+): string {
+  const connectorTypes = sources
+    .map((source) => {
+      return `  ${JSON.stringify(source.type)},`;
+    })
+    .join("\n");
+  const loaders = sources
+    .map((source) => {
+      const key = JSON.stringify(source.type);
+      const specifier = JSON.stringify(
+        generatedRuntimeModuleSpecifier(source.type),
+      );
+      return `  ${key}: async () => {
+    return (await import(${specifier})).${source.firewallExportName};
+  },`;
+    })
+    .join("\n");
+
+  return `${generatedHeader()}import type { FirewallConfig } from "../firewall-types";
+
+export const RUNTIME_FIREWALL_CONNECTOR_TYPES = [
+${connectorTypes}
+] as const;
+
+export type GeneratedRuntimeFirewallConnectorType =
+  (typeof RUNTIME_FIREWALL_CONNECTOR_TYPES)[number];
+
+const GENERATED_RUNTIME_FIREWALL_LOADERS: Readonly<
+  Record<GeneratedRuntimeFirewallConnectorType, () => Promise<FirewallConfig>>
+> = {
+${loaders}
+};
+
+export function hasGeneratedRuntimeFirewall(
+  type: string,
+): type is GeneratedRuntimeFirewallConnectorType {
+  return Object.prototype.hasOwnProperty.call(
+    GENERATED_RUNTIME_FIREWALL_LOADERS,
+    type,
+  );
+}
+
+export async function loadGeneratedRuntimeFirewall(
+  type: GeneratedRuntimeFirewallConnectorType,
+): Promise<FirewallConfig> {
+  return await GENERATED_RUNTIME_FIREWALL_LOADERS[type]();
+}
+`;
+}
+
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -696,6 +769,10 @@ export async function generateFirewallMetadata(): Promise<void> {
   const loaderFile = path.join(outputDir, "loader.generated.ts");
   const serverFile = path.join(outputDir, "server.generated.ts");
   const detailsDir = path.join(outputDir, "details");
+  const runtimeLoaderFile = path.join(
+    firewallsDir,
+    "runtime-loader.generated.ts",
+  );
 
   const registeredTypes = extractRegisteredFirewallTypes(firewallsIndexFile);
   const sources = await Promise.all(
@@ -755,6 +832,10 @@ export async function generateFirewallMetadata(): Promise<void> {
       }),
     ),
   );
+  writeGeneratedFile(
+    path.join(nextOutputDir, "runtime-loader.generated.ts"),
+    renderRuntimeLoaderFile(sources),
+  );
 
   const replacements: GeneratedPathReplacement[] = [];
   try {
@@ -775,6 +856,12 @@ export async function generateFirewallMetadata(): Promise<void> {
       replaceGeneratedPath(
         serverFile,
         path.join(nextOutputDir, "server.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        runtimeLoaderFile,
+        path.join(nextOutputDir, "runtime-loader.generated.ts"),
       ),
     );
   } catch (error) {

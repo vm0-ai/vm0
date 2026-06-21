@@ -52,6 +52,10 @@
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"
     },
+    "./firewalls/runtime": {
+      "import": "./src/firewall-runtime.ts",
+      "types": "./src/firewall-runtime.ts"
+    },
     "./firewalls/*": {
       "import": "./src/firewalls/*.ts",
       "types": "./src/firewalls/*.ts"
