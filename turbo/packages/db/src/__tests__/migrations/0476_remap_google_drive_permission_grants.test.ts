@@ -88,6 +88,7 @@ describe("migration 0476 remap Google Drive permission grants", () => {
       const orgId = uniqueId("org");
       const ownerId = uniqueId("owner");
       const appsUserId = uniqueId("apps-user");
+      const existingDenyUserId = uniqueId("existing-deny-user");
       const broadAllowUserId = uniqueId("allow-user");
       const readonlyDenyUserId = uniqueId("readonly-deny-user");
       const fullDenyUserId = uniqueId("full-deny-user");
@@ -121,6 +122,23 @@ describe("migration 0476 remap Google Drive permission grants", () => {
           permission: "drive.apps.readonly",
           action: "allow",
           expiresAt,
+        },
+        {
+          orgId,
+          userId: existingDenyUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "drive.apps.readonly",
+          action: "allow",
+          expiresAt,
+        },
+        {
+          orgId,
+          userId: existingDenyUserId,
+          agentId,
+          connectorRef: "google-drive",
+          permission: "apps.read",
+          action: "deny",
         },
         {
           orgId,
@@ -217,6 +235,28 @@ describe("migration 0476 remap Google Drive permission grants", () => {
           permission: "apps.read",
           action: "allow",
           expiresAt,
+        },
+      ]);
+
+      const existingDenyGrants = await tx
+        .select({
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        })
+        .from(userPermissionGrants)
+        .where(
+          and(
+            eq(userPermissionGrants.orgId, orgId),
+            eq(userPermissionGrants.userId, existingDenyUserId),
+            eq(userPermissionGrants.connectorRef, "google-drive"),
+          ),
+        );
+      expect(existingDenyGrants).toStrictEqual([
+        {
+          permission: "apps.read",
+          action: "deny",
+          expiresAt: null,
         },
       ]);
 

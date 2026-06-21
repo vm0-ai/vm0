@@ -199,11 +199,27 @@ upserted_google_drive_grants AS (
   FROM deduped_google_drive_grants
   ON CONFLICT (org_id, user_id, agent_id, connector_ref, permission) DO UPDATE
   SET
-    action = EXCLUDED.action,
-    expires_at = EXCLUDED.expires_at,
+    action = CASE
+      WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
+        THEN 'deny'
+      ELSE 'allow'
+    END,
+    expires_at = CASE
+      WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
+        THEN NULL
+      ELSE EXCLUDED.expires_at
+    END,
     updated_at = NOW()
-  WHERE user_permission_grants.action IS DISTINCT FROM EXCLUDED.action
-     OR user_permission_grants.expires_at IS DISTINCT FROM EXCLUDED.expires_at
+  WHERE user_permission_grants.action IS DISTINCT FROM CASE
+        WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
+          THEN 'deny'
+        ELSE 'allow'
+      END
+     OR user_permission_grants.expires_at IS DISTINCT FROM CASE
+        WHEN user_permission_grants.action = 'deny' OR EXCLUDED.action = 'deny'
+          THEN NULL
+        ELSE EXCLUDED.expires_at
+      END
   RETURNING 1
 )
 DELETE FROM user_permission_grants AS grants
