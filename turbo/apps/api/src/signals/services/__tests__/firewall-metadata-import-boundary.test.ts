@@ -24,7 +24,7 @@ function importPattern(specifier: string): RegExp {
   const escapedSpecifier = escapeRegExp(specifier);
   const importSpecifier = `${escapedSpecifier}(?:/[^"']*)?`;
   return new RegExp(
-    `(?:from\\s+["']${importSpecifier}["']|import\\s*\\(\\s*["']${importSpecifier}["']\\s*\\)|import\\s+["']${importSpecifier}["'])`,
+    `(?:from\\s+["']${importSpecifier}["']|import\\s*\\(\\s*["']${importSpecifier}["']\\s*\\)|import\\s+["']${importSpecifier}["']|require\\s*\\(\\s*["']${importSpecifier}["']\\s*\\))`,
   );
 }
 
