@@ -1,8 +1,10 @@
 //! Mock Codex CLI for testing.
 //!
-//! Emits Codex `exec --json` protocol events on stdout and persists a JSONL
-//! session file under Codex's date-partitioned session tree
-//! (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`).
+//! Supports test-only Codex `exec --json` and `app-server` surfaces. Exec mode
+//! emits JSONL protocol events on stdout and persists a JSONL session file under
+//! Codex's date-partitioned session tree
+//! (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`). App-server mode speaks
+//! newline-delimited JSON-RPC over stdio.
 //!
 //! Resume can also append to runner-restored rollout filenames, matching the
 //! real Codex CLI's filesystem resume candidates.

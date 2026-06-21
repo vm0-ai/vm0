@@ -1,8 +1,9 @@
 //! Integration tests that spawn the real binary via Cargo's
 //! `CARGO_BIN_EXE_guest-mock-codex` env var.
 //!
-//! Cover the contract guest-agent will rely on: stdout JSONL shape, the
-//! on-disk session file path / format, and resume semantics.
+//! Cover the contract guest-agent will rely on: exec stdout JSONL shape,
+//! app-server stdio JSON-RPC shape, on-disk session file path / format, and
+//! resume semantics.
 
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
@@ -634,14 +635,39 @@ fn app_server_initialized_notification_does_not_replace_initialize_request() -> 
     let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
 
     server.notify("initialized", json!({}))?;
-    let error = server.request(1, "thread/start", json!({}))?;
+    let thread_start_error = server.request(1, "thread/start", json!({}))?;
+    let turn_start_error = server.request(
+        2,
+        "turn/start",
+        json!({
+            "threadId": "thread-1",
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_steer_error = server.request(
+        3,
+        "turn/steer",
+        json!({
+            "threadId": "thread-1",
+            "expectedTurnId": "turn-1",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
 
-    assert_eq!(error["error"]["code"], -32600);
+    assert_eq!(thread_start_error["error"]["code"], -32600);
     assert!(
-        error["error"]["message"]
+        thread_start_error["error"]["message"]
             .as_str()
             .unwrap()
             .contains("not initialized")
+    );
+    assert_eq!(
+        turn_start_error["error"]["message"],
+        "app server is not initialized"
+    );
+    assert_eq!(
+        turn_steer_error["error"]["message"],
+        "app server is not initialized"
     );
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())

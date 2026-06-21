@@ -166,6 +166,10 @@ impl AppServerState {
                 Ok(ServerAction::Continue)
             }
             "turn/start" => {
+                if !self.initialized {
+                    write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
+                    return Ok(ServerAction::Continue);
+                }
                 if self.scenario == Scenario::ExitOnTurnStart {
                     return Ok(ServerAction::Stop);
                 }
@@ -205,6 +209,10 @@ impl AppServerState {
                 Ok(ServerAction::Continue)
             }
             "turn/steer" => {
+                if !self.initialized {
+                    write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
+                    return Ok(ServerAction::Continue);
+                }
                 let Some(expected_turn_id) = string_param(params, "expectedTurnId") else {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
                     return Ok(ServerAction::Continue);
