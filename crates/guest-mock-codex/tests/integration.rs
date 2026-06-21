@@ -111,6 +111,14 @@ impl AppServerProcess {
         stdin.flush()
     }
 
+    fn send_raw_line(&mut self, line: &str) -> std::io::Result<()> {
+        let stdin = self.stdin.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "app-server stdin is closed")
+        })?;
+        writeln!(stdin, "{line}")?;
+        stdin.flush()
+    }
+
     fn read_required(&mut self) -> std::io::Result<Value> {
         self.read_message()?.ok_or_else(|| {
             std::io::Error::new(
@@ -218,12 +226,24 @@ fn spawn_app_server(
     args: &[&str],
     scenario: Option<&str>,
 ) -> std::io::Result<AppServerProcess> {
+    spawn_app_server_with_env(codex_home, args, scenario, &[])
+}
+
+fn spawn_app_server_with_env(
+    codex_home: &Path,
+    args: &[&str],
+    scenario: Option<&str>,
+    env: &[(&str, &str)],
+) -> std::io::Result<AppServerProcess> {
     let mut cmd = Command::new(BIN);
     cmd.env("CODEX_HOME", codex_home).args(args);
     cmd.env_remove("MOCK_CODEX_FIXTURE");
     cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
     if let Some(value) = scenario {
         cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
+    }
+    for (key, value) in env {
+        cmd.env(key, value);
     }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -481,6 +501,41 @@ fn app_server_rejects_non_stdio_listen_url() -> std::io::Result<()> {
         "unsupported app-server listen URL should fail clearly: {:?}",
         out.stderr
     );
+    Ok(())
+}
+
+#[test]
+fn app_server_ignores_exec_fixture_mode() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server_with_env(
+        dir.path(),
+        &["app-server", "--stdio"],
+        None,
+        &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
+    )?;
+
+    let initialized = server.request(1, "initialize", initialize_params())?;
+
+    assert_eq!(initialized["id"], 1);
+    assert!(initialized.get("type").is_none());
+    assert!(
+        initialized["result"]["userAgent"]
+            .as_str()
+            .is_some_and(|user_agent| user_agent.starts_with("guest-mock-codex-app-server/"))
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_invalid_json_exits_without_hanging() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.send_raw_line("{not-json")?;
+
+    assert!(server.read_message()?.is_none());
+    assert_ne!(server.close_and_wait()?, 0);
     Ok(())
 }
 
