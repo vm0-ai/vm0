@@ -14,7 +14,7 @@ import { extractFilesFromTarGz } from "../../lib/tar";
 
 export const SKILL_FILENAME = "SKILL.md";
 
-export interface WorkflowVolumeFile {
+interface WorkflowVolumeFile {
   readonly path: string;
   readonly content: string;
   readonly size: number;
@@ -107,9 +107,15 @@ export async function loadWorkflowVolumeFiles(
 
   const contents = extractFilesFromTarGz(
     archiveResult.value,
-    filesList.map((file) => file.path),
+    filesList.map((file) => {
+      return file.path;
+    }),
   );
-  const sizeByPath = new Map(filesList.map((file) => [file.path, file.size]));
+  const sizeByPath = new Map(
+    filesList.map((file) => {
+      return [file.path, file.size];
+    }),
+  );
 
   return contents.map((file) => {
     const path = normalizePath(file.path);

@@ -43,7 +43,7 @@ export interface WorkflowAgentInfo {
  * - private: owner only (agent admins cannot even see private workflows).
  * - public: whoever has write-permission on the host agent.
  */
-export function canManageWorkflow(
+function canManageWorkflow(
   workflow: WorkflowRow,
   agent: WorkflowAgentInfo,
   member: WorkflowMember,
@@ -53,21 +53,6 @@ export function canManageWorkflow(
   }
   return (
     requireAgentPermission(agent.owner, member, "manage", {
-      visibility: agent.visibility,
-    }) === null
-  );
-}
-
-/**
- * Whether the caller has write-permission on the host agent — the gate for
- * reviewing publish requests and demoting public workflows.
- */
-export function canReviewAgentWorkflows(
-  agent: WorkflowAgentInfo,
-  member: WorkflowMember,
-): boolean {
-  return (
-    requireAgentPermission(agent.owner, member, "review", {
       visibility: agent.visibility,
     }) === null
   );
@@ -211,17 +196,17 @@ export function zeroWorkflowList(args: {
       )
       .orderBy(asc(zeroWorkflows.name));
 
-    return rows.map((row) =>
-      workflowSummary({
+    return rows.map((row) => {
+      return workflowSummary({
         workflow: row.workflow,
         agent: row.agent,
         member: args.member,
-      }),
-    );
+      });
+    });
   });
 }
 
-export interface RunWorkflowRef {
+interface RunWorkflowRef {
   readonly name: string;
   readonly workflowId: string;
 }

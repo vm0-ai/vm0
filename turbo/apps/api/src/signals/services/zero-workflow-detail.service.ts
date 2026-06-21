@@ -44,7 +44,7 @@ export function zeroWorkflowDetail(args: {
         orgId: args.orgId,
         workflowId: workflow.id,
       })
-    ).filter((file) => file.path !== SKILL_FILENAME);
+    ).filter((file) => {return file.path !== SKILL_FILENAME});
 
     const files: WorkflowFileMetadata[] = volumeFiles.map((file) => {
       return { path: file.path, size: file.size };

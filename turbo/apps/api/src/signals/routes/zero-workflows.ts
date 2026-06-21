@@ -17,7 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { db$, writeDb$, type Db } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
@@ -411,7 +411,9 @@ const copyWorkflowInner$ = command(
     });
     signal.throwIfAborted();
     const attachedFiles = sourceFiles
-      .filter((file) => file.path !== "SKILL.md")
+      .filter((file) => {
+        return file.path !== "SKILL.md";
+      })
       .map((file) => {
         return { path: file.path, content: file.content };
       });

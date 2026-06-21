@@ -314,8 +314,8 @@ describe("zero workflows", () => {
       [200],
     );
     const copyableAgentIds = listed.body
-      .filter((workflow) => workflow.name === "copyable-workflow")
-      .map((workflow) => workflow.agentId)
+      .filter((workflow) => {return workflow.name === "copyable-workflow"})
+      .map((workflow) => {return workflow.agentId})
       .sort();
     expect(copyableAgentIds).toStrictEqual(
       [sourceAgent.agentId, targetAgent.agentId].sort(),

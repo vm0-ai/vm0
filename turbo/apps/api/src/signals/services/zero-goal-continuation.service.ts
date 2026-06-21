@@ -411,6 +411,32 @@ async function incrementGoalTriggerFailures(
   return result;
 }
 
+/**
+ * Notify the user and produce the `auto-stopped` continuation result, shared by
+ * the run-failure and enqueue-failure paths.
+ */
+async function autoStopGoalAndNotify(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly objective: string;
+    readonly triggerId: string;
+    readonly consecutiveFailures: number;
+  },
+): Promise<GoalContinuationResult> {
+  await notifyGoalAutoStopped(db, {
+    userId: args.userId,
+    chatThreadId: args.chatThreadId,
+    objective: args.objective,
+  });
+  return {
+    kind: "auto-stopped",
+    triggerId: args.triggerId,
+    consecutiveFailures: args.consecutiveFailures,
+  };
+}
+
 export const continueGoalIfIdle$ = command(
   async (
     { set },
@@ -461,17 +487,14 @@ export const continueGoalIfIdle$ = command(
           runId: run.runId,
           consecutiveFailures: failureUpdate.consecutiveFailures,
         });
-        await notifyGoalAutoStopped(db, {
+        signal.throwIfAborted();
+        return autoStopGoalAndNotify(db, {
           userId: run.userId,
           chatThreadId: run.chatThreadId,
           objective: goal.preference.objective,
-        });
-        signal.throwIfAborted();
-        return {
-          kind: "auto-stopped",
           triggerId: trigger.id,
           consecutiveFailures: failureUpdate.consecutiveFailures,
-        };
+        });
       }
     } else {
       await resetGoalTriggerFailures(db, trigger.id);
@@ -525,17 +548,14 @@ export const continueGoalIfIdle$ = command(
         consecutiveFailures: failureUpdate.consecutiveFailures,
         error,
       });
-      await notifyGoalAutoStopped(db, {
+      signal.throwIfAborted();
+      return autoStopGoalAndNotify(db, {
         userId: run.userId,
         chatThreadId: run.chatThreadId,
         objective: goal.preference.objective,
-      });
-      signal.throwIfAborted();
-      return {
-        kind: "auto-stopped",
         triggerId: trigger.id,
         consecutiveFailures: failureUpdate.consecutiveFailures,
-      };
+      });
     }
 
     log.warn("Goal continuation enqueue failed", {

@@ -36,11 +36,24 @@ export const workflowFileEntrySchema = z.object({
     .string()
     .min(1)
     .max(256)
-    .refine((p) => !p.startsWith("/"), { message: "Path must be relative" })
-    .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
-    .refine((p) => p !== RESERVED_SKILL_FILE, {
-      message: "SKILL.md is reserved and is generated automatically",
-    }),
+    .refine(
+      (p) => {
+        return !p.startsWith("/");
+      },
+      { message: "Path must be relative" },
+    )
+    .refine(
+      (p) => {
+        return !p.includes("..");
+      },
+      { message: "Path must not contain .." },
+    )
+    .refine(
+      (p) => {
+        return p !== RESERVED_SKILL_FILE;
+      },
+      { message: "SKILL.md is reserved and is generated automatically" },
+    ),
   content: z.string(),
 });
 
@@ -58,10 +71,9 @@ export const workflowFilesSchema = z
   )
   .refine(
     (files) => {
-      const total = files.reduce(
-        (sum, f) => sum + new TextEncoder().encode(f.content).length,
-        0,
-      );
+      const total = files.reduce((sum, f) => {
+        return sum + new TextEncoder().encode(f.content).length;
+      }, 0);
       return total <= WORKFLOW_FILES_MAX_BYTES;
     },
     { message: "Total file size must not exceed 5MB" },
@@ -196,11 +208,14 @@ export const zeroWorkflowUpdateRequestSchema = z
     description: z.string().max(1024).nullable().optional(),
   })
   .refine(
-    (body) =>
-      body.instruction !== undefined ||
-      body.files !== undefined ||
-      body.displayName !== undefined ||
-      body.description !== undefined,
+    (body) => {
+      return (
+        body.instruction !== undefined ||
+        body.files !== undefined ||
+        body.displayName !== undefined ||
+        body.description !== undefined
+      );
+    },
     { message: "At least one workflow update is required" },
   );
 
