@@ -22,7 +22,7 @@ describe("so frontend rewrites", () => {
     expect(resolveSoFrontendUrl({ VERCEL_ENV: "preview" })).toBeUndefined();
   });
 
-  it("rewrites marketing content to so in preview", () => {
+  it("rewrites marketing content and auth routes to so in preview", () => {
     const rewrites = buildSoFrontendRewrites({
       PAID_ONBOARDING_URL: "https://pr-123-so.vm6.ai",
       VERCEL_ENV: "preview",
@@ -52,20 +52,20 @@ describe("so frontend rewrites", () => {
       source: "/en/models/:path*",
       destination: "https://pr-123-so.vm6.ai/en/models/:path*",
     });
-    expect(rewrites).not.toContainEqual({
+    expect(rewrites).toContainEqual({
       source: "/sign-in",
       destination: "https://pr-123-so.vm6.ai/sign-in",
     });
-    expect(rewrites).not.toContainEqual({
+    expect(rewrites).toContainEqual({
       source: "/sign-up",
       destination: "https://pr-123-so.vm6.ai/sign-up",
     });
   });
 
-  it("rewrites sign-in/sign-up to so only in production", () => {
+  it("rewrites sign-in/sign-up when a so frontend target is configured", () => {
     const rewrites = buildSoFrontendRewrites({
       PAID_ONBOARDING_URL: "https://so.vm0.ai",
-      VERCEL_ENV: "production",
+      VERCEL_ENV: "preview",
     });
 
     expect(rewrites).toContainEqual({
@@ -104,12 +104,7 @@ describe("so frontend rewrites", () => {
     expect(matchesSoFrontendRewritePath("/docs/getting-started")).toBe(true);
     expect(matchesSoFrontendRewritePath("/assets/vm0-logo.svg")).toBe(true);
 
-    expect(matchesSoFrontendRewritePath("/sign-in/sso-callback")).toBe(false);
-    expect(
-      matchesSoFrontendRewritePath("/sign-in/sso-callback", {
-        VERCEL_ENV: "production",
-      }),
-    ).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sign-in/sso-callback")).toBe(true);
     expect(matchesSoFrontendRewritePath("/connector/success")).toBe(false);
     expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(false);
     expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(
@@ -127,12 +122,9 @@ describe("so frontend rewrites", () => {
     expect(resolveSoFrontendRewritePath("/en/docs/reference/api")).toBe(
       "/en/docs/reference/api",
     );
-    expect(resolveSoFrontendRewritePath("/sign-in/factor-one")).toBeUndefined();
-    expect(
-      resolveSoFrontendRewritePath("/sign-in/factor-one", {
-        VERCEL_ENV: "production",
-      }),
-    ).toBe("/sign-in/factor-one");
+    expect(resolveSoFrontendRewritePath("/sign-in/factor-one")).toBe(
+      "/sign-in/factor-one",
+    );
     expect(resolveSoFrontendRewritePath("/connector/success")).toBeUndefined();
   });
 });

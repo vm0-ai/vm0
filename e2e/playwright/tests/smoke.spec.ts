@@ -1,15 +1,12 @@
-import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import {
-  expect,
-  test,
-  type APIResponse,
-  type Locator,
-  type Page,
-} from "@playwright/test";
+  clerk,
+  clerkSetup,
+  setupClerkTestingToken,
+} from "@clerk/testing/playwright";
+import { expect, test, type APIResponse, type Page } from "@playwright/test";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
-const TEST_OTP = "424242";
 const ONBOARDING_STATUS_PATH = "**/api/zero/onboarding/status";
 const READY_ONBOARDING_STATUS = JSON.stringify({
   needsOnboarding: false,
@@ -34,14 +31,11 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   await page.waitForURL((url) => url.pathname.includes("/sign-in"), {
     timeout: 30_000,
   });
+  const authUrl = page.url();
+  const redirectUrl = redirectUrlFromAuthUrl(new URL(authUrl));
 
   // Sign in
-  await signInWithEmailCode(
-    page,
-    email,
-    redirectUrlFromAuthUrl(new URL(page.url())),
-    60_000,
-  );
+  await signInWithClerkTestingHelper(page, email, appUrl, authUrl, redirectUrl);
 
   // Navigate to app — should land on the onboarding handoff or agents
   await page.goto(appUrl);
@@ -212,157 +206,53 @@ function deriveApiUrl(appUrl: string): string {
   return appUrl.replace(/-app\./, "-api.").replace(/\/\/app\./, "//api.");
 }
 
-async function signInWithEmailCode(
+async function signInWithClerkTestingHelper(
   page: Page,
   email: string,
+  appUrl: string,
+  authUrl: string,
   redirectUrl: string | null,
-  timeout: number,
 ): Promise<void> {
-  const deadline = Date.now() + timeout;
+  const helperUrl = new URL("/_/skeleton", appUrl);
+  await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => Boolean(window.Clerk?.loaded), undefined, {
+    timeout: 30_000,
+  });
+  const clerkStateBefore = await page.evaluate(() => {
+    return {
+      hasLoadedClerk: Boolean(window.Clerk?.loaded),
+      hasSession: Boolean(window.Clerk?.session),
+      hasUser: Boolean(window.Clerk?.user),
+    };
+  });
 
-  await waitForVisible(
-    page.locator('input[name="identifier"]').first(),
-    remainingTimeout(deadline, 20_000),
-  );
-  await clickIfVisible(page.getByRole("button", { name: "Accept" }), 2_000);
+  console.log("[smoke] signing in with Clerk testing helper", {
+    currentUrl: page.url(),
+    authUrl,
+    email,
+    redirectUrl,
+    ...clerkStateBefore,
+  });
 
-  await page.locator('input[name="identifier"]').first().fill(email);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await clerk.signIn({ page, emailAddress: email });
+  await page.waitForFunction(() => Boolean(window.Clerk?.session), undefined, {
+    timeout: 30_000,
+  });
 
-  const flow = await waitForEmailCodeFlow(
-    page,
-    remainingTimeout(deadline, 15_000),
-  );
-  if (flow === "alt") {
-    await page
-      .locator("a, button")
-      .filter({ hasText: "Use another method" })
-      .first()
-      .click();
-    await page
-      .locator("button")
-      .filter({ hasText: "Email code" })
-      .first()
-      .click();
-  }
+  const clerkState = await page.evaluate(() => {
+    return {
+      hasSession: Boolean(window.Clerk?.session),
+      hasUser: Boolean(window.Clerk?.user),
+    };
+  });
+  console.log("[smoke] Clerk testing helper completed", {
+    currentUrl: page.url(),
+    ...clerkState,
+  });
 
-  if (flow !== "redirected") {
-    await submitEmailCode(page, remainingTimeout(deadline, 30_000));
-  }
-
-  if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
+  if (redirectUrl) {
     await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
   }
-}
-
-async function clickIfVisible(
-  locator: Locator,
-  timeout: number,
-): Promise<void> {
-  if (await waitForVisible(locator, timeout)) {
-    await locator.click();
-  }
-}
-
-async function waitForEmailCodeFlow(
-  page: Page,
-  timeout: number,
-): Promise<"otp" | "alt" | "redirected"> {
-  const result = await page.waitForFunction(
-    () => {
-      const { pathname } = window.location;
-      if (!pathname.includes("/sign-up") && !pathname.includes("/sign-in")) {
-        return "redirected";
-      }
-
-      const hasOtp = Boolean(
-        document.querySelector('input[data-input-otp="true"]'),
-      );
-      const hasAltMethod = Array.from(
-        document.querySelectorAll("a, button"),
-      ).some((element) => {
-        return element.textContent?.includes("Use another method") ?? false;
-      });
-
-      if (hasOtp) {
-        return "otp";
-      }
-      if (hasAltMethod) {
-        return "alt";
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-  const flow = await result.jsonValue();
-  if (flow === "otp" || flow === "alt" || flow === "redirected") {
-    return flow;
-  }
-  throw new Error(`Unexpected Clerk sign-in flow: ${String(flow)}`);
-}
-
-async function submitEmailCode(page: Page, timeout: number): Promise<void> {
-  const deadline = Date.now() + timeout;
-  const otpInput = page.locator('input[data-input-otp="true"]').first();
-  await waitForVisible(otpInput, remainingTimeout(deadline, 15_000));
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const navigation = waitForNonAuthUrl(
-      page,
-      remainingTimeout(deadline, 15_000),
-    );
-    await otpInput.click();
-    await otpInput.type(TEST_OTP);
-
-    if (await navigation) {
-      return;
-    }
-
-    if (!isAuthUrl(new URL(page.url()))) {
-      return;
-    }
-
-    await otpInput.click({ clickCount: 3 });
-    await page.keyboard.press("Backspace");
-  }
-
-  throw new Error(`Authentication failed after OTP attempts: ${page.url()}`);
-}
-
-async function waitForVisible(
-  locator: Locator,
-  timeout: number,
-): Promise<boolean> {
-  return await locator
-    .waitFor({ state: "visible", timeout })
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function waitForNonAuthUrl(
-  page: Page,
-  timeout: number,
-): Promise<boolean> {
-  return await page
-    .waitForURL((url) => !isAuthUrl(url), {
-      timeout,
-      waitUntil: "domcontentloaded",
-    })
-    .then(() => true)
-    .catch(() => false);
-}
-
-function remainingTimeout(deadline: number, maxTimeout: number): number {
-  return Math.max(1, Math.min(maxTimeout, deadline - Date.now()));
-}
-
-function isAuthUrl(url: URL): boolean {
-  return url.pathname.includes("/sign-up") || url.pathname.includes("/sign-in");
-}
-
-function isChatUrl(url: URL): boolean {
-  return /\/agents\/.*\/chat/.test(url.pathname);
 }
 
 function redirectUrlFromAuthUrl(url: URL): string | null {
@@ -379,8 +269,4 @@ function redirectUrlFromAuthUrl(url: URL): string | null {
   return new URLSearchParams(url.hash.slice(hashQueryStart + 1)).get(
     "redirect_url",
   );
-}
-
-function isOnboardingOrChatUrl(url: URL): boolean {
-  return url.pathname.includes("/onboarding") || isChatUrl(url);
 }

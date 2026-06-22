@@ -192,11 +192,13 @@ describe("proxy middleware: public routes", () => {
     expect(response.status).not.toBe(202);
   });
 
-  it("does not proxy auth routes to so in preview", async () => {
+  it("proxies auth routes to so in preview", async () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://staging-so.vm6.ai");
     vi.stubEnv("VERCEL_ENV", "preview");
     reloadEnv();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("preview auth proxied", { status: 202 });
+    });
     vi.stubGlobal("fetch", fetchMock);
     const request = new NextRequest(
       "https://pr-18518-www.vm6.ai/sign-in/factor-one",
@@ -205,9 +207,18 @@ describe("proxy middleware: public routes", () => {
       },
     );
 
-    await middleware(request, createMockEvent());
+    const response = await middleware(request, createMockEvent());
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [targetUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(String(targetUrl)).toBe(
+      "https://staging-so.vm6.ai/sign-in/factor-one",
+    );
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected preview auth proxy response");
+    }
+    expect(response.status).toBe(202);
   });
 
   it("proxies auth routes to so in production", async () => {

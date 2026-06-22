@@ -21,6 +21,41 @@ export function resolveWebOrigin(): string {
   return url.origin;
 }
 
+function resolveDomainOverride(): string | null {
+  const origin = location.origin;
+  if (!origin || origin === "null") {
+    return null;
+  }
+  const url = new URL(origin);
+  if (!url.hostname.endsWith(".vm6.ai")) {
+    return null;
+  }
+  const apiHostname = url.hostname.replace(
+    /(^|-)(platform|app|www)\./,
+    "$1api.",
+  );
+  return apiHostname === url.hostname ? null : apiHostname;
+}
+
+export function resolveWebAuthUrl(
+  path: `/sign-${string}`,
+  options: { redirectUrl?: string } = {},
+): string {
+  const webOrigin = resolveWebOrigin();
+  if (!webOrigin) {
+    return path;
+  }
+  const url = new URL(path, webOrigin);
+  const domainOverride = resolveDomainOverride();
+  if (domainOverride) {
+    url.searchParams.set("domain", domainOverride);
+  }
+  if (options.redirectUrl) {
+    url.searchParams.set("redirect_url", options.redirectUrl);
+  }
+  return url.toString();
+}
+
 /**
  * Clerk instance signal.
  *
@@ -40,12 +75,11 @@ export const clerk$ = computed(async () => {
   // Moving it to a separate async chunk avoids blocking initial JS parsing.
   const { Clerk } = await import("@clerk/clerk-js");
 
-  const webOrigin = resolveWebOrigin();
   const clerkInstance = new Clerk(publishableKey);
   await clerkInstance.load({
-    signInUrl: `${webOrigin}/sign-in`,
-    signUpUrl: `${webOrigin}/sign-up`,
-    afterSignOutUrl: `${webOrigin}/sign-in`,
+    signInUrl: resolveWebAuthUrl("/sign-in"),
+    signUpUrl: resolveWebAuthUrl("/sign-up"),
+    afterSignOutUrl: resolveWebAuthUrl("/sign-in"),
   });
   return clerkInstance;
 });

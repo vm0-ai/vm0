@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { clerk$, resolveWebOrigin } from "../auth.ts";
+import { clerk$, resolveWebAuthUrl } from "../auth.ts";
 import { searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
@@ -79,7 +79,9 @@ export const onboardGuard$ = command(
       signal.throwIfAborted();
       const memberships = clerk.user?.organizationMemberships ?? [];
       if (memberships.length > 0) {
-        window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+        window.location.href = resolveWebAuthUrl(
+          "/sign-in/tasks/choose-organization",
+        );
         return true;
       }
     }
