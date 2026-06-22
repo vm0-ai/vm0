@@ -141,6 +141,23 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Meet read permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-meet");
+
+    expect(policy.policies["spaces.read"]).toBe("allow");
+    expect(policy.policies["conference-records.read"]).toBe("allow");
+    expect(policy.policies["participants.read"]).toBe("allow");
+    expect(policy.policies["participant-sessions.read"]).toBe("allow");
+    expect(policy.policies["recordings.read"]).toBe("allow");
+    expect(policy.policies["smart-notes.read"]).toBe("allow");
+    expect(policy.policies["transcripts.read"]).toBe("allow");
+    expect(policy.policies["transcript-entries.read"]).toBe("allow");
+    expect(policy.policies["spaces.create"]).toBe("deny");
+    expect(policy.policies["spaces.write"]).toBe("deny");
+    expect(policy.policies["spaces.end-active-conference"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -214,6 +231,7 @@ describe("resolveFirewallPolicies", () => {
       "google-calendar",
       "google-cloud",
       "google-docs",
+      "google-meet",
       "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
@@ -221,6 +239,7 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved!["google-calendar"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-docs"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-meet"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
 

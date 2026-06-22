@@ -3375,6 +3375,13 @@
       "when": 1782098880136,
       "tag": "0481_remap_google_docs_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1782107183469,
+      "tag": "0482_remap_google_meet_permission_grants",
+      "breakpoints": true
     }
   ]
 }
