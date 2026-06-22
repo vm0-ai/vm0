@@ -162,7 +162,14 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
         NormalOperationReadiness::NotParkable
     );
     let err = host
-        .exec("blocked-after-write-drop", 5000, &[], false)
+        .exec_operation_capture_default(
+            "blocked-after-write-drop",
+            5000,
+            &[],
+            false,
+            "exec",
+            Duration::from_secs(10),
+        )
         .await
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);

@@ -1,4 +1,4 @@
-use sandbox::{ExecResult, ProcessTerminationKind, Sandbox};
+use sandbox::{ExecResult, ExecTermination, Sandbox};
 use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
@@ -50,13 +50,13 @@ async fn fix_guest_clock_fails_on_nonzero_exit() {
 }
 
 #[tokio::test]
-async fn fix_guest_clock_fails_on_non_exited_zero_exit_code() {
+async fn fix_guest_clock_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::WaitFailed,
-        exit_code: 0,
+        termination: ExecTermination::WaitFailed,
         stdout: b"date stdout".to_vec(),
         stderr: b"wait failed".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -65,7 +65,7 @@ async fn fix_guest_clock_fails_on_non_exited_zero_exit_code() {
 
     let message = result.unwrap_err().to_string();
     assert!(
-        message.contains("guest clock sync failed (wait failed; compatibility exit code 0)"),
+        message.contains("guest clock sync failed (wait failed)"),
         "got: {message}"
     );
     assert!(
@@ -263,13 +263,13 @@ async fn sync_guest_timezone_logs_nonzero_exit() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn sync_guest_timezone_logs_non_exited_zero_exit_code() {
+async fn sync_guest_timezone_logs_non_exited_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::StartFailed,
-        exit_code: 0,
+        termination: ExecTermination::StartFailed,
         stdout: b"timezone stdout".to_vec(),
         stderr: b"start failed".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -290,7 +290,7 @@ async fn sync_guest_timezone_logs_non_exited_zero_exit_code() {
         event.fields.get("termination").map(String::as_str),
         Some("start_failed")
     );
-    assert_eq!(event.fields.get("exit_code").map(String::as_str), Some("0"));
+    assert_eq!(event.fields.get("exit_code"), None);
     assert!(
         event
             .fields

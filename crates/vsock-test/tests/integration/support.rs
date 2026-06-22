@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use tokio::io::unix::AsyncFd;
-use vsock_host::VsockHost;
+use vsock_host::{ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
+use vsock_proto::ExecTermination;
 
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
@@ -54,6 +55,41 @@ pub(crate) async fn wait_for_path(path: &Path, timeout: Duration) {
     wait_for_path_result(path, timeout)
         .await
         .unwrap_or_else(|error| panic!("timed out waiting for path {path:?}: {error}"));
+}
+
+pub(crate) async fn run_exec(
+    host: &VsockHost,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> io::Result<ExecOperationResult> {
+    host.exec_operation_capture_default(
+        command,
+        timeout_ms,
+        env,
+        sudo,
+        "exec",
+        Duration::from_millis(timeout_ms as u64 + 5000),
+    )
+    .await
+}
+
+pub(crate) fn exec_exit_code(result: &ExecOperationResult) -> Option<i32> {
+    match result.termination {
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
+    }
+}
+
+pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
+    match output {
+        ExecOwnedCapturedOutput::Captured { bytes, .. } => bytes,
+        ExecOwnedCapturedOutput::Discarded => panic!("expected captured output"),
+    }
 }
 
 /// Test harness: creates temp dir, starts guest thread, connects host.

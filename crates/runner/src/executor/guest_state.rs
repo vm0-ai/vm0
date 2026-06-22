@@ -1,6 +1,6 @@
 //! Guest state repair helpers used before agent execution.
 
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use crate::helper_exec::{
@@ -8,6 +8,16 @@ use crate::helper_exec::{
     helper_exec_termination_label,
 };
 use crate::types::ExecutionContext;
+
+fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
+    match result.termination {
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
+    }
+}
 
 pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let timestamp = format!(
@@ -125,15 +135,26 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
                 format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
             let stdout_excerpt =
                 format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
-            tracing::warn!(
-                run_id = %context.run_id,
-                tz = %tz,
-                termination = helper_exec_termination_label(&result),
-                exit_code = result.exit_code,
-                stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
-                stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
-                "failed to set guest timezone"
-            );
+            if let Some(exit_code) = helper_exec_exit_code(&result) {
+                tracing::warn!(
+                    run_id = %context.run_id,
+                    tz = %tz,
+                    termination = helper_exec_termination_label(&result),
+                    exit_code,
+                    stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+                    stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+                    "failed to set guest timezone"
+                );
+            } else {
+                tracing::warn!(
+                    run_id = %context.run_id,
+                    tz = %tz,
+                    termination = helper_exec_termination_label(&result),
+                    stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+                    stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+                    "failed to set guest timezone"
+                );
+            }
         }
         Ok(_) => {}
         Err(e) => {
