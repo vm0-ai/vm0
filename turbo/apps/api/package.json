@@ -14,9 +14,9 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1068.0",
-    "@aws-sdk/client-s3": "^3.1068.0",
-    "@aws-sdk/s3-request-presigner": "^3.1068.0",
+    "@aws-sdk/client-kms": "^3.1073.0",
+    "@aws-sdk/client-s3": "^3.1073.0",
+    "@aws-sdk/s3-request-presigner": "^3.1073.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.4.13",
@@ -66,8 +66,8 @@
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
     "@types/web-push": "^3.6.4",
-    "@typescript-eslint/rule-tester": "^8.61.0",
-    "@typescript-eslint/utils": "^8.61.0",
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "@typescript-eslint/utils": "^8.61.1",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "adm-zip": "^0.5.17",
@@ -78,6 +78,6 @@
     "tsx": "^4.19.0",
     "typescript": "6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }
