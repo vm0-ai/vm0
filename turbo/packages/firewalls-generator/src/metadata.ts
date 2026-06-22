@@ -10,10 +10,7 @@ import type {
   FirewallPolicyValue,
 } from "../../connectors/src/firewall-types";
 import type {
-  FirewallExecutionMetadataDetail,
-  FirewallExecutionMetadataSummary,
-} from "../../connectors/src/firewall-execution-metadata/types";
-import type {
+  FirewallExecutionMetadata,
   FirewallPermissionDefaultPolicyMetadata,
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
@@ -933,7 +930,7 @@ function expandFirewallPlaceholders(
 
 function buildExecutionBaseUrlTemplates(
   firewall: FirewallConfig,
-): FirewallExecutionMetadataDetail["baseUrlTemplates"] {
+): FirewallExecutionMetadata["baseUrlTemplates"] {
   const templates = new Map<string, boolean>();
   for (const api of firewall.apis) {
     if (!hasBaseUrlVars(api.base)) {
@@ -972,7 +969,7 @@ function buildExecutionPlaceholderValues(
 function buildExecutionMetadata(
   source: GeneratedFirewallSource,
   billableTypes: ReadonlySet<FirewallConnectorType>,
-): FirewallExecutionMetadataDetail {
+): FirewallExecutionMetadata {
   const firewall = expandFirewallPlaceholders(
     source.firewall,
     source.envBindingEntries,
@@ -997,28 +994,10 @@ function buildExecutionMetadata(
   };
 }
 
-function buildExecutionSummaryMetadata(
-  detail: FirewallExecutionMetadataDetail,
-): FirewallExecutionMetadataSummary {
-  return {
-    type: detail.type,
-    billable: detail.billable,
-  };
-}
-
 function renderDetailFile(metadata: FirewallPermissionDetailMetadata): string {
   return `${generatedHeader()}import type { FirewallPermissionDetailMetadata } from "../types";
 
 export const firewallPermissionMetadata = ${stableJson(metadata)} as const satisfies FirewallPermissionDetailMetadata;
-`;
-}
-
-function renderExecutionDetailFile(
-  metadata: FirewallExecutionMetadataDetail,
-): string {
-  return `${generatedHeader()}import type { FirewallExecutionMetadataDetail } from "../types";
-
-export const firewallExecutionMetadata = ${stableJson(metadata)} as const satisfies FirewallExecutionMetadataDetail;
 `;
 }
 
@@ -1031,12 +1010,12 @@ export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} a
 `;
 }
 
-function renderExecutionSummaryFile(
-  summaries: Record<string, FirewallExecutionMetadataSummary>,
+function renderServerExecutionFile(
+  metadata: Record<string, FirewallExecutionMetadata>,
 ): string {
-  return `${generatedHeader()}import type { FirewallExecutionMetadataSummary } from "./types";
+  return `${generatedHeader()}import type { FirewallExecutionMetadata } from "./types";
 
-export const FIREWALL_EXECUTION_METADATA_SUMMARIES = ${stableJson(summaries)} as const satisfies Readonly<Record<string, FirewallExecutionMetadataSummary>>;
+export const FIREWALL_SERVER_EXECUTION_METADATA = ${stableJson(metadata)} as const satisfies Readonly<Record<string, FirewallExecutionMetadata>>;
 `;
 }
 
@@ -1044,39 +1023,6 @@ function renderServerFile(fixedHostOwners: Record<string, string>): string {
   return `${generatedHeader()}import type { FirewallPermissionSummaryMetadata } from "./types";
 
 export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS = ${stableJson(fixedHostOwners)} as const satisfies Readonly<Record<string, FirewallPermissionSummaryMetadata["type"]>>;
-`;
-}
-
-function renderExecutionLoaderFile(
-  types: readonly FirewallConnectorType[],
-): string {
-  const loaders = types
-    .map((type) => {
-      const key = JSON.stringify(type);
-      const specifier = JSON.stringify(generatedDetailModuleSpecifier(type));
-      return `  ${key}: async () => {
-    return (await import(${specifier})).firewallExecutionMetadata;
-  },`;
-    })
-    .join("\n");
-
-  return `${generatedHeader()}import type { FirewallExecutionMetadataDetail } from "./types";
-
-const FIREWALL_EXECUTION_METADATA_LOADERS: Readonly<
-  Record<string, () => Promise<FirewallExecutionMetadataDetail>>
-> = {
-${loaders}
-};
-
-export async function loadGeneratedFirewallExecutionMetadata(
-  type: string,
-): Promise<FirewallExecutionMetadataDetail | null> {
-  const load = FIREWALL_EXECUTION_METADATA_LOADERS[type];
-  if (!load) {
-    return null;
-  }
-  return await load();
-}
 `;
 }
 
@@ -1179,23 +1125,14 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
   );
-  const executionOutputDir = path.resolve(
-    import.meta.dirname,
-    "../../connectors/src/firewall-execution-metadata",
-  );
   const summaryFile = path.join(outputDir, "summary.generated.ts");
   const loaderFile = path.join(outputDir, "loader.generated.ts");
   const serverFile = path.join(outputDir, "server.generated.ts");
+  const serverExecutionFile = path.join(
+    outputDir,
+    "server-execution.generated.ts",
+  );
   const detailsDir = path.join(outputDir, "details");
-  const executionSummaryFile = path.join(
-    executionOutputDir,
-    "summary.generated.ts",
-  );
-  const executionLoaderFile = path.join(
-    executionOutputDir,
-    "loader.generated.ts",
-  );
-  const executionDetailsDir = path.join(executionOutputDir, "details");
   const runtimeLoaderFile = path.join(
     firewallsDir,
     "runtime-loader.generated.ts",
@@ -1230,13 +1167,8 @@ export async function generateFirewallMetadata(): Promise<void> {
     return source;
   });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
-  const executionSummaries: Record<string, FirewallExecutionMetadataSummary> =
-    {};
+  const executionMetadata: Record<string, FirewallExecutionMetadata> = {};
   const permissionDetails: {
-    readonly type: FirewallConnectorType;
-    readonly content: string;
-  }[] = [];
-  const executionDetails: {
     readonly type: FirewallConnectorType;
     readonly content: string;
   }[] = [];
@@ -1245,35 +1177,19 @@ export async function generateFirewallMetadata(): Promise<void> {
     const detail = buildDetailMetadata(source);
     const executionDetail = buildExecutionMetadata(source, billableTypes);
     summaries[source.type] = buildSummaryMetadata(detail);
-    executionSummaries[source.type] =
-      buildExecutionSummaryMetadata(executionDetail);
+    executionMetadata[source.type] = executionDetail;
     permissionDetails.push({
       type: source.type,
       content: renderDetailFile(detail),
     });
-    executionDetails.push({
-      type: source.type,
-      content: renderExecutionDetailFile(executionDetail),
-    });
   }
 
-  fs.mkdirSync(executionOutputDir, { recursive: true });
   const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
   const nextDetailsDir = path.join(nextOutputDir, "details");
-  const nextExecutionOutputDir = fs.mkdtempSync(
-    path.join(executionOutputDir, ".metadata-"),
-  );
-  const nextExecutionDetailsDir = path.join(nextExecutionOutputDir, "details");
 
   for (const detail of permissionDetails) {
     writeGeneratedFile(
       path.join(nextDetailsDir, generatedDetailFileName(detail.type)),
-      detail.content,
-    );
-  }
-  for (const detail of executionDetails) {
-    writeGeneratedFile(
-      path.join(nextExecutionDetailsDir, generatedDetailFileName(detail.type)),
       detail.content,
     );
   }
@@ -1282,8 +1198,8 @@ export async function generateFirewallMetadata(): Promise<void> {
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
-    path.join(nextExecutionOutputDir, "summary.generated.ts"),
-    renderExecutionSummaryFile(executionSummaries),
+    path.join(nextOutputDir, "server-execution.generated.ts"),
+    renderServerExecutionFile(executionMetadata),
   );
   writeGeneratedFile(
     path.join(nextOutputDir, "server.generated.ts"),
@@ -1292,14 +1208,6 @@ export async function generateFirewallMetadata(): Promise<void> {
   writeGeneratedFile(
     path.join(nextOutputDir, "loader.generated.ts"),
     renderLoaderFile(
-      sources.map((source) => {
-        return source.type;
-      }),
-    ),
-  );
-  writeGeneratedFile(
-    path.join(nextExecutionOutputDir, "loader.generated.ts"),
-    renderExecutionLoaderFile(
       sources.map((source) => {
         return source.type;
       }),
@@ -1332,18 +1240,9 @@ export async function generateFirewallMetadata(): Promise<void> {
       ),
     );
     replacements.push(
-      replaceGeneratedPath(executionDetailsDir, nextExecutionDetailsDir),
-    );
-    replacements.push(
       replaceGeneratedPath(
-        executionSummaryFile,
-        path.join(nextExecutionOutputDir, "summary.generated.ts"),
-      ),
-    );
-    replacements.push(
-      replaceGeneratedPath(
-        executionLoaderFile,
-        path.join(nextExecutionOutputDir, "loader.generated.ts"),
+        serverExecutionFile,
+        path.join(nextOutputDir, "server-execution.generated.ts"),
       ),
     );
     replacements.push(
@@ -1357,7 +1256,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     throw error;
   } finally {
     fs.rmSync(nextOutputDir, { recursive: true, force: true });
-    fs.rmSync(nextExecutionOutputDir, { recursive: true, force: true });
   }
 
   for (const replacement of replacements) {
