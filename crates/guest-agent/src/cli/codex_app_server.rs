@@ -654,6 +654,14 @@ impl CodexAppServerClient {
         self.signal_process_group(libc::SIGKILL);
         self.clear_child_process_handles();
     }
+
+    fn drop_needs_process_group_signal(&self) -> bool {
+        self.wait_rx.is_some()
+            || self
+                .stderr_handle
+                .as_ref()
+                .is_some_and(|stderr_handle| !stderr_handle.is_finished())
+    }
 }
 
 impl Drop for CodexAppServerClient {
@@ -661,7 +669,9 @@ impl Drop for CodexAppServerClient {
         if !self.closed {
             self.stdin.take();
             let _ = self.try_finish_child_wait();
-            self.signal_process_group(libc::SIGKILL);
+            if self.drop_needs_process_group_signal() {
+                self.signal_process_group(libc::SIGKILL);
+            }
         }
         if let Some(stderr_handle) = self.stderr_handle.take() {
             stderr_handle.abort();
