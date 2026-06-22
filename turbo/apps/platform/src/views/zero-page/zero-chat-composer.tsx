@@ -2,10 +2,12 @@
 // oxlint-disable max-lines-per-function
 import type {
   ChangeEvent,
+  CSSProperties,
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import { useMemo } from "react";
 import {
   useGet,
   useSet,
@@ -2186,14 +2188,6 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
   }
 }
 
-function revokePresentationTemplateHtmlPreviewUrls(
-  urls: readonly string[],
-): void {
-  for (const url of urls) {
-    URL.revokeObjectURL(url);
-  }
-}
-
 function createThemedPresentationPreviewUrl(params: {
   readonly activeSlideId: string;
   readonly draft: PresentationEditDraft;
@@ -2202,7 +2196,7 @@ function createThemedPresentationPreviewUrl(params: {
   return URL.createObjectURL(
     new Blob(
       [
-        themedPreviewPresentationHtml({
+        createThemedPresentationPreviewHtml({
           activeSlideId: params.activeSlideId,
           draft: params.draft,
           theme: params.theme,
@@ -2210,6 +2204,190 @@ function createThemedPresentationPreviewUrl(params: {
       ],
       { type: "text/html;charset=utf-8" },
     ),
+  );
+}
+
+function createThemedPresentationPreviewHtml(params: {
+  readonly activeSlideId: string;
+  readonly draft: PresentationEditDraft;
+  readonly theme: PresentationTemplateThemeOption;
+}): string {
+  return themedPreviewPresentationHtml({
+    activeSlideId: params.activeSlideId,
+    draft: params.draft,
+    theme: params.theme,
+  });
+}
+
+type PresentationTemplateThemeVariables = CSSProperties &
+  Record<`--${string}`, string>;
+
+function presentationTemplateThemeVariables(
+  theme: PresentationTemplateThemeOption,
+): PresentationTemplateThemeVariables {
+  const [bg, surface, ink, soft, accent, s1, s2, s3, ph] = theme.colors;
+  const [g0, t0] = safePreviewGround(accent);
+  const [g1, t1] = safePreviewGround(s1);
+  const [g2, t2] = safePreviewGround(s2);
+  const [g3, t3] = safePreviewGround(s3);
+  return {
+    "--bg": bg,
+    "--surface": surface,
+    "--ink": ink,
+    "--soft": soft,
+    "--ph": ph,
+    "--accent": accent,
+    "--s1": s1,
+    "--s2": s2,
+    "--s3": s3,
+    "--oa": previewTextColorOn(accent),
+    "--o1": previewTextColorOn(s1),
+    "--o2": previewTextColorOn(s2),
+    "--o3": previewTextColorOn(s3),
+    "--ka": contrastRatio(accent, bg) >= 4.5 ? accent : ink,
+    "--kad": contrastRatio(accent, ink) >= 4.5 ? accent : bg,
+    "--k1": contrastRatio(s1, bg) >= 4.5 ? s1 : ink,
+    "--k2": contrastRatio(s2, bg) >= 4.5 ? s2 : ink,
+    "--k3": contrastRatio(s3, bg) >= 4.5 ? s3 : ink,
+    "--g0": g0,
+    "--t0": t0,
+    "--g1": g1,
+    "--t1": t1,
+    "--g2": g2,
+    "--t2": t2,
+    "--g3": g3,
+    "--t3": t3,
+  };
+}
+
+const presentationTemplateThumbnailHtmlByHost = new WeakMap<
+  HTMLDivElement,
+  string
+>();
+
+function applyPresentationTemplateThumbnailTheme(
+  host: HTMLDivElement,
+  themeVariables: PresentationTemplateThemeVariables,
+): void {
+  const root = host.shadowRoot?.querySelector<HTMLElement>(
+    ".vm0-shadow-preview-root",
+  );
+  if (root === undefined || root === null) {
+    return;
+  }
+
+  for (const [name, value] of Object.entries(themeVariables)) {
+    if (name.startsWith("--")) {
+      root.style.setProperty(name, value);
+    }
+  }
+}
+
+function renderPresentationTemplateShadowThumbnail(
+  host: HTMLDivElement,
+  html: string,
+  themeVariables: PresentationTemplateThemeVariables,
+): void {
+  if (presentationTemplateThumbnailHtmlByHost.get(host) === html) {
+    applyPresentationTemplateThumbnailTheme(host, themeVariables);
+    return;
+  }
+  presentationTemplateThumbnailHtmlByHost.set(host, html);
+
+  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  shadow.replaceChildren();
+
+  const resetStyle = document.createElement("style");
+  resetStyle.textContent = `
+    :host {
+      all: initial;
+      contain: strict;
+      display: block;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+    .vm0-shadow-preview-root {
+      background: #fff;
+      height: 100%;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      position: absolute;
+      user-select: none;
+      width: 100%;
+    }
+    .vm0-shadow-preview-root *,
+    .vm0-shadow-preview-root *:hover,
+    .vm0-shadow-preview-root *:focus,
+    .vm0-shadow-preview-root *:focus-visible {
+      caret-color: transparent !important;
+      outline: 0 !important;
+      pointer-events: none !important;
+      user-select: none !important;
+    }
+  `;
+  shadow.append(resetStyle);
+  for (const node of Array.from(doc.head.childNodes)) {
+    const clone = node.cloneNode(true);
+    if (clone instanceof HTMLStyleElement && clone.textContent !== null) {
+      clone.textContent = clone.textContent.replaceAll(
+        ":root",
+        ":host, .vm0-shadow-preview-root",
+      );
+    }
+    shadow.append(clone);
+  }
+  const root = document.createElement("div");
+  root.className = "vm0-shadow-preview-root";
+  root.append(
+    ...Array.from(doc.body.childNodes).map((node) => {
+      return node.cloneNode(true);
+    }),
+  );
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+    element.removeAttribute("contenteditable");
+    element.removeAttribute("tabindex");
+  }
+  shadow.append(root);
+  applyPresentationTemplateThumbnailTheme(host, themeVariables);
+}
+
+function PresentationTemplateShadowThumbnail({
+  fallbackImage,
+  html,
+  themeVariables,
+  title,
+}: {
+  readonly fallbackImage: string;
+  readonly html: string | null;
+  readonly themeVariables: PresentationTemplateThemeVariables;
+  readonly title: string;
+}) {
+  if (html === null) {
+    return (
+      <img
+        src={fallbackImage}
+        alt=""
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={(node) => {
+        if (node !== null) {
+          renderPresentationTemplateShadowThumbnail(node, html, themeVariables);
+        }
+      }}
+      aria-label={title}
+      className="pointer-events-none absolute inset-0"
+      style={themeVariables}
+    />
   );
 }
 
@@ -2558,17 +2736,28 @@ function TemplatePreviewPage({
   const fallbackSlideCount = Math.max(slideImages.length, 1);
   const detailSlideCount =
     visibleDetailPreview?.slideCount ?? fallbackSlideCount;
-  const canReuseDetailThumbnailFrameUrls =
-    detailPreview?.slug === item.slug &&
-    detailPreview.embedUrl === item.embedUrl &&
-    detailPreview.themeId === selectedTheme.id;
+  const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+    item.embedUrl,
+  );
+  const thumbnailThemeVariables = useMemo(() => {
+    return presentationTemplateThemeVariables(selectedTheme);
+  }, [selectedTheme]);
+  const thumbnailPreviewHtmls = useMemo(() => {
+    if (cachedDetailDraft === undefined) {
+      return [];
+    }
+    return cachedDetailDraft.slides.slice(0, 15).map((slide) => {
+      return previewPresentationHtml({
+        activeSlideId: slide.id,
+        html: cachedDetailDraft.html,
+      });
+    });
+  }, [cachedDetailDraft]);
 
   const setLoadedDetailPreview = (params: {
     readonly draft: PresentationEditDraft;
     readonly index: number;
     readonly previousFrameUrl: string | null;
-    readonly previousThumbnailFrameUrls: readonly string[];
-    readonly reuseThumbnailFrameUrls: boolean;
     readonly theme: PresentationTemplateThemeOption;
   }) => {
     const slide =
@@ -2579,30 +2768,11 @@ function TemplatePreviewPage({
       return;
     }
     revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
-    if (
-      !params.reuseThumbnailFrameUrls &&
-      params.previousThumbnailFrameUrls.length > 0
-    ) {
-      revokePresentationTemplateHtmlPreviewUrls(
-        params.previousThumbnailFrameUrls,
-      );
-    }
     const frameUrl = createThemedPresentationPreviewUrl({
       activeSlideId: slide.id,
       draft: params.draft,
       theme: params.theme,
     });
-    const thumbnailFrameUrls =
-      params.reuseThumbnailFrameUrls &&
-      params.previousThumbnailFrameUrls.length > 0
-        ? params.previousThumbnailFrameUrls
-        : params.draft.slides.slice(0, 15).map((thumbnailSlide) => {
-            return createThemedPresentationPreviewUrl({
-              activeSlideId: thumbnailSlide.id,
-              draft: params.draft,
-              theme: params.theme,
-            });
-          });
     setDetailPreview({
       slug: item.slug,
       embedUrl: item.embedUrl,
@@ -2611,7 +2781,6 @@ function TemplatePreviewPage({
       loading: false,
       failed: false,
       frameUrl,
-      thumbnailFrameUrls,
       slideCount: params.draft.slides.length,
     });
   };
@@ -2642,8 +2811,6 @@ function TemplatePreviewPage({
           draft: cachedDraft,
           index: activeSlideIndex,
           previousFrameUrl: detailPreview?.frameUrl ?? null,
-          previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-          reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
           theme: selectedTheme,
         });
       }
@@ -2660,7 +2827,6 @@ function TemplatePreviewPage({
           loading: false,
           failed: true,
           frameUrl: null,
-          thumbnailFrameUrls: [],
           slideCount: fallbackSlideCount,
         });
       }
@@ -2680,7 +2846,6 @@ function TemplatePreviewPage({
       loading: true,
       failed: false,
       frameUrl: null,
-      thumbnailFrameUrls: [],
       slideCount: fallbackSlideCount,
     });
     detach(
@@ -2702,7 +2867,6 @@ function TemplatePreviewPage({
             loading: false,
             failed: true,
             frameUrl: null,
-            thumbnailFrameUrls: [],
             slideCount: fallbackSlideCount,
           });
           return;
@@ -2713,8 +2877,6 @@ function TemplatePreviewPage({
             draft: result.value,
             index: activeSlideIndex,
             previousFrameUrl: detailPreview?.frameUrl ?? null,
-            previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-            reuseThumbnailFrameUrls: false,
             theme: selectedTheme,
           });
         }
@@ -2734,8 +2896,6 @@ function TemplatePreviewPage({
         draft: cachedDraft,
         index: nextIndex,
         previousFrameUrl: detailPreview?.frameUrl ?? null,
-        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-        reuseThumbnailFrameUrls: canReuseDetailThumbnailFrameUrls,
         theme: selectedTheme,
       });
     }
@@ -2751,8 +2911,6 @@ function TemplatePreviewPage({
         draft: cachedDraft,
         index: activeSlideIndex,
         previousFrameUrl: detailPreview?.frameUrl ?? null,
-        previousThumbnailFrameUrls: detailPreview?.thumbnailFrameUrls ?? [],
-        reuseThumbnailFrameUrls: false,
         theme,
       });
     }
@@ -2833,6 +2991,11 @@ function TemplatePreviewPage({
             ).map((slideNumber) => {
               const slideIndex = slideNumber - 1;
               const active = slideIndex === activeSlideIndex;
+              const thumbnailImage = presentationTemplateFallbackSlideImage(
+                item,
+                slideIndex,
+              );
+              const thumbnailHtml = thumbnailPreviewHtmls[slideIndex] ?? null;
               return (
                 <button
                   key={slideNumber}
@@ -2849,16 +3012,12 @@ function TemplatePreviewPage({
                       : "border-border hover:border-muted-foreground/50",
                   )}
                 >
-                  {visibleDetailPreview?.thumbnailFrameUrls[slideIndex] ? (
-                    <iframe
-                      title={`${item.title} slide ${slideNumber} thumbnail`}
-                      src={visibleDetailPreview.thumbnailFrameUrls[slideIndex]}
-                      sandbox="allow-same-origin"
-                      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
-                    />
-                  ) : (
-                    <span className="absolute inset-0 bg-muted/40" />
-                  )}
+                  <PresentationTemplateShadowThumbnail
+                    fallbackImage={thumbnailImage}
+                    html={thumbnailHtml}
+                    themeVariables={thumbnailThemeVariables}
+                    title={`${item.title} slide ${slideNumber} preview`}
+                  />
                   <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
                     {slideNumber}
                   </span>

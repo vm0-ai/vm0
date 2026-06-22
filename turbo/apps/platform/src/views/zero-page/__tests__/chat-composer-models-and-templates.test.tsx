@@ -1868,6 +1868,34 @@ describe("chat composer templates", () => {
 
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {
+      activeIndexes: new Map<string, number>(),
+      activeTokens: new Map<string, symbol>(),
+      defaultLoads: new Set<string>(),
+      detailTokens: new Map<string, symbol>(),
+      drafts: new Map([
+        [
+          template.embedUrl,
+          {
+            blocks: [],
+            html: `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+              .map((_, index) => {
+                return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+              })
+              .join("")}</body></html>`,
+            slides: template.previewImages.map((_, index) => {
+              return {
+                id: `slide-${index + 1}`,
+                notes: "",
+                title: `Slide ${index + 1}`,
+              };
+            }),
+          },
+        ],
+      ]),
+      failed: new Set<string>(),
+      pendingLoads: new Map<string, Promise<null>>(),
+    });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -1896,6 +1924,37 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByText("1 of 15")).toBeInTheDocument();
     });
+    const firstSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 1");
+    expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
+    expect(firstSlidePreviewButton.querySelector("img")).toBeNull();
+    expect(
+      firstSlidePreviewButton.querySelector(
+        `[aria-label="${template.title} slide 1 preview"]`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      firstSlidePreviewButton.querySelector(
+        `[aria-label="${template.title} slide 1 preview"]`,
+      )?.shadowRoot,
+    ).not.toBeNull();
+    const carnivalShadowRoot = firstSlidePreviewButton.querySelector(
+      `[aria-label="${template.title} slide 1 preview"]`,
+    )?.shadowRoot;
+    const carnivalShadowPreviewRoot =
+      carnivalShadowRoot?.querySelector<HTMLElement>(
+        ".vm0-shadow-preview-root",
+      ) ?? null;
+    expect(carnivalShadowPreviewRoot?.style.getPropertyValue("--accent")).toBe(
+      "#FF7A1A",
+    );
+    expect(
+      carnivalShadowRoot?.querySelector("[contenteditable]"),
+    ).not.toBeInTheDocument();
+    expect(
+      carnivalShadowRoot?.querySelector("[tabindex]"),
+    ).not.toBeInTheDocument();
+    expect(firstSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
     expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -1906,6 +1965,22 @@ describe("chat composer templates", () => {
       "aria-pressed",
       "true",
     );
+    expect(
+      within(templateDialog)
+        .getByLabelText("Preview slide 1")
+        .querySelector("iframe"),
+    ).toBeNull();
+    const prismSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 1");
+    expect(
+      prismSlidePreviewButton.querySelector(
+        `[aria-label="${template.title} slide 1 preview"]`,
+      )?.shadowRoot,
+    ).toBe(carnivalShadowRoot);
+    expect(carnivalShadowPreviewRoot?.style.getPropertyValue("--accent")).toBe(
+      "#7257E6",
+    );
+    expect(prismSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
 
     const templateButton = queryAllByRoleFast("button", templateDialog).find(
       (candidate) => {
