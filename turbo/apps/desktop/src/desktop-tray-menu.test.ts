@@ -48,7 +48,6 @@ function computerUseState(
   },
 ): DesktopComputerUseState {
   return {
-    featureSwitchKey: "computerUse",
     platform: "darwin",
     supported: true,
     permissions,

@@ -31,6 +31,7 @@ import { reloadUserModelPreference$ } from "../external/user-model-preference.ts
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { subscribeComputerUseHostsChanged$ } from "./computer-use-hosts.ts";
+import { detach, Reason } from "../utils.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -110,6 +111,11 @@ export const setupAgentChatPage$ = command(
       set(openQueueDrawer$, signal);
     }
 
-    await set(subscribeComputerUseHostsChanged$, signal);
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- route-scoped realtime subscription runs until the chat route signal aborts
+    detach(
+      set(subscribeComputerUseHostsChanged$, signal),
+      Reason.Entrance,
+      "computer use hosts subscription",
+    );
   },
 );

@@ -11,7 +11,6 @@ import { createStore } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  COMPUTER_USE_FEATURE_SWITCH_KEY,
   type ComputerUseHostRuntimeStatus,
   type ComputerUsePermissionState,
   type DesktopComputerUseState,
@@ -62,7 +61,6 @@ function createComputerUseState({
   readonly status?: ComputerUseHostRuntimeStatus;
 } = {}): DesktopComputerUseState {
   return {
-    featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: "darwin",
     supported: true,
     deviceName,

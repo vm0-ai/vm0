@@ -18,8 +18,6 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { now } from "../../../../lib/time";
 import {
@@ -235,10 +233,6 @@ export function createComputerUseBddApi(context: TestContext) {
     return { authorization: "Bearer clerk-session" };
   }
 
-  function featureSwitchesClient() {
-    return setupApp({ context })(zeroFeatureSwitchesContract);
-  }
-
   function hostsClient() {
     return setupApp({ context })(zeroComputerUseHostsContract);
   }
@@ -317,16 +311,6 @@ export function createComputerUseBddApi(context: TestContext) {
       });
 
       return { puts, deletedKeys };
-    },
-
-    async enableComputerUse(actor: ApiTestUser): Promise<void> {
-      await accept(
-        featureSwitchesClient().update({
-          headers: authenticate(actor),
-          body: { switches: { [FeatureSwitchKey.ComputerUse]: true } },
-        }),
-        [200],
-      );
     },
 
     async startComputerUseHost(

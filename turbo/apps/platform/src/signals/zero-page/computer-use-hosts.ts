@@ -3,11 +3,9 @@ import {
   zeroComputerUseHostsContract,
   type ComputerUseHost,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
@@ -27,12 +25,7 @@ const reloadComputerUseHosts$ = command(({ set }) => {
 });
 
 export const subscribeComputerUseHostsChanged$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const switches = get(featureSwitch$);
-    if (!switches[FeatureSwitchKey.ComputerUse]) {
-      return;
-    }
-
+  async ({ set }, signal: AbortSignal) => {
     const onChanged$ = command(({ set }) => {
       set(reloadComputerUseHosts$);
       return false;
@@ -81,10 +74,6 @@ export function visibleComputerUseHosts(
 export const computerUseHosts$ = computed(
   async (get): Promise<ListedComputerUseHost[]> => {
     get(computerUseHostsReload$);
-    const switches = get(featureSwitch$);
-    if (!switches[FeatureSwitchKey.ComputerUse]) {
-      return [];
-    }
 
     const client = get(zeroClient$)(zeroComputerUseHostsContract);
     const result = await accept(client.list({}), [200, 403], {

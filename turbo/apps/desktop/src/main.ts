@@ -32,7 +32,6 @@ import {
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
-  COMPUTER_USE_FEATURE_SWITCH_KEY,
   OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
   type ComputerUseAutomationPermissionTarget,
@@ -438,7 +437,6 @@ function friendlyDeviceName(): string | null {
 
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
-    featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: process.platform,
     supported: process.platform === "darwin",
     deviceName: friendlyDeviceName(),
