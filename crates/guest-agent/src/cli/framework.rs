@@ -13,13 +13,41 @@ use std::time::Instant;
 pub struct ClaudeResultSummary {
     /// Claude Code's reported turn count for the run, when present.
     pub num_turns: Option<u64>,
+
+    /// Semantic status of Claude Code's terminal result event.
+    pub status: ClaudeResultStatus,
+}
+
+/// Semantic status derived from Claude Code's terminal `type=result` event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudeResultStatus {
+    Success,
+    Error,
+    Unknown,
 }
 
 impl ClaudeResultSummary {
     pub(super) fn from_event(event: &serde_json::Value) -> Self {
         Self {
             num_turns: event.get("num_turns").and_then(|v| v.as_u64()),
+            status: ClaudeResultStatus::from_event(event),
         }
+    }
+}
+
+impl ClaudeResultStatus {
+    fn from_event(event: &serde_json::Value) -> Self {
+        let is_error = event.get("is_error").and_then(|v| v.as_bool());
+        let subtype = event.get("subtype").and_then(|v| v.as_str());
+
+        if is_error == Some(true) || subtype == Some("error") {
+            return Self::Error;
+        }
+        if is_error == Some(false) || subtype == Some("success") {
+            return Self::Success;
+        }
+
+        Self::Unknown
     }
 }
 
@@ -146,7 +174,54 @@ mod tests {
 
         assert_eq!(
             ClaudeResultSummary::from_event(&event),
-            ClaudeResultSummary { num_turns: Some(0) }
+            ClaudeResultSummary {
+                num_turns: Some(0),
+                status: ClaudeResultStatus::Success,
+            }
+        );
+    }
+
+    #[test]
+    fn claude_result_summary_marks_is_error_result_as_error() {
+        let event = serde_json::json!({
+            "type": "result",
+            "num_turns": 1,
+            "is_error": true,
+            "result": "Error."
+        });
+
+        assert_eq!(
+            ClaudeResultSummary::from_event(&event).status,
+            ClaudeResultStatus::Error
+        );
+    }
+
+    #[test]
+    fn claude_result_summary_marks_error_subtype_as_error() {
+        let event = serde_json::json!({
+            "type": "result",
+            "num_turns": 1,
+            "subtype": "error",
+            "result": "Error."
+        });
+
+        assert_eq!(
+            ClaudeResultSummary::from_event(&event).status,
+            ClaudeResultStatus::Error
+        );
+    }
+
+    #[test]
+    fn claude_result_summary_marks_ambiguous_result_as_unknown() {
+        let event = serde_json::json!({
+            "type": "result",
+            "num_turns": 1,
+            "result": "Done."
+        });
+
+        assert_eq!(
+            ClaudeResultSummary::from_event(&event).status,
+            ClaudeResultStatus::Unknown
         );
     }
 
