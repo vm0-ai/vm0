@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.19.0...desktop-v0.20.0) (2026-06-22)
+
+
+### Features
+
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.18.1...desktop-v0.19.0) (2026-06-22)
 
 

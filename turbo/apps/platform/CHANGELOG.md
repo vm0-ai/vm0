@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.482.0](https://github.com/vm0-ai/vm0/compare/app-v0.481.1...app-v0.482.0) (2026-06-22)
+
+
+### Features
+
+* add presentation card theme picker ([#18454](https://github.com/vm0-ai/vm0/issues/18454)) ([6060078](https://github.com/vm0-ai/vm0/commit/60600789f2b3b0bcf048905672ca13fafb77e966))
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+    * @vm0/core bumped to 8.363.0
+
 ## [0.481.1](https://github.com/vm0-ai/vm0/compare/app-v0.481.0...app-v0.481.1) (2026-06-22)
 
 
