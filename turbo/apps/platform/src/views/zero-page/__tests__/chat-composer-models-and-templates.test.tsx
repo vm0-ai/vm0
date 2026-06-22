@@ -1455,11 +1455,13 @@ describe("chat composer templates", () => {
       },
     });
 
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    expect(templateButton.querySelector("img")).toBeNull();
+    expect(templateButton.querySelector("svg")).toBeInTheDocument();
+
+    click(templateButton);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();

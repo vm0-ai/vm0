@@ -18,6 +18,7 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
@@ -127,7 +128,6 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import templatePickerIcon from "./assets/empty-templates.svg";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -4715,12 +4715,7 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <img
-                src={templatePickerIcon}
-                alt=""
-                role="presentation"
-                className="h-[32px] w-[32px] object-contain"
-              />
+              <IconColorSwatch size={18} stroke={1.5} aria-hidden="true" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
