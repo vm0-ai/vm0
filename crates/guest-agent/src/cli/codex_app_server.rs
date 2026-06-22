@@ -508,9 +508,16 @@ impl CodexAppServerClient {
         let Some(stderr_handle) = self.stderr_handle.take() else {
             return;
         };
+        let mut stderr_handle = stderr_handle;
 
-        if let Ok(Ok(lines)) = tokio::time::timeout(STDERR_DRAIN_GRACE, stderr_handle).await {
-            self.stderr_tail = lines;
+        match tokio::time::timeout(STDERR_DRAIN_GRACE, &mut stderr_handle).await {
+            Ok(Ok(lines)) => {
+                self.stderr_tail = lines;
+            }
+            Ok(Err(_join_error)) => {}
+            Err(_elapsed) => {
+                stderr_handle.abort();
+            }
         }
     }
 
