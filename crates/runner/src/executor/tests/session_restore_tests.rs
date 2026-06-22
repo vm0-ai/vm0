@@ -3,6 +3,7 @@ use sandbox::{
     SandboxOperation,
 };
 use sandbox_mock::MockSandbox;
+use std::sync::Mutex;
 use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
@@ -11,6 +12,8 @@ use super::super::session_restore::restore_session;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::ResumeSession;
+
+static RESTORE_EVENT_CAPTURE_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn session_id_validation_rejects_path_traversal() {
@@ -89,8 +92,8 @@ async fn restore_session_rejects_invalid_session_id() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
+#[test]
+fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -100,7 +103,7 @@ async fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
         session_history: r#"{"type":"init"}"#.into(),
     };
 
-    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session)).await;
+    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
     result.unwrap();
     assert_captured_events_do_not_contain(&events, raw_session_id);
@@ -195,8 +198,8 @@ async fn restore_session_writes_codex_session() {
     assert_eq!(writes[0].content, session.session_history.as_bytes());
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
+#[test]
+fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -206,7 +209,7 @@ async fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
         session_history: "{}\n".into(),
     };
 
-    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session)).await;
+    let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
     result.unwrap();
     assert_captured_events_do_not_contain(&events, raw_session_id);
@@ -798,15 +801,22 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(exec_calls[0].cmd.contains("-delete"));
 }
 
-async fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
 where
     F: std::future::Future,
 {
+    let _capture_guard = RESTORE_EVENT_CAPTURE_LOCK
+        .lock()
+        .expect("restore event capture lock poisoned");
     let captured = CapturedEvents::default();
     let subscriber = tracing_subscriber::registry().with(captured.clone());
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
-    let output = future.await;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build restore event capture runtime");
+    let output = runtime.block_on(future);
     drop(guard);
     (output, captured.entries())
 }
