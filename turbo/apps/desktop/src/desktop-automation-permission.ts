@@ -3,6 +3,7 @@ import type {
   ComputerUseCommand,
   ComputerUseCommandFailure,
 } from "./computer-use-accessibility";
+import type { ComputerUseAutomationPermissionTarget } from "./computer-use-types";
 
 export const MAC_AUTOMATION_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation";
@@ -10,12 +11,17 @@ export const MAC_AUTOMATION_SETTINGS_URL =
 interface AutomationPermissionTarget {
   readonly key: string;
   readonly label: string;
+  readonly permissionTarget: ComputerUseAutomationPermissionTarget | null;
 }
 
 interface AutomationPermissionPromptOptions {
   readonly sourceLabel: string;
   readonly showDialog: (options: MessageBoxOptions) => Promise<number>;
   readonly openAutomationSettings: () => void;
+  readonly onPermissionDenied?: (
+    target: ComputerUseAutomationPermissionTarget,
+    reason: string,
+  ) => void;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -27,6 +33,12 @@ interface AutomationPermissionDeniedNotification {
 const AUTOMATION_TARGET_LABELS = Object.freeze<Record<string, string>>({
   "com.apple.safari": "Safari",
   "com.google.chrome": "Google Chrome",
+});
+const AUTOMATION_PERMISSION_TARGETS = Object.freeze<
+  Record<string, ComputerUseAutomationPermissionTarget>
+>({
+  "com.apple.safari": "safari",
+  "com.google.chrome": "chrome",
 });
 
 function commandApp(command: ComputerUseCommand): string | null {
@@ -41,13 +53,18 @@ function automationPermissionTarget(
 ): AutomationPermissionTarget {
   const app = commandApp(command);
   if (!app) {
-    return { key: "target-app", label: "the target app" };
+    return {
+      key: "target-app",
+      label: "the target app",
+      permissionTarget: null,
+    };
   }
 
   const key = app.toLowerCase();
   return {
     key,
     label: AUTOMATION_TARGET_LABELS[key] ?? app,
+    permissionTarget: AUTOMATION_PERMISSION_TARGETS[key] ?? null,
   };
 }
 
@@ -79,6 +96,12 @@ export function createAutomationPermissionDeniedPrompt(
     }
 
     const target = automationPermissionTarget(command);
+    if (target.permissionTarget) {
+      options.onPermissionDenied?.(
+        target.permissionTarget,
+        failure.error.message,
+      );
+    }
     if (promptedTargets.has(target.key)) {
       return;
     }

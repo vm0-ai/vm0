@@ -25,7 +25,12 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../desktop-bridge";
 import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
 import {
+  COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS,
+  COMPUTER_USE_AUTOMATION_PERMISSION_TARGET_DETAILS,
+  computerUseAutomationPermissionState,
   hasRequiredComputerUsePermissions,
+  type ComputerUseAutomationPermissionStatus,
+  type ComputerUseAutomationPermissionTarget,
   type DesktopComputerUseState,
 } from "../computer-use-types";
 import {
@@ -36,9 +41,11 @@ import {
   hasDesktopComputerUseBridge,
   hasDesktopDeveloperToolsBridge,
   openAccessibilitySettings$,
+  openAutomationSettings$,
   openDesktopOrgSelection$,
   openDesktopSignIn$,
   openScreenRecordingSettings$,
+  probeAutomationPermission$,
   refreshComputerUse$,
   requestAccessibilityPermission$,
   requestScreenRecordingPermission$,
@@ -76,6 +83,14 @@ const COMMAND_STATUS_LABELS = {
   succeeded: "Succeeded",
   failed: "Failed",
 } as const satisfies Record<CommandLogEntry["status"], string>;
+
+const AUTOMATION_PERMISSION_STATUS_LABELS = {
+  unknown: "Not tested",
+  granted: "Ready",
+  denied: "Needs approval",
+  not_installed: "Not installed",
+  not_running: "Open browser",
+} as const satisfies Record<ComputerUseAutomationPermissionStatus, string>;
 
 const RUNTIME_ERROR_SOURCE_LABELS = {
   start: "Start",
@@ -555,6 +570,128 @@ function PermissionSetupRow({
         </IconButton>
       </div>
     </div>
+  );
+}
+
+function automationPermissionMeta(
+  target: ComputerUseAutomationPermissionTarget,
+  status: ComputerUseAutomationPermissionStatus,
+): string {
+  const label = COMPUTER_USE_AUTOMATION_PERMISSION_TARGET_DETAILS[target].label;
+  switch (status) {
+    case "granted":
+      return "Automation allowed";
+    case "denied":
+      return `Allow Zero to control ${label} in System Settings`;
+    case "not_installed":
+      return `Install ${label} to test browser automation`;
+    case "not_running":
+      return `Open ${label}, then test again`;
+    case "unknown":
+      return `Test when ${label} is open`;
+  }
+}
+
+function AutomationPermissionRow({
+  disabled,
+  onOpenSettings,
+  onProbe,
+  status,
+  target,
+}: {
+  readonly disabled: boolean;
+  readonly onOpenSettings: () => void;
+  readonly onProbe: () => void;
+  readonly status: ComputerUseAutomationPermissionStatus;
+  readonly target: ComputerUseAutomationPermissionTarget;
+}) {
+  const label = COMPUTER_USE_AUTOMATION_PERMISSION_TARGET_DETAILS[target].label;
+  return (
+    <div className="permission-row">
+      <div>
+        <div className="row-title">{label}</div>
+        <div className="row-meta">
+          {automationPermissionMeta(target, status)}
+        </div>
+      </div>
+      <div className="row-actions">
+        <span className={`automation-pill automation-pill-${status}`}>
+          {status === "granted" ? (
+            <IconCheck size={14} />
+          ) : (
+            <IconAlertCircle size={14} />
+          )}
+          {AUTOMATION_PERMISSION_STATUS_LABELS[status]}
+        </span>
+        {status !== "granted" && (
+          <IconButton
+            icon={<IconShieldCheck size={15} />}
+            onClick={onProbe}
+            disabled={disabled}
+          >
+            Test
+          </IconButton>
+        )}
+        {status === "denied" && (
+          <IconButton
+            icon={<IconExternalLink size={15} />}
+            onClick={onOpenSettings}
+          >
+            Settings
+          </IconButton>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BrowserAutomationPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const automation = computerUseAutomationPermissionState(state.permissions);
+  const [probeLoadable, probeAutomation] = useLoadableSet(
+    probeAutomationPermission$,
+  );
+  const [, openAutomationSettings] = useLoadableSet(openAutomationSettings$);
+  const disabled = probeLoadable.state === "loading";
+
+  if (!hasRequiredComputerUsePermissions(state.permissions)) {
+    return null;
+  }
+
+  return (
+    <section className="step-card step-card-expanded browser-automation-card">
+      <div className="step-card-main">
+        <div className="step-kicker">
+          <StepIndex step={3} />
+          <span>Browser Automation</span>
+        </div>
+        <div className="step-heading">
+          <h2>Check browser automation</h2>
+          <p>Chrome and Safari use separate macOS Automation approval.</p>
+        </div>
+        <div className="permission-list">
+          {COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS.map((target) => {
+            return (
+              <AutomationPermissionRow
+                key={target}
+                disabled={disabled}
+                onOpenSettings={() => {
+                  void openAutomationSettings();
+                }}
+                onProbe={() => {
+                  void probeAutomation(target);
+                }}
+                status={automation[target].status}
+                target={target}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1055,6 +1192,7 @@ function ReadyExperience({
         <OfflineHero authState={authState} state={state} />
       )}
       {!running && <PermissionAutoRefresh />}
+      <BrowserAutomationPanel state={state} />
       {developerToolsEnabled && (
         <>
           <RuntimePanel state={state} />

@@ -1,11 +1,12 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, RuntimeProvider, SandboxConfig,
-    SandboxFactory, SandboxId, SandboxRuntime,
+    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, ExecTermination, RuntimeProvider,
+    SandboxConfig, SandboxFactory, SandboxId, SandboxRuntime,
 };
 use tracing::{info, warn};
 
@@ -222,6 +223,7 @@ pub async fn run_benchmark(
     } = timing;
     match &result {
         Ok(exec_result) => {
+            let exit_code = benchmark_exit_code(exec_result);
             info!(
                 proxy_ms,
                 factory_ms,
@@ -230,7 +232,8 @@ pub async fn run_benchmark(
                 clock_ms = ?clock_ms,
                 exec_ms = ?exec_ms,
                 total_ms,
-                exit_code = exec_result.exit_code,
+                termination = ?exec_result.termination,
+                exit_code,
                 "benchmark complete"
             );
         }
@@ -242,27 +245,67 @@ pub async fn run_benchmark(
     let exec_result = result?;
 
     // 6. Print stdout/stderr directly to terminal
-    let stdout = String::from_utf8_lossy(&exec_result.stdout);
-    let stderr = String::from_utf8_lossy(&exec_result.stderr);
-    if !stdout.is_empty() {
-        print!("{stdout}");
-    }
-    if !stderr.is_empty() {
-        eprint!("{stderr}");
-    }
+    let stdout = std::io::stdout();
+    let stderr = std::io::stderr();
+    write_benchmark_exec_output(&mut stdout.lock(), &mut stderr.lock(), &exec_result);
 
     // 7. Propagate exit code
-    let code = match u8::try_from(exec_result.exit_code) {
-        Ok(c) => c,
-        Err(_) => {
-            warn!(
-                exit_code = exec_result.exit_code,
-                "exit code out of u8 range, using 1"
-            );
+    Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
+}
+
+fn benchmark_exit_code(exec_result: &ExecResult) -> u8 {
+    match exec_result.termination {
+        ExecTermination::Exited { exit_code } => match u8::try_from(exit_code) {
+            Ok(code) => code,
+            Err(_) => {
+                warn!(exit_code, "exit code out of u8 range, using 1");
+                1
+            }
+        },
+        ExecTermination::TimedOut => 124,
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
             1
         }
+    }
+}
+
+fn write_benchmark_exec_output(
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+    result: &ExecResult,
+) {
+    let _ = stdout.write_all(&result.stdout);
+    let _ = stderr.write_all(&result.stderr);
+    let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
+    write_benchmark_terminal_diagnostic(stderr, result, &mut line_open);
+}
+
+fn write_benchmark_terminal_diagnostic(
+    stderr: &mut impl Write,
+    result: &ExecResult,
+    line_open: &mut bool,
+) {
+    let (fallback, include_diagnostic) = match result.termination {
+        ExecTermination::Exited { .. } => (None, false),
+        ExecTermination::TimedOut => (Some("Timeout"), false),
+        ExecTermination::Cancelled => (Some("Cancelled"), true),
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
     };
-    Ok(ExitCode::from(code))
+
+    if result.stderr.is_empty() {
+        if let Some(message) = fallback {
+            let _ = writeln!(stderr, "{message}");
+            *line_open = false;
+        }
+    } else if include_diagnostic && !result.diagnostic.is_empty() && *line_open {
+        let _ = writeln!(stderr);
+        *line_open = false;
+    }
+
+    if include_diagnostic && !result.diagnostic.is_empty() {
+        let _ = writeln!(stderr, "{}", result.diagnostic);
+        *line_open = false;
+    }
 }
 
 async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
@@ -486,6 +529,51 @@ mod tests {
             assert!(!err.to_string().contains("secret-value"), "got: {err}");
             assert!(!err.to_string().contains(value), "got: {err}");
         }
+    }
+
+    fn exec_result(
+        termination: ExecTermination,
+        stdout: &[u8],
+        stderr: &[u8],
+        diagnostic: &str,
+    ) -> ExecResult {
+        ExecResult {
+            termination,
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+            diagnostic: diagnostic.to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        }
+    }
+
+    #[test]
+    fn benchmark_output_preserves_timeout_stderr_fallback() {
+        let result = exec_result(ExecTermination::TimedOut, b"partial stdout\n", b"", "");
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert_eq!(stdout, b"partial stdout\n");
+        assert_eq!(stderr, b"Timeout\n");
+    }
+
+    #[test]
+    fn benchmark_output_starts_terminal_diagnostic_on_new_line() {
+        let result = exec_result(
+            ExecTermination::WaitFailed,
+            b"",
+            b"stderr clue",
+            "wait failed",
+        );
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_benchmark_exec_output(&mut stdout, &mut stderr, &result);
+
+        assert!(stdout.is_empty());
+        assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
 
     #[tokio::test]

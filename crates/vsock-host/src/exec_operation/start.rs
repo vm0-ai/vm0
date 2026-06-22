@@ -5,11 +5,10 @@ use std::time::Duration;
 
 use tokio::sync::oneshot;
 use vsock_proto::{
-    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy,
-    MSG_EXEC_CANCEL,
+    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTimeoutPolicy, MSG_EXEC_CANCEL,
 };
 
-use crate::{CompositeNormalOperation, ExecResult, FrameWriteObserver, Shared};
+use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
 
 use super::frame::{write_exec_start_frame, write_frame};
 use super::handle::{
@@ -22,26 +21,10 @@ use super::state::{
     stream_queue_capacity_for,
 };
 use super::types::{
-    ExecCaptureRequest, ExecOperationRequest, ExecOperationResult, ExecOwnedCapturedOutput,
-    ExecStreamRequest, SupervisedExecControl, SupervisedExecRequest,
+    ExecCaptureRequest, ExecOperationRequest, ExecOperationResult, ExecStreamRequest,
+    SupervisedExecControl, SupervisedExecRequest,
 };
-use super::{
-    DEFAULT_EXEC_CAPTURE_LIMIT_BYTES, EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
-    EXEC_TIMEOUT_EXIT_CODE, SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-};
-
-fn capture_output_to_bytes(
-    name: &str,
-    output: ExecOwnedCapturedOutput,
-) -> io::Result<(Vec<u8>, bool)> {
-    match output {
-        ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
-        ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("exec result discarded {name} for capture request"),
-        )),
-    }
-}
+use super::{EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT, SMALL_EXEC_CAPTURE_LIMIT_BYTES};
 
 pub(crate) fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
     if diagnostic.is_empty() {
@@ -51,47 +34,6 @@ pub(crate) fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
         stderr.push(b'\n');
     }
     stderr.extend_from_slice(diagnostic.as_bytes());
-}
-
-fn operation_result_to_legacy_exec_result(result: ExecOperationResult) -> io::Result<ExecResult> {
-    if result.stream_overflowed {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "exec capture unexpectedly overflowed a stream queue",
-        ));
-    }
-
-    let (stdout, stdout_truncated) = capture_output_to_bytes("stdout", result.stdout)?;
-    let (mut stderr, stderr_truncated) = capture_output_to_bytes("stderr", result.stderr)?;
-
-    let exit_code = match result.termination {
-        ExecTermination::Exited { exit_code } => exit_code,
-        ExecTermination::TimedOut => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Timeout");
-            }
-            EXEC_TIMEOUT_EXIT_CODE
-        }
-        ExecTermination::Cancelled => {
-            if stderr.is_empty() {
-                stderr.extend_from_slice(b"Cancelled");
-            }
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
-            append_diagnostic(&mut stderr, &result.diagnostic);
-            1
-        }
-    };
-
-    Ok(ExecResult {
-        exit_code,
-        stdout,
-        stderr,
-        stdout_truncated,
-        stderr_truncated,
-    })
 }
 
 pub(crate) async fn start_exec_operation_on_shared(
@@ -493,32 +435,6 @@ pub(crate) async fn exec_operation_stream_with_composite_on_shared_and_observer(
     .await
 }
 
-pub(crate) async fn exec_on_shared(
-    shared: &Arc<Shared>,
-    command: &str,
-    timeout_ms: u32,
-    env: &[(&str, &str)],
-    sudo: bool,
-) -> io::Result<ExecResult> {
-    let request_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
-    exec_capture_on_shared(
-        shared,
-        ExecCaptureRequest {
-            timeout_ms,
-            command,
-            env,
-            sudo,
-            label: "exec",
-            stdout_limit_bytes: DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            wait_timeout: request_timeout,
-        },
-    )
-    .await
-}
-
 pub(crate) async fn exec_operation_cleanup_untracked_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     command: &str,
@@ -589,28 +505,4 @@ pub(crate) async fn exec_operation_capture_with_composite_on_shared_and_observer
         write_observer,
     )
     .await
-}
-
-pub(crate) async fn exec_capture_on_shared(
-    shared: &Arc<Shared>,
-    request: ExecCaptureRequest<'_>,
-) -> io::Result<ExecResult> {
-    exec_capture_on_shared_with_write_observer(shared, request, FrameWriteObserver::default()).await
-}
-
-pub(crate) async fn exec_capture_on_shared_with_write_observer(
-    shared: &Arc<Shared>,
-    request: ExecCaptureRequest<'_>,
-    write_observer: FrameWriteObserver,
-) -> io::Result<ExecResult> {
-    if request.timeout_ms == 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "exec requires a positive timeout; use supervised exec for unbounded commands",
-        ));
-    }
-    let result =
-        exec_operation_capture_on_shared_with_write_observer(shared, request, write_observer)
-            .await?;
-    operation_result_to_legacy_exec_result(result)
 }

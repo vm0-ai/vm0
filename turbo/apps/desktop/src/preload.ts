@@ -59,6 +59,12 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
       COMPUTER_USE_CHANNELS.requestScreenRecordingPermission,
     );
   },
+  probeAutomationPermission(target): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.probeAutomationPermission,
+      target,
+    );
+  },
   setKeepAwakeEnabled(enabled: boolean): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(
       COMPUTER_USE_CHANNELS.setKeepAwakeEnabled,
@@ -72,6 +78,9 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
     return ipcRenderer.invoke(
       COMPUTER_USE_CHANNELS.openScreenRecordingSettings,
     );
+  },
+  openAutomationSettings(): Promise<void> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.openAutomationSettings);
   },
   subscribe(callback: () => void): () => void {
     const listener = (): void => {

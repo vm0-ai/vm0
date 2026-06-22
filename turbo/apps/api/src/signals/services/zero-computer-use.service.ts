@@ -60,6 +60,18 @@ const COMPUTER_USE_COMMANDS = [
   ...COMPUTER_USE_READ_COMMANDS,
   ...COMPUTER_USE_WRITE_COMMANDS,
 ] as const satisfies readonly ComputerUseCommandKind[];
+const DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS = {
+  chrome: {
+    status: "unknown",
+    updatedAt: null,
+    reason: null,
+  },
+  safari: {
+    status: "unknown",
+    updatedAt: null,
+    reason: null,
+  },
+} as const;
 
 type ComputerUseTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type ComputerUseHostRow = typeof computerUseHosts.$inferSelect;
@@ -194,10 +206,33 @@ function samePermissions(
   left: ComputerUseHostRow["permissions"],
   right: ComputerUseHostRow["permissions"],
 ): boolean {
+  const normalizedLeft = normalizeHostPermissions(left);
+  const normalizedRight = normalizeHostPermissions(right);
   return (
-    left.accessibility === right.accessibility &&
-    left.screenRecording === right.screenRecording
+    normalizedLeft.accessibility === normalizedRight.accessibility &&
+    normalizedLeft.screenRecording === normalizedRight.screenRecording &&
+    JSON.stringify(normalizedLeft.automation) ===
+      JSON.stringify(normalizedRight.automation)
   );
+}
+
+function normalizeHostPermissions(
+  permissions: ComputerUseHostRow["permissions"],
+): ComputerUseHostRow["permissions"] {
+  return {
+    accessibility: permissions.accessibility,
+    screenRecording: permissions.screenRecording,
+    automation: {
+      chrome: {
+        ...DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS.chrome,
+        ...permissions.automation?.chrome,
+      },
+      safari: {
+        ...DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS.safari,
+        ...permissions.automation?.safari,
+      },
+    },
+  };
 }
 
 function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
@@ -544,7 +579,7 @@ function serializeHost(row: ComputerUseHostRow, now: Date) {
     appVersion: row.appVersion,
     osVersion: row.osVersion,
     supportedCapabilities: row.supportedCapabilities,
-    permissions: row.permissions,
+    permissions: normalizeHostPermissions(row.permissions),
     status: hostIsOnline(row, now) ? ("online" as const) : ("offline" as const),
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
@@ -734,10 +769,7 @@ export const startComputerUseHost$ = command(
       readonly appVersion: string;
       readonly osVersion: string;
       readonly supportedCapabilities: readonly string[];
-      readonly permissions: {
-        readonly accessibility: boolean;
-        readonly screenRecording: boolean;
-      };
+      readonly permissions: ComputerUseHostRow["permissions"];
     },
     signal: AbortSignal,
   ): Promise<StartComputerUseHostResult> => {
@@ -819,10 +851,7 @@ export const heartbeatComputerUseHost$ = command(
       readonly appVersion: string;
       readonly osVersion: string;
       readonly supportedCapabilities: readonly string[];
-      readonly permissions: {
-        readonly accessibility: boolean;
-        readonly screenRecording: boolean;
-      };
+      readonly permissions: ComputerUseHostRow["permissions"];
     },
     signal: AbortSignal,
   ): Promise<HeartbeatComputerUseHostResult> => {

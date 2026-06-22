@@ -7,9 +7,9 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
-    operation_count, read_guest_message, send_exec_result, setup_host_and_guest,
-    wait_for_operation_count,
+    assert_connection_accepts_exec_operation, captured_output_bytes, exec_capture_default,
+    exec_capture_with_write_observer, is_connected, normal_operation_readiness, operation_count,
+    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
@@ -54,7 +54,7 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     drop(writer_guard);
     let exec_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "echo ok", 5000, &[], false).await })
     };
     let msg = read_guest_message(&mut guest).await;
     assert_eq!(
@@ -70,7 +70,7 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     )
     .await;
     let exec_result = exec_task.await.unwrap().unwrap();
-    assert_eq!(exec_result.stdout, b"ok");
+    assert_eq!(captured_output_bytes(&exec_result.stdout), b"ok");
     assert!(is_connected(&host));
 }
 
@@ -84,7 +84,8 @@ async fn exec_write_observer_does_not_fire_before_frame_write() {
         let host = Arc::clone(&host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.exec_capture_with_write_observer(
+            exec_capture_with_write_observer(
+                &host,
                 capture_request("blocked"),
                 FrameWriteObserver::new(move || {
                     write_start_count.fetch_add(1, Ordering::SeqCst);
@@ -120,7 +121,8 @@ async fn exec_write_observer_fires_at_frame_write_boundary() {
         let host = Arc::clone(&host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.exec_capture_with_write_observer(
+            exec_capture_with_write_observer(
+                &host,
                 capture_request("observed"),
                 FrameWriteObserver::new(move || {
                     write_start_count.fetch_add(1, Ordering::SeqCst);
@@ -148,7 +150,7 @@ async fn exec_write_observer_fires_at_frame_write_boundary() {
     .await;
 
     let result = task.await.unwrap().unwrap();
-    assert_eq!(result.stdout, b"ok");
+    assert_eq!(captured_output_bytes(&result.stdout), b"ok");
     assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
 }
 
@@ -157,13 +159,13 @@ async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
-    let err = host
-        .exec_capture_with_write_observer(
-            capture_request("observer-error"),
-            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
-        )
-        .await
-        .unwrap_err();
+    let err = exec_capture_with_write_observer(
+        &host,
+        capture_request("observer-error"),
+        FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+    )
+    .await
+    .unwrap_err();
 
     assert!(err.to_string().contains("observer failed"));
     match guest.try_read(&mut [0u8; 1]) {

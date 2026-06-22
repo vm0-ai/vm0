@@ -1,6 +1,6 @@
 use std::io;
 
-use sandbox::SandboxExecTermination;
+use sandbox::ExecTermination;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
@@ -41,7 +41,7 @@ pub enum ExecResponse {
     /// Command execution produced a captured result.
     Success {
         /// Structured terminal state returned by the guest command runner.
-        termination: SandboxExecTermination,
+        termination: ExecTermination,
         /// Base64-encoded captured stdout bytes.
         ///
         /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
@@ -229,7 +229,7 @@ mod tests {
 
         // Verify success response round-trips.
         let response = ExecResponse::Success {
-            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            termination: ExecTermination::Exited { exit_code: 0 },
             stdout: BASE64.encode(b"hello\n"),
             stderr: BASE64.encode(b""),
             stdout_truncated: false,
@@ -247,7 +247,7 @@ mod tests {
                 stderr_truncated,
                 diagnostic,
             } => {
-                assert_eq!(termination, SandboxExecTermination::Exited { exit_code: 0 });
+                assert_eq!(termination, ExecTermination::Exited { exit_code: 0 });
                 assert_eq!(BASE64.decode(stdout).unwrap(), b"hello\n");
                 assert_eq!(BASE64.decode(stderr).unwrap(), b"");
                 assert!(!stdout_truncated);
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn exec_response_success_serialization() {
         let resp = ExecResponse::Success {
-            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            termination: ExecTermination::Exited { exit_code: 0 },
             stdout: BASE64.encode(b"output\n"),
             stderr: BASE64.encode(b""),
             stdout_truncated: false,
@@ -314,10 +314,10 @@ mod tests {
     #[test]
     fn exec_response_success_serializes_non_exited_termination() {
         for (termination, expected_kind) in [
-            (SandboxExecTermination::TimedOut, "timed_out"),
-            (SandboxExecTermination::Cancelled, "cancelled"),
-            (SandboxExecTermination::StartFailed, "start_failed"),
-            (SandboxExecTermination::WaitFailed, "wait_failed"),
+            (ExecTermination::TimedOut, "timed_out"),
+            (ExecTermination::Cancelled, "cancelled"),
+            (ExecTermination::StartFailed, "start_failed"),
+            (ExecTermination::WaitFailed, "wait_failed"),
         ] {
             let resp = ExecResponse::Success {
                 termination,

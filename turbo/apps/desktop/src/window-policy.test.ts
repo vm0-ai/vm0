@@ -55,6 +55,13 @@ function createNativeBackend(
     requestScreenRecordingPermission: async () => {
       return { accessibility: true, screenRecording: true };
     },
+    probeAutomationPermission: async () => {
+      return {
+        status: "unknown",
+        updatedAt: null,
+        reason: null,
+      };
+    },
     listApps: async () => [],
     getAppState: async (app, snapshotId) => {
       return { app, snapshotId, elements: [] };

@@ -1,4 +1,7 @@
-import type { DesktopComputerUseState } from "./computer-use-types";
+import type {
+  ComputerUseAutomationPermissionTarget,
+  DesktopComputerUseState,
+} from "./computer-use-types";
 
 export interface DesktopAuthUser {
   readonly userId: string;
@@ -48,11 +51,15 @@ export interface DesktopComputerUseApi {
   readonly stop: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
+  readonly probeAutomationPermission: (
+    target: ComputerUseAutomationPermissionTarget,
+  ) => Promise<DesktopComputerUseState>;
   readonly setKeepAwakeEnabled: (
     enabled: boolean,
   ) => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
+  readonly openAutomationSettings: () => Promise<void>;
   readonly subscribe: (callback: () => void) => () => void;
 }
 

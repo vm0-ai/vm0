@@ -121,9 +121,11 @@ describe("Desktop preload bridge", () => {
     await computerUse.stop();
     await computerUse.requestAccessibilityPermission();
     await computerUse.requestScreenRecordingPermission();
+    await computerUse.probeAutomationPermission("chrome");
     await computerUse.setKeepAwakeEnabled(true);
     await computerUse.openAccessibilitySettings();
     await computerUse.openScreenRecordingSettings();
+    await computerUse.openAutomationSettings();
 
     expect(electronMock.ipcRenderer.invoke.mock.calls).toStrictEqual([
       [COMPUTER_USE_CHANNELS.getState],
@@ -132,9 +134,11 @@ describe("Desktop preload bridge", () => {
       [COMPUTER_USE_CHANNELS.stop],
       [COMPUTER_USE_CHANNELS.requestAccessibilityPermission],
       [COMPUTER_USE_CHANNELS.requestScreenRecordingPermission],
+      [COMPUTER_USE_CHANNELS.probeAutomationPermission, "chrome"],
       [COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, true],
       [COMPUTER_USE_CHANNELS.openAccessibilitySettings],
       [COMPUTER_USE_CHANNELS.openScreenRecordingSettings],
+      [COMPUTER_USE_CHANNELS.openAutomationSettings],
     ]);
   });
 

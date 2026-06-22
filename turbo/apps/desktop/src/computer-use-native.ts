@@ -8,7 +8,12 @@ import type {
   ComputerUseCoordinateBounds,
   ComputerUseMouseButton,
 } from "./computer-use-accessibility";
-import type { ComputerUsePermissionState } from "./computer-use-types";
+import type {
+  ComputerUseAutomationPermissionStatus,
+  ComputerUseAutomationPermissionTarget,
+  ComputerUseAutomationPermissionTargetState,
+  ComputerUsePermissionState,
+} from "./computer-use-types";
 
 type ComputerUseNativeErrorCode = ComputerUseCommandFailure["error"]["code"];
 
@@ -63,6 +68,9 @@ export interface ComputerUseNativeBackend {
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
   readonly requestScreenRecordingPermission: () => Promise<ComputerUsePermissionState>;
+  readonly probeAutomationPermission: (
+    target: ComputerUseAutomationPermissionTarget,
+  ) => Promise<ComputerUseAutomationPermissionTargetState>;
   readonly listApps: () => Promise<readonly ComputerUseNativeAppRecord[]>;
   readonly getAppState: (
     app: string,
@@ -350,6 +358,31 @@ function resultPermissions(
     "accessibility_unavailable",
     "Native Computer Use helper returned invalid permissions",
   );
+}
+
+function resultAutomationPermissionStatus(
+  value: unknown,
+): ComputerUseAutomationPermissionStatus {
+  if (
+    value === "unknown" ||
+    value === "granted" ||
+    value === "denied" ||
+    value === "not_installed" ||
+    value === "not_running"
+  ) {
+    return value;
+  }
+  return "unknown";
+}
+
+function resultAutomationPermissionTargetState(
+  result: Record<string, unknown>,
+): ComputerUseAutomationPermissionTargetState {
+  return {
+    status: resultAutomationPermissionStatus(result.status),
+    updatedAt: resultOptionalString(result, "updatedAt") ?? null,
+    reason: resultOptionalString(result, "reason") ?? null,
+  };
 }
 
 function helperPathCandidates(
@@ -796,6 +829,13 @@ export function createComputerUseNativeBackend(
         kind: "permissions.request_screen_recording",
       });
       return resultPermissions(result);
+    },
+    probeAutomationPermission: async (target) => {
+      const result = await run({
+        kind: "permissions.probe_automation",
+        target,
+      });
+      return resultAutomationPermissionTargetState(result);
     },
     listApps: async () => {
       const result = await run({ kind: "apps.list" });

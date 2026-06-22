@@ -134,11 +134,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
-  [FeatureSwitchKey.MetaAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Meta Ads Manager connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.TikTokAdsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the TikTok Ads Manager connector",

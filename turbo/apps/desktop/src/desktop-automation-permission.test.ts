@@ -57,10 +57,12 @@ describe("desktop automation permission prompt", () => {
       async () => 0,
     );
     const openAutomationSettings = vi.fn<() => void>();
+    const onPermissionDenied = vi.fn();
     const prompt = createAutomationPermissionDeniedPrompt({
       sourceLabel: "Zero Computer Use",
       showDialog,
       openAutomationSettings,
+      onPermissionDenied,
     });
 
     prompt({
@@ -74,6 +76,10 @@ describe("desktop automation permission prompt", () => {
     expect(showDialog).toHaveBeenCalledOnce();
     expect(showDialog.mock.calls[0]?.[0].message).toBe(
       "Allow Zero Computer Use to control Google Chrome",
+    );
+    expect(onPermissionDenied).toHaveBeenCalledWith(
+      "chrome",
+      automationFailure.error.message,
     );
   });
 
