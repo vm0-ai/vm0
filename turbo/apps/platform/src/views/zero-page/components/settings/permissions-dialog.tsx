@@ -11,7 +11,6 @@ import {
   SheetTitle,
   SheetFooter,
   Button,
-  cn,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -405,31 +404,17 @@ function UnknownEndpointsToggle({
   );
 }
 
-function GrantExpirationStatus({
+function permissionDurationLabel({
   expiresAt,
   selected,
 }: {
   expiresAt: string | null;
   selected: UserPermissionGrantExpiresIn | undefined;
-}) {
-  const selectedStatus = allowDurationStatusLabel(selected);
-  const expiryText =
-    selectedStatus ?? compactGrantExpirationText(expiresAt) ?? "Always";
-  const hasExpiringGrant =
-    selected === undefined ? Boolean(expiresAt) : selected !== "always";
-
+}): string {
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 max-w-[150px] items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium",
-        hasExpiringGrant
-          ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-          : "border-border bg-muted/40 text-muted-foreground",
-      )}
-    >
-      <IconClock size={12} className="shrink-0" />
-      <span className="truncate">{expiryText}</span>
-    </span>
+    allowDurationStatusLabel(selected) ??
+    compactGrantExpirationText(expiresAt) ??
+    "Always"
   );
 }
 
@@ -555,6 +540,75 @@ function PermissionGrantResetButton({
   );
 }
 
+function PermissionAllowDurationDropdown({
+  permission,
+  label,
+  selected,
+  allowAlwaysActive,
+  saving,
+  showLabel,
+  onSelect,
+}: {
+  permission: string;
+  label: string;
+  selected: UserPermissionGrantExpiresIn | undefined;
+  allowAlwaysActive: boolean;
+  saving: boolean;
+  showLabel: boolean;
+  onSelect: (expiresIn: UserPermissionGrantExpiresIn) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={saving}
+          aria-label={`${permission} allow options`}
+          className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium zero-border transition-colors ${
+            saving
+              ? "cursor-default text-muted-foreground/50"
+              : "cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          }`}
+        >
+          <IconClock size={12} className="shrink-0" />
+          {showLabel && <span className="max-w-[90px] truncate">{label}</span>}
+          <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-40">
+        {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
+          return (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => {
+                onSelect(option.value);
+              }}
+            >
+              <MenuItemCheck
+                active={isDurationMenuOptionActive({
+                  allowAlwaysActive,
+                  selected,
+                  value: option.value,
+                })}
+              />
+              {option.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function PermissionAllowDurationStatic({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-6 max-w-[150px] shrink-0 items-center gap-1.5 rounded-md border zero-border bg-muted/40 px-2 text-[11px] font-medium text-muted-foreground">
+      <IconClock size={12} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
 function PermissionGrantPolicyControl({
   permission,
   policy,
@@ -594,104 +648,81 @@ function PermissionGrantPolicyControl({
   const expirationStatusValue =
     expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
   const showSplitPolicy = !readOnly;
+  const durationLabel = permissionDurationLabel({
+    expiresAt: expirationStatusValue,
+    selected,
+  });
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {showExpirationStatus && (
-        <GrantExpirationStatus
-          expiresAt={expirationStatusValue}
-          selected={selected}
-        />
-      )}
       {!showSplitPolicy ? (
-        <PolicyPill
-          policy={policy}
-          disabled={readOnly}
-          onChange={(nextPolicy) => {
-            onPolicyChange(nextPolicy);
-          }}
-        />
+        <>
+          {showExpirationStatus && (
+            <PermissionAllowDurationStatic label={durationLabel} />
+          )}
+          <PolicyPill
+            policy={policy}
+            disabled={readOnly}
+            onChange={(nextPolicy) => {
+              onPolicyChange(nextPolicy);
+            }}
+          />
+        </>
       ) : (
-        <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
-          <button
-            type="button"
-            disabled={saving}
-            aria-pressed={policy === "allow"}
-            onClick={() => {
-              if (onAllowClick) {
-                onAllowClick();
-                return;
-              }
+        <>
+          <PermissionAllowDurationDropdown
+            permission={permission}
+            label={durationLabel}
+            selected={selected}
+            allowAlwaysActive={allowAlwaysActive}
+            saving={saving}
+            showLabel={policy === "allow"}
+            onSelect={(expiresIn) => {
               onPolicyChange("allow");
+              onAllowDurationChange(expiresIn);
             }}
-            className={permissionPolicyButtonClass({
-              active: policy === "allow",
-              disabled: saving,
-              tone: "allow",
-            })}
-          >
-            <IconCheck size={12} stroke={2.5} />
-            Allow
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={saving}
-                aria-label={`${permission} allow options`}
-                className={`flex h-7 items-center border-l border-[hsl(var(--gray-400))] px-1.5 transition-colors ${
-                  policy === "allow"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : saving
-                      ? "text-muted-foreground/50"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                } ${saving ? "cursor-default" : "cursor-pointer"}`}
-              >
-                <IconChevronDown size={13} stroke={2.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
-                return (
-                  <DropdownMenuItem
-                    key={option.value}
-                    onSelect={() => {
-                      onPolicyChange("allow");
-                      onAllowDurationChange(option.value);
-                    }}
-                  >
-                    <MenuItemCheck
-                      active={isDurationMenuOptionActive({
-                        allowAlwaysActive,
-                        selected,
-                        value: option.value,
-                      })}
-                    />
-                    {option.label}
-                  </DropdownMenuItem>
-                );
+          />
+          <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
+            <button
+              type="button"
+              disabled={saving}
+              aria-pressed={policy === "allow"}
+              onClick={() => {
+                if (onAllowClick) {
+                  onAllowClick();
+                  return;
+                }
+                onPolicyChange("allow");
+              }}
+              className={permissionPolicyButtonClass({
+                active: policy === "allow",
+                disabled: saving,
+                tone: "allow",
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            type="button"
-            disabled={saving}
-            aria-pressed={policy === "deny"}
-            style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
-            onClick={() => {
-              onPolicyChange("deny");
-              onClearExpiration();
-            }}
-            className={permissionPolicyButtonClass({
-              active: policy === "deny",
-              disabled: saving,
-              tone: "deny",
-            })}
-          >
-            <IconBan size={12} stroke={2.5} />
-            Deny
-          </button>
-        </span>
+            >
+              <IconCheck size={12} stroke={2.5} />
+              Allow
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              aria-pressed={policy === "deny"}
+              style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
+              onClick={() => {
+                onPolicyChange("deny");
+                onClearExpiration();
+              }}
+              className={permissionPolicyButtonClass({
+                active: policy === "deny",
+                disabled: saving,
+                tone: "deny",
+              })}
+            >
+              <IconBan size={12} stroke={2.5} />
+              Deny
+            </button>
+          </span>
+        </>
       )}
       {showSplitPolicy && (
         <PermissionGrantResetButton
