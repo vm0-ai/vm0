@@ -113,6 +113,11 @@ impl CliTerminationDiagnostic {
         }
     }
 
+    /// Record the first attempted signal, then only update on SIGTERM -> SIGKILL escalation.
+    ///
+    /// Multiple watchdog paths may observe the same child before `wait()` completes. Keeping this
+    /// monotonic prevents a later duplicate signal from rewriting the original termination
+    /// attribution fields.
     #[must_use]
     pub fn record_signal(
         mut self,
@@ -504,6 +509,19 @@ mod tests {
             .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(10_000))
             .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
             .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(10_000));
+
+        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigkill));
+        assert_eq!(diagnostic.signal_pgid, Some(42));
+        assert_eq!(diagnostic.signal_grace_ms, Some(1_000));
+        assert!(diagnostic.escalated);
+    }
+
+    #[test]
+    fn cli_termination_repeated_sigkill_does_not_overwrite_escalation_signal() {
+        let diagnostic = CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
+            .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(10_000))
+            .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
+            .record_signal(CliTerminationSignal::Sigkill, Some(99), Some(2_000));
 
         assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigkill));
         assert_eq!(diagnostic.signal_pgid, Some(42));
