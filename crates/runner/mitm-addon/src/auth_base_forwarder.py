@@ -12,6 +12,7 @@ import http.client as http_client
 import ipaddress
 import socket
 import ssl
+import threading
 import urllib.parse
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
@@ -99,13 +100,18 @@ _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
 ) = None
 _forward_request_accepting = True
+_https_context: ssl.SSLContext | None = None
+_https_context_lock = threading.Lock()
 
 
 def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
     global _forward_request_accepting
+    global _https_context
 
     shutdown_forward_request_executor(wait=True)
+    with _https_context_lock:
+        _https_context = None
     _forward_request_accepting = True
 
 
@@ -171,6 +177,21 @@ def _create_https_context() -> ssl.SSLContext:
     return context
 
 
+def _get_https_context() -> ssl.SSLContext:
+    global _https_context
+
+    context = _https_context
+    if context is not None:
+        return context
+
+    with _https_context_lock:
+        context = _https_context
+        if context is None:
+            context = _create_https_context()
+            _https_context = context
+        return context
+
+
 class _ValidatedTLSConnection(http_client.HTTPConnection):
     default_port = DEFAULT_HTTPS_PORT
 
@@ -184,7 +205,7 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
     ) -> None:
         super().__init__(host, port=port, timeout=timeout)
         self._validated_addresses = validated_addresses
-        self._context = _create_https_context()
+        self._context = _get_https_context()
 
     def connect(self) -> None:
         raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
