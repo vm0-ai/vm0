@@ -17,6 +17,7 @@ enum Scenario {
     DisconnectAfterInitialize,
     ExitOnTurnStart,
     InterleavedNotification,
+    InvalidResponseId,
     MalformedErrorResponse,
     MalformedInitializeResult,
     LargeNotificationBeforeResponse,
@@ -38,6 +39,7 @@ impl Scenario {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
+                "invalid-response-id" => Ok(Self::InvalidResponseId),
                 "malformed-error-response" => Ok(Self::MalformedErrorResponse),
                 "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
                 "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
@@ -207,6 +209,13 @@ impl AppServerState {
                 self.set_current_thread(thread_id.clone());
                 let result = thread_response(&thread_id, false);
                 match self.scenario {
+                    Scenario::InvalidResponseId => {
+                        write_success(
+                            output,
+                            json!({ "secret": "do-not-log-invalid-response-id" }),
+                            result,
+                        )?;
+                    }
                     Scenario::MalformedErrorResponse => {
                         write_json_line(
                             output,

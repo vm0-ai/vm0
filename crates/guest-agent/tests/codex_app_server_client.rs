@@ -335,6 +335,31 @@ async fn codex_app_server_unknown_response_id_fails_without_raw_payload() -> Res
 }
 
 #[tokio::test]
+async fn codex_app_server_invalid_response_id_fails_without_raw_payload() -> Result<(), String> {
+    let mut client = spawn_client(Some("invalid-response-id"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let result = wait_result_allow_error(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("app-server message id must be"));
+            assert!(!message.contains("do-not-log-invalid-response-id"));
+        }
+        other => {
+            return Err(format!(
+                "expected invalid response id protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_disconnect_after_initialize_fails_next_request() -> Result<(), String> {
     let mut client = spawn_client(Some("disconnect-after-initialize"))?;
 

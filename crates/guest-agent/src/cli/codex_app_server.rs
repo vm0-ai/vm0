@@ -686,11 +686,21 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
 }
 
 fn parse_id(value: &Value) -> Result<JsonRpcId, CodexAppServerError> {
-    serde_json::from_value(value.clone()).map_err(|error| {
-        CodexAppServerError::Protocol(format!(
-            "app-server message id must be an integer or string: {error}"
-        ))
-    })
+    match value {
+        Value::Number(number) => number
+            .as_i64()
+            .map(JsonRpcId::Number)
+            .ok_or_else(invalid_id_error),
+        Value::String(value) => Ok(JsonRpcId::String(value.clone())),
+        Value::Null => Ok(JsonRpcId::Null),
+        _ => Err(invalid_id_error()),
+    }
+}
+
+fn invalid_id_error() -> CodexAppServerError {
+    CodexAppServerError::Protocol(
+        "app-server message id must be an integer, string, or null".to_string(),
+    )
 }
 
 fn parse_error_object(value: &Value) -> Result<JsonRpcError, CodexAppServerError> {
