@@ -6,37 +6,30 @@ import { withErrorHandler } from "../../../lib/command";
 export const viewCommand = new Command()
   .name("view")
   .description("View a workflow")
-  .argument("<name>", "Workflow name")
+  .argument("<workflowId>", "Workflow ID")
   .addHelpText(
     "after",
     `
 Examples:
-  zero workflow view my-workflow`,
+  zero workflow view <workflow-id>`,
   )
   .action(
-    withErrorHandler(async (name: string) => {
-      const workflow = await getWorkflow(name);
+    withErrorHandler(async (workflowId: string) => {
+      const workflow = await getWorkflow(workflowId);
 
       console.log(chalk.bold(workflow.name));
       if (workflow.displayName) console.log(chalk.dim(workflow.displayName));
       console.log();
+      console.log(`ID:           ${workflow.id}`);
       console.log(`Name:         ${workflow.name}`);
       console.log(`Visibility:   ${workflow.visibility}`);
+      console.log(
+        `Agent:        ${workflow.agentName ?? workflow.agentId} (${workflow.agentId})`,
+      );
       if (workflow.displayName)
         console.log(`Display Name: ${workflow.displayName}`);
       if (workflow.description)
         console.log(`Description:  ${workflow.description}`);
-      if (workflow.attachedAgents.length > 0) {
-        console.log(
-          `Agents:       ${workflow.attachedAgents
-            .map((agent) => {
-              return agent.displayName
-                ? `${agent.displayName} (${agent.agentId})`
-                : agent.agentId;
-            })
-            .join(", ")}`,
-        );
-      }
 
       if (workflow.files && workflow.files.length > 0) {
         console.log();
@@ -47,11 +40,11 @@ Examples:
       }
 
       console.log();
-      if (workflow.content) {
-        console.log(chalk.dim("── SKILL.md ──"));
-        console.log(workflow.content);
+      if (workflow.instruction) {
+        console.log(chalk.dim("── Instruction ──"));
+        console.log(workflow.instruction);
       } else {
-        console.log(chalk.dim("No content"));
+        console.log(chalk.dim("No instruction"));
       }
     }),
   );

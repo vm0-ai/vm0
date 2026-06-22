@@ -13,7 +13,7 @@ import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 
 interface DeleteZeroWorkflowInput {
   readonly orgId: string;
-  readonly workflowName: string;
+  readonly workflowId: string;
 }
 
 export const deleteZeroWorkflow$ = command(
@@ -31,7 +31,7 @@ export const deleteZeroWorkflow$ = command(
         .where(
           and(
             eq(zeroWorkflows.orgId, args.orgId),
-            eq(zeroWorkflows.name, args.workflowName),
+            eq(zeroWorkflows.id, args.workflowId),
           ),
         )
         .limit(1);
@@ -42,7 +42,7 @@ export const deleteZeroWorkflow$ = command(
 
       await tx.delete(zeroWorkflows).where(eq(zeroWorkflows.id, workflow.id));
 
-      const storageName = getCustomSkillStorageName(args.workflowName);
+      const storageName = getCustomSkillStorageName(workflow.id);
       const [storage] = await tx
         .select({ id: storages.id, s3Prefix: storages.s3Prefix })
         .from(storages)

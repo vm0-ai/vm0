@@ -25,6 +25,9 @@ export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 
 export interface DueWorkflowTrigger {
   readonly trigger: TriggerRow;
+  // The owning agent is derived from the workflow row (hard 1:N); triggers no
+  // longer carry an agentId column, so callers resolve it and pass it here.
+  readonly agentId: string;
   readonly workflowName: string;
 }
 
@@ -72,6 +75,7 @@ function isActivePreviousRunStatus(status: string): boolean {
  */
 function buildWorkflowTriggerCallbacks(
   trigger: TriggerRow,
+  agentId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
   if (trigger.scheduleType === "loop") {
@@ -93,11 +97,11 @@ function buildWorkflowTriggerCallbacks(
       },
     });
   }
-  if (trigger.chatThreadId && trigger.agentId) {
+  if (trigger.chatThreadId) {
     callbacks.push({
       internalKind: "chat",
       secret: generateCallbackSecret(),
-      payload: { threadId: trigger.chatThreadId, agentId: trigger.agentId },
+      payload: { threadId: trigger.chatThreadId, agentId },
     });
   }
   return callbacks;
@@ -114,9 +118,10 @@ function buildAppendSystemPrompt(workflowName: string): string {
 
 export function buildChatOnlyWorkflowTriggerCallbacks(
   trigger: TriggerRow,
+  agentId: string,
   options?: { readonly isGoalRun?: boolean },
 ): InternalRunCallbackInput[] {
-  if (!trigger.chatThreadId || !trigger.agentId) {
+  if (!trigger.chatThreadId) {
     return [];
   }
   return [
@@ -125,7 +130,7 @@ export function buildChatOnlyWorkflowTriggerCallbacks(
       secret: generateCallbackSecret(),
       payload: {
         threadId: trigger.chatThreadId,
-        agentId: trigger.agentId,
+        agentId,
         // Goal runs self-continue on idle; the flag lets the chat callback
         // gate terminal push notifications to terminal goal states only.
         ...(options?.isGoalRun ? { isGoalRun: true } : {}),
@@ -202,23 +207,22 @@ export const runWorkflowTriggerNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
-    const { trigger, workflowName } = args.due;
+    const { trigger, agentId, workflowName } = args.due;
 
-    if (!trigger.agentId || !trigger.chatThreadId) {
+    if (!trigger.chatThreadId) {
       return {
         kind: "run_error",
         response: {
           status: 400,
           body: {
             error: {
-              message: "Workflow trigger is missing its agent or thread",
+              message: "Workflow trigger is missing its thread",
               code: "INVALID_TRIGGER",
             },
           },
         },
       };
     }
-    const agentId = trigger.agentId;
     const chatThreadId = trigger.chatThreadId;
 
     if (trigger.lastRunId) {
@@ -272,7 +276,8 @@ export const runWorkflowTriggerNow$ = command(
         selectedModelOverride: modelPin.selectedModel ?? undefined,
         appendSystemPrompt:
           args.appendSystemPrompt ?? buildAppendSystemPrompt(workflowName),
-        callbacks: args.callbacks ?? buildWorkflowTriggerCallbacks(trigger),
+        callbacks:
+          args.callbacks ?? buildWorkflowTriggerCallbacks(trigger, agentId),
         zeroRunMetadata: {
           workflowTriggerId: trigger.id,
         },

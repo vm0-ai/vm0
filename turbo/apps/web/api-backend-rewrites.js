@@ -100,11 +100,33 @@ const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
   /^\/api\/automations\/webhooks\/[^/]+$/;
 const ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE = "/api/zero/workflows/:name";
 const ZERO_WORKFLOWS_BY_NAME_PATH_RE = /^\/api\/zero\/workflows\/[^/]+$/;
-const ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE = "/api/zero/workflows/:name/agents";
-const ZERO_WORKFLOW_AGENTS_PATH_RE = /^\/api\/zero\/workflows\/[^/]+\/agents$/;
-const ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE = `/api/zero/workflows/:name/agents/:agentId(${UUID_PATH_SEGMENT_PATTERN})`;
-const ZERO_WORKFLOW_AGENT_BY_ID_PATH_RE = new RegExp(
-  `^/api/zero/workflows/[^/]+/agents/${UUID_PATH_SEGMENT_PATTERN}$`,
+const ZERO_WORKFLOW_APPROVE_PUBLISH_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/approve-publish`;
+const ZERO_WORKFLOW_APPROVE_PUBLISH_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/approve-publish$`,
+);
+const ZERO_WORKFLOW_CANCEL_PUBLISH_REQUEST_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/cancel-publish-request`;
+const ZERO_WORKFLOW_CANCEL_PUBLISH_REQUEST_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/cancel-publish-request$`,
+);
+const ZERO_WORKFLOW_COPY_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/copy`;
+const ZERO_WORKFLOW_COPY_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/copy$`,
+);
+const ZERO_WORKFLOW_DEMOTE_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/demote`;
+const ZERO_WORKFLOW_DEMOTE_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/demote$`,
+);
+const ZERO_WORKFLOW_REJECT_PUBLISH_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/reject-publish`;
+const ZERO_WORKFLOW_REJECT_PUBLISH_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/reject-publish$`,
+);
+const ZERO_WORKFLOW_REQUEST_PUBLISH_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/request-publish`;
+const ZERO_WORKFLOW_REQUEST_PUBLISH_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/request-publish$`,
+);
+const ZERO_WORKFLOW_RUN_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/run`;
+const ZERO_WORKFLOW_RUN_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/run$`,
 );
 const ZERO_WORKFLOW_TRIGGERS_REWRITE_SOURCE =
   "/api/zero/workflows/:name/triggers";
@@ -1299,14 +1321,39 @@ export const API_BACKEND_REWRITES = [
   [ZERO_GOAL_RESUME_REWRITE_SOURCE, "/api/zero/goal/resume"],
   ["/api/zero/workflows", "/api/zero/workflows"],
   [
-    ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
-    "/api/zero/workflows/:name/agents/:agentId",
-    ZERO_WORKFLOW_AGENT_BY_ID_PATH_RE,
+    ZERO_WORKFLOW_APPROVE_PUBLISH_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/approve-publish",
+    ZERO_WORKFLOW_APPROVE_PUBLISH_PATH_RE,
   ],
   [
-    ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
-    "/api/zero/workflows/:name/agents",
-    ZERO_WORKFLOW_AGENTS_PATH_RE,
+    ZERO_WORKFLOW_CANCEL_PUBLISH_REQUEST_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/cancel-publish-request",
+    ZERO_WORKFLOW_CANCEL_PUBLISH_REQUEST_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_COPY_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/copy",
+    ZERO_WORKFLOW_COPY_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_DEMOTE_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/demote",
+    ZERO_WORKFLOW_DEMOTE_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_REJECT_PUBLISH_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/reject-publish",
+    ZERO_WORKFLOW_REJECT_PUBLISH_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_REQUEST_PUBLISH_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/request-publish",
+    ZERO_WORKFLOW_REQUEST_PUBLISH_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_RUN_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/run",
+    ZERO_WORKFLOW_RUN_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGERS_REWRITE_SOURCE,

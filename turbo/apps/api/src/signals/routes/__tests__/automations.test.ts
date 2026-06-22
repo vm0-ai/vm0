@@ -548,6 +548,7 @@ describe("Automations API", () => {
       .insert(zeroWorkflows)
       .values({
         orgId: fixture.orgId,
+        agentId: fixture.composeId,
         name: `goal-${randomUUID().slice(0, 8)}`,
         visibility: "private",
         type: "goal",
@@ -564,7 +565,6 @@ describe("Automations API", () => {
       .values({
         orgId: fixture.orgId,
         workflowId: workflow!.id,
-        agentId: fixture.composeId,
         ownerUserId: fixture.userId,
         kind: "event",
         eventType: "thread-idle",
@@ -611,6 +611,7 @@ describe("Automations API", () => {
       .insert(zeroWorkflows)
       .values({
         orgId: fixture.orgId,
+        agentId: fixture.composeId,
         name: `goal-${randomUUID().slice(0, 8)}`,
         visibility: "private",
         type: "goal",
@@ -626,7 +627,6 @@ describe("Automations API", () => {
       .values({
         orgId: fixture.orgId,
         workflowId: workflow!.id,
-        agentId: fixture.composeId,
         ownerUserId: fixture.userId,
         kind: "event",
         eventType: "thread-idle",

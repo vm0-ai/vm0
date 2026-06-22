@@ -792,12 +792,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     failIfChatCallbackRouteIsFetched();
 
     const workflowName = "bdd-codex-kit";
-    await misc.createWorkflow(
-      actor,
-      workflowName,
-      "# BDD codex kit\nUse this workflow for codex runs.",
-      [201],
-    );
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -835,7 +829,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       displayName: "BDD codex skills agent",
       visibility: "private",
     });
-    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      "# BDD codex kit\nUse this workflow for codex runs.",
+      [201],
+    );
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
     const sent = await chat.requestSendMessage(
       actor,
@@ -1759,17 +1760,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const { actor, runnerGroup } = await entitledRunActor();
 
     const workflowName = "bdd-claude-kit";
-    await misc.createWorkflow(
-      actor,
-      workflowName,
-      "# BDD claude kit\nUse this workflow in claude runs.",
-      [201],
-    );
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD claude workflows agent",
       visibility: "private",
     });
-    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      "# BDD claude kit\nUse this workflow in claude runs.",
+      [201],
+    );
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,

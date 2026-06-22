@@ -396,7 +396,12 @@ interface CreateAgentRunArgs {
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
   readonly injectSkillVolumes?: {
-    readonly workflowNames: readonly string[];
+    // Each workflow's volume is keyed by its id (storage name), while the skill
+    // mounts at its slug. Slugs are not unique, so the id is required.
+    readonly workflows: readonly {
+      readonly name: string;
+      readonly workflowId: string;
+    }[];
   };
   readonly allowedConnectorTypes?: readonly ConnectorType[];
   readonly allowedCustomConnectorIds?: readonly string[];
@@ -549,17 +554,18 @@ function buildSystemSkillVolumes(
 }
 
 function buildWorkflowSkillVolumes(
-  workflowNames: readonly string[],
+  workflows: readonly { readonly name: string; readonly workflowId: string }[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
-  return workflowNames
-    .filter((name) => {
-      return !SEED_SKILLS.includes(name);
+  return workflows
+    .filter((workflow) => {
+      return !SEED_SKILLS.includes(workflow.name);
     })
-    .map((name) => {
+    .map((workflow) => {
       return {
-        name: getCustomSkillStorageName(name),
-        mountPath: skillMountPath(framework, name),
+        // The volume is keyed by the workflow id; it mounts at the slug.
+        name: getCustomSkillStorageName(workflow.workflowId),
+        mountPath: skillMountPath(framework, workflow.name),
       };
     });
 }
@@ -578,10 +584,7 @@ function buildInjectedSkillVolumes(
       framework,
       goalSeedEnabled,
     ),
-    ...buildWorkflowSkillVolumes(
-      args.injectSkillVolumes.workflowNames,
-      framework,
-    ),
+    ...buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, framework),
   ];
 }
 

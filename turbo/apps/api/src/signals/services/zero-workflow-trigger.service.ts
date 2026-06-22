@@ -7,12 +7,11 @@ import type {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
-  zeroWorkflowAgents,
   zeroWorkflowTriggers,
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, isNotNull, or } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
@@ -29,7 +28,7 @@ import {
 } from "./zero-chat-goal-marker.service";
 import { fireWorkflowTriggerTestRun$ } from "./zero-workflow-trigger-poller.service";
 import {
-  loadVisibleWorkflow,
+  loadVisibleWorkflowById,
   type WorkflowMember,
 } from "./zero-workflow-data.service";
 
@@ -175,42 +174,12 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
     kind: "schedule",
     schedule,
     scheduleSummary: summarizeSchedule(schedule),
-    agentId: row.agentId,
     ownerUserId: row.ownerUserId,
     enabled: row.enabled,
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
   };
-}
-
-function visibleWorkflowCondition(userId: string) {
-  return or(
-    eq(zeroWorkflows.visibility, "public"),
-    eq(zeroWorkflows.ownerUserId, userId),
-  );
-}
-
-async function attachmentExists(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly workflowId: string;
-    readonly agentId: string;
-  },
-): Promise<boolean> {
-  const [row] = await db
-    .select({ id: zeroWorkflowAgents.id })
-    .from(zeroWorkflowAgents)
-    .where(
-      and(
-        eq(zeroWorkflowAgents.orgId, args.orgId),
-        eq(zeroWorkflowAgents.workflowId, args.workflowId),
-        eq(zeroWorkflowAgents.agentId, args.agentId),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
 }
 
 interface UsableAgent {
@@ -239,34 +208,32 @@ async function loadAgent(
 
 /**
  * A trigger run executes as its owner, so the owner must be able to run the
- * chosen agent: public agents are runnable by any member, private agents only
- * by their owner. This is a "use" gate, not the agent "manage" gate.
+ * workflow's owning agent: public agents are runnable by any member, private
+ * agents only by their owner. This is a "use" gate, not the agent "manage" gate.
  */
 function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
   return agent.visibility === "public" || agent.owner === member.userId;
 }
 
-async function loadVisibleTriggerWorkflow(
+/**
+ * Resolve the workflow's single owning agent for a trigger. Under 1:N the agent
+ * is derived from `zero_workflows.agent_id`, not from the trigger row.
+ */
+async function loadTriggerWorkflowAgentId(
   db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly workflowId: string;
-  },
-): Promise<boolean> {
+  args: { readonly orgId: string; readonly workflowId: string },
+): Promise<string | null> {
   const [workflow] = await db
-    .select({ id: zeroWorkflows.id })
+    .select({ agentId: zeroWorkflows.agentId })
     .from(zeroWorkflows)
     .where(
       and(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.id, args.workflowId),
-        eq(zeroWorkflows.type, "workflow"),
-        visibleWorkflowCondition(args.userId),
       ),
     )
     .limit(1);
-  return Boolean(workflow);
+  return workflow?.agentId ?? null;
 }
 
 async function loadTriggerRow(
@@ -287,12 +254,18 @@ async function loadTriggerRow(
 }
 
 /**
- * List the triggers under a workflow. Visibility is the caller's
- * responsibility (the workflow must already be resolved as visible).
+ * List the caller's own schedule triggers under a workflow. Detail pages show
+ * only the triggers the caller owns, so this filters by `ownerUserId`.
+ * Visibility of the workflow itself is the caller's responsibility (the workflow
+ * must already be resolved as visible).
  */
 export async function loadWorkflowTriggers(
   db: ReadonlyDb,
-  args: { readonly orgId: string; readonly workflowId: string },
+  args: {
+    readonly orgId: string;
+    readonly workflowId: string;
+    readonly userId: string;
+  },
 ): Promise<readonly ZeroWorkflowTriggerSummary[]> {
   const rows = await db
     .select()
@@ -301,6 +274,7 @@ export async function loadWorkflowTriggers(
       and(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.workflowId, args.workflowId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
         eq(zeroWorkflowTriggers.kind, "schedule"),
       ),
     )
@@ -453,7 +427,7 @@ export async function getWorkflowTrigger(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
-    readonly userId: string;
+    readonly member: WorkflowMember;
     readonly triggerId: string;
   },
 ): Promise<ZeroWorkflowTriggerSummary | null> {
@@ -467,9 +441,9 @@ export async function getWorkflowTrigger(
   if (trigger.kind !== "schedule") {
     return null;
   }
-  const visible = await loadVisibleTriggerWorkflow(db, {
+  const visible = await loadVisibleWorkflowById(db, {
     orgId: args.orgId,
-    userId: args.userId,
+    member: args.member,
     workflowId: trigger.workflowId,
   });
   if (!visible) {
@@ -481,8 +455,7 @@ export async function getWorkflowTrigger(
 interface CreateTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
-  readonly workflowName: string;
-  readonly agentId: string;
+  readonly workflowId: string;
   readonly schedule: ZeroWorkflowSchedule;
   readonly enabled: boolean;
 }
@@ -494,44 +467,34 @@ export const createWorkflowTrigger$ = command(
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
     const writeDb = set(writeDb$);
-    const workflow = await loadVisibleWorkflow(writeDb, {
+    const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: args.orgId,
-      userId: args.member.userId,
-      name: args.workflowName,
+      member: args.member,
+      workflowId: args.workflowId,
     });
     signal.throwIfAborted();
-    if (!workflow) {
+    if (!visible) {
       return { kind: "not-found" };
     }
+    const { workflow } = visible;
 
+    // The owning agent is derived from the workflow row (hard 1:N). The trigger
+    // owner must be able to run that agent for the scheduled run to fire.
     const agent = await loadAgent(writeDb, {
       orgId: args.orgId,
-      agentId: args.agentId,
+      agentId: workflow.agentId,
     });
     signal.throwIfAborted();
     if (!agent) {
       return {
         kind: "bad-request",
-        message: `Agent not found: ${args.agentId}`,
+        message: `Agent not found: ${workflow.agentId}`,
       };
     }
     if (!canUseAgent(agent, args.member)) {
       return {
         kind: "forbidden",
-        message: "You do not have access to the selected agent",
-      };
-    }
-
-    const attached = await attachmentExists(writeDb, {
-      orgId: args.orgId,
-      workflowId: workflow.id,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
-    if (!attached) {
-      return {
-        kind: "conflict",
-        message: "Workflow is not attached to the selected agent",
+        message: "You do not have access to the workflow's agent",
       };
     }
 
@@ -565,7 +528,6 @@ export const createWorkflowTrigger$ = command(
         .values({
           orgId: args.orgId,
           workflowId: workflow.id,
-          agentId: agent.id,
           ownerUserId: args.member.userId,
           kind: "schedule",
           eventType: null,
@@ -613,9 +575,9 @@ async function loadOwnedTrigger(
   if (trigger.kind !== "schedule") {
     return { kind: "not-found" };
   }
-  const visible = await loadVisibleTriggerWorkflow(db, {
+  const visible = await loadVisibleWorkflowById(db, {
     orgId: args.orgId,
-    userId: args.member.userId,
+    member: args.member,
     workflowId: trigger.workflowId,
   });
   if (!visible) {
@@ -634,8 +596,7 @@ interface UpdateTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly triggerId: string;
-  readonly agentId?: string;
-  readonly schedule?: ZeroWorkflowSchedule;
+  readonly schedule: ZeroWorkflowSchedule;
 }
 
 export const updateWorkflowTrigger$ = command(
@@ -656,84 +617,32 @@ export const updateWorkflowTrigger$ = command(
     }
     const { trigger } = owned;
 
-    let agentId = trigger.agentId;
-    if (args.agentId !== undefined) {
-      const agent = await loadAgent(writeDb, {
-        orgId: args.orgId,
-        agentId: args.agentId,
-      });
-      signal.throwIfAborted();
-      if (!agent) {
-        return {
-          kind: "bad-request",
-          message: `Agent not found: ${args.agentId}`,
-        };
-      }
-      if (!canUseAgent(agent, args.member)) {
-        return {
-          kind: "forbidden",
-          message: "You do not have access to the selected agent",
-        };
-      }
-      const attached = await attachmentExists(writeDb, {
-        orgId: args.orgId,
-        workflowId: trigger.workflowId,
-        agentId: agent.id,
-      });
-      signal.throwIfAborted();
-      if (!attached) {
-        return {
-          kind: "conflict",
-          message: "Workflow is not attached to the selected agent",
-        };
-      }
-      agentId = agent.id;
-    }
-
     const now = nowDate();
-    let cols = scheduleToColumns(rowToSchedule(trigger));
-    let nextRunAt = trigger.nextRunAt;
-    if (args.schedule !== undefined) {
-      const scheduleError = validateSchedule(args.schedule, now);
-      if (scheduleError) {
-        return { kind: "bad-request", message: scheduleError };
-      }
-      cols = scheduleToColumns(args.schedule);
-      nextRunAt = resolveNextRunAt(args.schedule, trigger.enabled, now);
+    const scheduleError = validateSchedule(args.schedule, now);
+    if (scheduleError) {
+      return { kind: "bad-request", message: scheduleError };
     }
+    const cols = scheduleToColumns(args.schedule);
+    const nextRunAt = resolveNextRunAt(args.schedule, trigger.enabled, now);
 
-    const summary = await writeDb.transaction(async (tx) => {
-      if (
-        args.agentId !== undefined &&
-        agentId !== null &&
-        trigger.chatThreadId !== null
-      ) {
-        await tx
-          .update(chatThreads)
-          .set({ agentComposeId: agentId, updatedAt: now })
-          .where(eq(chatThreads.id, trigger.chatThreadId));
-      }
-      const [row] = await tx
-        .update(zeroWorkflowTriggers)
-        .set({
-          agentId,
-          scheduleType: cols.scheduleType,
-          cronExpression: cols.cronExpression,
-          intervalSeconds: cols.intervalSeconds,
-          atTime: cols.atTime,
-          timezone: cols.timezone,
-          nextRunAt,
-          updatedAt: now,
-        })
-        .where(eq(zeroWorkflowTriggers.id, trigger.id))
-        .returning();
-      if (!row) {
-        throw new Error("Failed to update workflow trigger");
-      }
-      return rowToSummary(row);
-    });
+    const [row] = await writeDb
+      .update(zeroWorkflowTriggers)
+      .set({
+        scheduleType: cols.scheduleType,
+        cronExpression: cols.cronExpression,
+        intervalSeconds: cols.intervalSeconds,
+        atTime: cols.atTime,
+        timezone: cols.timezone,
+        nextRunAt,
+        updatedAt: now,
+      })
+      .where(eq(zeroWorkflowTriggers.id, trigger.id))
+      .returning();
     signal.throwIfAborted();
-    return { kind: "ok", summary };
+    if (!row) {
+      throw new Error("Failed to update workflow trigger");
+    }
+    return { kind: "ok", summary: rowToSummary(row) };
   },
 );
 
@@ -778,24 +687,31 @@ export const enableWorkflowTrigger$ = command(
     }
     const { trigger } = owned;
 
-    if (trigger.agentId === null) {
-      return {
-        kind: "conflict",
-        message:
-          "Cannot enable: the trigger has no agent. Reassign an agent first.",
-      };
-    }
-    const attached = await attachmentExists(writeDb, {
+    // The owning agent is derived from the workflow row (hard 1:N); it always
+    // exists. Re-confirm the owner can still run it before re-enabling.
+    const agentId = await loadTriggerWorkflowAgentId(writeDb, {
       orgId: args.orgId,
       workflowId: trigger.workflowId,
-      agentId: trigger.agentId,
     });
     signal.throwIfAborted();
-    if (!attached) {
+    if (agentId === null) {
+      return { kind: "not-found" };
+    }
+    const agent = await loadAgent(writeDb, {
+      orgId: args.orgId,
+      agentId,
+    });
+    signal.throwIfAborted();
+    if (!agent) {
       return {
         kind: "conflict",
-        message:
-          "Cannot enable: the workflow is no longer attached to the trigger's agent.",
+        message: "Cannot enable: the workflow's agent no longer exists.",
+      };
+    }
+    if (!canUseAgent(agent, args.member)) {
+      return {
+        kind: "forbidden",
+        message: "You do not have access to the workflow's agent",
       };
     }
 
@@ -841,35 +757,6 @@ export const disableWorkflowTrigger$ = command(
 );
 
 /**
- * Disable every schedule trigger bound to a now-detached (workflow, agent)
- * pair. Called when a workflow is detached from an agent: such triggers can no
- * longer inject the workflow skill, so they are paused (and cannot be re-enabled
- * until the workflow is re-attached). Clears `next_run_at` so the poller skips
- * them immediately.
- */
-export async function disableTriggersForDetachedAgent(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly workflowId: string;
-    readonly agentId: string;
-  },
-): Promise<void> {
-  const detachedAt = nowDate();
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ enabled: false, nextRunAt: null, updatedAt: detachedAt })
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.workflowId, args.workflowId),
-        eq(zeroWorkflowTriggers.agentId, args.agentId),
-        eq(zeroWorkflowTriggers.kind, "schedule"),
-      ),
-    );
-}
-
-/**
  * Outcome of a manual test run. A test run fires the workflow into the bound
  * thread without claiming or advancing the schedule.
  */
@@ -904,16 +791,15 @@ export const testRunWorkflowTrigger$ = command(
     }
     const { trigger } = owned;
 
-    if (!trigger.agentId || !trigger.chatThreadId) {
+    if (!trigger.chatThreadId) {
       return {
         kind: "conflict",
-        message:
-          "Cannot run: the trigger has no agent. Reassign an agent first.",
+        message: "Cannot run: the trigger has no bound chat thread.",
       };
     }
 
     const [workflow] = await writeDb
-      .select({ name: zeroWorkflows.name })
+      .select({ name: zeroWorkflows.name, agentId: zeroWorkflows.agentId })
       .from(zeroWorkflows)
       .where(eq(zeroWorkflows.id, trigger.workflowId))
       .limit(1);
@@ -926,6 +812,7 @@ export const testRunWorkflowTrigger$ = command(
       fireWorkflowTriggerTestRun$,
       {
         trigger,
+        agentId: workflow.agentId,
         workflowName: workflow.name,
         apiStartTime: nowDate().getTime(),
       },

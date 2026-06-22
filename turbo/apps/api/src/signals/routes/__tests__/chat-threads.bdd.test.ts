@@ -5,7 +5,6 @@ import { asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -2493,26 +2492,26 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     expect(promoted.content).toBe("queued from v1");
     await cancelChatRun(actor, promoted.runId);
 
-    // Workflows still mount as SKILL.md-backed volumes in the runtime.
+    // Workflows still mount as SKILL.md-backed volumes in the runtime. Under
+    // the agent-scoped 1:N model the workflow is created directly under the
+    // agent and the volume is keyed by the workflow id (mounted at the slug).
     const workflowName = `bdd-workflow-${randomUUID().slice(0, 12)}`;
-    await accept(
+    const createdWorkflow = await accept(
       setupApp({ context })(zeroWorkflowsCollectionContract).create({
         headers: sessionHeaders(actor),
         body: {
+          agentId,
           name: workflowName,
-          files: [{ path: "SKILL.md", content: "# bdd workflow" }],
+          instruction: "# bdd workflow",
         },
       }),
       [201],
     );
-    await accept(
-      setupApp({ context })(zeroWorkflowAgentsContract).attach({
-        headers: sessionHeaders(actor),
-        params: { name: workflowName },
-        body: { agentId },
-      }),
-      [200],
-    );
+    if (createdWorkflow.status !== 201) {
+      throw new Error("Expected the bdd workflow to be created");
+    }
+    const workflowId = createdWorkflow.body.id;
+    const workflowStorageName = `custom-skill@${workflowId}`;
 
     const workflowSend = await chat.requestV1Send(
       bearer,
@@ -2526,7 +2525,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     const claim4 = await claimChatRun(runnerGroup, run4Id);
     expect(claim4.claim.storageManifest?.storages).toContainEqual(
       expect.objectContaining({
-        name: `custom-skill@${workflowName}`,
+        name: workflowStorageName,
         mountPath: `/home/user/.claude/skills/${workflowName}`,
       }),
     );
@@ -2536,7 +2535,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     await accept(
       setupApp({ context })(zeroWorkflowsDetailContract).delete({
         headers: sessionHeaders(actor),
-        params: { name: workflowName },
+        params: { workflowId },
       }),
       [204],
     );
@@ -2549,9 +2548,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the post-delete v1 send to create a run");
     }
     const claim5 = await claimChatRun(runnerGroup, afterDelete.body.runId);
-    expect(JSON.stringify(claim5.claim)).not.toContain(
-      `custom-skill@${workflowName}`,
-    );
+    expect(JSON.stringify(claim5.claim)).not.toContain(workflowStorageName);
     await cancelChatRun(actor, afterDelete.body.runId);
   }, 180_000);
 });

@@ -1,82 +1,98 @@
-import { command, computed, state } from "ccstate";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { command, computed, state, type Computed } from "ccstate";
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
-  type ZeroWorkflowAgentSummary,
+  zeroWorkflowVisibilityContract,
+  type ZeroWorkflowCreateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept } from "../../lib/accept.ts";
-import { agents$ } from "../agent.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { user$ } from "../auth.ts";
-import { isOrgAdmin$ } from "../org.ts";
+import { activeRoute$ } from "../active-route.ts";
+import { pathParams$ } from "../route.ts";
+import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
-export type WorkflowAttachmentFilter = "all" | "attached" | "unbound";
-type WorkflowAttachmentAgent = ZeroWorkflowAgentSummary;
+/**
+ * The workflow uuid for the active detail route, or null elsewhere.
+ */
+export const currentWorkflowId$ = computed((get): string | null => {
+  if (get(activeRoute$) !== "agentWorkflowDetail") {
+    return null;
+  }
+  const workflowId = get(pathParams$)?.workflowId;
+  return typeof workflowId === "string" ? workflowId : null;
+});
 
-const internalSelectedWorkflowName$ = state<string | null>(null);
-const internalSelectedWorkflowFilePath$ = state<string | null>(null);
-const internalWorkflowSearch$ = state("");
-const internalSelectedAgentId$ = state<string | null>(null);
-const internalAttachmentFilter$ = state<WorkflowAttachmentFilter>("all");
 const internalWorkflowReload$ = state(0);
+
+const internalSelectedFilePath$ = state<string | null>(null);
+const internalWorkflowSearch$ = state("");
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
-});
-
-export const selectedWorkflowAgentId$ = computed((get) => {
-  return get(internalSelectedAgentId$);
-});
-
-export const workflowAttachmentFilter$ = computed((get) => {
-  return get(internalAttachmentFilter$);
-});
-
-export const selectedWorkflowFilePath$ = computed((get) => {
-  return get(internalSelectedWorkflowFilePath$);
 });
 
 export const setWorkflowSearch$ = command(({ set }, value: string) => {
   set(internalWorkflowSearch$, value);
 });
 
-export const setSelectedWorkflowAgentId$ = command(
-  ({ set }, agentId: string | null) => {
-    set(internalSelectedAgentId$, agentId);
+function matchesWorkflowSearch(
+  workflow: ZeroWorkflowSummary,
+  search: string,
+): boolean {
+  if (!search) {
+    return true;
+  }
+  return [
+    workflow.name,
+    workflow.displayName ?? "",
+    workflow.description ?? "",
+    workflow.agentDisplayName ?? "",
+    workflow.agentName ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(search);
+}
+
+export const filteredVisibleWorkflows$ = computed(
+  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+    const workflows = await get(allVisibleWorkflows$);
+    const search = get(internalWorkflowSearch$).trim().toLowerCase();
+    return workflows.filter((workflow) => {
+      return matchesWorkflowSearch(workflow, search);
+    });
   },
 );
 
-export const setWorkflowAttachmentFilter$ = command(
-  ({ set }, filter: WorkflowAttachmentFilter) => {
-    set(internalAttachmentFilter$, filter);
-  },
-);
-
-export const setSelectedWorkflowName$ = command(
-  ({ set }, workflowName: string | null) => {
-    set(internalSelectedWorkflowName$, workflowName);
-    set(internalSelectedWorkflowFilePath$, null);
-  },
-);
-
-export const setSelectedWorkflowFilePath$ = command(
-  ({ set }, filePath: string | null) => {
-    set(internalSelectedWorkflowFilePath$, filePath);
-  },
-);
-
-export const selectedWorkflowName$ = computed((get) => {
-  return get(internalSelectedWorkflowName$);
+/** The supplementary file selected in the detail viewer, or null. */
+export const selectedWorkflowFilePath$ = computed((get) => {
+  return get(internalSelectedFilePath$);
 });
 
-export const orgWorkflows$ = computed(
+export const setSelectedWorkflowFilePath$ = command(
+  ({ set }, path: string | null) => {
+    set(internalSelectedFilePath$, path);
+  },
+);
+
+/** Bump to refetch every workflow list and detail. */
+const reloadWorkflows$ = command(({ set }) => {
+  set(internalWorkflowReload$, (prev) => {
+    return prev + 1;
+  });
+});
+
+/**
+ * The user's visible workflows across every agent. Used by the read-only
+ * cross-agent index at `/workflows`.
+ */
+const allVisibleWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
     get(internalWorkflowReload$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
@@ -85,189 +101,227 @@ export const orgWorkflows$ = computed(
   },
 );
 
-export const workflowAgentOptions$ = computed(
-  async (get): Promise<readonly ZeroWorkflowAgentSummary[]> => {
-    const workflows = await get(orgWorkflows$);
-    const agents = new Map<string, ZeroWorkflowAgentSummary>();
-
-    for (const workflow of workflows) {
-      for (const agent of workflow.attachedAgents) {
-        agents.set(agent.agentId, agent);
-      }
+/**
+ * Factory for a single agent's visible workflows (public ∪ the caller's own
+ * private), scoped via the `agentId` query parameter.
+ */
+function createAgentWorkflowsFactory(): (
+  agentId: string,
+) => Computed<Promise<readonly ZeroWorkflowSummary[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly ZeroWorkflowSummary[]>>
+  >();
+  return (agentId: string) => {
+    const existing = cache.get(agentId);
+    if (existing) {
+      return existing;
     }
-
-    return [...agents.values()].sort((left, right) => {
-      return agentTitle(left).localeCompare(agentTitle(right));
+    const atom$ = computed(async (get) => {
+      get(internalWorkflowReload$);
+      const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+      const result = await accept(client.list({ query: { agentId } }), [200], {
+        toast: false,
+      });
+      return result.body;
     });
-  },
-);
+    cache.set(agentId, atom$);
+    return atom$;
+  };
+}
 
-export const filteredOrgWorkflows$ = computed(
+export const agentWorkflows = createAgentWorkflowsFactory();
+
+/**
+ * The current chat agent's visible workflows, used by the slash-workflow
+ * composer. Empty until an agent is resolved.
+ */
+export const composerWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    const workflows = await get(orgWorkflows$);
-    const search = get(internalWorkflowSearch$).trim().toLowerCase();
-    const selectedAgentId = get(internalSelectedAgentId$);
-    const attachmentFilter = get(internalAttachmentFilter$);
-
-    return workflows.filter((workflow) => {
-      if (
-        attachmentFilter === "attached" &&
-        workflow.attachedAgentCount === 0
-      ) {
-        return false;
-      }
-
-      if (attachmentFilter === "unbound" && workflow.attachedAgentCount !== 0) {
-        return false;
-      }
-
-      if (
-        selectedAgentId &&
-        !workflow.attachedAgents.some((agent) => {
-          return agent.agentId === selectedAgentId;
-        })
-      ) {
-        return false;
-      }
-
-      if (!search) {
-        return true;
-      }
-
-      const haystack = [
-        workflow.name,
-        workflow.displayName ?? "",
-        workflow.description ?? "",
-        workflow.visibility,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(search);
-    });
+    const agentId = await get(currentChatAgentRecordId$);
+    if (!agentId) {
+      return [];
+    }
+    return get(agentWorkflows(agentId));
   },
 );
 
-export const selectedWorkflowDetail$ = computed(
-  async (get): Promise<ZeroWorkflowDetailResponse | null> => {
-    get(internalWorkflowReload$);
-    const workflowName = await get(selectedWorkflowName$);
-    if (!workflowName) {
-      return null;
+/**
+ * Factory for a single workflow's detail, addressed by its uuid.
+ */
+function createWorkflowDetailFactory(): (
+  workflowId: string,
+) => Computed<Promise<ZeroWorkflowDetailResponse | null>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<ZeroWorkflowDetailResponse | null>>
+  >();
+  return (workflowId: string) => {
+    const existing = cache.get(workflowId);
+    if (existing) {
+      return existing;
     }
+    const atom$ = computed(async (get) => {
+      get(internalWorkflowReload$);
+      const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+      const result = await accept(
+        client.get({ params: { workflowId } }),
+        [200, 404],
+        { toast: false },
+      );
+      if (result.status === 404) {
+        return null;
+      }
+      return result.body;
+    });
+    cache.set(workflowId, atom$);
+    return atom$;
+  };
+}
 
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+export const workflowDetail = createWorkflowDetailFactory();
+
+export const createWorkflow$ = command(
+  async (
+    { get, set },
+    input: ZeroWorkflowCreateRequest,
+    signal: AbortSignal,
+  ): Promise<ZeroWorkflowSummary> => {
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(
-      client.get({ params: { name: workflowName } }),
-      [200],
-      { toast: false },
+      client.create({ body: input, fetchOptions: { signal } }),
+      [201],
     );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
     return result.body;
   },
 );
 
-export const workflowAttachableAgents$ = computed(
-  async (get): Promise<readonly WorkflowAttachmentAgent[]> => {
-    const detail = await get(selectedWorkflowDetail$);
-    if (!detail?.canManage) {
-      return [];
-    }
-
-    const visibleAgents = await get(agents$);
-    const currentUser = await get(user$);
-    const isAdmin = await get(isOrgAdmin$);
-    const currentUserId = currentUser?.id ?? "";
-    const attachedIds = new Set(
-      detail.attachedAgents.map((agent) => {
-        return agent.agentId;
-      }),
-    );
-
-    return visibleAgents
-      .filter((agent) => {
-        return (
-          !attachedIds.has(agent.id) &&
-          canConfigureWorkflowAttachment(detail, agent, currentUserId, isAdmin)
-        );
-      })
-      .map(teamAgentToWorkflowAgent)
-      .sort((left, right) => {
-        return agentTitle(left).localeCompare(agentTitle(right));
-      });
-  },
-);
-
-export const attachSelectedWorkflowAgent$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
-    const workflowName = await get(selectedWorkflowName$);
-    signal.throwIfAborted();
-    if (!workflowName) {
-      return;
-    }
-
-    const client = get(zeroClient$)(zeroWorkflowAgentsContract);
+export const updateWorkflow$ = command(
+  async (
+    { get, set },
+    input: { workflowId: string; body: ZeroWorkflowUpdateRequest },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
     await accept(
-      client.attach({
-        params: { name: workflowName },
-        body: { agentId },
+      client.update({
+        params: { workflowId: input.workflowId },
+        body: input.body,
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-    set(internalWorkflowReload$, (prev) => {
-      return prev + 1;
-    });
+    set(reloadWorkflows$);
   },
 );
 
-export const detachSelectedWorkflowAgent$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
-    const workflowName = await get(selectedWorkflowName$);
-    signal.throwIfAborted();
-    if (!workflowName) {
-      return;
-    }
-
-    const client = get(zeroClient$)(zeroWorkflowAgentsContract);
+export const deleteWorkflow$ = command(
+  async ({ get, set }, workflowId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
     await accept(
-      client.detach({
-        params: { name: workflowName, agentId },
+      client.delete({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const copyWorkflow$ = command(
+  async (
+    { get, set },
+    input: { workflowId: string; toAgentId: string },
+    signal: AbortSignal,
+  ): Promise<ZeroWorkflowSummary> => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await accept(
+      client.copy({
+        params: { workflowId: input.workflowId },
+        body: { toAgentId: input.toAgentId },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+    return result.body;
+  },
+);
+
+export const runWorkflow$ = command(
+  async (
+    { get },
+    workflowId: string,
+    signal: AbortSignal,
+  ): Promise<{ chatThreadId: string; runId: string }> => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await accept(
+      client.run({
+        params: { workflowId },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-    set(internalWorkflowReload$, (prev) => {
-      return prev + 1;
-    });
+    return result.body;
+  },
+);
+
+type WorkflowVisibilityAction =
+  | "request-publish"
+  | "cancel-publish-request"
+  | "approve-publish"
+  | "reject-publish"
+  | "demote";
+
+export const changeWorkflowVisibility$ = command(
+  async (
+    { get, set },
+    input: { workflowId: string; action: WorkflowVisibilityAction },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowVisibilityContract);
+    const params = { workflowId: input.workflowId };
+    const options = { params, fetchOptions: { signal } };
+    const request =
+      input.action === "request-publish"
+        ? client.requestPublish(options)
+        : input.action === "cancel-publish-request"
+          ? client.cancelPublishRequest(options)
+          : input.action === "approve-publish"
+            ? client.approvePublish(options)
+            : input.action === "reject-publish"
+              ? client.rejectPublish(options)
+              : client.demote(options);
+    await accept(request, [200]);
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
   },
 );
 
 export const createWorkflowScheduleTrigger$ = command(
   async (
     { get, set },
-    input: { agentId: string; schedule: ZeroWorkflowSchedule },
+    input: { workflowId: string; schedule: ZeroWorkflowSchedule },
     signal: AbortSignal,
   ) => {
-    const workflowName = await get(selectedWorkflowName$);
-    signal.throwIfAborted();
-    if (!workflowName) {
-      return;
-    }
-
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(
       client.create({
-        params: { name: workflowName },
-        body: { agentId: input.agentId, schedule: input.schedule },
+        params: { workflowId: input.workflowId },
+        body: { schedule: input.schedule },
         fetchOptions: { signal },
       }),
       [201],
     );
     signal.throwIfAborted();
-    set(internalWorkflowReload$, (prev) => {
-      return prev + 1;
-    });
+    set(reloadWorkflows$);
   },
 );
 
@@ -289,9 +343,7 @@ export const setWorkflowTriggerEnabled$ = command(
         });
     await accept(request, [200]);
     signal.throwIfAborted();
-    set(internalWorkflowReload$, (prev) => {
-      return prev + 1;
-    });
+    set(reloadWorkflows$);
   },
 );
 
@@ -303,9 +355,7 @@ export const deleteWorkflowScheduleTrigger$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(internalWorkflowReload$, (prev) => {
-      return prev + 1;
-    });
+    set(reloadWorkflows$);
   },
 );
 
@@ -319,43 +369,3 @@ export const runWorkflowScheduleTrigger$ = command(
     signal.throwIfAborted();
   },
 );
-
-function teamAgentToWorkflowAgent(
-  agent: TeamComposeItem,
-): WorkflowAttachmentAgent {
-  return {
-    agentId: agent.id,
-    ownerId: agent.ownerId ?? "",
-    displayName: agent.displayName,
-    description: agent.description,
-    avatarUrl: agent.avatarUrl,
-    visibility: agent.visibility ?? "public",
-  };
-}
-
-function canConfigureWorkflowAttachment(
-  workflow: ZeroWorkflowDetailResponse,
-  agent: TeamComposeItem,
-  currentUserId: string,
-  isAdmin: boolean,
-): boolean {
-  const agentVisibility = agent.visibility ?? "public";
-
-  if (!workflow.canManage) {
-    return false;
-  }
-
-  if (workflow.visibility === "private" && agentVisibility === "public") {
-    return true;
-  }
-
-  if (agent.ownerId === currentUserId) {
-    return true;
-  }
-
-  return agentVisibility !== "private" && isAdmin;
-}
-
-function agentTitle(agent: ZeroWorkflowAgentSummary): string {
-  return agent.displayName ?? agent.agentId;
-}

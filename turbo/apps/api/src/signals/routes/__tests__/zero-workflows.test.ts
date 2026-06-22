@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroWorkflowAgentsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import {
-  zeroWorkflowAgents,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -46,10 +42,6 @@ function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
 }
 
-function agentsClient() {
-  return setupApp({ context })(zeroWorkflowAgentsContract);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -82,10 +74,6 @@ function deleteObjectKeys(command: unknown): string[] {
   });
 }
 
-function workflowFiles(content: string) {
-  return [{ path: "SKILL.md", content }];
-}
-
 describe("zero workflows", () => {
   const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
     return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
@@ -95,6 +83,17 @@ describe("zero workflows", () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
+    // The owning member creates a private agent so they hold write-permission.
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Owner Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -102,9 +101,10 @@ describe("zero workflows", () => {
       collectionClient().create({
         headers: authHeaders(),
         body: {
+          agentId: agent.agentId,
           name: "owner-workflow",
           displayName: "Owner Workflow",
-          files: workflowFiles("# owner workflow"),
+          instruction: "# owner workflow",
         },
       }),
       [201],
@@ -115,8 +115,7 @@ describe("zero workflows", () => {
       displayName: "Owner Workflow",
       visibility: "private",
       ownerUserId: fixture.userId,
-      attachedAgentCount: 0,
-      attachedAgents: [],
+      agentId: agent.agentId,
       canManage: true,
     });
 
@@ -146,9 +145,22 @@ describe("zero workflows", () => {
     ).not.toContain("owner-workflow");
   });
 
-  it("requires admin permission to create public workflows", async () => {
+  it("requires agent write-permission to create workflows under an agent", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    // A public agent owned by another user. Non-owner members cannot write to
+    // it; org admins can.
+    const agentOwnerId = `user_${randomUUID()}`;
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: agentOwnerId,
+        displayName: "Public Agent",
+        visibility: "public",
+      },
+      context.signal,
     );
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -157,16 +169,18 @@ describe("zero workflows", () => {
       collectionClient().create({
         headers: authHeaders(),
         body: {
+          agentId: agent.agentId,
           name: "public-workflow",
           visibility: "public",
-          files: workflowFiles("# public workflow"),
+          instruction: "# public workflow",
         },
       }),
       [403],
     );
     expect(rejected.body).toStrictEqual({
       error: {
-        message: "Only org admins can create public workflows",
+        message:
+          "Only the agent owner or org admin can create workflows on this agent",
         code: "FORBIDDEN",
       },
     });
@@ -176,9 +190,10 @@ describe("zero workflows", () => {
       collectionClient().create({
         headers: authHeaders(),
         body: {
+          agentId: agent.agentId,
           name: "public-workflow",
           visibility: "public",
-          files: workflowFiles("# public workflow"),
+          instruction: "# public workflow",
         },
       }),
       [201],
@@ -205,27 +220,117 @@ describe("zero workflows", () => {
     );
   });
 
-  it("attaches private workflows to public agents for the workflow owner only", async () => {
+  it("marks same-slug workflows as shadowed by the runtime priority winner", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
-    const agentOwnerId = `user_${randomUUID()}`;
     const agent = await store.set(
       seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
-        userId: agentOwnerId,
-        displayName: "Workflow Agent",
+        userId: fixture.userId,
+        displayName: "Shadow Agent",
         visibility: "public",
       },
       context.signal,
     );
+    const publicWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "daily-brief",
+        visibility: "public",
+        displayName: "Public Brief",
+      },
+      context.signal,
+    );
+    const privateWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "daily-brief",
+        visibility: "private",
+        displayName: "Private Brief",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const listed = await accept(
+      collectionClient().list({
+        headers: authHeaders(),
+        query: { agentId: agent.agentId },
+      }),
+      [200],
+    );
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({
+        id: publicWorkflowId,
+        shadowedBy: {
+          id: privateWorkflowId,
+          name: "daily-brief",
+          displayName: "Private Brief",
+        },
+      }),
+    );
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({
+        id: privateWorkflowId,
+        shadowedBy: null,
+      }),
+    );
+
+    const detail = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId: publicWorkflowId },
+      }),
+      [200],
+    );
+    expect(detail.body.shadowedBy).toStrictEqual({
+      id: privateWorkflowId,
+      name: "daily-brief",
+      displayName: "Private Brief",
+    });
+  });
+
+  it("copies a workflow onto another agent the caller can write, but not onto a private agent owned by someone else", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    // The caller owns a source agent (and its workflow) plus a public target
+    // agent. A second user owns a private agent the caller cannot write.
+    const sourceAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Source Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const targetAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Target Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const otherOwnerId = `user_${randomUUID()}`;
     const privateAgent = await store.set(
       seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
-        userId: agentOwnerId,
-        displayName: "Private Workflow Agent",
+        userId: otherOwnerId,
+        displayName: "Private Agent",
         visibility: "private",
       },
       context.signal,
@@ -233,122 +338,96 @@ describe("zero workflows", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
 
-    await accept(
+    const created = await accept(
       collectionClient().create({
         headers: authHeaders(),
         body: {
-          name: "private-agent-workflow",
-          files: workflowFiles("# private agent workflow"),
+          agentId: sourceAgent.agentId,
+          name: "copyable-workflow",
+          instruction: "# copyable workflow",
         },
       }),
       [201],
     );
+    const workflowId = created.body.id;
 
-    const privateAgentRejected = await accept(
-      agentsClient().attach({
+    const privateRejected = await accept(
+      detailClient().copy({
         headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
-        body: { agentId: privateAgent.agentId },
+        params: { workflowId },
+        body: { toAgentId: privateAgent.agentId },
       }),
       [403],
     );
-    expect(privateAgentRejected.body).toStrictEqual({
+    expect(privateRejected.body).toStrictEqual({
       error: {
         message:
-          "Only the private agent owner can attach workflow to this agent",
+          "Only the private agent owner can copy workflows onto this agent",
         code: "FORBIDDEN",
       },
     });
 
-    const attached = await accept(
-      agentsClient().attach({
+    const copied = await accept(
+      detailClient().copy({
         headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
-        body: { agentId: agent.agentId },
+        params: { workflowId },
+        body: { toAgentId: targetAgent.agentId },
       }),
-      [200],
+      [201],
     );
-    expect(attached.body).toMatchObject({
-      name: "private-agent-workflow",
-      attachedAgentCount: 1,
-      attachedAgents: [
-        expect.objectContaining({
-          agentId: agent.agentId,
-          displayName: "Workflow Agent",
-        }),
-      ],
+    expect(copied.body).toMatchObject({
+      name: "copyable-workflow",
+      agentId: targetAgent.agentId,
+      visibility: "private",
+      ownerUserId: fixture.userId,
+      canManage: true,
     });
+    expect(copied.body.id).not.toBe(workflowId);
 
-    const listedAgents = await accept(
-      agentsClient().list({
+    // Both the original and the fork are now visible to the owner.
+    const listed = await accept(
+      collectionClient().list({
         headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
       }),
       [200],
     );
-    expect(listedAgents.body).toHaveLength(1);
-    expect(listedAgents.body[0]?.agentId).toBe(agent.agentId);
-
-    const detached = await accept(
-      agentsClient().detach({
-        headers: authHeaders(),
-        params: {
-          name: "private-agent-workflow",
-          agentId: agent.agentId,
-        },
-      }),
-      [200],
+    const copyableAgentIds = listed.body
+      .filter((workflow) => {
+        return workflow.name === "copyable-workflow";
+      })
+      .map((workflow) => {
+        return workflow.agentId;
+      })
+      .sort();
+    expect(copyableAgentIds).toStrictEqual(
+      [sourceAgent.agentId, targetAgent.agentId].sort(),
     );
-    expect(detached.body.attachedAgentCount).toBe(0);
-
-    const setAttached = await accept(
-      agentsClient().set({
-        headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
-        body: { agentIds: [agent.agentId] },
-      }),
-      [200],
-    );
-    expect(setAttached.body.attachedAgentCount).toBe(1);
-
-    const setDetached = await accept(
-      agentsClient().set({
-        headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
-        body: { agentIds: [] },
-      }),
-      [200],
-    );
-    expect(setDetached.body.attachedAgentCount).toBe(0);
-
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
-    const hidden = await accept(
-      agentsClient().list({
-        headers: authHeaders(),
-        params: { name: "private-agent-workflow" },
-      }),
-      [404],
-    );
-    expect(hidden.body).toStrictEqual({
-      error: {
-        message: "Workflow not found: private-agent-workflow",
-        code: "NOT_FOUND",
-      },
-    });
   });
 
   it("reads workflow content from the existing skill volume storage", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Content Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
     const workflowName = "content-workflow";
     const s3Key = "test-workflows/content-workflow";
-    await store.set(
+    const workflowId = await store.set(
       seedWorkflow$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
+        agentId: agent.agentId,
         name: workflowName,
+        instruction: "# Content workflow\n",
         displayName: "Content Workflow",
         description: "Workflow content test",
       },
@@ -359,7 +438,7 @@ describe("zero workflows", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        workflowName: workflowName,
+        workflowId,
         s3Key,
         headVersionId: randomUUID(),
       },
@@ -375,25 +454,21 @@ describe("zero workflows", () => {
     const response = await accept(
       detailClient().get({
         headers: authHeaders(),
-        params: { name: workflowName },
+        params: { workflowId },
       }),
       [200],
     );
 
+    // The synthesized SKILL.md is never surfaced; the instruction is read from
+    // the DB and only supplementary files are listed.
     expect(response.body).toMatchObject({
       name: workflowName,
       displayName: "Content Workflow",
       description: "Workflow content test",
       visibility: "public",
-      content: "# Content workflow\n",
-      files: [
-        { path: "SKILL.md", size: "# Content workflow\n".length },
-        { path: "notes.md", size: "details".length },
-      ],
-      fileContents: [
-        { path: "SKILL.md", content: "# Content workflow\n" },
-        { path: "notes.md", content: "details" },
-      ],
+      instruction: "# Content workflow\n",
+      files: [{ path: "notes.md", size: "details".length }],
+      fileContents: [{ path: "notes.md", content: "details" }],
     });
   });
 
@@ -401,13 +476,24 @@ describe("zero workflows", () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Dangling Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
     const workflowName = "dangling-workflow";
     const s3Key = "test-workflows/dangling-workflow";
-    await store.set(
+    const workflowId = await store.set(
       seedWorkflow$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
+        agentId: agent.agentId,
         name: workflowName,
         displayName: "Dangling Workflow",
       },
@@ -418,7 +504,7 @@ describe("zero workflows", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        workflowName,
+        workflowId,
         s3Key,
         headVersionId: randomUUID(),
       },
@@ -430,7 +516,7 @@ describe("zero workflows", () => {
     const response = await accept(
       detailClient().get({
         headers: authHeaders(),
-        params: { name: workflowName },
+        params: { workflowId },
       }),
       [200],
     );
@@ -438,7 +524,6 @@ describe("zero workflows", () => {
     expect(response.body).toMatchObject({
       name: workflowName,
       displayName: "Dangling Workflow",
-      content: null,
       files: null,
       fileContents: null,
     });
@@ -448,13 +533,43 @@ describe("zero workflows", () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Delete Prefix Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
     const deletedWorkflowName = "posthog";
     const keptWorkflowName = "posthog-tracking";
+    const deletedWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: deletedWorkflowName,
+      },
+      context.signal,
+    );
+    const keptWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: keptWorkflowName,
+      },
+      context.signal,
+    );
     const deletedPrefix = `orgs/${fixture.orgId}/${getCustomSkillStorageName(
-      deletedWorkflowName,
+      deletedWorkflowId,
     )}`;
     const keptPrefix = `orgs/${fixture.orgId}/${getCustomSkillStorageName(
-      keptWorkflowName,
+      keptWorkflowId,
     )}`;
     const deletedKeys = [
       `${deletedPrefix}/version/archive.tar.gz`,
@@ -467,29 +582,11 @@ describe("zero workflows", () => {
     ];
 
     await store.set(
-      seedWorkflow$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: deletedWorkflowName,
-      },
-      context.signal,
-    );
-    await store.set(
-      seedWorkflow$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: keptWorkflowName,
-      },
-      context.signal,
-    );
-    await store.set(
       seedWorkflowStorage$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        workflowName: deletedWorkflowName,
+        workflowId: deletedWorkflowId,
         s3Key: `${deletedPrefix}/version`,
         headVersionId: randomUUID(),
       },
@@ -500,7 +597,7 @@ describe("zero workflows", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        workflowName: keptWorkflowName,
+        workflowId: keptWorkflowId,
         s3Key: `${keptPrefix}/version`,
         headVersionId: randomUUID(),
       },
@@ -533,7 +630,7 @@ describe("zero workflows", () => {
     await accept(
       detailClient().delete({
         headers: authHeaders(),
-        params: { name: deletedWorkflowName },
+        params: { workflowId: deletedWorkflowId },
       }),
       [204],
     );
@@ -557,7 +654,7 @@ describe("zero workflows", () => {
     expect(deleteObjectKeys(deleteCommand)).toStrictEqual(deletedKeys);
   });
 
-  it("deletes workflows and cascades agent attachments", async () => {
+  it("deletes workflows owned by an agent", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
@@ -573,16 +670,30 @@ describe("zero workflows", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
+    const db = store.set(writeDb$);
+    const [seeded] = await db
+      .select({ id: zeroWorkflows.id })
+      .from(zeroWorkflows)
+      .where(
+        and(
+          eq(zeroWorkflows.orgId, fixture.orgId),
+          eq(zeroWorkflows.agentId, agent.agentId),
+          eq(zeroWorkflows.name, workflowName),
+        ),
+      );
+    if (!seeded) {
+      throw new Error("Expected the agent to own the seeded workflow");
+    }
+
     const deleted = await accept(
       detailClient().delete({
         headers: authHeaders(),
-        params: { name: workflowName },
+        params: { workflowId: seeded.id },
       }),
       [204],
     );
     expect(deleted.body).toBeUndefined();
 
-    const db = store.set(writeDb$);
     const workflows = await db
       .select({ id: zeroWorkflows.id })
       .from(zeroWorkflows)
@@ -592,16 +703,6 @@ describe("zero workflows", () => {
           eq(zeroWorkflows.name, workflowName),
         ),
       );
-    const attachments = await db
-      .select({ id: zeroWorkflowAgents.id })
-      .from(zeroWorkflowAgents)
-      .where(
-        and(
-          eq(zeroWorkflowAgents.orgId, fixture.orgId),
-          eq(zeroWorkflowAgents.agentId, agent.agentId),
-        ),
-      );
     expect(workflows).toHaveLength(0);
-    expect(attachments).toHaveLength(0);
   });
 });

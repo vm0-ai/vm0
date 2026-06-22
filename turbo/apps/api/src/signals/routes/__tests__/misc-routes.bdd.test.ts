@@ -14,7 +14,7 @@ function testActors() {
   const api = createMiscRoutesApi(context);
   const admin = base.user();
   const member = base.user({ orgId: admin.orgId, orgRole: "org:member" });
-  return { api, admin, member };
+  return { api, base, admin, member };
 }
 
 function unsubscribeToken(userId: string): string {
@@ -176,9 +176,20 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
 
 describe("MISC-03: workflows lifecycle through public API", () => {
   it("chains create, list, read, update, delete, and post-delete read", async () => {
-    const { api, admin, member } = testActors();
+    const { api, base, admin, member } = testActors();
     const memberWorkflowName = `bdd-member-workflow-${randomUUID().slice(0, 8)}`;
     const workflowName = `bdd-workflow-${randomUUID().slice(0, 8)}`;
+
+    // Workflows are agent-scoped (1:N) and creating one requires
+    // write-permission on the target agent (owner, or org admin on a public
+    // agent). Admin owns the agent it creates on; the member creates its
+    // private workflow on its own agent.
+    const agent = await base.createAgent(admin, {
+      displayName: "BDD workflows agent",
+    });
+    const memberAgent = await base.createAgent(member, {
+      displayName: "BDD member workflows agent",
+    });
 
     const initialWorkflows = await api.listWorkflows(admin);
     expect(
@@ -189,6 +200,7 @@ describe("MISC-03: workflows lifecycle through public API", () => {
 
     const memberCreated = await api.createWorkflow(
       member,
+      memberAgent.agentId,
       memberWorkflowName,
       "# Member private workflow",
       [201],
@@ -206,20 +218,31 @@ describe("MISC-03: workflows lifecycle through public API", () => {
       }),
     ).toBeFalsy();
 
-    const invalidCreate = await api.requestCreateInvalidWorkflow(admin, [400]);
+    const invalidCreate = await api.requestCreateInvalidWorkflow(
+      admin,
+      agent.agentId,
+      [400],
+    );
     expectApiError(invalidCreate.body);
 
     const created = await api.createWorkflow(
       admin,
+      agent.agentId,
       workflowName,
       "# BDD Workflow\n\nCreated through API.",
       [201],
     );
+    if (created.status !== 201) {
+      throw new Error(
+        `Expected workflow creation to succeed, got ${created.status}`,
+      );
+    }
     expect(created.body).toMatchObject({
       name: workflowName,
       displayName: "BDD Workflow",
       description: "Created through public workflow API",
     });
+    const workflowId = created.body.id;
 
     const listed = await api.listWorkflows(admin);
     expect(
@@ -228,19 +251,19 @@ describe("MISC-03: workflows lifecycle through public API", () => {
       }),
     ).toBeTruthy();
 
-    const detail = await api.readWorkflow(admin, workflowName, [200]);
+    const detail = await api.readWorkflow(admin, workflowId, [200]);
     if (detail.status !== 200) {
       throw new Error(
         `Expected workflow detail to be readable, got ${detail.status}`,
       );
     }
-    expect(detail.body.fileContents).toStrictEqual([
-      { path: "SKILL.md", content: "# BDD Workflow\n\nCreated through API." },
-    ]);
+    expect(detail.body.instruction).toBe(
+      "# BDD Workflow\n\nCreated through API.",
+    );
 
     const updated = await api.updateWorkflow(
       admin,
-      workflowName,
+      workflowId,
       "# BDD Workflow\n\nUpdated through API.",
       [200],
     );
@@ -249,10 +272,12 @@ describe("MISC-03: workflows lifecycle through public API", () => {
         `Expected workflow update to succeed, got ${updated.status}`,
       );
     }
-    expect(updated.body.content).toBe("# BDD Workflow\n\nUpdated through API.");
+    expect(updated.body.instruction).toBe(
+      "# BDD Workflow\n\nUpdated through API.",
+    );
 
-    await api.deleteWorkflow(admin, workflowName, [204]);
-    const missing = await api.readWorkflow(admin, workflowName, [404]);
+    await api.deleteWorkflow(admin, workflowId, [204]);
+    const missing = await api.readWorkflow(admin, workflowId, [404]);
     expectApiError(missing.body);
   });
 });

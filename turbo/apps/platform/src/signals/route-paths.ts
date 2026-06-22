@@ -7,6 +7,8 @@ export const ROUTES = {
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",
   agentPermissions: "/agents/:agentId/permissions",
+  agentWorkflows: "/agents/:agentId/workflows",
+  agentWorkflowDetail: "/agents/:agentId/workflows/:workflowId",
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",

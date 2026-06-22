@@ -1576,19 +1576,13 @@ const ZERO_WORKFLOWS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/workflows/my-workflow/extra",
   "/api/zero/skill/my-workflow",
 ] as const;
-const ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE = "/api/zero/workflows/:name/agents";
-const ZERO_WORKFLOW_AGENTS_PATH = "/api/zero/workflows/my-workflow/agents";
-const ZERO_WORKFLOW_AGENTS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/workflows/my-workflow/agents/extra",
-  "/api/zero/workflows/my-workflow",
-] as const;
-const ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE =
-  "/api/zero/workflows/:name/agents/:agentId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-const ZERO_WORKFLOW_AGENT_BY_ID_PATH =
-  "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001";
-const ZERO_WORKFLOW_AGENT_BY_ID_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/workflows/my-workflow/agents/not-a-uuid",
-  "/api/zero/workflows/my-workflow/agents/00000000-0000-0000-0000-000000000001/extra",
+const ZERO_WORKFLOW_RUN_REWRITE_SOURCE =
+  "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/run";
+const ZERO_WORKFLOW_RUN_PATH =
+  "/api/zero/workflows/00000000-0000-0000-0000-000000000001/run";
+const ZERO_WORKFLOW_RUN_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/workflows/not-a-uuid/run",
+  "/api/zero/workflows/00000000-0000-0000-0000-000000000001/run/extra",
 ] as const;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
@@ -2609,14 +2603,45 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/workflows",
         },
         {
-          source: ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/approve-publish",
           destination:
-            "https://api.example.test/api/zero/workflows/:name/agents/:agentId",
+            "https://api.example.test/api/zero/workflows/:workflowId/approve-publish",
         },
         {
-          source: ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/cancel-publish-request",
           destination:
-            "https://api.example.test/api/zero/workflows/:name/agents",
+            "https://api.example.test/api/zero/workflows/:workflowId/cancel-publish-request",
+        },
+        {
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/copy",
+          destination:
+            "https://api.example.test/api/zero/workflows/:workflowId/copy",
+        },
+        {
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/demote",
+          destination:
+            "https://api.example.test/api/zero/workflows/:workflowId/demote",
+        },
+        {
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/reject-publish",
+          destination:
+            "https://api.example.test/api/zero/workflows/:workflowId/reject-publish",
+        },
+        {
+          source:
+            "/api/zero/workflows/:workflowId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/request-publish",
+          destination:
+            "https://api.example.test/api/zero/workflows/:workflowId/request-publish",
+        },
+        {
+          source: ZERO_WORKFLOW_RUN_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/workflows/:workflowId/run",
         },
         {
           source: ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE,
@@ -7357,54 +7382,28 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the zero workflow agents collection rewrite", async () => {
+  it("should match only the uuid-scoped zero workflow run rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE;
+      return entry.source === ZERO_WORKFLOW_RUN_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/workflows/:name/agents",
-    });
-
-    const matcher = getPathMatch(ZERO_WORKFLOW_AGENTS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_WORKFLOW_AGENTS_PATH)).toStrictEqual({
-      name: "my-workflow",
-    });
-    for (const pathname of ZERO_WORKFLOW_AGENTS_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero workflow agent by-id rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE,
+      source: ZERO_WORKFLOW_RUN_REWRITE_SOURCE,
       destination:
-        "https://api.example.test/api/zero/workflows/:name/agents/:agentId",
+        "https://api.example.test/api/zero/workflows/:workflowId/run",
     });
 
-    const matcher = getPathMatch(ZERO_WORKFLOW_AGENT_BY_ID_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_WORKFLOW_RUN_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_WORKFLOW_AGENT_BY_ID_PATH)).toStrictEqual({
-      name: "my-workflow",
-      agentId: "00000000-0000-0000-0000-000000000001",
+    expect(matcher(ZERO_WORKFLOW_RUN_PATH)).toStrictEqual({
+      workflowId: "00000000-0000-0000-0000-000000000001",
     });
-    for (const pathname of ZERO_WORKFLOW_AGENT_BY_ID_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_WORKFLOW_RUN_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
