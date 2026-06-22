@@ -3,6 +3,7 @@ use chrono::Utc;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
+use std::thread;
 use uuid::Uuid;
 
 const INVALID_REQUEST: i64 = -32600;
@@ -22,6 +23,7 @@ enum Scenario {
     MalformedInitializeResult,
     LargeNotificationBeforeResponse,
     MalformedStdout,
+    HangOnStdinEof,
     NullIdServerRequestBeforeResponse,
     NotificationOverflow,
     OversizedStdout,
@@ -44,6 +46,7 @@ impl Scenario {
                 "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
                 "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
+                "hang-on-stdin-eof" => Ok(Self::HangOnStdinEof),
                 "null-id-server-request-before-response" => {
                     Ok(Self::NullIdServerRequestBeforeResponse)
                 }
@@ -133,6 +136,11 @@ impl AppServerState {
                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
             if self.handle_message(message, &mut output)? == ServerAction::Stop {
                 return Ok(());
+            }
+        }
+        if self.scenario == Scenario::HangOnStdinEof {
+            loop {
+                thread::park();
             }
         }
         Ok(())

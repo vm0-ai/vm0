@@ -333,19 +333,16 @@ impl CodexAppServerClient {
     }
 
     async fn wait_for_child(&mut self, timeout: Duration) -> Result<bool, CodexAppServerError> {
-        let Some(mut wait_rx) = self.wait_rx.take() else {
+        let Some(wait_rx) = self.wait_rx.as_mut() else {
             return Ok(true);
         };
 
-        match tokio::time::timeout(timeout, &mut wait_rx).await {
+        match tokio::time::timeout(timeout, wait_rx).await {
             Ok(result) => {
                 self.finish_child_wait(result)?;
                 Ok(true)
             }
-            Err(_) => {
-                self.wait_rx = Some(wait_rx);
-                Ok(false)
-            }
+            Err(_) => Ok(false),
         }
     }
 
