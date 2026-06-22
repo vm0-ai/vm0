@@ -157,7 +157,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22.19.0
 
       - name: Install pnpm
         run: corepack enable pnpm

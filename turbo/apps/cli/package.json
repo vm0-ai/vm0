@@ -13,6 +13,9 @@
     "vm0": "./dist/index.js",
     "zero": "./dist/zero.js"
   },
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "files": [
     "dist"
   ],
@@ -55,7 +58,7 @@
     "tar": "^7.5.7",
     "tsup": "^8.5.1",
     "typescript": "6.0.3",
-    "undici": "^6.27.0",
+    "undici": "^8.5.0",
     "vitest": "^4.1.9",
     "yaml": "^2.3.4",
     "zod": "^4.3.6"
