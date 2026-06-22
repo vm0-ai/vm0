@@ -1,6 +1,6 @@
 # 007 — Agent-scoped workflow volume re-key + instruction backfill
 
-Companion data migration for SQL migration `0479_agent_scoped_workflows`
+Companion data migration for SQL migration `0480_agent_scoped_workflows`
 (issue [vm0-ai/vm0#18434](https://github.com/vm0-ai/vm0/issues/18434)).
 
 ## Background

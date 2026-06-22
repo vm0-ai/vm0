@@ -3,7 +3,7 @@
 /**
  * Agent-scoped workflow redesign — R2 volume re-key + instruction backfill.
  *
- * Companion data migration for SQL migration `0479_agent_scoped_workflows`
+ * Companion data migration for SQL migration `0480_agent_scoped_workflows`
  * (issue vm0-ai/vm0#18434). The SQL migration already:
  *   - gave every `zero_workflows` row an `agent_id`,
  *   - duplicated multi-bound workflows into one row per agent (new uuids,
