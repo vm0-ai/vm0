@@ -178,7 +178,13 @@ import {
   googleMeetFirewall,
 } from "./google-meet.generated";
 import { googleSearchConsoleFirewall } from "./google-search-console.generated";
-import { googleSheetsFirewall } from "./google-sheets.generated";
+import {
+  googleSheetsCategories,
+  googleSheetsCategoryOrder,
+  googleSheetsDefaultAllowed,
+  googleSheetsDefaultUnknownPolicy,
+  googleSheetsFirewall,
+} from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
 import { groqFirewall } from "./groq.generated";
@@ -713,6 +719,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleMeetCategories,
     displayOrder: googleMeetCategoryOrder,
   },
+  "google-sheets": {
+    categories: googleSheetsCategories,
+    displayOrder: googleSheetsCategoryOrder,
+  },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
@@ -871,6 +881,7 @@ const DEFAULT_ALLOWED: Partial<
   "google-docs": googleDocsDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   "google-meet": googleMeetDefaultAllowed,
+  "google-sheets": googleSheetsDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
@@ -887,6 +898,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   "google-docs": googleDocsDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   "google-meet": googleMeetDefaultUnknownPolicy,
+  "google-sheets": googleSheetsDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
 };

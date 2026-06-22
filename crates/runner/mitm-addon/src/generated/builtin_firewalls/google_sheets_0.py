@@ -14,90 +14,86 @@ JSON_PART = r"""{
       "base": "https://sheets.googleapis.com",
       "permissions": [
         {
-          "description": "See, edit, create, and delete all of your Google Drive files",
-          "name": "drive",
+          "description": "Read Google Sheets developer metadata.",
+          "name": "developer-metadata.read",
           "rules": [
-            "POST /v4/spreadsheets",
-            "GET /v4/spreadsheets/{spreadsheetId}",
-            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
-            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
-            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
-            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
-            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
+            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}"
+          ]
+        },
+        {
+          "description": "Search Google Sheets developer metadata.",
+          "name": "developer-metadata.search",
+          "rules": [
+            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search"
+          ]
+        },
+        {
+          "description": "Copy sheets between Google Sheets spreadsheets.",
+          "name": "sheets.copy",
+          "rules": [
+            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo"
+          ]
+        },
+        {
+          "description": "Create Google Sheets spreadsheets.",
+          "name": "spreadsheets.create",
+          "rules": [
+            "POST /v4/spreadsheets"
+          ]
+        },
+        {
+          "description": "Read Google Sheets spreadsheet metadata and grid data.",
+          "name": "spreadsheets.read",
+          "rules": [
+            "GET /v4/spreadsheets/{spreadsheetId}"
+          ]
+        },
+        {
+          "description": "Read Google Sheets spreadsheets by data filter.",
+          "name": "spreadsheets.read-by-data-filter",
+          "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
           ]
         },
         {
-          "description": "See, edit, create, and delete only the specific Google Drive files you use with this app",
-          "name": "drive.file",
+          "description": "Apply batch updates to Google Sheets spreadsheets.",
+          "name": "spreadsheets.write",
           "rules": [
-            "POST /v4/spreadsheets",
-            "GET /v4/spreadsheets/{spreadsheetId}",
-            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
-            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
-            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
-            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
-            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
-            "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
+            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate"
           ]
         },
         {
-          "description": "See and download all your Google Drive files",
-          "name": "drive.readonly",
+          "description": "Clear Google Sheets cell values.",
+          "name": "values.clear",
           "rules": [
-            "GET /v4/spreadsheets/{spreadsheetId}",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter"
+          ]
+        },
+        {
+          "description": "Read Google Sheets cell values.",
+          "name": "values.read",
+          "rules": [
             "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
             "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"
           ]
         },
         {
-          "description": "See, edit, create, and delete all your Google Sheets spreadsheets",
-          "name": "spreadsheets",
+          "description": "Read Google Sheets cell values by data filter.",
+          "name": "values.read-by-data-filter",
           "rules": [
-            "POST /v4/spreadsheets",
-            "GET /v4/spreadsheets/{spreadsheetId}",
-            "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}",
-            "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search",
-            "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo",
-            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
-            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClear",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchClearByDataFilter",
-            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
-            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter",
-            "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate",
-            "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter"
           ]
         },
         {
-          "description": "See all your Google Sheets spreadsheets",
-          "name": "spreadsheets.readonly",
+          "description": "Append and update Google Sheets cell values.",
+          "name": "values.write",
           "rules": [
-            "GET /v4/spreadsheets/{spreadsheetId}",
-            "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
-            "GET /v4/spreadsheets/{spreadsheetId}/values:batchGet"
+            "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",
+            "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:append",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdate",
+            "POST /v4/spreadsheets/{spreadsheetId}/values:batchUpdateByDataFilter"
           ]
         }
       ]
