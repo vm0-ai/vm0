@@ -135,6 +135,27 @@ describe("firewall metadata generator", () => {
     expect(source).not.toContain('"rules"');
   });
 
+  it("keeps generated server execution metadata eager and server-shaped", () => {
+    const source = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../connectors/src/firewall-metadata/server-execution.generated.ts",
+      ),
+      "utf-8",
+    );
+
+    expect(staticValueModuleSpecifiers(source)).toStrictEqual([]);
+    expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
+    expect(source).toContain("FIREWALL_SERVER_EXECUTION_METADATA");
+    expect(source).toContain('"baseUrlVarNames"');
+    expect(source).toContain('"baseUrlTemplates"');
+    expect(source).toContain('"secretPlaceholderNames"');
+    expect(source).toContain('"placeholderValues"');
+    expect(source).not.toContain('"permissions":');
+    expect(source).not.toContain('"description"');
+    expect(source).not.toContain('"rules"');
+  });
+
   it("keeps the generated runtime loader literal and registry-shaped", () => {
     const registrySource = fs.readFileSync(
       path.resolve(

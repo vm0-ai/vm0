@@ -88,5 +88,11 @@ describe("firewall metadata import boundary", () => {
 
     expect(importsEagerConnectorRuntimeFirewall(source)).toBeFalsy();
     expect(importsSpecifier(source, "@vm0/core/firewalls")).toBeFalsy();
+    expect(
+      importsSpecifier(
+        source,
+        "@vm0/connectors/firewall-execution-metadata/server",
+      ),
+    ).toBeFalsy();
   });
 });

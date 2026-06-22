@@ -27,13 +27,10 @@ import {
   type FirewallConfig,
 } from "../firewall-types";
 import {
-  getFirewallExecutionMetadataSummary,
-  isFirewallExecutionMetadataConnectorType,
-  loadFirewallExecutionMetadata,
-} from "../firewall-execution-metadata/server";
-import {
   getBuiltinConnectorHostOwner,
+  getFirewallExecutionMetadata,
   getFirewallServerMetadataSummary,
+  isFirewallExecutionMetadataConnectorType,
   isFirewallServerMetadataConnectorType,
   loadFirewallPermissionIndex,
   resolveFirewallServerMetadataPolicies,
@@ -306,9 +303,17 @@ describe("firewall metadata", () => {
     expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
   });
 
-  it("keeps execution metadata behind an explicit package subpath", () => {
+  it("keeps execution metadata behind the server metadata package subpath", () => {
     const rootEntrypoint = fs.readFileSync(
       path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const publicMetadataEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-metadata/index.ts"),
+      "utf-8",
+    );
+    const serverMetadataEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-metadata/server.ts"),
       "utf-8",
     );
     const packageJson = JSON.parse(
@@ -319,9 +324,15 @@ describe("firewall metadata", () => {
     ) as { exports: Record<string, unknown> };
 
     expect(rootEntrypoint).not.toContain("firewall-execution-metadata/server");
-    expect(packageJson.exports).toHaveProperty(
+    expect(rootEntrypoint).not.toContain("server-execution.generated");
+    expect(publicMetadataEntrypoint).not.toContain(
+      "server-execution.generated",
+    );
+    expect(serverMetadataEntrypoint).toContain("./server-execution.generated");
+    expect(packageJson.exports).not.toHaveProperty(
       "./firewall-execution-metadata/server",
     );
+    expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
   });
 
   it("resolves metadata permission defaults and overrides", () => {
@@ -416,22 +427,6 @@ describe("firewall metadata", () => {
     const metadataRoot = path.resolve(
       import.meta.dirname,
       "../firewall-metadata",
-    );
-    for (const file of listTsFiles(metadataRoot)) {
-      const source = fs.readFileSync(file, "utf-8");
-      const specs = importSpecifiers(source);
-      for (const spec of specs) {
-        expect(spec).not.toBe("@vm0/connectors/firewalls");
-        expect(spec).not.toMatch(/^(\.\.\/)+firewalls(?:\/|$)/);
-        expect(spec).not.toMatch(/\/firewalls(?:\/|$)/);
-      }
-    }
-  });
-
-  it("keeps execution metadata modules independent from runtime firewall modules", () => {
-    const metadataRoot = path.resolve(
-      import.meta.dirname,
-      "../firewall-execution-metadata",
     );
     for (const file of listTsFiles(metadataRoot)) {
       const source = fs.readFileSync(file, "utf-8");
@@ -618,8 +613,8 @@ describe("firewall metadata", () => {
 
     for (const [type, firewall] of runtimeEntries()) {
       expect(isFirewallExecutionMetadataConnectorType(type)).toBe(true);
-      const detail = await loadFirewallExecutionMetadata(type);
-      expect(detail).not.toBeNull();
+      const metadata = getFirewallExecutionMetadata(type);
+      expect(metadata).not.toBeNull();
       const baseUrlTemplates = collectRuntimeBaseUrlTemplates(firewall);
       const baseUrlVarNames = [
         ...new Set(
@@ -630,26 +625,19 @@ describe("firewall metadata", () => {
       ].sort(compareStrings);
       const placeholderValues = collectRuntimePlaceholderValues(firewall);
 
-      expect(getFirewallExecutionMetadataSummary(type)).toStrictEqual({
-        type,
-        billable: billableConnectors.has(type),
-      });
-      expect(detail!.type).toBe(type);
-      expect(detail!.billable).toBe(billableConnectors.has(type));
-      expect(detail!.baseUrlVarNames).toStrictEqual(baseUrlVarNames);
-      expect(detail!.baseUrlTemplates).toStrictEqual(baseUrlTemplates);
-      expect(detail!.placeholderValues).toStrictEqual(placeholderValues);
-      expect(detail!.secretPlaceholderNames).toStrictEqual(
+      expect(metadata!.type).toBe(type);
+      expect(metadata!.billable).toBe(billableConnectors.has(type));
+      expect(metadata!.baseUrlVarNames).toStrictEqual(baseUrlVarNames);
+      expect(metadata!.baseUrlTemplates).toStrictEqual(baseUrlTemplates);
+      expect(metadata!.placeholderValues).toStrictEqual(placeholderValues);
+      expect(metadata!.secretPlaceholderNames).toStrictEqual(
         Object.keys(placeholderValues),
       );
-      assertNoForbiddenExecutionMetadataKeys(detail, type);
+      assertNoForbiddenExecutionMetadataKeys(metadata!, type);
     }
 
     expect(isFirewallExecutionMetadataConnectorType("cloudinary")).toBe(false);
-    expect(getFirewallExecutionMetadataSummary("cloudinary")).toBeNull();
-    await expect(
-      loadFirewallExecutionMetadata("cloudinary"),
-    ).resolves.toBeNull();
+    expect(getFirewallExecutionMetadata("cloudinary")).toBeNull();
   });
 
   it("keeps category metadata synchronized with runtime categories", async () => {

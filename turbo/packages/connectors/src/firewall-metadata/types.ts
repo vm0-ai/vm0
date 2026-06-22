@@ -10,6 +10,20 @@ export interface FirewallPermissionSummaryMetadata {
   readonly hasDefaultPolicyOverrides: boolean;
 }
 
+export interface FirewallExecutionBaseUrlTemplateMetadata {
+  readonly base: string;
+  readonly credentialed: boolean;
+}
+
+export interface FirewallExecutionMetadata {
+  readonly type: ConnectorType;
+  readonly billable: boolean;
+  readonly baseUrlVarNames: readonly string[];
+  readonly baseUrlTemplates: readonly FirewallExecutionBaseUrlTemplateMetadata[];
+  readonly secretPlaceholderNames: readonly string[];
+  readonly placeholderValues: Readonly<Record<string, string>>;
+}
+
 export interface FirewallPermissionMetadataPermission {
   readonly name: string;
   readonly description?: string;

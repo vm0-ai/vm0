@@ -48,10 +48,6 @@
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
     },
-    "./firewall-execution-metadata/server": {
-      "import": "./src/firewall-execution-metadata/server.ts",
-      "types": "./src/firewall-execution-metadata/server.ts"
-    },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"
