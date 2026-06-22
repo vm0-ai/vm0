@@ -1430,23 +1430,6 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
     let cache = SessionWorkspaceCache::new(paths.clone());
     let session_id = "sess-preserve-existing";
-    let image_size_bytes = format!("image-{session_id}").len() as u64;
-    let run_id = RunId::new_v4();
-    let sandbox_id = sandbox::SandboxId::new_v4();
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id,
-                sandbox_id,
-                profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: Some(session_id),
-                working_dir: "/workspace",
-                image_size_bytes,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
     let cache_key = write_current_cache_entry(
         &cache,
         RunId::new_v4(),
@@ -1456,11 +1439,28 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
         "2026-05-02T00:00:00.000Z",
     )
     .await;
+    let image_size_bytes = format!("image-{session_id}").len() as u64;
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
     let promotion = lease
         .into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id,
-            cli_agent_session_id_override: None,
+            cli_agent_session_id_override: Some(session_id),
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
