@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ably_subscriber::protocol::{
     AblyMessage, ConnectionDetails, ErrorInfo, ProtocolMessage, action, decode_msg, encode_msg,
-    error_code,
+    error_code, flags,
 };
 use ably_subscriber::{Event, SubscribeConfig, TimingConfig, subscribe};
 use futures_util::{SinkExt, StreamExt};
@@ -32,6 +32,7 @@ type WsStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
 struct HandshakeOptions {
     max_idle_interval_ms: i64,
     connection_state_ttl_ms: i64,
+    attached_channel_serial: Option<&'static str>,
 }
 
 impl Default for HandshakeOptions {
@@ -39,6 +40,7 @@ impl Default for HandshakeOptions {
         Self {
             max_idle_interval_ms: 15_000,
             connection_state_ttl_ms: 120_000,
+            attached_channel_serial: Some("serial-0"),
         }
     }
 }
@@ -101,7 +103,7 @@ impl MockAblyServer {
         let attached = ProtocolMessage {
             action: action::ATTACHED,
             channel: Some(channel.into()),
-            channel_serial: Some("serial-0".into()),
+            channel_serial: opts.attached_channel_serial.map(str::to_string),
             ..Default::default()
         };
         ws.send(tungstenite::Message::Binary(encode_msg(&attached)?.into()))
@@ -116,6 +118,11 @@ impl MockAblyServer {
         let ws = tokio_tungstenite::accept_async(tcp).await?;
         Ok(ws)
     }
+}
+
+fn assert_attach_resume(msg: &ProtocolMessage, expected: bool) {
+    let has_resume = msg.flags.unwrap_or(0) & flags::ATTACH_RESUME != 0;
+    assert_eq!(has_resume, expected, "unexpected ATTACH_RESUME flag");
 }
 
 async fn read_protocol_msg(
@@ -195,10 +202,20 @@ async fn send_message(
     name: &str,
     data: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    send_message_with_channel_serial(ws, channel, name, data, Some("serial-1")).await
+}
+
+async fn send_message_with_channel_serial(
+    ws: &mut WsStream,
+    channel: &str,
+    name: &str,
+    data: serde_json::Value,
+    channel_serial: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let msg = ProtocolMessage {
         action: action::MESSAGE,
         channel: Some(channel.into()),
-        channel_serial: Some("serial-1".into()),
+        channel_serial: channel_serial.map(str::to_string),
         messages: Some(vec![AblyMessage {
             id: Some("msg-1".into()),
             name: Some(name.into()),
@@ -1722,6 +1739,194 @@ async fn server_sends_detached_reattach() {
 }
 
 #[tokio::test]
+async fn reattach_after_attached_without_serial_keeps_resume_intent() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (after_reattach_seen_tx, after_reattach_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    attached_channel_serial: None,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        send_message(&mut conn, "ch", "after-reattach", serde_json::json!("ok"))
+            .await
+            .unwrap();
+        wait_for_test_observation(after_reattach_seen_rx, "after-reattach message").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after reattach")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-reattach"));
+            after_reattach_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn message_without_serial_preserves_resume_serial_for_reattach() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (after_reattach_seen_tx, after_reattach_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+
+        send_message_with_channel_serial(
+            &mut conn,
+            "ch",
+            "without-serial",
+            serde_json::json!("ok"),
+            None,
+        )
+        .await
+        .unwrap();
+        wait_for_test_observation(message_seen_rx, "message without serial").await;
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        send_message(
+            &mut conn,
+            "ch",
+            "after-preserved-serial",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        wait_for_test_observation(after_reattach_seen_rx, "after preserved serial message").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message without serial")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("without-serial"));
+            message_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after reattach")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-preserved-serial"));
+            after_reattach_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn huge_realtime_request_timeout_allows_detached_reattach() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
@@ -2854,6 +3059,8 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
             .expect("timed out waiting for ATTACH")
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         // Second DETACHED before ATTACHED means the channel is currently
         // attaching. ably-js moves it to suspended and retries ATTACH on the
@@ -2870,6 +3077,8 @@ async fn detached_while_attaching_suspends_and_retries_attach() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
 
         let attached = ProtocolMessage {
             action: action::ATTACHED,

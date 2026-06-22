@@ -4,7 +4,8 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite;
 
 use crate::protocol::{
-    ErrorInfo, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, error_code,
+    AttachMode, ErrorInfo, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg,
+    error_code,
 };
 use crate::types::{Error, TimingConfig, TokenDetails};
 
@@ -158,8 +159,9 @@ pub(super) fn encode_attach_for_channel(
     channel: &str,
     channel_params: Option<&HashMap<String, String>>,
     channel_serial: Option<&str>,
+    attach_mode: AttachMode,
 ) -> Result<Vec<u8>, Error> {
-    let attach = build_attach_msg(channel, channel_params, channel_serial);
+    let attach = build_attach_msg(channel, channel_params, channel_serial, attach_mode);
     encode_msg(&attach)
 }
 
@@ -174,7 +176,7 @@ pub(crate) async fn connect_and_attach(
     let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
     let connected_msg = wait_for_connected(&mut ws_read).await?;
     let mut conn_state = ConnState::from_connected(&connected_msg, token, timing);
-    let encoded = encode_attach_for_channel(channel, channel_params, None)?;
+    let encoded = encode_attach_for_channel(channel, channel_params, None, AttachMode::Clean)?;
     ws_write
         .send(tungstenite::Message::Binary(encoded.into()))
         .await?;

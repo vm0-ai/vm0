@@ -12,7 +12,7 @@ use super::state::{
     ChannelLifecycleState, ConnState, ConnectionLifecycleState, RealtimeStateMachine,
     checked_deadline_after, checked_deadline_from, retry_delay,
 };
-use crate::protocol::ProtocolMessage;
+use crate::protocol::{AttachMode, ProtocolMessage};
 use crate::types::TokenDetails;
 
 /// Mutable session state owned by the realtime event loop.
@@ -49,6 +49,11 @@ pub(crate) struct SessionState {
     /// message unless channel failure or suspended cleanup clears the pending
     /// marker.
     connected_event_pending: bool,
+    /// Whether automatic channel attaches should be encoded as non-clean
+    /// attaches with ATTACH_RESUME. This is independent of channel_serial:
+    /// suspended retry clears the serial but still continues the same
+    /// subscription attachment.
+    attach_resume: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +72,7 @@ impl SessionState {
             channel_retry_count: 0,
             channel_operation_deadline: None,
             connected_event_pending: false,
+            attach_resume: true,
         }
     }
 
@@ -96,6 +102,14 @@ impl SessionState {
 
     pub(super) fn channel_serial(&self) -> Option<&str> {
         self.conn_state.channel_serial.as_deref()
+    }
+
+    pub(super) fn attach_mode(&self) -> AttachMode {
+        if self.attach_resume {
+            AttachMode::Resume
+        } else {
+            AttachMode::Clean
+        }
     }
 
     pub(super) fn token(&self) -> &str {
@@ -169,6 +183,7 @@ impl SessionState {
     // backoff from zero for the next suspension.
     pub(super) fn mark_channel_attached(&mut self) {
         self.lifecycle.notify_channel_attached();
+        self.attach_resume = true;
         self.channel_retry_at = None;
         self.channel_retry_count = 0;
         self.channel_operation_deadline = None;
@@ -176,6 +191,7 @@ impl SessionState {
 
     pub(super) fn enter_channel_failed(&mut self) {
         self.conn_state.channel_serial = None;
+        self.attach_resume = false;
         self.lifecycle.notify_channel_failed();
         self.channel_retry_at = None;
         self.channel_operation_deadline = None;
@@ -227,16 +243,19 @@ impl SessionState {
     }
 
     pub(super) fn request_closing(&mut self) {
+        self.attach_resume = false;
         self.lifecycle.request_closing();
     }
 
     pub(super) fn mark_closed(&mut self) {
+        self.attach_resume = false;
         self.lifecycle.notify_closed();
     }
 
     pub(super) fn enter_connection_failed(&mut self) {
         self.lifecycle.notify_failed();
         self.conn_state.channel_serial = None;
+        self.attach_resume = false;
         self.channel_retry_at = None;
         self.channel_operation_deadline = None;
     }
@@ -269,6 +288,7 @@ impl SessionState {
 
         if failures >= max_failures {
             self.lifecycle.notify_failed();
+            self.attach_resume = false;
             return TokenRenewalFailure::Fatal { failures };
         }
 
@@ -304,6 +324,7 @@ impl SessionState {
         self.commit_connected_transport_state(connected_msg, token, token_renewal_margin);
         self.token_renewal_failures = 0;
         self.connected_event_pending = false;
+        self.attach_resume = true;
         self.lifecycle.notify_connected();
     }
 
@@ -324,6 +345,7 @@ impl SessionState {
 
     pub(super) fn commit_reconnect_closed(&mut self) {
         self.conn_state.channel_serial = None;
+        self.attach_resume = false;
         self.lifecycle.notify_closed();
     }
 
@@ -369,7 +391,7 @@ impl SessionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ConnectionDetails, action};
+    use crate::protocol::{AttachMode, ConnectionDetails, action};
     use crate::types::{TimingConfig, TokenDetails};
 
     fn test_token() -> TokenDetails {
@@ -421,6 +443,7 @@ mod tests {
         assert_eq!(state.connection_id(), None);
         assert_eq!(state.connection_key(), None);
         assert_eq!(state.channel_serial(), None);
+        assert_eq!(state.attach_mode(), AttachMode::Resume);
         assert_eq!(state.channel_retry_at(), None);
         assert_eq!(state.channel_operation_deadline(), None);
         assert!(!state.connected_event_pending);
@@ -455,9 +478,29 @@ mod tests {
 
         assert!(state.connected_event_pending);
         assert_eq!(state.channel_serial(), None);
+        assert_eq!(state.attach_mode(), AttachMode::Resume);
         assert_eq!(state.connection_id(), Some("conn-2"));
         assert_eq!(state.channel_state(), ChannelLifecycleState::Suspended);
         assert!(state.channel_retry_at().is_some());
+    }
+
+    #[test]
+    fn terminal_channel_states_clear_attach_resume_intent() {
+        let mut closed_state = SessionState::connected(test_conn_state());
+        closed_state.request_closing();
+        closed_state.mark_closed();
+
+        assert_eq!(closed_state.attach_mode(), AttachMode::Clean);
+
+        let mut channel_failed_state = SessionState::connected(test_conn_state());
+        channel_failed_state.enter_channel_failed();
+
+        assert_eq!(channel_failed_state.attach_mode(), AttachMode::Clean);
+
+        let mut connection_failed_state = SessionState::connected(test_conn_state());
+        connection_failed_state.enter_connection_failed();
+
+        assert_eq!(connection_failed_state.attach_mode(), AttachMode::Clean);
     }
 
     #[test]
@@ -469,5 +512,6 @@ mod tests {
 
         assert!(matches!(result, TokenRenewalFailure::Fatal { failures: 1 }));
         assert_eq!(state.lifecycle.connection, ConnectionLifecycleState::Failed);
+        assert_eq!(state.attach_mode(), AttachMode::Clean);
     }
 }

@@ -220,22 +220,26 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
 // Helper to build an ATTACH message
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttachMode {
+    Clean,
+    Resume,
+}
+
 pub fn build_attach_msg(
     channel: &str,
     params: Option<&HashMap<String, String>>,
     channel_serial: Option<&str>,
+    attach_mode: AttachMode,
 ) -> ProtocolMessage {
-    let (cs, f) = match channel_serial {
-        Some(s) => (
-            Some(s.to_string()),
-            flags::MODE_SUBSCRIBE | flags::ATTACH_RESUME,
-        ),
-        None => (None, flags::MODE_SUBSCRIBE),
-    };
+    let mut f = flags::MODE_SUBSCRIBE;
+    if attach_mode == AttachMode::Resume {
+        f |= flags::ATTACH_RESUME;
+    }
     ProtocolMessage {
         action: action::ATTACH,
         channel: Some(channel.to_string()),
-        channel_serial: cs,
+        channel_serial: channel_serial.map(str::to_string),
         flags: Some(f),
         params: params.cloned(),
         ..Default::default()
@@ -473,7 +477,7 @@ mod tests {
 
     #[test]
     fn build_attach_msg_basic() {
-        let msg = build_attach_msg("my-channel", None, None);
+        let msg = build_attach_msg("my-channel", None, None, AttachMode::Clean);
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("my-channel"));
         assert_eq!(msg.flags, Some(flags::MODE_SUBSCRIBE));
@@ -485,7 +489,7 @@ mod tests {
     fn build_attach_msg_with_rewind() {
         let mut params = HashMap::new();
         params.insert("rewind".to_string(), "2m".to_string());
-        let msg = build_attach_msg("run:abc", Some(&params), None);
+        let msg = build_attach_msg("run:abc", Some(&params), None, AttachMode::Clean);
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("run:abc"));
         assert_eq!(
@@ -498,8 +502,8 @@ mod tests {
     }
 
     #[test]
-    fn build_attach_msg_with_channel_serial() {
-        let msg = build_attach_msg("my-channel", None, Some("serial-abc"));
+    fn build_attach_msg_resume_with_channel_serial() {
+        let msg = build_attach_msg("my-channel", None, Some("serial-abc"), AttachMode::Resume);
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-abc"));
         let f = msg.flags.unwrap();
@@ -508,10 +512,19 @@ mod tests {
     }
 
     #[test]
-    fn build_attach_msg_without_channel_serial_no_resume_flag() {
-        let msg = build_attach_msg("my-channel", None, None);
+    fn build_attach_msg_clean_without_channel_serial_no_resume_flag() {
+        let msg = build_attach_msg("my-channel", None, None, AttachMode::Clean);
         let f = msg.flags.unwrap();
         assert_eq!(f & flags::ATTACH_RESUME, 0);
+        assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
+    }
+
+    #[test]
+    fn build_attach_msg_resume_without_channel_serial_sets_resume_flag() {
+        let msg = build_attach_msg("my-channel", None, None, AttachMode::Resume);
+        assert!(msg.channel_serial.is_none());
+        let f = msg.flags.unwrap();
+        assert_ne!(f & flags::ATTACH_RESUME, 0);
         assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
     }
 }
