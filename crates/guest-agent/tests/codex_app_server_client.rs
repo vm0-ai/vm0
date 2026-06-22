@@ -486,6 +486,52 @@ async fn codex_app_server_cancelled_request_fails_next_request() -> Result<(), S
 }
 
 #[tokio::test]
+async fn codex_app_server_poisoning_one_client_does_not_stop_another() -> Result<(), String> {
+    let mut victim = spawn_client(Some("hang-on-thread-start"))?;
+    let victim_pid = victim
+        .process_id()
+        .ok_or_else(|| "victim app-server child missing pid".to_string())?;
+    wait_result(victim.initialize(), "victim initialize").await?;
+
+    let mut survivor = spawn_client(None)?;
+    let survivor_pid = survivor
+        .process_id()
+        .ok_or_else(|| "survivor app-server child missing pid".to_string())?;
+    wait_result(survivor.initialize(), "survivor initialize").await?;
+
+    let timed_out = tokio::time::timeout(
+        Duration::from_millis(100),
+        victim.request_value("thread/start", json!({})),
+    )
+    .await;
+    assert!(timed_out.is_err());
+
+    let poisoned = wait_result_allow_error(
+        victim.request_value("mock/state", json!({})),
+        "victim poison",
+    )
+    .await;
+    match poisoned {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("previous app-server request did not complete"));
+        }
+        other => return Err(format!("expected victim poison error, got {other:?}")),
+    }
+
+    let survivor_state = wait_result(
+        survivor.request_value("mock/state", json!({})),
+        "survivor mock/state",
+    )
+    .await?;
+    assert_eq!(survivor_state["initializedNotificationReceived"], true);
+
+    wait_result(victim.shutdown(), "victim shutdown").await?;
+    assert_process_exited(victim_pid)?;
+    wait_result(survivor.shutdown(), "survivor shutdown").await?;
+    assert_process_exited(survivor_pid)
+}
+
+#[tokio::test]
 async fn codex_app_server_cancelled_notification_fails_next_request() -> Result<(), String> {
     let mut client = spawn_client(Some("hang-after-initialize-response"))?;
     let pid = client
