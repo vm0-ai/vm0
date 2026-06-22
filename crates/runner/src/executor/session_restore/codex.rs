@@ -277,6 +277,26 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_script_accepts_uppercase_session_id() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        create_file(&matching_jsonl);
+
+        let output = run_cleanup_with_session_id(
+            &codex_home,
+            &restore_path,
+            &SESSION_ID.to_ascii_uppercase(),
+        );
+
+        assert_success(&output);
+        assert!(!matching_jsonl.exists());
+    }
+
+    #[test]
     fn cleanup_script_rejects_restore_path_outside_sessions_root() {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");

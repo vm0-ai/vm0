@@ -37,19 +37,19 @@ for component in $relative_dir; do
   check_restore_dir_component "$current"
 done
 IFS="$old_ifs"
-if [ -d "$root" ]; then
-  id="$VM0_CODEX_RESTORE_SESSION_ID"
-  id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
-  case "$id_no_dashes" in
-    ""|*[!0123456789abcdef]*)
-      echo "invalid codex restore session id" >&2
-      exit 1
-      ;;
-  esac
-  if [ "${#id_no_dashes}" -ne 32 ]; then
+id="$VM0_CODEX_RESTORE_SESSION_ID"
+id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
+case "$id_no_dashes" in
+  ""|*[!0123456789abcdefABCDEF]*)
     echo "invalid codex restore session id" >&2
     exit 1
-  fi
+    ;;
+esac
+if [ "${#id_no_dashes}" -ne 32 ]; then
+  echo "invalid codex restore session id" >&2
+  exit 1
+fi
+if [ -d "$root" ]; then
   find "$root" \( -type f -o -type l \) \( \
     -iname "*${id}*.jsonl" -o \
     -iname "*${id}*.jsonl.zst" -o \
