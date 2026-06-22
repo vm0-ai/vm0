@@ -2296,37 +2296,73 @@ describe("chat composer templates", () => {
             height: 270,
           },
         );
-        const previewVideo = Array.from(
-          document.querySelectorAll("video"),
-        ).find((video) => {
-          return video.getAttribute("src") === videoStyle.previewVideo;
-        });
-        if (!previewVideo) {
+        const previewVideo = document
+          .querySelector(`source[src="${videoStyle.previewVideo}"]`)
+          ?.closest("video");
+        if (!(previewVideo instanceof HTMLVideoElement)) {
           throw new Error("Video template preview video not found");
         }
+        const previewRoot = previewVideo.closest(
+          "[data-video-template-preview]",
+        );
+        if (!previewRoot) {
+          throw new Error("Video template preview root not found");
+        }
+        expect(
+          previewRoot.querySelector("[data-video-template-poster]"),
+        ).toHaveAttribute("src", posterUrl);
+        expect(
+          previewVideo.querySelector('source[type="video/webm; codecs=vp9"]'),
+        ).toHaveAttribute("src", videoStyle.previewWebm);
         expect(previewVideo).toHaveAttribute("poster", posterUrl);
         expect(previewVideo).toHaveAttribute("preload", "none");
+        expect(
+          screen.getByLabelText(
+            `Play video template preview ${videoStyle.title}`,
+          ),
+        ).toBeInTheDocument();
         expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
         expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
       });
 
-      const previewVideo = Array.from(document.querySelectorAll("video")).find(
-        (video) => {
-          return video.getAttribute("src") === videoStyle.previewVideo;
-        },
-      );
-      if (!previewVideo) {
+      const previewVideo = document
+        .querySelector(`source[src="${videoStyle.previewVideo}"]`)
+        ?.closest("video");
+      if (!(previewVideo instanceof HTMLVideoElement)) {
         throw new Error("Video template preview video not found");
       }
-      fireEvent.mouseEnter(previewVideo);
+      const previewRoot = previewVideo.closest("[data-video-template-preview]");
+      if (!previewRoot) {
+        throw new Error("Video template preview root not found");
+      }
+      const previewPlayButton = screen.getByLabelText(
+        `Play video template preview ${videoStyle.title}`,
+      );
+      fireEvent.click(previewPlayButton);
       expect(playSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.defaultMuted).toBeTruthy();
       expect(previewVideo.muted).toBeTruthy();
+      expect(previewVideo.preload).toBe("metadata");
+      fireEvent.playing(previewVideo);
+      expect(previewVideo.dataset.previewPlaying).toBe("true");
 
       previewVideo.currentTime = 3;
-      fireEvent.mouseLeave(previewVideo);
+      fireEvent.mouseLeave(previewRoot);
       expect(pauseSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.currentTime).toBe(0);
+      expect(previewVideo.dataset.previewPlaying).toBe("false");
+
+      fireEvent.mouseEnter(previewRoot);
+      expect(playSpy).toHaveBeenCalledTimes(2);
+      previewVideo.currentTime = 4;
+      Object.defineProperty(previewVideo, "paused", {
+        configurable: true,
+        value: false,
+      });
+      fireEvent.click(previewPlayButton);
+      expect(playSpy).toHaveBeenCalledTimes(2);
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(previewVideo.currentTime).toBe(4);
     } finally {
       playSpy.mockRestore();
       pauseSpy.mockRestore();
