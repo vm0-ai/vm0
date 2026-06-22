@@ -3403,6 +3403,13 @@
       "when": 1782117610152,
       "tag": "0485_remap_youtube_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1782127959554,
+      "tag": "0486_clear_google_permission_grants",
+      "breakpoints": true
     }
   ]
 }
