@@ -341,8 +341,14 @@ impl CodexAppServerClient {
             return Ok(());
         }
 
+        let requested_graceful_shutdown = self.stdin.is_some();
         self.close_io_handles();
-        if self.wait_rx.is_some() && !self.wait_for_child(SHUTDOWN_SIGTERM_GRACE).await? {
+        let child_exited = if requested_graceful_shutdown {
+            self.wait_for_child(SHUTDOWN_SIGTERM_GRACE).await?
+        } else {
+            self.try_finish_child_wait()?.is_some()
+        };
+        if self.wait_rx.is_some() && !child_exited {
             self.signal_process_group(libc::SIGTERM);
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
                 self.signal_process_group(libc::SIGKILL);

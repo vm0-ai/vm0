@@ -593,7 +593,11 @@ async fn codex_app_server_cancelled_shutdown_can_retry_and_reap_child() -> Resul
 
     cancel_after_first_pending(client.shutdown(), "shutdown").await?;
 
-    wait_result(client.shutdown(), "shutdown after cancellation").await?;
+    match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("shutdown after cancellation failed: {error:?}")),
+        Err(_) => return Err("shutdown after cancellation waited for grace".to_string()),
+    }
     assert!(client.process_id().is_none());
     assert_process_exited(pid)
 }
