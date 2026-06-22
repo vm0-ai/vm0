@@ -348,13 +348,21 @@ impl CodexAppServerClient {
         result: Result<std::io::Result<ExitStatus>, oneshot::error::RecvError>,
     ) -> Result<ExitStatus, CodexAppServerError> {
         self.wait_rx = None;
-        self.clear_child_process_handles();
         match result {
-            Ok(Ok(status)) => Ok(status),
-            Ok(Err(error)) => Err(CodexAppServerError::Io(error)),
-            Err(_) => Err(CodexAppServerError::Protocol(
-                "app-server wait task ended without status".to_string(),
-            )),
+            Ok(Ok(status)) => {
+                self.clear_child_process_handles();
+                Ok(status)
+            }
+            Ok(Err(error)) => {
+                self.kill_and_clear_child_process_handles();
+                Err(CodexAppServerError::Io(error))
+            }
+            Err(_) => {
+                self.kill_and_clear_child_process_handles();
+                Err(CodexAppServerError::Protocol(
+                    "app-server wait task ended without status".to_string(),
+                ))
+            }
         }
     }
 
@@ -371,13 +379,13 @@ impl CodexAppServerClient {
             }
             Ok(Err(error)) => {
                 self.wait_rx = None;
-                self.clear_child_process_handles();
+                self.kill_and_clear_child_process_handles();
                 Err(CodexAppServerError::Io(error))
             }
             Err(oneshot::error::TryRecvError::Empty) => Ok(None),
             Err(oneshot::error::TryRecvError::Closed) => {
                 self.wait_rx = None;
-                self.clear_child_process_handles();
+                self.kill_and_clear_child_process_handles();
                 Err(CodexAppServerError::Protocol(
                     "app-server wait task ended without status".to_string(),
                 ))
@@ -521,6 +529,11 @@ impl CodexAppServerClient {
     fn clear_child_process_handles(&mut self) {
         self.process_id = None;
         self.process_group_id = None;
+    }
+
+    fn kill_and_clear_child_process_handles(&mut self) {
+        self.signal_process_group(libc::SIGKILL);
+        self.clear_child_process_handles();
     }
 }
 
