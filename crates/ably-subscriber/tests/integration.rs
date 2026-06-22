@@ -4163,6 +4163,8 @@ async fn resumed_connection_reattaches_channel() {
             "client must send ATTACH on resume"
         );
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
         let _ = attach_tx.send(true);
 
         // Send ATTACHED
@@ -4274,6 +4276,8 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let detached = ProtocolMessage {
             action: action::DETACHED,
@@ -4298,6 +4302,8 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
 
         let attached = ProtocolMessage {
             action: action::ATTACHED,
@@ -4403,6 +4409,8 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let superseded = ProtocolMessage {
             action: action::ERROR,
@@ -4427,6 +4435,8 @@ async fn superseded_error_during_reconnect_attach_retries_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let attached = ProtocolMessage {
             action: action::ATTACHED,
@@ -4531,6 +4541,8 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let other_channel_error = ProtocolMessage {
             action: action::ERROR,
@@ -4658,6 +4670,8 @@ async fn disconnected_during_reconnect_attach_retries_with_new_connection() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let disconnected = ProtocolMessage {
             action: action::DISCONNECTED,
@@ -4774,6 +4788,8 @@ async fn closed_during_reconnect_attach_stops_subscription() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let closed = ProtocolMessage {
             action: action::CLOSED,
@@ -4856,6 +4872,8 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let superseded = ProtocolMessage {
             action: action::ERROR,
@@ -4880,6 +4898,8 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
             .await
@@ -4887,6 +4907,8 @@ async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport()
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
 
         let attached = ProtocolMessage {
             action: action::ATTACHED,
@@ -4994,6 +5016,8 @@ async fn close_during_reconnect_attach_wait_closes_temporary_socket() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
         attach_sent_tx.send(()).unwrap();
 
         expect_websocket_closed(&mut conn2).await.unwrap();
@@ -5071,6 +5095,8 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
 
         // Do not answer the first ATTACH. The client should treat this as a
         // channel attach timeout, keep conn-2 connected, and retry ATTACH on
@@ -5081,6 +5107,8 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
             .unwrap();
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
 
         let attached = ProtocolMessage {
             action: action::ATTACHED,
