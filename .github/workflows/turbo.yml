@@ -1268,11 +1268,14 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and platform/e2e/ci changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and
+    # browser/playwright E2E may need a matching app preview.
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
         needs.prepare.outputs.job-ref != '' && (
+          needs.prepare.outputs.web-changed == 'true' ||
+          needs.prepare.outputs.cli-changed == 'true' ||
           needs.prepare.outputs.platform-changed == 'true' ||
           needs.prepare.outputs.e2e-changed == 'true' ||
           needs.prepare.outputs.ci-changed == 'true'
