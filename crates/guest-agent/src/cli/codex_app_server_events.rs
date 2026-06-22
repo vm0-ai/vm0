@@ -19,6 +19,29 @@ const DELTA_NOTIFICATION_METHODS: &[&str] = &[
     "thread/realtime/outputAudio/delta",
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TurnStatus {
+    Completed,
+    Interrupted,
+    Failed,
+    InProgress,
+}
+
+impl TurnStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::Interrupted => "interrupted",
+            Self::Failed => "failed",
+            Self::InProgress => "in_progress",
+        }
+    }
+
+    fn is_failure(self) -> bool {
+        matches!(self, Self::Failed | Self::Interrupted)
+    }
+}
+
 /// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CodexAppServerEventError {
@@ -95,15 +118,15 @@ fn map_turn_completed(
         .ok_or_else(|| invalid_field(notification, "params"))?;
     let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
     let turn = required_object_field(params, &notification.method, "turn")?;
-    let status = required_string_field(turn, &notification.method, "turn.status")?;
-    let normalized_turn = normalize_turn(turn, &notification.method)?;
+    let status = required_turn_status_field(turn, &notification.method, "turn.status")?;
+    let normalized_turn = normalize_turn_with_status(turn, &notification.method, status)?;
 
-    if matches!(status, "failed" | "interrupted") {
+    if status.is_failure() {
         return Ok(json!({
             "type": "turn.failed",
             "thread_id": thread_id,
             "turn": normalized_turn,
-            "error": turn_failure_message(turn, status),
+            "error": turn_failure_message(turn, status.normalized()),
         }));
     }
 
@@ -194,13 +217,22 @@ fn normalize_turn(
     turn: &Map<String, Value>,
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
+    let status = required_turn_status_field(turn, method, "turn.status")?;
+    normalize_turn_with_status(turn, method, status)
+}
+
+fn normalize_turn_with_status(
+    turn: &Map<String, Value>,
+    method: &str,
+    status: TurnStatus,
+) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = Map::new();
     let id = required_string_field(turn, method, "turn.id")?;
     normalized.insert("id".to_string(), Value::String(id.to_string()));
 
     normalized.insert(
         "status".to_string(),
-        required_status_field(turn, method, "turn.status")?,
+        Value::String(status.normalized().to_string()),
     );
     if let Some(error) = turn.get("error") {
         normalized.insert("error".to_string(), normalize_optional_error(error));
@@ -256,7 +288,7 @@ fn normalize_command_execution(
     let mut normalized = base_item(item, method, "command_execution")?;
     let command = required_string_field(item, method, "item.command")?;
     normalized.insert("command".to_string(), Value::String(command.to_string()));
-    let status = required_status_field(item, method, "item.status")?;
+    let status = required_item_status_field(item, method, "item.status")?;
     normalized.insert("status".to_string(), status);
     copy_optional_field(&mut normalized, "cwd", item, "cwd");
     copy_optional_field(
@@ -275,7 +307,7 @@ fn normalize_file_change_item(
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = base_item(item, method, "file_change")?;
-    let status = required_status_field(item, method, "item.status")?;
+    let status = required_item_status_field(item, method, "item.status")?;
     normalized.insert("status".to_string(), status);
 
     let changes = item
@@ -488,27 +520,35 @@ fn required_number_field(
     Err(invalid_field_for_method(method, field))
 }
 
-fn required_status_field(
+fn required_turn_status_field(
+    object: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<TurnStatus, CodexAppServerEventError> {
+    let status = required_string_field(object, method, field)?;
+    match status {
+        "completed" => Ok(TurnStatus::Completed),
+        "interrupted" => Ok(TurnStatus::Interrupted),
+        "failed" => Ok(TurnStatus::Failed),
+        "inProgress" => Ok(TurnStatus::InProgress),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_item_status_field(
     object: &Map<String, Value>,
     method: &str,
     field: &'static str,
 ) -> Result<Value, CodexAppServerEventError> {
-    let key = field.rsplit('.').next().unwrap_or(field);
-    let status = object
-        .get(key)
-        .ok_or_else(|| missing_field(method, field))?;
-    normalize_status_value(status, method, field)
-}
-
-fn normalize_status_value(
-    status: &Value,
-    method: &str,
-    field: &'static str,
-) -> Result<Value, CodexAppServerEventError> {
-    let status = status
-        .as_str()
-        .ok_or_else(|| invalid_field_for_method(method, field))?;
-    Ok(Value::String(camel_to_snake(status)))
+    let status = required_string_field(object, method, field)?;
+    let normalized = match status {
+        "inProgress" => "in_progress",
+        "completed" => "completed",
+        "failed" => "failed",
+        "declined" => "declined",
+        _ => return Err(invalid_field_for_method(method, field)),
+    };
+    Ok(Value::String(normalized.to_string()))
 }
 
 fn string_array_field(
@@ -1155,6 +1195,102 @@ mod tests {
             CodexAppServerEventError::MissingField {
                 method: "turn/completed".to_string(),
                 field: "turn.status"
+            }
+        );
+    }
+
+    #[test]
+    fn turn_notification_unknown_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "cancelled",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            })),
+        })
+        .expect_err("unknown turn status should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/completed".to_string(),
+                field: "turn.status"
+            }
+        );
+    }
+
+    #[test]
+    fn command_execution_unknown_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "commandExecution",
+                    "id": "cmd-1",
+                    "command": "echo hi",
+                    "cwd": "/workspaces/vm0",
+                    "processId": null,
+                    "source": "exec",
+                    "status": "queued",
+                    "commandActions": [],
+                    "aggregatedOutput": null,
+                    "exitCode": null,
+                    "durationMs": null
+                }
+            })),
+        })
+        .expect_err("unknown command status should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/completed".to_string(),
+                field: "item.status"
+            }
+        );
+    }
+
+    #[test]
+    fn file_change_unknown_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "queued",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": {"type": "update", "move_path": null},
+                            "diff": "@@"
+                        }
+                    ]
+                }
+            })),
+        })
+        .expect_err("unknown file change status should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/completed".to_string(),
+                field: "item.status"
             }
         );
     }
