@@ -860,10 +860,10 @@ def _resolve_connector_diagnostic_candidate(
     *,
     original_url: str,
 ) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
-    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    candidate = _cached_connector_diagnostic_candidate_from_flow(flow)
     if candidate is not None:
         return candidate
-    candidate = _cached_connector_diagnostic_candidate_from_flow(flow)
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
     if candidate is not None:
         return candidate
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE):

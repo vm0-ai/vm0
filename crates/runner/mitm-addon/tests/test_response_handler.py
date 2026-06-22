@@ -650,6 +650,39 @@ class TestResponseHandler:
         assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
+    async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.openweathermap.org",
+            path="/data/2.5/weather?appid=user-token",
+            method="GET",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = "openweather"
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = "not_configured_for_run"
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = ["OPENWEATHER_TOKEN"]
+            flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = (
+                "https://api.openweathermap.org"
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b"upstream query auth error"
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert "firewall_error" not in entry
+
     async def test_preserves_successful_connector_response_body(
         self, tmp_path, real_flow, mitm_ctx
     ):
