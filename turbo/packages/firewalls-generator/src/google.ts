@@ -1,8 +1,8 @@
 /**
  * Generate Google API firewall configs from Google Discovery API documents.
  *
- * Most Google APIs (Sheets, Meet, Search Console, YouTube) use the same
- * Discovery API format: resources -> methods -> {path, httpMethod, scopes}.
+ * Most Google APIs use the same Discovery API format: resources -> methods ->
+ * {path, httpMethod, scopes}.
  * Drive, Gmail, Calendar, and Docs use Discovery data for route coverage, but
  * have dedicated resource-oriented permission generators.
  */
@@ -91,11 +91,6 @@ function extractMethods(
 // method appears, the generator will fail until it is added here.
 
 const SCOPELESS_METHODS = new Set([
-  "youtube.youtube.v3.updateCommentThreads",
-  "youtube.thirdPartyLinks.list",
-  "youtube.thirdPartyLinks.insert",
-  "youtube.thirdPartyLinks.update",
-  "youtube.thirdPartyLinks.delete",
   "searchconsole.urlTestingTools.mobileFriendlyTest.run",
 ]);
 
@@ -107,11 +102,9 @@ function buildGroups(
   discovery: DiscoveryDocument,
   stripPrefix: string,
   uploadOnly?: boolean,
-  excludedScopes: readonly string[] = [],
 ): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const strip = stripPrefix ? `${stripPrefix}/` : "";
-  const excludedScopeSet = new Set(excludedScopes);
 
   // servicePath is non-empty for APIs with relative paths (Drive, Calendar).
   // Extract just the version part (e.g. "drive/v3/" → "v3/") to prepend.
@@ -148,11 +141,6 @@ function buildGroups(
       continue;
     }
 
-    const includedScopes = scopes.filter(
-      (scope) => !excludedScopeSet.has(scope),
-    );
-    if (includedScopes.length === 0) continue;
-
     // For APIs with servicePath (Drive, Calendar): paths are relative,
     // prepend version prefix. e.g. "about" → "v3/about"
     // For APIs without servicePath (Gmail, Docs, Sheets): paths include
@@ -167,7 +155,7 @@ function buildGroups(
     }
 
     const rule = `${httpMethod.toUpperCase()} /${rulePath}`;
-    for (const scope of includedScopes) {
+    for (const scope of scopes) {
       const scopeName = shortScope(scope);
       let ruleSet = groups.get(scopeName);
       if (!ruleSet) {
@@ -331,8 +319,6 @@ interface GoogleFirewallConfig {
       addRules?: string[];
     }
   >;
-  /** Full OAuth scope URLs to exclude from generated permission groups. */
-  excludedScopes?: string[];
   /**
    * Default allowed permissions export.
    * Generates a typed const array (e.g. gmailDefaultAllowed).
@@ -387,16 +373,11 @@ async function generateGoogleFirewall(
 
     mergePermissions(
       allPermissions,
-      buildGroups(discovery, config.stripPrefix, false, config.excludedScopes),
+      buildGroups(discovery, config.stripPrefix, false),
     );
 
     // Build upload-specific permissions (only methods with supportsMediaUpload)
-    const uploadGroups = buildGroups(
-      discovery,
-      config.stripPrefix,
-      true,
-      config.excludedScopes,
-    );
+    const uploadGroups = buildGroups(discovery, config.stripPrefix, true);
     if (uploadGroups.length > 0) {
       hasUpload = true;
       mergePermissions(uploadPermissions, uploadGroups);
@@ -569,27 +550,6 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderKey: "GOOGLE_SHEETS_TOKEN",
     placeholderValue: OAUTH_PLACEHOLDER,
     auth: bearerAuth("GOOGLE_SHEETS_TOKEN"),
-  },
-  youtube: {
-    discoveryUrls: [
-      "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",
-    ],
-    baseUrl: "https://youtube.googleapis.com/youtube",
-    uploadBaseUrls: [
-      "https://youtube.googleapis.com/upload/youtube",
-      "https://youtube.googleapis.com/resumable/upload/youtube",
-    ],
-    stripPrefix: "youtube",
-    serviceName: "youtube",
-    serviceDescription: "YouTube Data API",
-    placeholderKey: "YOUTUBE_TOKEN",
-    placeholderValue: OAUTH_PLACEHOLDER,
-    auth: bearerAuth("YOUTUBE_TOKEN"),
-    excludedScopes: [
-      "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
-      "https://www.googleapis.com/auth/youtubepartner",
-      "https://www.googleapis.com/auth/youtubepartner-channel-audit",
-    ],
   },
 };
 

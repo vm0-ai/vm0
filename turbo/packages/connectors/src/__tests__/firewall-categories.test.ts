@@ -19,6 +19,7 @@ const CATEGORIZED_CONNECTORS = [
   "gmail",
   "stripe",
   "vercel",
+  "youtube",
 ] as const;
 
 function getFirewallPermissionNames(connectorType: string): Set<string> {
