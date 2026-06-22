@@ -494,6 +494,44 @@ async fn message_without_channel_is_ignored() {
         ))
         .await
         .unwrap();
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for ATTACH after ignored message")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
         send_message(&mut conn, "ch", "expected", serde_json::json!("ok"))
             .await
             .unwrap();
