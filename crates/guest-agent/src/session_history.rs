@@ -38,7 +38,6 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::{fs::File, io::Read};
 
-const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 const CODEX_MARKER_V2_PREFIX: &str = "CODEX_SEARCH_V2:";
 
 /// Build the persisted Codex session-history marker payload.
@@ -52,7 +51,7 @@ pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> Stri
 
 /// Return whether a persisted session-history payload is a Codex marker.
 pub(crate) fn is_codex_marker(payload: &str) -> bool {
-    payload.starts_with(CODEX_MARKER_V2_PREFIX) || payload.starts_with(CODEX_MARKER_PREFIX)
+    payload.starts_with(CODEX_MARKER_V2_PREFIX)
 }
 
 /// Read the session history bytes pointed to by `path_file`.
@@ -90,18 +89,14 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     read_history_bytes(&session_path)
 }
 
-/// Parse a Codex marker into `(dir, thread_id)`. Current markers are length
-/// prefixed so paths containing `:` cannot be confused with decorated thread
-/// IDs. Legacy `CODEX_SEARCH:{dir}:{thread_id}` markers are parsed
-/// conservatively because the old format cannot represent both colon-bearing
-/// directories and colon-bearing invalid thread IDs unambiguously.
+/// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
+/// paths containing `:` cannot be confused with decorated thread IDs.
 fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
     if let Some(rest) = content.strip_prefix(CODEX_MARKER_V2_PREFIX) {
         return decode_len_prefixed_marker(rest);
     }
 
-    let rest = content.strip_prefix(CODEX_MARKER_PREFIX)?;
-    decode_legacy_marker(rest)
+    None
 }
 
 fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
@@ -114,14 +109,6 @@ fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
     let (dir, delimiter_and_thread_id) = payload.split_at(dir_len);
     let thread_id = delimiter_and_thread_id.strip_prefix(':')?;
     if thread_id.is_empty() {
-        return None;
-    }
-    Some((PathBuf::from(dir), thread_id))
-}
-
-fn decode_legacy_marker(rest: &str) -> Option<(PathBuf, &str)> {
-    let (dir, thread_id) = rest.split_once(':')?;
-    if dir.is_empty() || thread_id.is_empty() {
         return None;
     }
     Some((PathBuf::from(dir), thread_id))
