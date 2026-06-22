@@ -905,6 +905,9 @@ def _set_connector_diagnostic_failure_metadata(
     flow: http.HTTPFlow,
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
 ) -> None:
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_CANDIDATE] = candidate
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES] = candidate.auth_header_names
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES] = candidate.auth_query_param_names
     flow.metadata[metadata_keys.FIREWALL_BASE] = candidate.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = candidate.connector_type
     flow.metadata[metadata_keys.FIREWALL_PERMISSION] = ""
