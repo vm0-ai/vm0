@@ -119,6 +119,12 @@ fn map_turn_completed(
     let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
     let turn = required_object_field(params, &notification.method, "turn")?;
     let status = required_turn_status_field(turn, &notification.method, "turn.status")?;
+    if status == TurnStatus::InProgress {
+        return Err(invalid_field_for_method(
+            &notification.method,
+            "turn.status",
+        ));
+    }
     let normalized_turn = normalize_turn_with_status(turn, &notification.method, status)?;
 
     if status.is_failure() {
@@ -339,35 +345,64 @@ fn normalize_file_update_change(
 
     let mut normalized = Map::new();
     normalized.insert("path".to_string(), Value::String(path.to_string()));
+    let normalized_kind = normalize_patch_kind(kind, method)?;
     normalized.insert(
         "kind".to_string(),
-        Value::String(normalize_patch_kind(kind, method)?),
+        Value::String(normalized_kind.to_string()),
     );
     normalized.insert("diff".to_string(), Value::String(diff.to_string()));
-    if let Some(move_path) = kind
-        .as_object()
-        .and_then(|kind| kind.get("move_path"))
-        .filter(|move_path| !move_path.is_null())
+    if normalized_kind == "modify"
+        && let Some(move_path) = optional_patch_move_path(kind, method)?
     {
-        normalized.insert("move_path".to_string(), move_path.clone());
+        normalized.insert(
+            "move_path".to_string(),
+            Value::String(move_path.to_string()),
+        );
     }
 
     Ok(Value::Object(normalized))
 }
 
-fn normalize_patch_kind(kind: &Value, method: &str) -> Result<String, CodexAppServerEventError> {
-    let kind = match kind {
-        Value::String(kind) => kind.as_str(),
-        Value::Object(kind) => required_string_field(kind, method, "item.changes[].kind.type")?,
-        _ => return Err(invalid_field_for_method(method, "item.changes[].kind")),
+fn normalize_patch_kind(
+    kind: &Value,
+    method: &str,
+) -> Result<&'static str, CodexAppServerEventError> {
+    let (kind, field) = match kind {
+        Value::String(kind) => (kind.as_str(), "item.changes[].kind"),
+        Value::Object(kind) => (
+            required_string_field(kind, method, "item.changes[].kind.type")?,
+            "item.changes[].kind.type",
+        ),
+        _ => {
+            return Err(invalid_field_for_method(method, "item.changes[].kind"));
+        }
     };
 
-    Ok(match kind {
-        "add" => "add".to_string(),
-        "delete" => "delete".to_string(),
-        "update" => "modify".to_string(),
-        other => camel_to_snake(other),
-    })
+    match kind {
+        "add" => Ok("add"),
+        "delete" => Ok("delete"),
+        "update" => Ok("modify"),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn optional_patch_move_path<'a>(
+    kind: &'a Value,
+    method: &str,
+) -> Result<Option<&'a str>, CodexAppServerEventError> {
+    let Some(kind) = kind.as_object() else {
+        return Ok(None);
+    };
+    let Some(move_path) = kind.get("move_path") else {
+        return Ok(None);
+    };
+    if move_path.is_null() {
+        return Ok(None);
+    }
+    move_path
+        .as_str()
+        .map(Some)
+        .ok_or_else(|| invalid_field_for_method(method, "item.changes[].kind.move_path"))
 }
 
 fn base_item(
@@ -828,7 +863,7 @@ mod tests {
                     "changes": [
                         {
                             "path": "src/lib.rs",
-                            "kind": {"type": "update", "move_path": null},
+                            "kind": {"type": "update", "move_path": "src/renamed.rs"},
                             "diff": "@@"
                         },
                         {
@@ -847,6 +882,7 @@ mod tests {
                 {
                     "path": "src/lib.rs",
                     "kind": "modify",
+                    "move_path": "src/renamed.rs",
                     "diff": "@@"
                 },
                 {
@@ -1229,6 +1265,35 @@ mod tests {
     }
 
     #[test]
+    fn turn_completed_in_progress_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "inProgress",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": null,
+                    "durationMs": null
+                }
+            })),
+        })
+        .expect_err("completed notification cannot carry an in-progress turn");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/completed".to_string(),
+                field: "turn.status"
+            }
+        );
+    }
+
+    #[test]
     fn command_execution_unknown_status_returns_error() {
         let error = notification_to_codex_event(&ServerNotification {
             method: "item/completed".to_string(),
@@ -1291,6 +1356,72 @@ mod tests {
             CodexAppServerEventError::InvalidField {
                 method: "item/completed".to_string(),
                 field: "item.status"
+            }
+        );
+    }
+
+    #[test]
+    fn file_change_unknown_kind_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "completed",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": {"type": "rename"},
+                            "diff": "@@"
+                        }
+                    ]
+                }
+            })),
+        })
+        .expect_err("unknown file change kind should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/completed".to_string(),
+                field: "item.changes[].kind.type"
+            }
+        );
+    }
+
+    #[test]
+    fn file_change_non_string_move_path_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "completed",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": {"type": "update", "move_path": 7},
+                            "diff": "@@"
+                        }
+                    ]
+                }
+            })),
+        })
+        .expect_err("non-string move path should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/completed".to_string(),
+                field: "item.changes[].kind.move_path"
             }
         );
     }
