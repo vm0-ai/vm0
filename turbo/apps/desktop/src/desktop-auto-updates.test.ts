@@ -3,11 +3,15 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopConfig } from "./config";
 import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
-import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import {
+  checkForDesktopUpdates,
+  installDesktopAutoUpdates,
+} from "./desktop-auto-updates";
 
 const mocks = vi.hoisted(() => ({
   app: { isPackaged: true },
   autoUpdater: {
+    checkForUpdates: vi.fn<() => void>(),
     quitAndInstall: vi.fn(),
   },
   dialog: {
@@ -131,6 +135,31 @@ describe("desktop auto-updates", () => {
       expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
     });
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("checks for updates on request", () => {
+    expect(checkForDesktopUpdates()).toBe(true);
+
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs failed requested update checks", () => {
+    const error = new Error("feed unavailable");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mocks.autoUpdater.checkForUpdates.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    expect(checkForDesktopUpdates()).toBe(false);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "Desktop update check failed",
+      error,
+    );
+
+    consoleError.mockRestore();
   });
 
   it("prompts instead of silently restarting during recent command activity", async () => {

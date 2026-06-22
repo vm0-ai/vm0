@@ -107,3 +107,13 @@ export function installDesktopAutoUpdates(
   });
   return true;
 }
+
+export function checkForDesktopUpdates(): boolean {
+  try {
+    autoUpdater.checkForUpdates();
+    return true;
+  } catch (error) {
+    console.error("Desktop update check failed", error);
+    return false;
+  }
+}
