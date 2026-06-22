@@ -257,6 +257,7 @@ import { generate as generateGoogleCalendar } from "./google-calendar";
 import { generate as generateGoogleDocs } from "./google-docs";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateGoogleMeet } from "./google-meet";
+import { generate as generateGoogleSheets } from "./google-sheets";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
 import { generate as generateSendgrid } from "./sendgrid";
@@ -536,6 +537,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "google-docs": generateGoogleDocs,
   "google-drive": generateGoogleDrive,
   "google-meet": generateGoogleMeet,
+  "google-sheets": generateGoogleSheets,
   gmail: generateGmail,
 };
 

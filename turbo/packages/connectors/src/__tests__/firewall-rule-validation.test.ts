@@ -345,6 +345,53 @@ describe("known endpoint-scoped firewall bases", () => {
     expect(bases).not.toContain("https://www.googleapis.com");
   });
 
+  it("keeps Google Sheets permission names resource-oriented instead of OAuth-scope based", () => {
+    const names = new Set(
+      getConnectorFirewall("google-sheets").apis.flatMap((api) => {
+        return (
+          api.permissions?.map((permission) => {
+            return permission.name;
+          }) ?? []
+        );
+      }),
+    );
+
+    expect(names).toContain("spreadsheets.read");
+    expect(names).toContain("values.write");
+    expect(names).toContain("developer-metadata.search");
+    expect(names).not.toContain("drive");
+    expect(names).not.toContain("drive.file");
+    expect(names).not.toContain("drive.readonly");
+    expect(names).not.toContain("spreadsheets");
+    expect(names).not.toContain("spreadsheets.readonly");
+  });
+
+  it("keeps Google Sheets value read routes out of write and clear permissions", () => {
+    const firewall = getConnectorFirewall("google-sheets");
+    const rulesByPermission = new Map<string, Set<string>>();
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        const rules = rulesByPermission.get(permission.name) ?? new Set();
+        for (const rule of permission.rules) {
+          rules.add(`${api.base} ${rule}`);
+        }
+        rulesByPermission.set(permission.name, rules);
+      }
+    }
+
+    expect([...rulesByPermission.get("values.read")!].sort()).toEqual([
+      "https://sheets.googleapis.com GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+      "https://sheets.googleapis.com GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
+    ]);
+    expect(rulesByPermission.get("values.write")).not.toContain(
+      "https://sheets.googleapis.com GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
+    );
+    expect(rulesByPermission.get("values.clear")).not.toContain(
+      "https://sheets.googleapis.com GET /v4/spreadsheets/{spreadsheetId}/values:batchGet",
+    );
+  });
+
   it("narrows Xero tenant discovery to the Connections endpoint", () => {
     const firewall = getConnectorFirewall("xero");
     const bases = apiBases(firewall);
