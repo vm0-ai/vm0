@@ -160,8 +160,6 @@ impl CodexAppServerClient {
         let mut cmd = tokio::process::Command::new(&config.binary);
         child_env::apply_to_tokio_command(&mut cmd);
         cmd.args(["app-server", "--listen", "stdio://"])
-            .env("CODEX_HOME", &config.codex_home)
-            .env_remove("MOCK_CODEX_FIXTURE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -170,6 +168,8 @@ impl CodexAppServerClient {
         for (key, value) in config.extra_env {
             cmd.env(key, value);
         }
+        cmd.env("CODEX_HOME", &config.codex_home)
+            .env_remove("MOCK_CODEX_FIXTURE");
 
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let process_id = child.id();

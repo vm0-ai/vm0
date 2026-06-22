@@ -55,6 +55,21 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
 }
 
 #[tokio::test]
+async fn codex_app_server_extra_env_cannot_override_codex_home() -> Result<(), String> {
+    let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
+    let override_home =
+        TempDir::new().map_err(|error| format!("create override codex home: {error}"))?;
+    let config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path())
+        .with_env("CODEX_HOME", override_home.path().to_string_lossy());
+    let mut client = CodexAppServerClient::spawn(config).map_err(|error| format!("{error:?}"))?;
+
+    let initialized = wait_result(client.initialize(), "initialize").await?;
+
+    assert_eq!(initialized.codex_home, codex_home.path().to_string_lossy());
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_correlates_request_response_by_id() -> Result<(), String> {
     let mut client = spawn_client(None)?;
     wait_result(client.initialize(), "initialize").await?;
