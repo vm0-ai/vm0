@@ -232,14 +232,17 @@ pub fn build_attach_msg(
     channel_serial: Option<&str>,
     attach_mode: AttachMode,
 ) -> ProtocolMessage {
-    let mut f = flags::MODE_SUBSCRIBE;
-    if attach_mode == AttachMode::Resume {
-        f |= flags::ATTACH_RESUME;
-    }
+    let (channel_serial, f) = match attach_mode {
+        AttachMode::Clean => (None, flags::MODE_SUBSCRIBE),
+        AttachMode::Resume => (
+            channel_serial.map(str::to_string),
+            flags::MODE_SUBSCRIBE | flags::ATTACH_RESUME,
+        ),
+    };
     ProtocolMessage {
         action: action::ATTACH,
         channel: Some(channel.to_string()),
-        channel_serial: channel_serial.map(str::to_string),
+        channel_serial,
         flags: Some(f),
         params: params.cloned(),
         ..Default::default()
@@ -514,6 +517,15 @@ mod tests {
     #[test]
     fn build_attach_msg_clean_without_channel_serial_no_resume_flag() {
         let msg = build_attach_msg("my-channel", None, None, AttachMode::Clean);
+        let f = msg.flags.unwrap();
+        assert_eq!(f & flags::ATTACH_RESUME, 0);
+        assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
+    }
+
+    #[test]
+    fn build_attach_msg_clean_with_channel_serial_omits_serial_and_resume_flag() {
+        let msg = build_attach_msg("my-channel", None, Some("serial-abc"), AttachMode::Clean);
+        assert!(msg.channel_serial.is_none());
         let f = msg.flags.unwrap();
         assert_eq!(f & flags::ATTACH_RESUME, 0);
         assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
