@@ -7,6 +7,9 @@ use api_contracts::generated::types::runners::storage::{
 use sandbox::{ExecResult, ExecTermination, SandboxId};
 use sandbox_mock::MockSandbox;
 
+use super::super::cli_framework::{
+    EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
+};
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
     validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
@@ -33,6 +36,30 @@ fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
         &sandbox_id,
         SandboxReuseResult::Reused,
     )
+}
+
+#[test]
+fn effective_cli_framework_matches_guest_agent_fallback_semantics() {
+    assert_eq!(normalized_cli_agent_type(""), "claude-code");
+    assert_eq!(normalized_cli_agent_type("claude-code"), "claude-code");
+    assert_eq!(normalized_cli_agent_type("custom-agent"), "custom-agent");
+
+    assert_eq!(
+        effective_cli_framework(""),
+        EffectiveCliFramework::ClaudeCode
+    );
+    assert_eq!(
+        effective_cli_framework("claude-code"),
+        EffectiveCliFramework::ClaudeCode
+    );
+    assert_eq!(
+        effective_cli_framework("custom-agent"),
+        EffectiveCliFramework::ClaudeCode
+    );
+    assert_eq!(
+        effective_cli_framework("codex"),
+        EffectiveCliFramework::Codex
+    );
 }
 
 #[test]

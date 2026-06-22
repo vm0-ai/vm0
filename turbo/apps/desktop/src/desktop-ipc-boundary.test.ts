@@ -4,7 +4,6 @@ import type {
   ComputerUseAutomationPermissionTarget,
   DesktopComputerUseState,
 } from "./computer-use-types";
-import { COMPUTER_USE_FEATURE_SWITCH_KEY } from "./computer-use-types";
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
@@ -313,7 +312,6 @@ function createDesktopDeveloperToolsApi(): {
 
 function createComputerUseState(): DesktopComputerUseState {
   return {
-    featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: "darwin",
     supported: true,
     permissions: {

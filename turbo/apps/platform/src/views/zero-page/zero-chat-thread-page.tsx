@@ -3703,8 +3703,6 @@ function useChatThreadComputerUse(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
-  const features = useLastResolved(featureSwitch$);
-  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
   const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
@@ -3736,24 +3734,18 @@ function useChatThreadComputerUse(
   };
 
   return {
-    selectedComputerUseHostId: computerUseEnabled
-      ? selectedComputerUseHostId
-      : null,
-    computerUseHostIdForSend: computerUseEnabled
-      ? computerUseHostIdForSend
-      : undefined,
+    selectedComputerUseHostId,
+    computerUseHostIdForSend,
     clearComputerUseHostOverride,
-    computerUse: computerUseEnabled
-      ? {
-          hosts: visibleHosts,
-          loading:
-            computerUseHostsLoadable.state === "loading" &&
-            computerUseHosts.length === 0,
-          selectedHostId: selectedComputerUseHostId,
-          onChange: handleComputerUseHostChange,
-          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-        }
-      : undefined,
+    computerUse: {
+      hosts: visibleHosts,
+      loading:
+        computerUseHostsLoadable.state === "loading" &&
+        computerUseHosts.length === 0,
+      selectedHostId: selectedComputerUseHostId,
+      onChange: handleComputerUseHostChange,
+      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    },
   };
 }
 

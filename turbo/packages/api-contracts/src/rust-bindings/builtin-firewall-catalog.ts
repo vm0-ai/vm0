@@ -24,6 +24,38 @@ interface RenderPythonBuiltinFirewallCatalogOptions {
   readonly maxJsonChunkLength?: number;
 }
 
+interface DiagnosticConnectorApi {
+  readonly base: string;
+  readonly envNames: readonly string[];
+  readonly authHeaderNames: readonly string[];
+  readonly authQueryParamNames: readonly string[];
+}
+
+interface DiagnosticConnectorFirewall {
+  readonly name: string;
+  readonly apis: readonly DiagnosticConnectorApi[];
+}
+
+interface DiagnosticPermission {
+  readonly name: string;
+  readonly rules: readonly string[];
+}
+
+interface DiagnosticModelProviderApi {
+  readonly base: string;
+  readonly permissions: readonly DiagnosticPermission[];
+}
+
+interface DiagnosticModelProviderFirewall {
+  readonly name: string;
+  readonly apis: readonly DiagnosticModelProviderApi[];
+}
+
+interface BuiltinFirewallDiagnosticManifest {
+  readonly connectorFirewalls: readonly DiagnosticConnectorFirewall[];
+  readonly modelProviderExclusions: readonly DiagnosticModelProviderFirewall[];
+}
+
 const DEFAULT_FIREWALL_JSON_CHUNK_LENGTH = 200_000;
 const MAX_GENERATED_PYTHON_LINE_LENGTH = 512;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
@@ -40,6 +72,9 @@ const pythonGeneratedHeader = [
   "# Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust",
   "# ruff: noqa",
 ] as const;
+const MODEL_PROVIDER_FIREWALL_PREFIX = "model-provider:";
+const DIAGNOSTIC_REFERENCE_NAME_PATTERN =
+  /\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
 
 function runtimeApi(api: FirewallApi): FirewallApi {
   return {
@@ -80,6 +115,172 @@ export function buildBuiltinFirewallCatalog(): BuiltinFirewallCatalog {
 
   return {
     firewalls,
+  };
+}
+
+function hasDynamicBaseMarker(base: string): boolean {
+  return base.includes("{") || base.includes("}");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractDiagnosticReferenceNames(value: unknown): readonly string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  function add(name: string): void {
+    if (seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    result.push(name);
+  }
+
+  function visit(nested: unknown): void {
+    if (typeof nested === "string") {
+      DIAGNOSTIC_REFERENCE_NAME_PATTERN.lastIndex = 0;
+      for (
+        let match = DIAGNOSTIC_REFERENCE_NAME_PATTERN.exec(nested);
+        match !== null;
+        match = DIAGNOSTIC_REFERENCE_NAME_PATTERN.exec(nested)
+      ) {
+        const name = match[1];
+        if (name !== undefined) {
+          add(name);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(nested)) {
+      for (const item of nested) {
+        visit(item);
+      }
+      return;
+    }
+    if (!isRecord(nested)) {
+      return;
+    }
+    for (const key of Object.keys(nested).sort()) {
+      visit(nested[key]);
+    }
+  }
+
+  visit(value);
+  return result;
+}
+
+function diagnosticAuthHeaderNames(
+  auth: FirewallApi["auth"],
+): readonly string[] {
+  return Object.keys(auth.headers ?? {})
+    .filter((name) => {
+      return name.length > 0;
+    })
+    .sort();
+}
+
+function diagnosticAuthQueryParamNames(
+  auth: FirewallApi["auth"],
+): readonly string[] {
+  return Object.keys(auth.query ?? {})
+    .filter((name) => {
+      return name.length > 0;
+    })
+    .sort();
+}
+
+function diagnosticConnectorApi(
+  api: FirewallApi,
+): DiagnosticConnectorApi | null {
+  if (hasDynamicBaseMarker(api.base)) {
+    return null;
+  }
+
+  const envNames = extractDiagnosticReferenceNames(api.auth);
+  if (envNames.length === 0) {
+    return null;
+  }
+
+  return {
+    base: api.base,
+    envNames,
+    authHeaderNames: diagnosticAuthHeaderNames(api.auth),
+    authQueryParamNames: diagnosticAuthQueryParamNames(api.auth),
+  };
+}
+
+function diagnosticPermissions(
+  permissions: FirewallApi["permissions"],
+): readonly DiagnosticPermission[] {
+  if (permissions === undefined) {
+    return [];
+  }
+  return permissions.map((permission) => {
+    return {
+      name: permission.name,
+      rules: [...permission.rules],
+    };
+  });
+}
+
+function diagnosticModelProviderApi(
+  api: FirewallApi,
+): DiagnosticModelProviderApi | null {
+  if (hasDynamicBaseMarker(api.base)) {
+    return null;
+  }
+
+  return {
+    base: api.base,
+    permissions: diagnosticPermissions(api.permissions),
+  };
+}
+
+function buildBuiltinFirewallDiagnosticManifest(
+  catalog: BuiltinFirewallCatalog,
+): BuiltinFirewallDiagnosticManifest {
+  const connectorFirewalls: DiagnosticConnectorFirewall[] = [];
+  const modelProviderExclusions: DiagnosticModelProviderFirewall[] = [];
+
+  for (const name of Object.keys(catalog.firewalls).sort()) {
+    const firewall = catalog.firewalls[name];
+    if (firewall === undefined) {
+      throw new Error(`missing built-in firewall catalog entry: ${name}`);
+    }
+
+    if (name.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
+      const apis = firewall.apis
+        .map(diagnosticModelProviderApi)
+        .filter((api): api is DiagnosticModelProviderApi => {
+          return api !== null;
+        });
+      if (apis.length > 0) {
+        modelProviderExclusions.push({
+          name,
+          apis,
+        });
+      }
+      continue;
+    }
+
+    const apis = firewall.apis
+      .map(diagnosticConnectorApi)
+      .filter((api): api is DiagnosticConnectorApi => {
+        return api !== null;
+      });
+    if (apis.length > 0) {
+      connectorFirewalls.push({
+        name,
+        apis,
+      });
+    }
+  }
+
+  return {
+    connectorFirewalls,
+    modelProviderExclusions,
   };
 }
 
@@ -369,6 +570,26 @@ function renderPythonManifest(
   return lines.join("\n");
 }
 
+function renderPythonDiagnosticManifest(
+  manifest: BuiltinFirewallDiagnosticManifest,
+): string {
+  return [
+    ...pythonGeneratedHeader,
+    "",
+    "# fmt: off",
+    `CONNECTOR_DIAGNOSTIC_FIREWALLS = ${stablePrettyJson(
+      manifest.connectorFirewalls,
+    )}`,
+    "",
+    `MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = ${stablePrettyJson(
+      manifest.modelProviderExclusions,
+    )}`,
+    "",
+    "# fmt: on",
+    "",
+  ].join("\n");
+}
+
 function renderPythonJsonPartModule(jsonPart: string): string {
   return [
     ...pythonGeneratedHeader,
@@ -382,6 +603,7 @@ export function renderPythonBuiltinFirewallCatalogFiles(
   options: RenderPythonBuiltinFirewallCatalogOptions = {},
 ): readonly PythonBuiltinFirewallCatalogFile[] {
   const catalog = options.catalog ?? buildBuiltinFirewallCatalog();
+  const diagnosticManifest = buildBuiltinFirewallDiagnosticManifest(catalog);
   const maxJsonChunkLength =
     options.maxJsonChunkLength ?? DEFAULT_FIREWALL_JSON_CHUNK_LENGTH;
   const names = Object.keys(catalog.firewalls).sort();
@@ -434,6 +656,10 @@ export function renderPythonBuiltinFirewallCatalogFiles(
     {
       path: "loader.py",
       content: renderPythonLoader(modulesByFirewall),
+    },
+    {
+      path: "diagnostics.py",
+      content: renderPythonDiagnosticManifest(diagnosticManifest),
     },
     ...partFiles,
   ];

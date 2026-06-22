@@ -1298,6 +1298,7 @@ version = "0.2.2"
 dependencies = [
  "libc",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -2524,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.127.0"
+version = "0.128.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",

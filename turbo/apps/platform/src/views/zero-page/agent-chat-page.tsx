@@ -11,7 +11,6 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -59,6 +58,7 @@ import {
 import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
+  subscribeComputerUseHostsChangedRef$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -75,7 +75,6 @@ import {
 } from "../../signals/view-component-state.ts";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -421,8 +420,6 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
 }
 
 function useNewThreadComputerUse() {
-  const features = useLastResolved(featureSwitch$);
-  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
   const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
@@ -441,23 +438,19 @@ function useNewThreadComputerUse() {
   const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
 
   return {
-    selectedComputerUseHostId: computerUseEnabled
-      ? selectedComputerUseHostId
-      : null,
+    selectedComputerUseHostId,
     clearComputerUseHostId: () => {
       setComputerUseHostId(null);
     },
-    computerUse: computerUseEnabled
-      ? {
-          hosts: visibleHosts,
-          loading:
-            computerUseHostsLoadable.state === "loading" &&
-            computerUseHosts.length === 0,
-          selectedHostId: selectedComputerUseHostId,
-          onChange: setComputerUseHostId,
-          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-        }
-      : undefined,
+    computerUse: {
+      hosts: visibleHosts,
+      loading:
+        computerUseHostsLoadable.state === "loading" &&
+        computerUseHosts.length === 0,
+      selectedHostId: selectedComputerUseHostId,
+      onChange: setComputerUseHostId,
+      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    },
   };
 }
 
@@ -482,6 +475,9 @@ export function AgentChatPage() {
     useNewThreadComputerUse();
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
+  const subscribeComputerUseHostsChangedRef = useSet(
+    subscribeComputerUseHostsChangedRef$,
+  );
   const {
     modelSelection,
     modelPicker,
@@ -558,6 +554,7 @@ export function AgentChatPage() {
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
+      <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
           <InviteButton pageSignal={pageSignal} />

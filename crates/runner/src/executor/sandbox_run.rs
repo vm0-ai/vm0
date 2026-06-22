@@ -8,12 +8,14 @@ use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
 use tracing::{info, warn};
 
 use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::cli_framework::{
+    EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
+};
 use super::diagnostics::{
     AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
     read_guest_cli_agent_session_id,
 };
-use super::env::{EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type};
-use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
+use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,

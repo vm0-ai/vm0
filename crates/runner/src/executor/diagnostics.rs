@@ -34,7 +34,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
 
 use super::env::is_runner_owned_env_key;
-use super::session_restore::is_valid_session_id;
+use super::session_id::is_valid_session_id;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
     AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,

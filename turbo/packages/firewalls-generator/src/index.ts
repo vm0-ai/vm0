@@ -244,6 +244,7 @@ import { generate as generateWorkos } from "./workos";
 import { generate as generateWrike } from "./wrike";
 import { generate as generateX } from "./x";
 import { generate as generateXero } from "./xero";
+import { generate as generateYouTube } from "./youtube";
 import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
@@ -257,6 +258,7 @@ import { generate as generateGoogleCalendar } from "./google-calendar";
 import { generate as generateGoogleDocs } from "./google-docs";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateGoogleMeet } from "./google-meet";
+import { generate as generateGoogleSearchConsole } from "./google-search-console";
 import { generate as generateGoogleSheets } from "./google-sheets";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
@@ -500,6 +502,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   wrike: generateWrike,
   x: generateX,
   xero: generateXero,
+  youtube: generateYouTube,
   zapier: generateZapier,
   zapsign: generateZapsign,
   zendesk: generateZendesk,
@@ -537,6 +540,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "google-docs": generateGoogleDocs,
   "google-drive": generateGoogleDrive,
   "google-meet": generateGoogleMeet,
+  "google-search-console": generateGoogleSearchConsole,
   "google-sheets": generateGoogleSheets,
   gmail: generateGmail,
 };

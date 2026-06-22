@@ -177,7 +177,13 @@ import {
   googleMeetDefaultUnknownPolicy,
   googleMeetFirewall,
 } from "./google-meet.generated";
-import { googleSearchConsoleFirewall } from "./google-search-console.generated";
+import {
+  googleSearchConsoleCategories,
+  googleSearchConsoleCategoryOrder,
+  googleSearchConsoleDefaultAllowed,
+  googleSearchConsoleDefaultUnknownPolicy,
+  googleSearchConsoleFirewall,
+} from "./google-search-console.generated";
 import {
   googleSheetsCategories,
   googleSheetsCategoryOrder,
@@ -337,7 +343,13 @@ import { workosFirewall } from "./workos.generated";
 import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
-import { youtubeFirewall } from "./youtube.generated";
+import {
+  youtubeCategories,
+  youtubeCategoryOrder,
+  youtubeDefaultAllowed,
+  youtubeDefaultUnknownPolicy,
+  youtubeFirewall,
+} from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zendeskFirewall } from "./zendesk.generated";
@@ -719,6 +731,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleMeetCategories,
     displayOrder: googleMeetCategoryOrder,
   },
+  "google-search-console": {
+    categories: googleSearchConsoleCategories,
+    displayOrder: googleSearchConsoleCategoryOrder,
+  },
   "google-sheets": {
     categories: googleSheetsCategories,
     displayOrder: googleSheetsCategoryOrder,
@@ -727,6 +743,10 @@ const CONNECTOR_CATEGORIES: Partial<
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
   vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
+  youtube: {
+    categories: youtubeCategories,
+    displayOrder: youtubeCategoryOrder,
+  },
 };
 
 /** Get the category data for a connector type (null if uncategorized). */
@@ -875,11 +895,13 @@ const DEFAULT_ALLOWED: Partial<
   "google-docs": googleDocsDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   "google-meet": googleMeetDefaultAllowed,
+  "google-search-console": googleSearchConsoleDefaultAllowed,
   "google-sheets": googleSheetsDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,
+  youtube: youtubeDefaultAllowed,
 };
 
 const DEFAULT_UNKNOWN_POLICY: Partial<
@@ -892,9 +914,11 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   "google-docs": googleDocsDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   "google-meet": googleMeetDefaultUnknownPolicy,
+  "google-search-console": googleSearchConsoleDefaultUnknownPolicy,
   "google-sheets": googleSheetsDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
+  youtube: youtubeDefaultUnknownPolicy,
 };
 
 /**

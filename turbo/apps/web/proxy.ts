@@ -16,6 +16,10 @@ import {
   matchesApiBackendRewritePath,
   matchesOAuthWebOriginRewritePath,
 } from "./api-backend-rewrites";
+import {
+  resolveSoFrontendRewritePath,
+  resolveSoFrontendUrl,
+} from "./so-frontend-rewrites.js";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -96,6 +100,7 @@ const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 const OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
+const SO_FRONTEND_PAGE_METHODS = new Set(["GET", "HEAD"]);
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
@@ -119,6 +124,54 @@ function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
     request,
     NextResponse.next({ request: { headers: requestHeaders } }),
   );
+}
+
+function resolveSoFrontendProxyUrl(request: NextRequest): URL | undefined {
+  if (SO_FRONTEND_PAGE_METHODS.has(request.method)) {
+    return undefined;
+  }
+
+  const soFrontendEnv = {
+    NEXT_PUBLIC_PAID_ONBOARDING_URL: env().NEXT_PUBLIC_PAID_ONBOARDING_URL,
+    VERCEL_ENV: env().VERCEL_ENV,
+  };
+  const soFrontendUrl = resolveSoFrontendUrl(soFrontendEnv);
+  if (!soFrontendUrl) {
+    return undefined;
+  }
+
+  const destinationPath = resolveSoFrontendRewritePath(
+    request.nextUrl.pathname,
+    soFrontendEnv,
+  );
+  if (!destinationPath) {
+    return undefined;
+  }
+
+  const url = new URL(destinationPath, soFrontendUrl);
+  url.search = request.nextUrl.search;
+  return url;
+}
+
+async function proxySoFrontendRequest(
+  request: NextRequest,
+  targetUrl: URL,
+): Promise<Response> {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete("host");
+  requestHeaders.delete("content-length");
+  requestHeaders.set("x-forwarded-host", request.nextUrl.host);
+  requestHeaders.set(
+    "x-forwarded-proto",
+    request.nextUrl.protocol.slice(0, -1),
+  );
+
+  return fetch(targetUrl, {
+    method: request.method,
+    headers: requestHeaders,
+    body: request.body,
+    redirect: "manual",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +230,11 @@ export default async function middleware(
   // from returning our 200 directly.
   if (isApiRoute && request.method === "OPTIONS") {
     return handleCors(request);
+  }
+
+  const soFrontendProxyUrl = resolveSoFrontendProxyUrl(request);
+  if (soFrontendProxyUrl) {
+    return proxySoFrontendRequest(request, soFrontendProxyUrl);
   }
 
   const authHeader = request.headers.get("authorization");

@@ -13,11 +13,13 @@ const CATEGORIZED_CONNECTORS = [
   "google-cloud",
   "google-drive",
   "google-meet",
+  "google-search-console",
   "google-sheets",
   "slack",
   "gmail",
   "stripe",
   "vercel",
+  "youtube",
 ] as const;
 
 function getFirewallPermissionNames(connectorType: string): Set<string> {

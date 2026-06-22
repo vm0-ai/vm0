@@ -505,7 +505,7 @@ jobs:
       needs.builds-complete.result == 'success'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     permissions:
       contents: read
     environment: production
@@ -703,7 +703,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -821,7 +821,7 @@ jobs:
     if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -1010,7 +1010,7 @@ jobs:
       group: deploy-host-worker-production
       cancel-in-progress: false
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     permissions:
       contents: read
     environment: production
@@ -1163,7 +1163,7 @@ jobs:
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ needs.build-web-production.outputs.deployment_url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -1290,7 +1290,7 @@ jobs:
       needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ needs.build-api-production.outputs.deployment_url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -1408,7 +1408,7 @@ jobs:
     if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -1529,7 +1529,7 @@ jobs:
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ needs.build-app-production.outputs.deployment_url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -2066,7 +2066,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     permissions:
       contents: write
     environment: production
@@ -2304,7 +2304,7 @@ jobs:
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     permissions:
       contents: read
     environment: production
@@ -2471,7 +2471,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     permissions:
       contents: read
     environment: production
@@ -2495,7 +2495,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     permissions:
       contents: read
     steps:

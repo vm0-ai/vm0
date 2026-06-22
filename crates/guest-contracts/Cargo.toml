@@ -6,6 +6,7 @@ description = "Shared contracts between runner and guest binaries"
 
 [dependencies]
 libc.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

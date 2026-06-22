@@ -25,10 +25,12 @@ import {
 import {
   GOAL_TRIGGER_ACTIVE_EVENT_ID,
   GOAL_TRIGGER_INACTIVE_EVENT_ID,
+  GOAL_WORKFLOW_ACTIVE_EVENT_ID,
   GOAL_WORKFLOW_INACTIVE_EVENT_ID,
   appendGoalCreatedMarkers,
   appendGoalStateMarker,
 } from "./zero-chat-goal-marker.service";
+import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
 import type { TriggerRow } from "./zero-workflow-trigger-run.service";
 
 export type GoalResult =
@@ -224,6 +226,7 @@ export async function createGoalForCurrentThread(
   }
 
   const createdAt = nowDate();
+  const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
   const preference = {
     version: 1 as const,
     objective: args.objective,
@@ -314,8 +317,8 @@ export async function createGoalForCurrentThread(
     }
 
     // Publish the new goal's state so the composer can fold it from the message
-    // stream (active workflow carrying the objective + enabled trigger).
-    await appendGoalCreatedMarkers(tx, threadId, args.objective, trigger.id);
+    // stream (active workflow carrying the objective brief + enabled trigger).
+    await appendGoalCreatedMarkers(tx, threadId, objectiveBrief, trigger.id);
 
     return {
       row: {
@@ -547,6 +550,10 @@ export async function editCurrentGoal(
   // re-enable the trigger, reset the failure counter, and clear stopReason.
   const autoResume = !goal.row.triggerEnabled;
   const editedAt = nowDate();
+  const objectiveBrief =
+    args.objective === undefined
+      ? null
+      : await generateGoalObjectiveBrief(args.objective);
   const nextPreference = mergeGoalPreference(goal.row.preference, {
     ...(args.objective !== undefined ? { objective: args.objective } : {}),
     ...(args.tokenBudget !== undefined
@@ -561,6 +568,13 @@ export async function editCurrentGoal(
       .update(zeroWorkflows)
       .set({ preference: nextPreference, updatedAt: editedAt })
       .where(eq(zeroWorkflows.id, goal.row.workflowId));
+    if (objectiveBrief !== null) {
+      await appendGoalStateMarker(tx, {
+        chatThreadId: goal.threadId,
+        eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
+        content: objectiveBrief,
+      });
+    }
     if (autoResume) {
       await tx
         .update(zeroWorkflowTriggers)

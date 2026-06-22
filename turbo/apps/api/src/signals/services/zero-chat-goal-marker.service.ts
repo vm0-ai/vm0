@@ -14,11 +14,11 @@ import type { Db } from "../external/db";
  * These are control rows, not conversation: the client filters them out of the
  * rendered transcript, and they are excluded from unread and search via
  * `excludeGoalMarkerCondition` so they never light up a thread or surface as a
- * search hit. The marker `content` carries the fold's payload: the objective on
- * workflow-active markers (so the row can render it), and the trigger id on
+ * search hit. The marker `content` carries the fold's payload: the objective
+ * brief on workflow-active markers (so the row can render it), and the trigger id on
  * trigger-active markers (so the composer's cancel control can disable it).
  */
-const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
+export const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
 export const GOAL_WORKFLOW_INACTIVE_EVENT_ID = "goal-workflow:inactive";
 export const GOAL_TRIGGER_ACTIVE_EVENT_ID = "goal-trigger:active";
 export const GOAL_TRIGGER_INACTIVE_EVENT_ID = "goal-trigger:inactive";
@@ -57,20 +57,20 @@ export async function appendGoalStateMarker(
 
 /**
  * Publish a newly created goal's initial state: the workflow is active (the
- * marker carries the objective so the client fold can render it) and its
+ * marker carries the objective brief so the client fold can render it) and its
  * trigger is enabled (the marker carries the trigger id so the composer's
  * cancel control can disable it).
  */
 export async function appendGoalCreatedMarkers(
   tx: Pick<Db, "insert">,
   chatThreadId: string,
-  objective: string,
+  objectiveBrief: string,
   triggerId: string,
 ): Promise<void> {
   await appendGoalStateMarker(tx, {
     chatThreadId,
     eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
-    content: objective,
+    content: objectiveBrief,
   });
   await appendGoalStateMarker(tx, {
     chatThreadId,

@@ -561,16 +561,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       title: "Computer Use",
     });
 
-    const disabled = await chat.requestUpdateThreadComputerUseHost(
-      actor,
-      thread.id,
-      randomUUID(),
-      [403],
-    );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.message).toBe("Computer use is not enabled");
-
-    await cu.enableComputerUse(actor);
     const host = await cu.startComputerUseHost(actor);
     await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
     await expect(readThreadComputerUseHostId(thread.id)).resolves.toBe(

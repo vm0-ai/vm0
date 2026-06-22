@@ -32,7 +32,6 @@ import {
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
-  COMPUTER_USE_FEATURE_SWITCH_KEY,
   OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
   type ComputerUseAutomationPermissionTarget,
@@ -55,7 +54,10 @@ import {
 } from "./computer-use-permissions";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
-import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import {
+  checkForDesktopUpdates,
+  installDesktopAutoUpdates,
+} from "./desktop-auto-updates";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
@@ -145,6 +147,7 @@ let developerToolsAvailable = false;
 let developerToolsEnabled = false;
 let developerToolsRefresh: Promise<void> | null = null;
 let developerToolsRefreshRequested = false;
+let desktopAutoUpdatesInstalled = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
@@ -434,7 +437,6 @@ function friendlyDeviceName(): string | null {
 
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
-    featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
     platform: process.platform,
     supported: process.platform === "darwin",
     deviceName: friendlyDeviceName(),
@@ -725,9 +727,22 @@ function requestDesktopQuit(): void {
   });
 }
 
+function requestDesktopUpdateCheck(): void {
+  if (!desktopAutoUpdatesInstalled) {
+    return;
+  }
+
+  checkForDesktopUpdates();
+}
+
 function applyApplicationMenu(): void {
   const appSubmenu: MenuItemConstructorOptions[] = [
     { role: "about" },
+    {
+      label: "Check for Updates...",
+      enabled: desktopAutoUpdatesInstalled,
+      click: requestDesktopUpdateCheck,
+    },
     { type: "separator" },
   ];
   if (developerToolsAvailable) {
@@ -1211,15 +1226,15 @@ if (!hasSingleInstanceLock) {
   void app.whenReady().then(async () => {
     applyDockIcon();
     hideDockForInactiveMainWindow();
-    applyApplicationMenu();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
-    installDesktopAutoUpdates({
+    desktopAutoUpdatesInstalled = installDesktopAutoUpdates({
       config,
       apiBaseUrl: desktopApiBaseUrl,
       getComputerUseHostState: () => getComputerUseBridgeState().host,
       prepareForQuitAndInstall,
     });
+    applyApplicationMenu();
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();

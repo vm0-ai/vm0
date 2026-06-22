@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.18.1...desktop-v0.19.0) (2026-06-22)
+
+
+### Features
+
+* **desktop:** add check for updates menu ([#18517](https://github.com/vm0-ai/vm0/issues/18517)) ([833f268](https://github.com/vm0-ai/vm0/commit/833f268306fda3de1699eba82ef2698a006d9a3e))
+
 ## [0.18.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.18.0...desktop-v0.18.1) (2026-06-22)
 
 
