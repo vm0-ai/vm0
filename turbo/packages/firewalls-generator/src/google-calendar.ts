@@ -7,20 +7,17 @@
  * here.
  */
 
+import { fetchSpec, logStats, writeOutput } from "./codegen";
 import {
-  escapeString,
-  fetchSpec,
-  logStats,
-  renderCategories,
-  renderDefaultAllowed,
-  renderDefaultUnknownPolicy,
-  renderPermissions,
-  sanitizeAndSortRules,
-  writeOutput,
-} from "./codegen";
-import type { PermissionGroup } from "./codegen";
+  compileGoogleManifestFirewall,
+  renderGoogleManifestFirewall,
+  validateGoogleManifestPermissionManifest,
+} from "./google-manifest";
+import type { GoogleManifestPermission } from "./google-manifest";
 
-type GoogleCalendarRouteKeyKind = "base";
+const GOOGLE_CALENDAR_ROUTE_KEY_KINDS = ["base"] as const;
+type GoogleCalendarRouteKeyKind =
+  (typeof GOOGLE_CALENDAR_ROUTE_KEY_KINDS)[number];
 
 interface DiscoveryMethod {
   id?: string;
@@ -40,17 +37,11 @@ export interface GoogleCalendarDiscoveryDocument {
   resources?: Record<string, DiscoveryResource>;
 }
 
-export interface GoogleCalendarManifestPermission {
+export interface GoogleCalendarManifestPermission extends GoogleManifestPermission {
   readonly name: string;
   readonly category: string;
   readonly description: string;
   readonly routeKeys: readonly string[];
-}
-
-interface ApiEntry {
-  readonly base: string;
-  readonly kind: GoogleCalendarRouteKeyKind;
-  readonly permissions: readonly PermissionGroup[];
 }
 
 export const GOOGLE_CALENDAR_DISCOVERY_URL =
@@ -271,193 +262,17 @@ export function buildGoogleCalendarOfficialRouteKeys(
   return routeKeys;
 }
 
-function sortedValues(values: Iterable<string>): string[] {
-  return [...values].sort((a, b) => a.localeCompare(b));
-}
-
-function assertUniquePermissionNames(
-  manifest: readonly GoogleCalendarManifestPermission[],
-): void {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const permission of manifest) {
-    if (seen.has(permission.name)) {
-      duplicates.add(permission.name);
-    }
-    seen.add(permission.name);
-  }
-  if (duplicates.size > 0) {
-    throw new Error(
-      `Google Calendar permission manifest has duplicate permission names:\n${sortedValues(duplicates).join("\n")}`,
-    );
-  }
-}
-
 export function validateGoogleCalendarPermissionManifest(
   officialRouteKeys: ReadonlySet<string>,
   manifest: readonly GoogleCalendarManifestPermission[],
 ): void {
-  assertUniquePermissionNames(manifest);
-
-  const assignments = new Map<string, string[]>();
-  for (const permission of manifest) {
-    for (const routeKey of permission.routeKeys) {
-      const assignedPermissions = assignments.get(routeKey) ?? [];
-      assignedPermissions.push(permission.name);
-      assignments.set(routeKey, assignedPermissions);
-    }
-  }
-
-  const manifestRouteKeys = new Set(assignments.keys());
-  const unknown = sortedValues(
-    [...manifestRouteKeys].filter((routeKey) => {
-      return !officialRouteKeys.has(routeKey);
-    }),
-  );
-  const missing = sortedValues(
-    [...officialRouteKeys].filter((routeKey) => {
-      return !manifestRouteKeys.has(routeKey);
-    }),
-  );
-  const duplicates = sortedValues(
-    [...assignments.entries()]
-      .filter(([, permissions]) => {
-        return permissions.length > 1;
-      })
-      .map(([routeKey, permissions]) => {
-        return `${routeKey} -> ${permissions.join(", ")}`;
-      }),
-  );
-
-  const messages: string[] = [];
-  if (unknown.length > 0) {
-    messages.push(
-      `Unknown Google Calendar manifest route keys:\n${unknown.join("\n")}`,
-    );
-  }
-  if (missing.length > 0) {
-    messages.push(
-      `Missing Google Calendar manifest route keys:\n${missing.join("\n")}`,
-    );
-  }
-  if (duplicates.length > 0) {
-    messages.push(
-      `Duplicate Google Calendar manifest route assignments:\n${duplicates.join("\n")}`,
-    );
-  }
-  if (messages.length > 0) {
-    throw new Error(messages.join("\n\n"));
-  }
-}
-
-function routeKeyParts(routeKey: string): {
-  readonly kind: GoogleCalendarRouteKeyKind;
-  readonly rule: string;
-} {
-  const separatorIndex = routeKey.indexOf(":");
-  if (separatorIndex === -1) {
-    throw new Error(`Malformed Google Calendar route key: ${routeKey}`);
-  }
-  const kind = routeKey.slice(0, separatorIndex);
-  const rule = routeKey.slice(separatorIndex + 1);
-  if (kind !== "base") {
-    throw new Error(`Unknown Google Calendar route key kind: ${routeKey}`);
-  }
-  if (!/^(GET|HEAD|POST|PUT|PATCH|DELETE) \//.test(rule)) {
-    throw new Error(`Malformed Google Calendar route rule: ${routeKey}`);
-  }
-  return { kind, rule };
-}
-
-function permissionsForKind(
-  kind: GoogleCalendarRouteKeyKind,
-): PermissionGroup[] {
-  return GOOGLE_CALENDAR_PERMISSION_MANIFEST.flatMap((permission) => {
-    const rules = permission.routeKeys
-      .map(routeKeyParts)
-      .filter((routeKey) => {
-        return routeKey.kind === kind;
-      })
-      .map((routeKey) => {
-        return routeKey.rule;
-      });
-    if (rules.length === 0) return [];
-    return [
-      {
-        name: permission.name,
-        description: permission.description,
-        rules: sanitizeAndSortRules(rules),
-      },
-    ];
-  }).sort((left, right) => {
-    return left.name.localeCompare(right.name);
+  validateGoogleManifestPermissionManifest({
+    serviceLabel: "Google Calendar",
+    routeKinds: GOOGLE_CALENDAR_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest,
+    categoryOrder: GOOGLE_CALENDAR_CATEGORY_ORDER,
   });
-}
-
-function googleCalendarCategories(): Record<string, string> {
-  const categories: Record<string, string> = {};
-  for (const permission of GOOGLE_CALENDAR_PERMISSION_MANIFEST) {
-    categories[permission.name] = permission.category;
-  }
-  return categories;
-}
-
-function generateTypeScript(apis: readonly ApiEntry[]): string {
-  const lines: string[] = [
-    "// Auto-generated from Google's Calendar Discovery API and vm0's Calendar permission manifest.",
-    `// Source: ${GOOGLE_CALENDAR_DISCOVERY_URL}`,
-    "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-calendar",
-    "//",
-    "// DO NOT EDIT THIS FILE MANUALLY.",
-    "",
-    'import type { FirewallConfig, FirewallPolicyValue } from "../firewall-types";',
-    'import type { PermissionNamesOf } from "./index";',
-    "",
-    "export const googleCalendarFirewall = {",
-    '  name: "google-calendar",',
-    '  description: "Google Calendar API",',
-    "  placeholders: {",
-    `    GOOGLE_CALENDAR_TOKEN: "${escapeString(GOOGLE_CALENDAR_TOKEN_PLACEHOLDER)}",`,
-    "  },",
-    "  apis: [",
-  ];
-
-  for (const api of apis) {
-    lines.push("    {");
-    lines.push(`      base: "${escapeString(api.base)}",`);
-    lines.push("      auth: {");
-    lines.push("        headers: {");
-    lines.push(
-      '          Authorization: "Bearer ${{ secrets.GOOGLE_CALENDAR_TOKEN }}",',
-    );
-    lines.push("        },");
-    lines.push("      },");
-    lines.push("      permissions: [");
-    lines.push(...renderPermissions([...api.permissions]));
-    lines.push("      ],");
-    lines.push("    },");
-  }
-
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push(
-    ...renderDefaultAllowed(
-      "googleCalendarDefaultAllowed",
-      "googleCalendarFirewall",
-      DEFAULT_ALLOWED_GOOGLE_CALENDAR_PERMISSIONS,
-    ),
-  );
-  lines.push(
-    ...renderDefaultUnknownPolicy("googleCalendarDefaultUnknownPolicy", "deny"),
-  );
-  lines.push(
-    ...renderCategories("googleCalendarCategories", "googleCalendarFirewall", {
-      categories: googleCalendarCategories(),
-      displayOrder: [...GOOGLE_CALENDAR_CATEGORY_ORDER],
-    }),
-  );
-
-  return lines.join("\n");
 }
 
 async function loadGoogleCalendarDiscovery(): Promise<GoogleCalendarDiscoveryDocument> {
@@ -471,20 +286,53 @@ async function loadGoogleCalendarDiscovery(): Promise<GoogleCalendarDiscoveryDoc
 export async function generate(): Promise<void> {
   const discovery = await loadGoogleCalendarDiscovery();
   const officialRouteKeys = buildGoogleCalendarOfficialRouteKeys(discovery);
-  validateGoogleCalendarPermissionManifest(
+  const compiled = compileGoogleManifestFirewall<
+    GoogleCalendarRouteKeyKind,
+    GoogleCalendarManifestPermission
+  >({
+    serviceLabel: "Google Calendar",
+    routeKinds: GOOGLE_CALENDAR_ROUTE_KEY_KINDS,
     officialRouteKeys,
-    GOOGLE_CALENDAR_PERMISSION_MANIFEST,
-  );
+    manifest: GOOGLE_CALENDAR_PERMISSION_MANIFEST,
+    apis: [
+      {
+        base: GOOGLE_CALENDAR_BASE_URL,
+        kind: "base",
+      },
+    ],
+    categoryOrder: GOOGLE_CALENDAR_CATEGORY_ORDER,
+  });
+  if (!compiled.categories) {
+    throw new Error("Google Calendar categories were not compiled");
+  }
 
-  const apis: ApiEntry[] = [
-    {
-      base: GOOGLE_CALENDAR_BASE_URL,
-      kind: "base",
-      permissions: permissionsForKind("base"),
+  const ts = renderGoogleManifestFirewall({
+    headerLines: [
+      "// Auto-generated from Google's Calendar Discovery API and vm0's Calendar permission manifest.",
+      `// Source: ${GOOGLE_CALENDAR_DISCOVERY_URL}`,
+      "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-calendar",
+      "//",
+      "// DO NOT EDIT THIS FILE MANUALLY.",
+    ],
+    firewallVarName: "googleCalendarFirewall",
+    firewallName: "google-calendar",
+    firewallDescription: "Google Calendar API",
+    tokenPlaceholderName: "GOOGLE_CALENDAR_TOKEN",
+    tokenPlaceholderValue: GOOGLE_CALENDAR_TOKEN_PLACEHOLDER,
+    apis: compiled.apis,
+    defaultAllowed: {
+      varName: "googleCalendarDefaultAllowed",
+      permissions: DEFAULT_ALLOWED_GOOGLE_CALENDAR_PERMISSIONS,
     },
-  ];
-
-  const ts = generateTypeScript(apis);
+    defaultUnknownPolicy: {
+      varName: "googleCalendarDefaultUnknownPolicy",
+      policy: "deny",
+    },
+    categories: {
+      varName: "googleCalendarCategories",
+      config: compiled.categories,
+    },
+  });
   logStats(
     GOOGLE_CALENDAR_PERMISSION_MANIFEST.map((permission) => {
       return { ...permission, rules: [...permission.routeKeys] };

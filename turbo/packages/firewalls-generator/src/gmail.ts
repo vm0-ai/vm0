@@ -6,20 +6,16 @@
  * Discovery, but keep the firewall permission taxonomy explicit here.
  */
 
+import { fetchSpec, logStats, writeOutput } from "./codegen";
 import {
-  escapeString,
-  fetchSpec,
-  logStats,
-  renderCategories,
-  renderDefaultAllowed,
-  renderDefaultUnknownPolicy,
-  renderPermissions,
-  sanitizeAndSortRules,
-  writeOutput,
-} from "./codegen";
-import type { PermissionGroup } from "./codegen";
+  compileGoogleManifestFirewall,
+  renderGoogleManifestFirewall,
+  validateGoogleManifestPermissionManifest,
+} from "./google-manifest";
+import type { GoogleManifestPermission } from "./google-manifest";
 
-type GmailRouteKeyKind = "base" | "upload" | "resumable-upload";
+const GMAIL_ROUTE_KEY_KINDS = ["base", "upload", "resumable-upload"] as const;
+type GmailRouteKeyKind = (typeof GMAIL_ROUTE_KEY_KINDS)[number];
 
 interface DiscoveryMethod {
   id?: string;
@@ -45,17 +41,11 @@ export interface GmailDiscoveryDocument {
   resources?: Record<string, DiscoveryResource>;
 }
 
-export interface GmailManifestPermission {
+export interface GmailManifestPermission extends GoogleManifestPermission {
   readonly name: string;
   readonly category: string;
   readonly description: string;
   readonly routeKeys: readonly string[];
-}
-
-interface ApiEntry {
-  readonly base: string;
-  readonly kind: GmailRouteKeyKind;
-  readonly permissions: readonly PermissionGroup[];
 }
 
 export const GMAIL_DISCOVERY_URL =
@@ -395,185 +385,17 @@ export function buildGmailOfficialRouteKeys(
   return routeKeys;
 }
 
-function sortedValues(values: Iterable<string>): string[] {
-  return [...values].sort((a, b) => a.localeCompare(b));
-}
-
-function assertUniquePermissionNames(
-  manifest: readonly GmailManifestPermission[],
-): void {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const permission of manifest) {
-    if (seen.has(permission.name)) {
-      duplicates.add(permission.name);
-    }
-    seen.add(permission.name);
-  }
-  if (duplicates.size > 0) {
-    throw new Error(
-      `Gmail permission manifest has duplicate permission names:\n${sortedValues(duplicates).join("\n")}`,
-    );
-  }
-}
-
 export function validateGmailPermissionManifest(
   officialRouteKeys: ReadonlySet<string>,
   manifest: readonly GmailManifestPermission[],
 ): void {
-  assertUniquePermissionNames(manifest);
-
-  const assignments = new Map<string, string[]>();
-  for (const permission of manifest) {
-    for (const routeKey of permission.routeKeys) {
-      const assignedPermissions = assignments.get(routeKey) ?? [];
-      assignedPermissions.push(permission.name);
-      assignments.set(routeKey, assignedPermissions);
-    }
-  }
-
-  const manifestRouteKeys = new Set(assignments.keys());
-  const unknown = sortedValues(
-    [...manifestRouteKeys].filter((routeKey) => {
-      return !officialRouteKeys.has(routeKey);
-    }),
-  );
-  const missing = sortedValues(
-    [...officialRouteKeys].filter((routeKey) => {
-      return !manifestRouteKeys.has(routeKey);
-    }),
-  );
-  const duplicates = sortedValues(
-    [...assignments.entries()]
-      .filter(([, permissions]) => {
-        return permissions.length > 1;
-      })
-      .map(([routeKey, permissions]) => {
-        return `${routeKey} -> ${permissions.join(", ")}`;
-      }),
-  );
-
-  const messages: string[] = [];
-  if (unknown.length > 0) {
-    messages.push(`Unknown Gmail manifest route keys:\n${unknown.join("\n")}`);
-  }
-  if (missing.length > 0) {
-    messages.push(`Missing Gmail manifest route keys:\n${missing.join("\n")}`);
-  }
-  if (duplicates.length > 0) {
-    messages.push(
-      `Duplicate Gmail manifest route assignments:\n${duplicates.join("\n")}`,
-    );
-  }
-  if (messages.length > 0) {
-    throw new Error(messages.join("\n\n"));
-  }
-}
-
-function routeKeyParts(routeKey: string): {
-  readonly kind: GmailRouteKeyKind;
-  readonly rule: string;
-} {
-  const separatorIndex = routeKey.indexOf(":");
-  if (separatorIndex === -1) {
-    throw new Error(`Malformed Gmail route key: ${routeKey}`);
-  }
-  const kind = routeKey.slice(0, separatorIndex);
-  const rule = routeKey.slice(separatorIndex + 1);
-  if (kind !== "base" && kind !== "upload" && kind !== "resumable-upload") {
-    throw new Error(`Unknown Gmail route key kind: ${routeKey}`);
-  }
-  if (!/^(GET|HEAD|POST|PUT|PATCH|DELETE) \//.test(rule)) {
-    throw new Error(`Malformed Gmail route rule: ${routeKey}`);
-  }
-  return { kind, rule };
-}
-
-function permissionsForKind(kind: GmailRouteKeyKind): PermissionGroup[] {
-  return GMAIL_PERMISSION_MANIFEST.flatMap((permission) => {
-    const rules = permission.routeKeys
-      .map(routeKeyParts)
-      .filter((routeKey) => {
-        return routeKey.kind === kind;
-      })
-      .map((routeKey) => {
-        return routeKey.rule;
-      });
-    if (rules.length === 0) return [];
-    return [
-      {
-        name: permission.name,
-        description: permission.description,
-        rules: sanitizeAndSortRules(rules),
-      },
-    ];
-  }).sort((left, right) => {
-    return left.name.localeCompare(right.name);
+  validateGoogleManifestPermissionManifest({
+    serviceLabel: "Gmail",
+    routeKinds: GMAIL_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest,
+    categoryOrder: GMAIL_CATEGORY_ORDER,
   });
-}
-
-function gmailCategories(): Record<string, string> {
-  const categories: Record<string, string> = {};
-  for (const permission of GMAIL_PERMISSION_MANIFEST) {
-    categories[permission.name] = permission.category;
-  }
-  return categories;
-}
-
-function generateTypeScript(apis: readonly ApiEntry[]): string {
-  const lines: string[] = [
-    "// Auto-generated from Google's Gmail Discovery API and vm0's Gmail permission manifest.",
-    `// Source: ${GMAIL_DISCOVERY_URL}`,
-    "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:gmail",
-    "//",
-    "// DO NOT EDIT THIS FILE MANUALLY.",
-    "",
-    'import type { FirewallConfig, FirewallPolicyValue } from "../firewall-types";',
-    'import type { PermissionNamesOf } from "./index";',
-    "",
-    "export const gmailFirewall = {",
-    '  name: "gmail",',
-    '  description: "Gmail API",',
-    "  placeholders: {",
-    `    GMAIL_TOKEN: "${escapeString(GMAIL_TOKEN_PLACEHOLDER)}",`,
-    "  },",
-    "  apis: [",
-  ];
-
-  for (const api of apis) {
-    lines.push("    {");
-    lines.push(`      base: "${api.base}",`);
-    lines.push("      auth: {");
-    lines.push("        headers: {");
-    lines.push('          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",');
-    lines.push("        },");
-    lines.push("      },");
-    lines.push("      permissions: [");
-    lines.push(...renderPermissions([...api.permissions]));
-    lines.push("      ],");
-    lines.push("    },");
-  }
-
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push(
-    ...renderDefaultAllowed(
-      "gmailDefaultAllowed",
-      "gmailFirewall",
-      DEFAULT_ALLOWED_GMAIL_PERMISSIONS,
-    ),
-  );
-  lines.push(
-    ...renderDefaultUnknownPolicy("gmailDefaultUnknownPolicy", "deny"),
-  );
-  lines.push(
-    ...renderCategories("gmailCategories", "gmailFirewall", {
-      categories: gmailCategories(),
-      displayOrder: [...GMAIL_CATEGORY_ORDER],
-    }),
-  );
-
-  return lines.join("\n");
 }
 
 async function loadGmailDiscovery(): Promise<GmailDiscoveryDocument> {
@@ -584,27 +406,61 @@ async function loadGmailDiscovery(): Promise<GmailDiscoveryDocument> {
 export async function generate(): Promise<void> {
   const discovery = await loadGmailDiscovery();
   const officialRouteKeys = buildGmailOfficialRouteKeys(discovery);
-  validateGmailPermissionManifest(officialRouteKeys, GMAIL_PERMISSION_MANIFEST);
+  const compiled = compileGoogleManifestFirewall<
+    GmailRouteKeyKind,
+    GmailManifestPermission
+  >({
+    serviceLabel: "Gmail",
+    routeKinds: GMAIL_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest: GMAIL_PERMISSION_MANIFEST,
+    apis: [
+      {
+        base: GMAIL_BASE_URL,
+        kind: "base",
+      },
+      {
+        base: GMAIL_UPLOAD_BASE_URL,
+        kind: "upload",
+      },
+      {
+        base: GMAIL_RESUMABLE_UPLOAD_BASE_URL,
+        kind: "resumable-upload",
+      },
+    ],
+    categoryOrder: GMAIL_CATEGORY_ORDER,
+  });
+  if (!compiled.categories) {
+    throw new Error("Gmail categories were not compiled");
+  }
 
-  const apis: ApiEntry[] = [
-    {
-      base: GMAIL_BASE_URL,
-      kind: "base",
-      permissions: permissionsForKind("base"),
+  const ts = renderGoogleManifestFirewall({
+    headerLines: [
+      "// Auto-generated from Google's Gmail Discovery API and vm0's Gmail permission manifest.",
+      `// Source: ${GMAIL_DISCOVERY_URL}`,
+      "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:gmail",
+      "//",
+      "// DO NOT EDIT THIS FILE MANUALLY.",
+    ],
+    firewallVarName: "gmailFirewall",
+    firewallName: "gmail",
+    firewallDescription: "Gmail API",
+    tokenPlaceholderName: "GMAIL_TOKEN",
+    tokenPlaceholderValue: GMAIL_TOKEN_PLACEHOLDER,
+    apis: compiled.apis,
+    defaultAllowed: {
+      varName: "gmailDefaultAllowed",
+      permissions: DEFAULT_ALLOWED_GMAIL_PERMISSIONS,
     },
-    {
-      base: GMAIL_UPLOAD_BASE_URL,
-      kind: "upload",
-      permissions: permissionsForKind("upload"),
+    defaultUnknownPolicy: {
+      varName: "gmailDefaultUnknownPolicy",
+      policy: "deny",
     },
-    {
-      base: GMAIL_RESUMABLE_UPLOAD_BASE_URL,
-      kind: "resumable-upload",
-      permissions: permissionsForKind("resumable-upload"),
+    categories: {
+      varName: "gmailCategories",
+      config: compiled.categories,
     },
-  ];
-
-  const ts = generateTypeScript(apis);
+  });
   logStats(
     GMAIL_PERMISSION_MANIFEST.map((permission) => {
       return { ...permission, rules: [...permission.routeKeys] };

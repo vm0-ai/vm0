@@ -6,20 +6,20 @@
  * Drive v2/v3 Discovery, but keep the permission taxonomy explicit here.
  */
 
+import { fetchSpec, logStats, writeOutput } from "./codegen";
 import {
-  escapeString,
-  fetchSpec,
-  logStats,
-  renderCategories,
-  renderDefaultAllowed,
-  renderDefaultUnknownPolicy,
-  renderPermissions,
-  sanitizeAndSortRules,
-  writeOutput,
-} from "./codegen";
-import type { PermissionGroup } from "./codegen";
+  compileGoogleManifestFirewall,
+  renderGoogleManifestFirewall,
+  validateGoogleManifestPermissionManifest,
+} from "./google-manifest";
+import type { GoogleManifestPermission } from "./google-manifest";
 
-type GoogleDriveRouteKeyKind = "base" | "upload" | "resumable-upload";
+const GOOGLE_DRIVE_ROUTE_KEY_KINDS = [
+  "base",
+  "upload",
+  "resumable-upload",
+] as const;
+type GoogleDriveRouteKeyKind = (typeof GOOGLE_DRIVE_ROUTE_KEY_KINDS)[number];
 
 interface DiscoveryMethod {
   id?: string;
@@ -40,17 +40,11 @@ export interface GoogleDriveDiscoveryDocument {
   resources?: Record<string, DiscoveryResource>;
 }
 
-export interface GoogleDriveManifestPermission {
+export interface GoogleDriveManifestPermission extends GoogleManifestPermission {
   readonly name: string;
   readonly category: string;
   readonly description: string;
   readonly routeKeys: readonly string[];
-}
-
-interface ApiEntry {
-  readonly base: string;
-  readonly kind: GoogleDriveRouteKeyKind;
-  readonly permissions: readonly PermissionGroup[];
 }
 
 export const GOOGLE_DRIVE_DISCOVERY_URLS = [
@@ -421,193 +415,17 @@ export function buildGoogleDriveOfficialRouteKeys(
   return routeKeys;
 }
 
-function sortedValues(values: Iterable<string>): string[] {
-  return [...values].sort((a, b) => a.localeCompare(b));
-}
-
-function assertUniquePermissionNames(
-  manifest: readonly GoogleDriveManifestPermission[],
-): void {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const permission of manifest) {
-    if (seen.has(permission.name)) {
-      duplicates.add(permission.name);
-    }
-    seen.add(permission.name);
-  }
-  if (duplicates.size > 0) {
-    throw new Error(
-      `Google Drive permission manifest has duplicate permission names:\n${sortedValues(duplicates).join("\n")}`,
-    );
-  }
-}
-
 export function validateGoogleDrivePermissionManifest(
   officialRouteKeys: ReadonlySet<string>,
   manifest: readonly GoogleDriveManifestPermission[],
 ): void {
-  assertUniquePermissionNames(manifest);
-
-  const assignments = new Map<string, string[]>();
-  for (const permission of manifest) {
-    for (const routeKey of permission.routeKeys) {
-      const assignedPermissions = assignments.get(routeKey) ?? [];
-      assignedPermissions.push(permission.name);
-      assignments.set(routeKey, assignedPermissions);
-    }
-  }
-
-  const manifestRouteKeys = new Set(assignments.keys());
-  const unknown = sortedValues(
-    [...manifestRouteKeys].filter((routeKey) => {
-      return !officialRouteKeys.has(routeKey);
-    }),
-  );
-  const missing = sortedValues(
-    [...officialRouteKeys].filter((routeKey) => {
-      return !manifestRouteKeys.has(routeKey);
-    }),
-  );
-  const duplicates = sortedValues(
-    [...assignments.entries()]
-      .filter(([routeKey, permissions]) => {
-        return permissions.length > 1;
-      })
-      .map(([routeKey, permissions]) => {
-        return `${routeKey} -> ${permissions.join(", ")}`;
-      }),
-  );
-
-  const messages: string[] = [];
-  if (unknown.length > 0) {
-    messages.push(
-      `Unknown Google Drive manifest route keys:\n${unknown.join("\n")}`,
-    );
-  }
-  if (missing.length > 0) {
-    messages.push(
-      `Missing Google Drive manifest route keys:\n${missing.join("\n")}`,
-    );
-  }
-  if (duplicates.length > 0) {
-    messages.push(
-      `Duplicate Google Drive manifest route assignments:\n${duplicates.join("\n")}`,
-    );
-  }
-  if (messages.length > 0) {
-    throw new Error(messages.join("\n\n"));
-  }
-}
-
-function routeKeyParts(routeKey: string): {
-  readonly kind: GoogleDriveRouteKeyKind;
-  readonly rule: string;
-} {
-  const separatorIndex = routeKey.indexOf(":");
-  if (separatorIndex === -1) {
-    throw new Error(`Malformed Google Drive route key: ${routeKey}`);
-  }
-  const kind = routeKey.slice(0, separatorIndex);
-  const rule = routeKey.slice(separatorIndex + 1);
-  if (kind !== "base" && kind !== "upload" && kind !== "resumable-upload") {
-    throw new Error(`Unknown Google Drive route key kind: ${routeKey}`);
-  }
-  if (!/^(GET|HEAD|POST|PUT|PATCH|DELETE) \//.test(rule)) {
-    throw new Error(`Malformed Google Drive route rule: ${routeKey}`);
-  }
-  return { kind, rule };
-}
-
-function permissionsForKind(kind: GoogleDriveRouteKeyKind): PermissionGroup[] {
-  return GOOGLE_DRIVE_PERMISSION_MANIFEST.flatMap((permission) => {
-    const rules = permission.routeKeys
-      .map(routeKeyParts)
-      .filter((routeKey) => {
-        return routeKey.kind === kind;
-      })
-      .map((routeKey) => {
-        return routeKey.rule;
-      });
-    if (rules.length === 0) return [];
-    return [
-      {
-        name: permission.name,
-        description: permission.description,
-        rules: sanitizeAndSortRules(rules),
-      },
-    ];
-  }).sort((left, right) => {
-    return left.name.localeCompare(right.name);
+  validateGoogleManifestPermissionManifest({
+    serviceLabel: "Google Drive",
+    routeKinds: GOOGLE_DRIVE_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest,
+    categoryOrder: GOOGLE_DRIVE_CATEGORY_ORDER,
   });
-}
-
-function googleDriveCategories(): Record<string, string> {
-  const categories: Record<string, string> = {};
-  for (const permission of GOOGLE_DRIVE_PERMISSION_MANIFEST) {
-    categories[permission.name] = permission.category;
-  }
-  return categories;
-}
-
-function generateTypeScript(apis: readonly ApiEntry[]): string {
-  const lines: string[] = [
-    "// Auto-generated from Google's Drive Discovery API and vm0's Drive permission manifest.",
-    ...GOOGLE_DRIVE_DISCOVERY_URLS.map((url) => {
-      return `// Source: ${url}`;
-    }),
-    "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-drive",
-    "//",
-    "// DO NOT EDIT THIS FILE MANUALLY.",
-    "",
-    'import type { FirewallConfig, FirewallPolicyValue } from "../firewall-types";',
-    'import type { PermissionNamesOf } from "./index";',
-    "",
-    "export const googleDriveFirewall = {",
-    '  name: "google-drive",',
-    '  description: "Google Drive API",',
-    "  placeholders: {",
-    `    GOOGLE_DRIVE_TOKEN: "${escapeString(GOOGLE_DRIVE_TOKEN_PLACEHOLDER)}",`,
-    "  },",
-    "  apis: [",
-  ];
-
-  for (const api of apis) {
-    lines.push("    {");
-    lines.push(`      base: "${api.base}",`);
-    lines.push("      auth: {");
-    lines.push("        headers: {");
-    lines.push(
-      '          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",',
-    );
-    lines.push("        },");
-    lines.push("      },");
-    lines.push("      permissions: [");
-    lines.push(...renderPermissions([...api.permissions]));
-    lines.push("      ],");
-    lines.push("    },");
-  }
-
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push(
-    ...renderDefaultAllowed(
-      "googleDriveDefaultAllowed",
-      "googleDriveFirewall",
-      DEFAULT_ALLOWED_GOOGLE_DRIVE_PERMISSIONS,
-    ),
-  );
-  lines.push(
-    ...renderDefaultUnknownPolicy("googleDriveDefaultUnknownPolicy", "deny"),
-  );
-  lines.push(
-    ...renderCategories("googleDriveCategories", "googleDriveFirewall", {
-      categories: googleDriveCategories(),
-      displayOrder: [...GOOGLE_DRIVE_CATEGORY_ORDER],
-    }),
-  );
-
-  return lines.join("\n");
 }
 
 async function loadGoogleDriveDiscoveries(): Promise<
@@ -627,30 +445,63 @@ async function loadGoogleDriveDiscoveries(): Promise<
 export async function generate(): Promise<void> {
   const discoveries = await loadGoogleDriveDiscoveries();
   const officialRouteKeys = buildGoogleDriveOfficialRouteKeys(discoveries);
-  validateGoogleDrivePermissionManifest(
+  const compiled = compileGoogleManifestFirewall<
+    GoogleDriveRouteKeyKind,
+    GoogleDriveManifestPermission
+  >({
+    serviceLabel: "Google Drive",
+    routeKinds: GOOGLE_DRIVE_ROUTE_KEY_KINDS,
     officialRouteKeys,
-    GOOGLE_DRIVE_PERMISSION_MANIFEST,
-  );
+    manifest: GOOGLE_DRIVE_PERMISSION_MANIFEST,
+    apis: [
+      {
+        base: GOOGLE_DRIVE_BASE_URL,
+        kind: "base",
+      },
+      {
+        base: GOOGLE_DRIVE_UPLOAD_BASE_URL,
+        kind: "upload",
+      },
+      {
+        base: GOOGLE_DRIVE_RESUMABLE_UPLOAD_BASE_URL,
+        kind: "resumable-upload",
+      },
+    ],
+    categoryOrder: GOOGLE_DRIVE_CATEGORY_ORDER,
+  });
+  if (!compiled.categories) {
+    throw new Error("Google Drive categories were not compiled");
+  }
 
-  const apis: ApiEntry[] = [
-    {
-      base: GOOGLE_DRIVE_BASE_URL,
-      kind: "base",
-      permissions: permissionsForKind("base"),
+  const ts = renderGoogleManifestFirewall({
+    headerLines: [
+      "// Auto-generated from Google's Drive Discovery API and vm0's Drive permission manifest.",
+      ...GOOGLE_DRIVE_DISCOVERY_URLS.map((url) => {
+        return `// Source: ${url}`;
+      }),
+      "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-drive",
+      "//",
+      "// DO NOT EDIT THIS FILE MANUALLY.",
+    ],
+    firewallVarName: "googleDriveFirewall",
+    firewallName: "google-drive",
+    firewallDescription: "Google Drive API",
+    tokenPlaceholderName: "GOOGLE_DRIVE_TOKEN",
+    tokenPlaceholderValue: GOOGLE_DRIVE_TOKEN_PLACEHOLDER,
+    apis: compiled.apis,
+    defaultAllowed: {
+      varName: "googleDriveDefaultAllowed",
+      permissions: DEFAULT_ALLOWED_GOOGLE_DRIVE_PERMISSIONS,
     },
-    {
-      base: GOOGLE_DRIVE_UPLOAD_BASE_URL,
-      kind: "upload",
-      permissions: permissionsForKind("upload"),
+    defaultUnknownPolicy: {
+      varName: "googleDriveDefaultUnknownPolicy",
+      policy: "deny",
     },
-    {
-      base: GOOGLE_DRIVE_RESUMABLE_UPLOAD_BASE_URL,
-      kind: "resumable-upload",
-      permissions: permissionsForKind("resumable-upload"),
+    categories: {
+      varName: "googleDriveCategories",
+      config: compiled.categories,
     },
-  ];
-
-  const ts = generateTypeScript(apis);
+  });
   logStats(
     GOOGLE_DRIVE_PERMISSION_MANIFEST.map((permission) => {
       return { ...permission, rules: [...permission.routeKeys] };
