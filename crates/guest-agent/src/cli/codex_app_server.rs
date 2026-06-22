@@ -133,7 +133,7 @@ impl From<CodexAppServerError> for AgentError {
 
 pub struct CodexAppServerClient {
     stdin: Option<ChildStdin>,
-    stdout_reader: BufReader<ChildStdout>,
+    stdout_reader: Option<BufReader<ChildStdout>>,
     process_id: Option<u32>,
     process_group_id: Option<i32>,
     wait_rx: Option<oneshot::Receiver<std::io::Result<ExitStatus>>>,
@@ -192,7 +192,7 @@ impl CodexAppServerClient {
 
         Ok(Self {
             stdin: Some(stdin),
-            stdout_reader: BufReader::new(stdout),
+            stdout_reader: Some(BufReader::new(stdout)),
             process_id,
             process_group_id,
             wait_rx: Some(wait_rx),
@@ -341,7 +341,7 @@ impl CodexAppServerClient {
             return Ok(());
         }
 
-        self.stdin.take();
+        self.close_io_handles();
         if self.wait_rx.is_some() && !self.wait_for_child(SHUTDOWN_SIGTERM_GRACE).await? {
             self.signal_process_group(libc::SIGTERM);
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
@@ -425,7 +425,12 @@ impl CodexAppServerClient {
         loop {
             tokio::select! {
                 biased;
-                line = read_stdout_line(&mut self.stdout_reader) => {
+                line = {
+                    let Some(stdout_reader) = self.stdout_reader.as_mut() else {
+                        return Err(self.poison_stream("app-server stdout is closed"));
+                    };
+                    read_stdout_line(stdout_reader)
+                } => {
                     let line = match line {
                         Ok(Some(line)) => line,
                         Ok(None) => {
@@ -565,6 +570,9 @@ impl CodexAppServerClient {
         if self.stdin.is_none() {
             return Err(self.poison_stream("app-server stdin is closed"));
         }
+        if self.stdout_reader.is_none() {
+            return Err(self.poison_stream("app-server stdout is closed"));
+        }
         if self.in_flight_request_id.is_some() {
             return Err(self.poison_stream("previous app-server request did not complete"));
         }
@@ -577,6 +585,7 @@ impl CodexAppServerClient {
             _ => error.to_string(),
         };
         self.mark_stream_unusable(message);
+        self.close_io_handles();
         self.signal_process_group(libc::SIGKILL);
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
@@ -587,6 +596,7 @@ impl CodexAppServerClient {
     fn poison_stream(&mut self, message: impl Into<String>) -> CodexAppServerError {
         let message = message.into();
         self.mark_stream_unusable(message.clone());
+        self.close_io_handles();
         self.signal_process_group(libc::SIGKILL);
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
@@ -653,6 +663,11 @@ impl CodexAppServerClient {
         self.process_group_id = None;
     }
 
+    fn close_io_handles(&mut self) {
+        self.stdin.take();
+        self.stdout_reader.take();
+    }
+
     fn kill_and_clear_child_process_handles(&mut self) {
         self.signal_process_group(libc::SIGKILL);
         self.clear_child_process_handles();
@@ -670,7 +685,7 @@ impl CodexAppServerClient {
 impl Drop for CodexAppServerClient {
     fn drop(&mut self) {
         if !self.closed {
-            self.stdin.take();
+            self.close_io_handles();
             let _ = self.try_finish_child_wait();
             if self.drop_needs_process_group_signal() {
                 self.signal_process_group(libc::SIGKILL);
