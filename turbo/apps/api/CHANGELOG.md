@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.168.3](https://github.com/vm0-ai/vm0/compare/api-v1.168.2...api-v1.168.3) (2026-06-22)
+
+
+### Bug Fixes
+
+* show goal objective briefs in markers ([#18530](https://github.com/vm0-ai/vm0/issues/18530)) ([dc3c7e7](https://github.com/vm0-ai/vm0/commit/dc3c7e7aa378268b576cfd514e1cea7bd81021ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.3
+    * @vm0/connectors bumped to 1.102.0
+    * @vm0/core bumped to 8.362.5
+    * @vm0/db bumped to 1.64.0
+
 ## [1.168.2](https://github.com/vm0-ai/vm0/compare/api-v1.168.1...api-v1.168.2) (2026-06-22)
 
 
