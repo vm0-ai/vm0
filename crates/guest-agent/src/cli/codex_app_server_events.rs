@@ -40,7 +40,7 @@ pub fn notification_to_codex_event(
     match notification.method.as_str() {
         "thread/started" => map_thread_started(notification).map(Some),
         "turn/started" => map_turn(notification, "turn.started").map(Some),
-        "turn/completed" => map_turn(notification, "turn.completed").map(Some),
+        "turn/completed" => map_turn_completed(notification).map(Some),
         "item/started" => map_item(notification, "item.started", "started_at_ms", "startedAtMs"),
         "item/completed" => map_item(
             notification,
@@ -83,6 +83,34 @@ fn map_turn(
         "type": event_type,
         "thread_id": thread_id,
         "turn": normalize_turn(turn, &notification.method)?,
+    }))
+}
+
+fn map_turn_completed(
+    notification: &ServerNotification,
+) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let turn = required_object_field(params, &notification.method, "turn")?;
+    let status = required_string_field(turn, &notification.method, "turn.status")?;
+    let normalized_turn = normalize_turn(turn, &notification.method)?;
+
+    if matches!(status, "failed" | "interrupted") {
+        return Ok(json!({
+            "type": "turn.failed",
+            "thread_id": thread_id,
+            "turn": normalized_turn,
+            "error": turn_failure_message(turn, status),
+        }));
+    }
+
+    Ok(json!({
+        "type": "turn.completed",
+        "thread_id": thread_id,
+        "turn": normalized_turn,
     }))
 }
 
@@ -341,6 +369,43 @@ fn normalize_error(error: &Map<String, Value>) -> Value {
     );
     copy_optional_field(&mut normalized, "codex_error_info", error, "codexErrorInfo");
     Value::Object(normalized)
+}
+
+fn turn_failure_message(turn: &Map<String, Value>, status: &str) -> String {
+    turn.get("error")
+        .and_then(error_message)
+        .unwrap_or_else(|| format!("turn {}", camel_to_snake(status).replace('_', " ")))
+}
+
+fn error_message(error: &Value) -> Option<String> {
+    match error {
+        Value::String(message) => trimmed_message(message),
+        Value::Object(error) => combined_message_and_details(
+            error.get("message").and_then(Value::as_str),
+            error.get("additionalDetails").and_then(Value::as_str),
+        ),
+        _ => None,
+    }
+}
+
+fn combined_message_and_details(message: Option<&str>, details: Option<&str>) -> Option<String> {
+    match (
+        message.and_then(trimmed_message),
+        details.and_then(trimmed_message),
+    ) {
+        (Some(message), Some(details)) => Some(format!("{message} ({details})")),
+        (Some(message), None) => Some(message),
+        (None, Some(details)) => Some(details),
+        (None, None) => None,
+    }
+}
+
+fn trimmed_message(message: &str) -> Option<String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return None;
+    }
+    Some(message.to_string())
 }
 
 fn required_params(notification: &ServerNotification) -> Result<&Value, CodexAppServerEventError> {
@@ -779,7 +844,43 @@ mod tests {
     }
 
     #[test]
-    fn failed_turn_completed_preserves_diagnostic_shape() {
+    fn completed_turn_preserves_completed_event_shape() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "completed",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "turn.completed",
+                "thread_id": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "completed",
+                    "error": null,
+                    "started_at": 1,
+                    "completed_at": 2,
+                    "duration_ms": 1000
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn failed_turn_completed_maps_to_existing_failure_shape() {
         let event = mapped_event(
             "turn/completed",
             json!({
@@ -804,8 +905,49 @@ mod tests {
             events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
                 .expect("failed turn should produce a diagnostic");
 
-        assert_eq!(diagnostic.event_type, "turn.completed");
+        assert_eq!(
+            event.pointer("/type").and_then(Value::as_str),
+            Some("turn.failed")
+        );
+        assert_eq!(
+            event.pointer("/error").and_then(Value::as_str),
+            Some("turn failed (capacity)")
+        );
+        assert_eq!(
+            event.pointer("/turn/error/codex_error_info"),
+            Some(&json!("serverOverloaded"))
+        );
+        assert_eq!(diagnostic.event_type, "turn.failed");
         assert_eq!(diagnostic.message, "turn failed (capacity)");
+    }
+
+    #[test]
+    fn interrupted_turn_completed_maps_to_failure_shape() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "interrupted",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/type").and_then(Value::as_str),
+            Some("turn.failed")
+        );
+        assert_eq!(
+            event.pointer("/error").and_then(Value::as_str),
+            Some("turn interrupted")
+        );
     }
 
     #[test]
