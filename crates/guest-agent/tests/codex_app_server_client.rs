@@ -1,7 +1,8 @@
-use std::future::Future;
+use std::future::{Future, poll_fn};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::task::Poll;
 use std::time::Duration;
 
 use guest_agent::cli::codex_app_server::{
@@ -447,12 +448,11 @@ async fn codex_app_server_cancelled_request_fails_next_request() -> Result<(), S
         .ok_or_else(|| "app-server child missing pid".to_string())?;
     wait_result(client.initialize(), "initialize").await?;
 
-    let timed_out = tokio::time::timeout(
-        Duration::from_millis(100),
+    cancel_after_first_pending(
         client.request_value("thread/start", json!({})),
+        "thread/start",
     )
-    .await;
-    assert!(timed_out.is_err());
+    .await?;
 
     let next_result =
         wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
@@ -499,12 +499,11 @@ async fn codex_app_server_poisoning_one_client_does_not_stop_another() -> Result
         .ok_or_else(|| "survivor app-server child missing pid".to_string())?;
     wait_result(survivor.initialize(), "survivor initialize").await?;
 
-    let timed_out = tokio::time::timeout(
-        Duration::from_millis(100),
+    cancel_after_first_pending(
         victim.request_value("thread/start", json!({})),
+        "victim thread/start",
     )
-    .await;
-    assert!(timed_out.is_err());
+    .await?;
 
     let poisoned = wait_result_allow_error(
         victim.request_value("mock/state", json!({})),
@@ -544,15 +543,14 @@ async fn codex_app_server_cancelled_notification_fails_next_request() -> Result<
     .await?;
     assert_eq!(initialized.platform_family, std::env::consts::FAMILY);
 
-    let timed_out = tokio::time::timeout(
-        Duration::from_millis(100),
+    cancel_after_first_pending(
         client.notify(
             "initialized",
             Value::String("x".repeat(BLOCKED_STDIN_PAYLOAD_BYTES)),
         ),
+        "initialized notification",
     )
-    .await;
-    assert!(timed_out.is_err());
+    .await?;
 
     let next_result =
         wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
@@ -593,8 +591,7 @@ async fn codex_app_server_cancelled_shutdown_can_retry_and_reap_child() -> Resul
         .process_id()
         .ok_or_else(|| "app-server child missing pid".to_string())?;
 
-    let first_shutdown = tokio::time::timeout(Duration::from_millis(100), client.shutdown()).await;
-    assert!(first_shutdown.is_err());
+    cancel_after_first_pending(client.shutdown(), "shutdown").await?;
 
     wait_result(client.shutdown(), "shutdown after cancellation").await?;
     assert!(client.process_id().is_none());
@@ -608,8 +605,7 @@ async fn codex_app_server_request_after_cancelled_shutdown_kills_child() -> Resu
         .process_id()
         .ok_or_else(|| "app-server child missing pid".to_string())?;
 
-    let first_shutdown = tokio::time::timeout(Duration::from_millis(100), client.shutdown()).await;
-    assert!(first_shutdown.is_err());
+    cancel_after_first_pending(client.shutdown(), "shutdown").await?;
 
     let result =
         wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
@@ -755,6 +751,25 @@ async fn wait_result_allow_error<T>(
     tokio::time::timeout(CLIENT_TIMEOUT, future)
         .await
         .unwrap_or_else(|_| Err(CodexAppServerError::Protocol(format!("{label} timed out"))))
+}
+
+async fn cancel_after_first_pending<T>(
+    future: impl Future<Output = Result<T, CodexAppServerError>>,
+    label: &str,
+) -> Result<(), String> {
+    let mut future = Box::pin(future);
+    poll_fn(|cx| match future.as_mut().poll(cx) {
+        Poll::Pending => Poll::Ready(Ok(())),
+        Poll::Ready(Ok(_)) => Poll::Ready(Err(format!(
+            "{label} completed before it could be cancelled"
+        ))),
+        Poll::Ready(Err(error)) => Poll::Ready(Err(format!(
+            "{label} failed before it could be cancelled: {error:?}"
+        ))),
+    })
+    .await?;
+    drop(future);
+    Ok(())
 }
 
 fn initialize_params() -> Value {

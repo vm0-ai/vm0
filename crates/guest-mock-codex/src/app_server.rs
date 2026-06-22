@@ -602,14 +602,8 @@ fn server_request(id: Value) -> Value {
 }
 
 fn spawn_stderr_holder() -> io::Result<()> {
-    let status = Command::new("sh").args(["-c", "sleep 30 &"]).status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!(
-            "failed to spawn stderr holder: {status}"
-        )))
-    }
+    let _child = Command::new("tail").args(["-f", "/dev/null"]).spawn()?;
+    Ok(())
 }
 
 fn thread(thread_id: &str) -> Value {
