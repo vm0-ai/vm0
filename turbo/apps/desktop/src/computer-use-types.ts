@@ -1,8 +1,49 @@
 export const COMPUTER_USE_FEATURE_SWITCH_KEY = "computerUse";
 
+export const COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS = [
+  "chrome",
+  "safari",
+] as const;
+
+export type ComputerUseAutomationPermissionTarget =
+  (typeof COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS)[number];
+
+export type ComputerUseAutomationPermissionStatus =
+  | "unknown"
+  | "granted"
+  | "denied"
+  | "not_installed"
+  | "not_running";
+
+export interface ComputerUseAutomationPermissionTargetState {
+  readonly status: ComputerUseAutomationPermissionStatus;
+  readonly updatedAt: string | null;
+  readonly reason: string | null;
+}
+
+export type ComputerUseAutomationPermissionState = Record<
+  ComputerUseAutomationPermissionTarget,
+  ComputerUseAutomationPermissionTargetState
+>;
+
+export const COMPUTER_USE_AUTOMATION_PERMISSION_TARGET_DETAILS = {
+  chrome: {
+    bundleId: "com.google.Chrome",
+    label: "Google Chrome",
+  },
+  safari: {
+    bundleId: "com.apple.Safari",
+    label: "Safari",
+  },
+} as const satisfies Record<
+  ComputerUseAutomationPermissionTarget,
+  { readonly bundleId: string; readonly label: string }
+>;
+
 export interface ComputerUsePermissionState {
   readonly accessibility: boolean;
   readonly screenRecording: boolean;
+  readonly automation?: ComputerUseAutomationPermissionState;
 }
 
 export type ComputerUseHostRuntimeStatus =
@@ -95,6 +136,40 @@ export function hasRequiredComputerUsePermissions(
   permissions: ComputerUsePermissionState,
 ): boolean {
   return permissions.accessibility && permissions.screenRecording;
+}
+
+function unknownAutomationPermissionTargetState(): ComputerUseAutomationPermissionTargetState {
+  return {
+    status: "unknown",
+    updatedAt: null,
+    reason: null,
+  };
+}
+
+export function defaultComputerUseAutomationPermissionState(): ComputerUseAutomationPermissionState {
+  return {
+    chrome: unknownAutomationPermissionTargetState(),
+    safari: unknownAutomationPermissionTargetState(),
+  };
+}
+
+export function computerUseAutomationPermissionState(
+  permissions: ComputerUsePermissionState,
+): ComputerUseAutomationPermissionState {
+  return {
+    ...defaultComputerUseAutomationPermissionState(),
+    ...permissions.automation,
+  };
+}
+
+export function normalizeComputerUsePermissionState(
+  permissions: ComputerUsePermissionState,
+): ComputerUsePermissionState {
+  return {
+    accessibility: permissions.accessibility,
+    screenRecording: permissions.screenRecording,
+    automation: computerUseAutomationPermissionState(permissions),
+  };
 }
 
 export const OFFLINE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
