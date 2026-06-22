@@ -388,6 +388,24 @@ async fn codex_app_server_disconnect_after_initialize_fails_next_request() -> Re
         wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
     assert_disconnect_like(result)?;
 
+    let retry =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match retry {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(
+                message.contains("Broken pipe")
+                    || message.contains("child exited")
+                    || message.contains("disconnected"),
+                "unexpected retry error message: {message}"
+            );
+        }
+        other => {
+            return Err(format!(
+                "expected persistent disconnected protocol error, got {other:?}"
+            ));
+        }
+    }
+
     wait_result(client.shutdown(), "shutdown").await
 }
 

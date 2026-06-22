@@ -432,15 +432,23 @@ impl CodexAppServerClient {
                     let line = match line {
                         Ok(Some(line)) => line,
                         Ok(None) => {
-                            if let Some(status) = self.try_finish_child_wait()? {
-                                return Err(CodexAppServerError::ChildExited {
-                                    method: pending_method.to_string(),
-                                    status: status.to_string(),
-                                });
+                            match self.try_finish_child_wait() {
+                                Ok(Some(status)) => {
+                                    let error = CodexAppServerError::ChildExited {
+                                        method: pending_method.to_string(),
+                                        status: status.to_string(),
+                                    };
+                                    return Err(self.poison_error(error));
+                                }
+                                Ok(None) => {
+                                    return Err(self.poison_error(CodexAppServerError::Disconnected {
+                                        method: pending_method.to_string(),
+                                    }));
+                                }
+                                Err(error) => {
+                                    return Err(self.poison_error(error));
+                                }
                             }
-                            return Err(CodexAppServerError::Disconnected {
-                                method: pending_method.to_string(),
-                            });
                         }
                         Err(error) => {
                             return Err(self.poison_error(error));
@@ -460,11 +468,15 @@ impl CodexAppServerClient {
                     let Some(result) = result else {
                         return Err(self.poison_stream("app-server wait receiver disappeared"));
                     };
-                    let status = self.finish_child_wait(result)?;
-                    return Err(CodexAppServerError::ChildExited {
+                    let status = match self.finish_child_wait(result) {
+                        Ok(status) => status,
+                        Err(error) => return Err(self.poison_error(error)),
+                    };
+                    let error = CodexAppServerError::ChildExited {
                         method: pending_method.to_string(),
                         status: status.to_string(),
-                    });
+                    };
+                    return Err(self.poison_error(error));
                 }
             }
         }
@@ -524,6 +536,11 @@ impl CodexAppServerClient {
         if self.outbound_write_in_progress {
             return Err(self.poison_stream("previous app-server write did not complete"));
         }
+        if self.stdin.is_none() {
+            return Err(CodexAppServerError::Protocol(
+                "app-server stdin is closed".to_string(),
+            ));
+        }
         let mut bytes = serde_json::to_vec(message)?;
         bytes.push(b'\n');
         self.outbound_write_in_progress = true;
@@ -537,7 +554,7 @@ impl CodexAppServerClient {
         }
         .await;
         self.outbound_write_in_progress = false;
-        result
+        result.map_err(|error| self.poison_error(error))
     }
 
     fn ensure_stream_usable(&mut self) -> Result<(), CodexAppServerError> {
