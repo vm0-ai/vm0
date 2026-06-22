@@ -1,7 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  type ZeroWorkflowUpdateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
@@ -109,7 +110,36 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   };
 }
 
-function mockWorkflowApis(workflows: ZeroWorkflowDetailResponse[]): void {
+function applyWorkflowUpdate(
+  workflow: ZeroWorkflowDetailResponse,
+  body: ZeroWorkflowUpdateRequest,
+): ZeroWorkflowDetailResponse {
+  return {
+    ...workflow,
+    ...(body.instruction !== undefined
+      ? { instruction: body.instruction }
+      : {}),
+    ...(body.displayName !== undefined
+      ? { displayName: body.displayName }
+      : {}),
+    ...(body.description !== undefined
+      ? { description: body.description }
+      : {}),
+    ...(body.files !== undefined
+      ? {
+          files: body.files.map((file) => {
+            return { path: file.path, size: file.content.length };
+          }),
+          fileContents: body.files,
+        }
+      : {}),
+  };
+}
+
+function mockWorkflowApis(
+  workflows: ZeroWorkflowDetailResponse[],
+  onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
+): void {
   context.mocks.api(
     zeroWorkflowsCollectionContract.list,
     ({ query, respond }) => {
@@ -132,6 +162,23 @@ function mockWorkflowApis(workflows: ZeroWorkflowDetailResponse[]): void {
     }
     return respond(200, detail);
   });
+  context.mocks.api(
+    zeroWorkflowsDetailContract.update,
+    ({ params, body, respond }) => {
+      const index = workflows.findIndex((workflow) => {
+        return workflow.id === params.workflowId;
+      });
+      if (index === -1) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "missing" },
+        });
+      }
+      onUpdate?.(body);
+      const workflow = workflows[index];
+      workflows[index] = applyWorkflowUpdate(workflow, body);
+      return respond(200, workflows[index]);
+    },
+  );
 }
 
 describe("workflows index page", () => {
@@ -187,6 +234,93 @@ describe("workflow detail page", () => {
       expect(
         screen.getByText('{ "risk": "low", "tone": "direct" }'),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("warns when the workflow is shadowed by the runtime slash priority", async () => {
+    const workflow = {
+      ...salesResearch(),
+      shadowedBy: {
+        id: OPS_WORKFLOW_ID,
+        name: "sales-research",
+        displayName: "Private Sales Research",
+      },
+    };
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/currently resolves to/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Private Sales Research")).toBeInTheDocument();
+  });
+
+  it("deletes the selected supplementary file through the workflow update endpoint", async () => {
+    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    mockWorkflowApis([salesResearch()], (body) => {
+      updateBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Open config/settings.json"));
+    click(screen.getByLabelText("Delete config/settings.json"));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)?.files).toStrictEqual([
+        {
+          path: "examples/prompt.md",
+          content: "# Prompt example\n\nAsk for market segment and urgency.\n",
+        },
+      ]);
+    });
+  });
+
+  it("uploads supplementary files through the workflow update endpoint", async () => {
+    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    mockWorkflowApis([salesResearch()], (body) => {
+      updateBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) {
+      throw new Error("Expected upload input");
+    }
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["new notes"], "notes.md", { type: "text/markdown" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)?.files).toContainEqual({
+        path: "notes.md",
+        content: "new notes",
+      });
+    });
+    expect(updateBodies.at(-1)?.files).toContainEqual({
+      path: "config/settings.json",
+      content: '{ "risk": "low", "tone": "direct" }',
     });
   });
 });

@@ -7,6 +7,7 @@ import type {
 
 import { db$ } from "../external/db";
 import {
+  loadWorkflowShadowWinner,
   loadVisibleWorkflowById,
   workflowSummary,
   type WorkflowMember,
@@ -35,7 +36,18 @@ export function zeroWorkflowDetail(args: {
     }
     const { workflow, agent } = visible;
 
-    const summary = workflowSummary({ workflow, agent, member: args.member });
+    const shadowedBy = await loadWorkflowShadowWinner(db, {
+      orgId: args.orgId,
+      member: args.member,
+      workflow,
+    });
+
+    const summary = workflowSummary({
+      workflow,
+      agent,
+      member: args.member,
+      shadowedBy,
+    });
 
     // The synthesized SKILL.md is derived from the DB instruction; users never
     // see it in the file list, so exclude it from both files and fileContents.

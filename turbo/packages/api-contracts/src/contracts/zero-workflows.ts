@@ -176,6 +176,14 @@ export const zeroWorkflowSummarySchema = z.object({
   requestToPublish: z.boolean(),
   ownerUserId: z.string(),
   canManage: z.boolean(),
+  shadowedBy: z
+    .object({
+      id: z.string().uuid(),
+      name: zeroWorkflowNameSchema,
+      displayName: z.string().max(256).nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const zeroWorkflowDetailResponseSchema =

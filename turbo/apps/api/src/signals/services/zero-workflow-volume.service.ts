@@ -60,7 +60,7 @@ export async function loadWorkflowVolumeFiles(
 ): Promise<readonly WorkflowVolumeFile[] | null> {
   const storageName = getCustomSkillStorageName(args.workflowId);
   const [storage] = await get(db$)
-    .select({ headVersionId: storages.headVersionId })
+    .select({ id: storages.id, headVersionId: storages.headVersionId })
     .from(storages)
     .where(
       and(
@@ -79,7 +79,12 @@ export async function loadWorkflowVolumeFiles(
   const [version] = await get(db$)
     .select({ s3Key: storageVersions.s3Key })
     .from(storageVersions)
-    .where(eq(storageVersions.id, storage.headVersionId))
+    .where(
+      and(
+        eq(storageVersions.storageId, storage.id),
+        eq(storageVersions.id, storage.headVersionId),
+      ),
+    )
     .limit(1);
 
   if (!version) {

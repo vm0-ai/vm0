@@ -4,6 +4,7 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
+  WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
@@ -12,9 +13,12 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconArrowLeft,
+  IconAlertTriangle,
   IconClock,
   IconLoader2,
   IconPlus,
+  IconTrash,
+  IconUpload,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -123,6 +127,7 @@ function WorkflowDetailBody({
   return (
     <div className="flex flex-col gap-4">
       <DetailHeader detail={detail} />
+      <ShadowWarning detail={detail} />
       <MetadataEditor detail={detail} />
       <InstructionEditor detail={detail} />
       <SupplementaryFiles detail={detail} />
@@ -185,6 +190,28 @@ function DetailHeader({
           <span>Run once</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function ShadowWarning({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  if (!detail.shadowedBy) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+      <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
+      <p className="min-w-0">
+        <span className="font-medium">/{detail.name}</span> currently resolves
+        to{" "}
+        <span className="font-medium">{workflowTitle(detail.shadowedBy)}</span>{" "}
+        for you. This workflow is shadowed by the same-slug priority rule.
+      </p>
     </div>
   );
 }
@@ -334,19 +361,22 @@ function SupplementaryFiles({
   const explicitSelectedFilePath = useGet(selectedWorkflowFilePath$);
   const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
   const files: readonly WorkflowFileMetadata[] = detail.files ?? [];
+  const fileContents: readonly WorkflowFileEntry[] = detail.fileContents ?? [];
   const preferredFilePath = explicitSelectedFilePath ?? files[0]?.path ?? null;
   const selectedFile = preferredFilePath
-    ? (detail.fileContents ?? []).find((file) => {
+    ? fileContents.find((file) => {
         return file.path === preferredFilePath;
       })
     : null;
 
   return (
     <div className="zero-card overflow-hidden">
-      <div className="flex h-10 items-center justify-between border-b border-border/60 px-4">
-        <span className="text-sm font-medium text-foreground">Files</span>
-        <span className="text-xs text-muted-foreground">{files.length}</span>
-      </div>
+      <SupplementaryFilesHeader
+        detail={detail}
+        fileCount={files.length}
+        fileContents={fileContents}
+        preferredFilePath={preferredFilePath}
+      />
       <div className="grid gap-0 lg:grid-cols-[220px_minmax(0,1fr)]">
         <div className="max-h-[280px] overflow-auto border-b border-border/60 p-2 lg:border-b-0 lg:border-r">
           {files.length > 0 ? (
@@ -360,35 +390,219 @@ function SupplementaryFiles({
             <p className="px-2 py-3 text-xs text-muted-foreground">No files.</p>
           )}
         </div>
-        <div className="min-h-[200px]">
-          {preferredFilePath && selectedFile ? (
-            isMarkdownPath(preferredFilePath) ? (
-              <div
-                aria-label="Workflow file content"
-                className="max-h-[420px] overflow-auto px-4 py-3"
-              >
-                <Markdown
-                  source={stripMarkdownFrontmatter(selectedFile.content)}
-                />
-              </div>
-            ) : (
-              <pre
-                aria-label="Workflow file content"
-                className="max-h-[420px] overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-sm leading-6 text-foreground"
-              >
-                {selectedFile.content}
-              </pre>
-            )
-          ) : (
-            <div className="flex min-h-[200px] items-center justify-center px-4 text-sm text-muted-foreground">
-              {preferredFilePath
-                ? "No content available for this file."
-                : "No files."}
-            </div>
-          )}
-        </div>
+        <WorkflowFilePreview
+          preferredFilePath={preferredFilePath}
+          selectedFile={selectedFile}
+        />
       </div>
     </div>
+  );
+}
+
+function SupplementaryFilesHeader({
+  detail,
+  fileCount,
+  fileContents,
+  preferredFilePath,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly fileCount: number;
+  readonly fileContents: readonly WorkflowFileEntry[];
+  readonly preferredFilePath: string | null;
+}) {
+  const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
+  const pageSignal = useGet(pageSignal$);
+  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
+  const saving = saveLoadable.state === "loading";
+  const canManage = detail.canManage && !saving;
+  const uploadFiles = (selected: FileList) => {
+    detach(
+      (async () => {
+        const uploaded = await readUploadedWorkflowFiles(selected);
+        const byPath = new Map(
+          fileContents.map((file) => {
+            return [file.path, file];
+          }),
+        );
+        for (const file of uploaded) {
+          byPath.set(file.path, file);
+        }
+        await updateWorkflow(
+          {
+            workflowId: detail.id,
+            body: { files: [...byPath.values()] },
+          },
+          pageSignal,
+        );
+      })(),
+      Reason.DomCallback,
+    );
+  };
+  const deleteFile = (filePath: string) => {
+    detach(
+      (async () => {
+        const nextFiles = fileContents.filter((file) => {
+          return file.path !== filePath;
+        });
+        await updateWorkflow(
+          {
+            workflowId: detail.id,
+            body: { files: nextFiles },
+          },
+          pageSignal,
+        );
+        setSelectedFilePath(null);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex h-10 items-center justify-between border-b border-border/60 px-4">
+      <span className="text-sm font-medium text-foreground">Files</span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{fileCount}</span>
+        {detail.canManage ? (
+          <>
+            <WorkflowFileUploadButton
+              canManage={canManage}
+              onUpload={uploadFiles}
+              saving={saving}
+            />
+            <WorkflowFileDeleteButton
+              canManage={canManage}
+              onDelete={deleteFile}
+              preferredFilePath={preferredFilePath}
+            />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowFileUploadButton({
+  canManage,
+  onUpload,
+  saving,
+}: {
+  readonly canManage: boolean;
+  readonly onUpload: (files: FileList) => void;
+  readonly saving: boolean;
+}) {
+  return (
+    <label
+      className={cn(
+        "zero-btn-morandi inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs",
+        saving ? "pointer-events-none opacity-60" : "",
+      )}
+    >
+      {saving ? (
+        <IconLoader2 size={13} className="animate-spin" />
+      ) : (
+        <IconUpload size={13} stroke={1.5} />
+      )}
+      <span>Upload</span>
+      <input
+        type="file"
+        multiple
+        disabled={!canManage}
+        className="sr-only"
+        onChange={(event) => {
+          const selected = event.currentTarget.files;
+          if (!selected || selected.length === 0) {
+            return;
+          }
+          onUpload(selected);
+          event.currentTarget.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+function WorkflowFileDeleteButton({
+  canManage,
+  onDelete,
+  preferredFilePath,
+}: {
+  readonly canManage: boolean;
+  readonly onDelete: (filePath: string) => void;
+  readonly preferredFilePath: string | null;
+}) {
+  if (!preferredFilePath) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Delete ${preferredFilePath}`}
+      disabled={!canManage}
+      className={cn(
+        "zero-btn-morandi inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-destructive/90",
+        !canManage ? "cursor-not-allowed opacity-60" : "",
+      )}
+      onClick={() => {
+        onDelete(preferredFilePath);
+      }}
+    >
+      <IconTrash size={13} stroke={1.5} />
+      <span>Delete</span>
+    </button>
+  );
+}
+
+function WorkflowFilePreview({
+  preferredFilePath,
+  selectedFile,
+}: {
+  readonly preferredFilePath: string | null;
+  readonly selectedFile: WorkflowFileEntry | null | undefined;
+}) {
+  if (preferredFilePath && selectedFile) {
+    if (isMarkdownPath(preferredFilePath)) {
+      return (
+        <div
+          aria-label="Workflow file content"
+          className="max-h-[420px] overflow-auto px-4 py-3"
+        >
+          <Markdown source={stripMarkdownFrontmatter(selectedFile.content)} />
+        </div>
+      );
+    }
+
+    return (
+      <pre
+        aria-label="Workflow file content"
+        className="max-h-[420px] overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-sm leading-6 text-foreground"
+      >
+        {selectedFile.content}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[200px] items-center justify-center px-4 text-sm text-muted-foreground">
+      {preferredFilePath ? "No content available for this file." : "No files."}
+    </div>
+  );
+}
+
+async function readUploadedWorkflowFiles(
+  files: FileList,
+): Promise<WorkflowFileEntry[]> {
+  return await Promise.all(
+    Array.from(files).map(async (file) => {
+      const uploadFile = file as File & {
+        readonly webkitRelativePath?: string;
+      };
+      const path = (uploadFile.webkitRelativePath || file.name).replace(
+        /^\.\//,
+        "",
+      );
+      return { path, content: await file.text() };
+    }),
   );
 }
 

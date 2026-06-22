@@ -220,6 +220,84 @@ describe("zero workflows", () => {
     );
   });
 
+  it("marks same-slug workflows as shadowed by the runtime priority winner", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Shadow Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const publicWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "daily-brief",
+        visibility: "public",
+        displayName: "Public Brief",
+      },
+      context.signal,
+    );
+    const privateWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "daily-brief",
+        visibility: "private",
+        displayName: "Private Brief",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const listed = await accept(
+      collectionClient().list({
+        headers: authHeaders(),
+        query: { agentId: agent.agentId },
+      }),
+      [200],
+    );
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({
+        id: publicWorkflowId,
+        shadowedBy: {
+          id: privateWorkflowId,
+          name: "daily-brief",
+          displayName: "Private Brief",
+        },
+      }),
+    );
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({
+        id: privateWorkflowId,
+        shadowedBy: null,
+      }),
+    );
+
+    const detail = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId: publicWorkflowId },
+      }),
+      [200],
+    );
+    expect(detail.body.shadowedBy).toStrictEqual({
+      id: privateWorkflowId,
+      name: "daily-brief",
+      displayName: "Private Brief",
+    });
+  });
+
   it("copies a workflow onto another agent the caller can write, but not onto a private agent owned by someone else", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),

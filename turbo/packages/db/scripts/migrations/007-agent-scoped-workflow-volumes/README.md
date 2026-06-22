@@ -1,6 +1,6 @@
 # 007 — Agent-scoped workflow volume re-key + instruction backfill
 
-Companion data migration for SQL migration `0478_agent_scoped_workflows`
+Companion data migration for SQL migration `0479_agent_scoped_workflows`
 (issue [vm0-ai/vm0#18434](https://github.com/vm0-ai/vm0/issues/18434)).
 
 ## Background
@@ -44,10 +44,11 @@ For each org that owns workflows (or a single `--org`), in order:
    to `zero_workflows.instruction`. Empty bodies / missing SKILL.md are left
    `null`.
 
-3. **Delete orphan legacy volumes.** After re-keying, deletes every
-   `custom-skill@*` volume that is neither a current id-keyed volume nor a
-   legacy name still referenced as a copy source in this run (storages row +
-   versions via FK cascade + S3 objects).
+3. **Delete legacy name-keyed volumes.** After all workflows in an org have
+   been re-keyed, deletes every leftover `custom-skill@*` volume that is not a
+   current id-keyed volume and is not being preserved because its workflow could
+   not be safely re-keyed in this run (storages row + versions via FK cascade +
+   S3 objects).
 
 The script is **idempotent** and **defaults to dry-run**. It only mutates when
 `--migrate` is passed. Re-running detects already-id-keyed volumes and

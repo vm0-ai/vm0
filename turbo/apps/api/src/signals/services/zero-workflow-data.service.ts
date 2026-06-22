@@ -38,6 +38,12 @@ export interface WorkflowAgentInfo {
   readonly displayName: string | null;
 }
 
+interface WorkflowShadow {
+  readonly id: string;
+  readonly name: string;
+  readonly displayName: string | null;
+}
+
 /**
  * Whether the caller may edit/delete the workflow's content.
  * - private: owner only (agent admins cannot even see private workflows).
@@ -165,6 +171,7 @@ export function workflowSummary(args: {
   readonly workflow: WorkflowRow;
   readonly agent: WorkflowAgentInfo;
   readonly member: WorkflowMember;
+  readonly shadowedBy?: WorkflowShadow | null;
 }): ZeroWorkflowSummary {
   return {
     id: args.workflow.id,
@@ -178,7 +185,96 @@ export function workflowSummary(args: {
     requestToPublish: args.workflow.requestToPublish,
     ownerUserId: args.workflow.ownerUserId,
     canManage: canManageWorkflow(args.workflow, args.agent, args.member),
+    shadowedBy: args.shadowedBy ?? null,
   };
+}
+
+function workflowRunPrioritySort(userId: string): SQL[] {
+  return [
+    sql`(${zeroWorkflows.visibility} = 'private' AND ${zeroWorkflows.ownerUserId} = ${userId}) DESC`,
+    asc(zeroWorkflows.createdAt),
+  ];
+}
+
+function injectableWorkflowCondition(userId: string): SQL {
+  return or(
+    eq(zeroWorkflows.visibility, "public"),
+    eq(zeroWorkflows.ownerUserId, userId),
+  ) as SQL;
+}
+
+function shadowWinnerFromRows(
+  rows: readonly { readonly workflow: WorkflowRow }[],
+  member: WorkflowMember,
+): Map<string, WorkflowShadow> {
+  const groups = new Map<string, WorkflowRow[]>();
+  for (const row of rows) {
+    const key = `${row.workflow.agentId}:${row.workflow.name}`;
+    groups.set(key, [...(groups.get(key) ?? []), row.workflow]);
+  }
+
+  const winners = new Map<string, WorkflowShadow>();
+  for (const [key, workflows] of groups) {
+    const winner = workflows
+      .filter((workflow) => {
+        return (
+          workflow.visibility === "public" ||
+          workflow.ownerUserId === member.userId
+        );
+      })
+      .sort((a, b) => {
+        const aPrivateOwner =
+          a.visibility === "private" && a.ownerUserId === member.userId;
+        const bPrivateOwner =
+          b.visibility === "private" && b.ownerUserId === member.userId;
+        if (aPrivateOwner !== bPrivateOwner) {
+          return aPrivateOwner ? -1 : 1;
+        }
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      })[0];
+    if (!winner) {
+      continue;
+    }
+    winners.set(key, {
+      id: winner.id,
+      name: winner.name,
+      displayName: winner.displayName,
+    });
+  }
+  return winners;
+}
+
+export async function loadWorkflowShadowWinner(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+    readonly workflow: WorkflowRow;
+  },
+): Promise<WorkflowShadow | null> {
+  const [winner] = await db
+    .select({
+      id: zeroWorkflows.id,
+      name: zeroWorkflows.name,
+      displayName: zeroWorkflows.displayName,
+    })
+    .from(zeroWorkflows)
+    .where(
+      and(
+        eq(zeroWorkflows.orgId, args.orgId),
+        eq(zeroWorkflows.agentId, args.workflow.agentId),
+        eq(zeroWorkflows.name, args.workflow.name),
+        eq(zeroWorkflows.type, "workflow"),
+        injectableWorkflowCondition(args.member.userId),
+      ),
+    )
+    .orderBy(...workflowRunPrioritySort(args.member.userId))
+    .limit(1);
+
+  if (!winner || winner.id === args.workflow.id) {
+    return null;
+  }
+  return winner;
 }
 
 export function zeroWorkflowList(args: {
@@ -212,11 +308,17 @@ export function zeroWorkflowList(args: {
       )
       .orderBy(asc(zeroWorkflows.name));
 
+    const winners = shadowWinnerFromRows(rows, args.member);
+
     return rows.map((row) => {
+      const key = `${row.workflow.agentId}:${row.workflow.name}`;
+      const winner = winners.get(key);
       return workflowSummary({
         workflow: row.workflow,
         agent: row.agent,
         member: args.member,
+        shadowedBy:
+          winner && winner.id !== row.workflow.id ? winner : undefined,
       });
     });
   });
@@ -262,10 +364,7 @@ export async function loadWorkflowsForRun(
       ),
     )
     // Priority within a slug: caller's own private first, then earliest created.
-    .orderBy(
-      sql`(${zeroWorkflows.visibility} = 'private' AND ${zeroWorkflows.ownerUserId} = ${args.userId}) DESC`,
-      asc(zeroWorkflows.createdAt),
-    );
+    .orderBy(...workflowRunPrioritySort(args.userId));
 
   const bySlug = new Map<string, RunWorkflowRef>();
   for (const row of rows) {

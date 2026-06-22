@@ -3,7 +3,7 @@
 /**
  * Agent-scoped workflow redesign — R2 volume re-key + instruction backfill.
  *
- * Companion data migration for SQL migration `0478_agent_scoped_workflows`
+ * Companion data migration for SQL migration `0479_agent_scoped_workflows`
  * (issue vm0-ai/vm0#18434). The SQL migration already:
  *   - gave every `zero_workflows` row an `agent_id`,
  *   - duplicated multi-bound workflows into one row per agent (new uuids,
@@ -25,12 +25,9 @@
  *      read the id-keyed volume's SKILL.md, strip the frontmatter via
  *      `extractInstructionFromSkillMd`, and persist the body.
  *
- *   3. Delete orphan legacy volumes. After re-keying, any legacy
- *      `custom-skill@{name}` volume that no longer corresponds to a current
- *      workflow (storages row + versions + S3 objects) is deleted. A legacy
- *      name is treated as still-referenced when a current workflow with that
- *      name has its content sourced from it; only fully unreferenced legacy
- *      volumes are removed.
+ *   3. Delete legacy name-keyed volumes. After every workflow has an id-keyed
+ *      copy, any leftover `custom-skill@{name}` volume is deleted unless a
+ *      workflow failed before it could be safely re-keyed in this run.
  *
  * The script is idempotent and defaults to dry-run. It only mutates when
  * `--migrate` is passed.
@@ -51,6 +48,7 @@
  *   S3_FORCE_PATH_STYLE           — Optional ("true" | "false")
  */
 
+import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { parseArgs } from "node:util";
 
@@ -68,7 +66,7 @@ import {
 } from "@vm0/core";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -139,7 +137,7 @@ interface Stats {
   legacyMissing: number;
   instructionsBackfilled: number;
   instructionsSkilled: number;
-  legacyOrphansDeleted: number;
+  legacyVolumesDeleted: number;
   errors: number;
 }
 
@@ -257,6 +255,34 @@ async function downloadBuffer(
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
+}
+
+async function downloadManifestJson(
+  client: S3Client,
+  bucket: string,
+  key: string,
+): Promise<S3Manifest> {
+  const content = await downloadBuffer(client, bucket, key);
+  return JSON.parse(content.toString("utf8")) as S3Manifest;
+}
+
+function computeStorageVersionId(
+  storageId: string,
+  files: readonly S3ManifestFile[],
+): string {
+  if (files.length === 0) {
+    return createHash("sha256").update(`storage:${storageId}\n`).digest("hex");
+  }
+
+  const entries = files
+    .map((file) => {
+      return `${file.path}:${file.hash}`;
+    })
+    .sort();
+
+  return createHash("sha256")
+    .update(`storage:${storageId}\n${entries.join("\n")}`)
+    .digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -421,12 +447,20 @@ async function rekeyWorkflowVolume(
   }
 
   // Copy every version's S3 objects under the new prefix, re-pointing s3Key.
+  // Version ids are scoped by storage id in normal writes; recompute them for
+  // the new storage instead of reusing the legacy row's global primary key.
   let headVersionId: string | null = null;
   let headSize = 0;
   let headFileCount = 0;
 
   for (const version of legacyVersions) {
-    const newS3Key = `${newPrefix}/${version.id}`;
+    const manifest = await downloadManifestJson(
+      client,
+      bucket,
+      `${version.s3Key}/manifest.json`,
+    );
+    const newVersionId = computeStorageVersionId(newStorage.id, manifest.files);
+    const newS3Key = `${newPrefix}/${newVersionId}`;
     const sourceObjects = await listObjectsUnderPrefix(
       client,
       bucket,
@@ -440,7 +474,7 @@ async function rekeyWorkflowVolume(
     await db
       .insert(storageVersions)
       .values({
-        id: version.id,
+        id: newVersionId,
         storageId: newStorage.id,
         s3Key: newS3Key,
         size: version.size,
@@ -451,7 +485,7 @@ async function rekeyWorkflowVolume(
       .onConflictDoNothing();
 
     if (version.id === legacy.headVersionId) {
-      headVersionId = version.id;
+      headVersionId = newVersionId;
       headSize = version.size;
       headFileCount = version.fileCount;
     }
@@ -497,7 +531,12 @@ async function readSkillMdFromVolume(
   const [version] = await db
     .select({ s3Key: storageVersions.s3Key })
     .from(storageVersions)
-    .where(eq(storageVersions.id, volume.headVersionId))
+    .where(
+      and(
+        eq(storageVersions.storageId, volume.id),
+        eq(storageVersions.id, volume.headVersionId),
+      ),
+    )
     .limit(1);
   if (!version) {
     return null;
@@ -558,15 +597,15 @@ async function backfillInstruction(
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Delete orphan legacy volumes
+// Step 3: Delete legacy name-keyed volumes
 // ---------------------------------------------------------------------------
 
-async function deleteLegacyOrphans(
+async function deleteLegacyVolumes(
   db: Db,
   client: S3Client,
   bucket: string,
   orgId: string,
-  referencedLegacyNames: ReadonlySet<string>,
+  preserveLegacyNames: ReadonlySet<string>,
 ): Promise<number> {
   // All `custom-skill@*` volumes in the org.
   const allVolumes = await db
@@ -605,10 +644,9 @@ async function deleteLegacyOrphans(
     if (currentIdNames.has(volume.name)) {
       continue;
     }
-    // Keep legacy name-keyed volumes that still back a current workflow
-    // (e.g. when a 1:1 row sourced from it and we have not migrated its content
-    // away — the re-key always copies, but we never delete a referenced name).
-    if (referencedLegacyNames.has(volume.name)) {
+    // Keep legacy name-keyed volumes only when a workflow failed before it could
+    // be safely re-keyed in this run.
+    if (preserveLegacyNames.has(volume.name)) {
       continue;
     }
 
@@ -620,7 +658,7 @@ async function deleteLegacyOrphans(
 
     if (DRY_RUN) {
       console.log(
-        `    would delete orphan legacy volume "${volume.name}" ` +
+        `    would delete legacy volume "${volume.name}" ` +
           `(${objects.length} S3 object(s), prefix ${volume.s3Prefix})`,
       );
       deleted++;
@@ -631,7 +669,7 @@ async function deleteLegacyOrphans(
     // storage_versions cascade-delete on storages deletion (FK onDelete).
     await db.delete(storages).where(eq(storages.id, volume.id));
     console.log(
-      `    deleted orphan legacy volume "${volume.name}" ` +
+      `    deleted legacy volume "${volume.name}" ` +
         `(${objects.length} S3 object(s))`,
     );
     deleted++;
@@ -665,8 +703,9 @@ async function processOrg(
   console.log(`\n  Org ${orgId} — ${workflows.length} workflow(s)`);
   stats.workflows += workflows.length;
 
-  // Legacy names that a current workflow is sourced from; never deleted.
-  const referencedLegacyNames = new Set<string>();
+  // Legacy names to keep because their workflow could not be safely re-keyed in
+  // this run. Successfully copied sources are deleted below.
+  const preserveLegacyNames = new Set<string>();
 
   for (const workflow of workflows) {
     console.log(`    workflow ${workflow.id} ("${workflow.name}")`);
@@ -677,9 +716,9 @@ async function processOrg(
         stats.volumesAlreadyKeyed++;
       } else if (rekey.status === "copied") {
         stats.volumesCopied++;
-        referencedLegacyNames.add(getCustomSkillStorageName(workflow.name));
       } else {
         stats.legacyMissing++;
+        preserveLegacyNames.add(getCustomSkillStorageName(workflow.name));
         console.log(
           `      legacy volume "${getCustomSkillStorageName(workflow.name)}" ` +
             `not found — skipping re-key & instruction backfill`,
@@ -699,24 +738,25 @@ async function processOrg(
       }
     } catch (err) {
       stats.errors++;
+      preserveLegacyNames.add(getCustomSkillStorageName(workflow.name));
       const message = err instanceof Error ? err.message : String(err);
       console.error(`      ✗ ${workflow.id}: ${message}`);
     }
   }
 
-  // Step 3: delete orphan legacy volumes for this org.
+  // Step 3: delete legacy name-keyed volumes for this org.
   try {
-    stats.legacyOrphansDeleted += await deleteLegacyOrphans(
+    stats.legacyVolumesDeleted += await deleteLegacyVolumes(
       db,
       client,
       bucket,
       orgId,
-      referencedLegacyNames,
+      preserveLegacyNames,
     );
   } catch (err) {
     stats.errors++;
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`    ✗ orphan cleanup for ${orgId}: ${message}`);
+    console.error(`    ✗ legacy volume cleanup for ${orgId}: ${message}`);
   }
 }
 
@@ -748,7 +788,7 @@ async function main(): Promise<void> {
     legacyMissing: 0,
     instructionsBackfilled: 0,
     instructionsSkilled: 0,
-    legacyOrphansDeleted: 0,
+    legacyVolumesDeleted: 0,
     errors: 0,
   };
 
@@ -779,7 +819,7 @@ async function main(): Promise<void> {
     console.log(`Legacy volume missing:      ${stats.legacyMissing}`);
     console.log(`Instructions backfilled:    ${stats.instructionsBackfilled}`);
     console.log(`Instructions skipped:       ${stats.instructionsSkilled}`);
-    console.log(`Legacy orphans deleted:     ${stats.legacyOrphansDeleted}`);
+    console.log(`Legacy volumes deleted:     ${stats.legacyVolumesDeleted}`);
     console.log(`Errors:                     ${stats.errors}`);
 
     if (DRY_RUN) {
