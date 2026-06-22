@@ -672,6 +672,14 @@ export function hasBaseUrlVars(base: string): boolean {
   return BASE_URL_VARS_PATTERN.test(base);
 }
 
+export function extractBaseUrlVarNames(base: string): string[] {
+  const names = new Set<string>();
+  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+    names.add(match[1]!);
+  }
+  return [...names];
+}
+
 function baseUrlVariableError(
   base: string,
   serviceName: string,
@@ -1202,7 +1210,9 @@ function validateBaseUrlTemplateVariable({
   );
 }
 
-function firewallAuthInjectsCredentials(auth: FirewallApi["auth"]): boolean {
+export function firewallAuthInjectsCredentials(
+  auth: FirewallApi["auth"],
+): boolean {
   return (
     Object.keys(auth.headers ?? {}).length > 0 ||
     Object.keys(auth.query ?? {}).length > 0 ||
