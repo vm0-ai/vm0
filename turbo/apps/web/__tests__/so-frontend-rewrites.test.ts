@@ -27,7 +27,19 @@ describe("so frontend rewrites", () => {
 
     expect(rewrites).toContainEqual({
       source: "/",
-      destination: "https://pr-123-so.vm6.ai/",
+      destination: "https://pr-123-so.vm6.ai/en",
+    });
+    expect(rewrites).toContainEqual({
+      source: "/report",
+      destination: "https://pr-123-so.vm6.ai/en/report",
+    });
+    expect(rewrites).toContainEqual({
+      source: "/docs",
+      destination: "https://pr-123-so.vm6.ai/en/docs",
+    });
+    expect(rewrites).toContainEqual({
+      source: "/docs/:path*",
+      destination: "https://pr-123-so.vm6.ai/en/docs/:path*",
     });
     expect(rewrites).toContainEqual({
       source: "/en/models/:path*",

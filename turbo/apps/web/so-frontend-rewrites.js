@@ -26,6 +26,13 @@ const SO_FRONTEND_WILDCARD_PATHS = [
   "/docs/:path*",
 ];
 
+const SO_FRONTEND_DESTINATION_OVERRIDES = new Map([
+  ["/", "/en"],
+  ["/report", "/en/report"],
+  ["/docs", "/en/docs"],
+  ["/docs/:path*", "/en/docs/:path*"],
+]);
+
 const SO_FRONTEND_AUTH_PATHS = [
   "/sign-in",
   "/sign-in/:path*",
@@ -63,9 +70,11 @@ export function resolveSoFrontendUrl(env) {
 }
 
 function exactRewrite(source, destinationPrefix) {
+  const destinationPath =
+    SO_FRONTEND_DESTINATION_OVERRIDES.get(source) ?? source;
   return {
     source,
-    destination: `${destinationPrefix}${source}`,
+    destination: `${destinationPrefix}${destinationPath}`,
   };
 }
 
