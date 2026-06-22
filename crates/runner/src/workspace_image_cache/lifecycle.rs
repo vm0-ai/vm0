@@ -1302,6 +1302,7 @@ impl WorkspaceImagePromotionContext {
             .await
     }
 
+    #[cfg(test)]
     pub(crate) fn try_into_active_lease(
         self,
         expected: &WorkspaceImagePromotionIdentity,
@@ -1309,6 +1310,13 @@ impl WorkspaceImagePromotionContext {
     ) -> Result<WorkspaceImageLease, WorkspaceImagePromotionIdentityMismatch> {
         self.validate_identity(expected)?;
         Ok(self.into_active_lease_unchecked(workspace_drive_available))
+    }
+
+    pub(crate) fn into_active_lease_after_identity_validation(
+        self,
+        workspace_drive_available: bool,
+    ) -> WorkspaceImageLease {
+        self.into_active_lease_unchecked(workspace_drive_available)
     }
 
     fn into_active_lease_unchecked(self, workspace_drive_available: bool) -> WorkspaceImageLease {

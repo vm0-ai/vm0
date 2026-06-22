@@ -254,7 +254,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
         ..default_params()
     };
     let session_id = "sess-cache-reuse-identity-mismatch";
-    let (idle_sandbox, _current_image, overrides) = reusable_idle_sandbox_with_workspace_promotion(
+    let (idle_sandbox, current_image, overrides) = reusable_idle_sandbox_with_workspace_promotion(
         &cache,
         &runner_paths,
         &promotion_params,
@@ -283,6 +283,24 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
         overrides.start_process_calls().is_empty(),
         "agent must not start after workspace promotion identity mismatch"
     );
+    assert!(
+        !current_image.exists(),
+        "identity mismatch must explicitly abandon the consumed cache hit"
+    );
+    let checkout = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &promotion_params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(promotion_params.workspace_disk_mb) * 1024 * 1024,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
 }
 
 #[tokio::test]
