@@ -1,3 +1,4 @@
+// Shared clock override used by platform tests that need deterministic time.
 function testOverride<T>(factory: () => T): {
   readonly get: () => T;
   readonly set: (value: T) => void;

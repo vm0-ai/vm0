@@ -58,6 +58,7 @@ vi.mock("next-intl/middleware", () => {
 });
 
 let middleware: typeof import("../proxy").default;
+let reloadEnv: typeof import("../src/env").reloadEnv;
 
 function createMockEvent() {
   return {
@@ -69,10 +70,17 @@ function createMockEvent() {
 describe("proxy middleware: public routes", () => {
   beforeAll(async () => {
     middleware = (await import("../proxy")).default;
+    reloadEnv = (await import("../src/env")).reloadEnv;
   });
 
   beforeEach(() => {
     clerkState.protectedPaths = [];
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.stubEnv("CLERK_SECRET_KEY", "sk_test_proxy");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_proxy");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.vm0.ai");
+    reloadEnv();
   });
 
   it("keeps locale-prefixed web design gallery public", async () => {
@@ -81,6 +89,121 @@ describe("proxy middleware: public routes", () => {
     await middleware(request, createMockEvent());
 
     expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("proxies non-GET requests for so frontend rewrite pages when forwarding is enabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", {
+        status: 202,
+        headers: {
+          "x-so-frontend": "1",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en?from=signout", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain;charset=UTF-8",
+        cookie: "__session=test",
+      },
+      body: "payload",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [targetUrl, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(targetUrl)).toBe("https://so.vm0.ai/en?from=signout");
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toBeInstanceOf(Headers);
+    const proxiedHeaders = init?.headers as Headers;
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("www.vm0.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected proxy response");
+    }
+    expect(response.status).toBe(202);
+    expect(response.headers.get("x-so-frontend")).toBe("1");
+    await expect(response.text()).resolves.toBe("proxied");
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("does not proxy non-GET requests when so frontend forwarding is disabled", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+    expect(response.status).not.toBe(202);
+  });
+
+  it("does not proxy auth routes to so in preview", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://staging-so.vm6.ai");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    reloadEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest(
+      "https://pr-18518-www.vm6.ai/sign-in/factor-one",
+      {
+        method: "POST",
+      },
+    );
+
+    await middleware(request, createMockEvent());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("proxies auth routes to so in production", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("auth proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("https://www.vm0.ai/sign-in/factor-one", {
+      method: "POST",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [targetUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(String(targetUrl)).toBe("https://so.vm0.ai/sign-in/factor-one");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected auth proxy response");
+    }
+    expect(response.status).toBe(202);
+  });
+
+  it("does not proxy app-only functional routes when so forwarding is enabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("https://www.vm0.ai/connector/success", {
+      method: "POST",
+    });
+
+    await middleware(request, createMockEvent());
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("keeps locale-less web design gallery public", async () => {

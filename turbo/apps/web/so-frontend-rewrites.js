@@ -50,6 +50,14 @@ const SO_FRONTEND_ASSET_PATHS = [
   "/checkmark-primary.svg",
 ];
 
+function shouldRewriteAuthPaths(env) {
+  return env.VERCEL_ENV === "production";
+}
+
+function authRewritePaths(env) {
+  return shouldRewriteAuthPaths(env) ? SO_FRONTEND_AUTH_PATHS : [];
+}
+
 function withoutTrailingSlash(value) {
   return value.replace(/\/$/u, "");
 }
@@ -85,6 +93,79 @@ function localizedExactRewrite(locale, source, destinationPrefix) {
   };
 }
 
+function rewriteSourceMatchesPath(source, pathname) {
+  const wildcardSuffix = "/:path*";
+  if (!source.endsWith(wildcardSuffix)) {
+    return source === pathname;
+  }
+
+  const prefix = source.slice(0, -wildcardSuffix.length);
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+function rewriteDestinationPath(source, destination, pathname) {
+  const wildcardSuffix = "/:path*";
+  if (!source.endsWith(wildcardSuffix)) {
+    return destination;
+  }
+
+  const sourcePrefix = source.slice(0, -wildcardSuffix.length);
+  const destinationPrefix = destination.slice(0, -wildcardSuffix.length);
+  return `${destinationPrefix}${pathname.slice(sourcePrefix.length)}`;
+}
+
+function rewriteSourceDefinitions(env) {
+  const localizedContentPaths = [
+    ...SO_FRONTEND_EXACT_PATHS,
+    ...SO_FRONTEND_WILDCARD_PATHS,
+  ];
+
+  return [
+    ...SO_FRONTEND_EXACT_PATHS.map((source) => {
+      return {
+        source,
+        destination: SO_FRONTEND_DESTINATION_OVERRIDES.get(source) ?? source,
+      };
+    }),
+    ...SO_FRONTEND_WILDCARD_PATHS.map((source) => {
+      return {
+        source,
+        destination: SO_FRONTEND_DESTINATION_OVERRIDES.get(source) ?? source,
+      };
+    }),
+    ...LOCALES.flatMap((locale) => {
+      return localizedContentPaths.map((source) => {
+        const localizedPath = `/${locale}${source === "/" ? "" : source}`;
+        return {
+          source: localizedPath,
+          destination: localizedPath,
+        };
+      });
+    }),
+    ...authRewritePaths(env).map((source) => {
+      return { source, destination: source };
+    }),
+    ...SO_FRONTEND_ASSET_PATHS.map((source) => {
+      return { source, destination: source };
+    }),
+  ];
+}
+
+export function resolveSoFrontendRewritePath(pathname, env = {}) {
+  const match = rewriteSourceDefinitions(env).find(({ source }) => {
+    return rewriteSourceMatchesPath(source, pathname);
+  });
+  if (!match) {
+    return undefined;
+  }
+
+  return rewriteDestinationPath(match.source, match.destination, pathname);
+}
+
+export function matchesSoFrontendRewritePath(pathname, env = {}) {
+  return resolveSoFrontendRewritePath(pathname, env) !== undefined;
+}
+
 export function buildSoFrontendRewrites(env) {
   const soFrontendUrl = resolveSoFrontendUrl(env);
   if (!soFrontendUrl) {
@@ -109,7 +190,7 @@ export function buildSoFrontendRewrites(env) {
         return localizedExactRewrite(locale, source, destinationPrefix);
       });
     }),
-    ...SO_FRONTEND_AUTH_PATHS.map((source) => {
+    ...authRewritePaths(env).map((source) => {
       return exactRewrite(source, destinationPrefix);
     }),
     ...SO_FRONTEND_ASSET_PATHS.map((source) => {
