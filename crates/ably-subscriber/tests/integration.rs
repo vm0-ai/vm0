@@ -2338,6 +2338,90 @@ async fn detached_with_client_error_reattaches() {
     server_task.await.unwrap();
 }
 
+#[tokio::test]
+async fn superseded_error_after_attached_without_serial_keeps_resume_intent() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (after_reattach_seen_tx, after_reattach_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    attached_channel_serial: None,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let superseded = ProtocolMessage {
+            action: action::ERROR,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80016,
+                status_code: Some(400),
+                message: "operation attempted on superseded transport".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&superseded).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for ATTACH after 80016")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, true);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-after-80016".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        send_message(&mut conn, "ch", "after-80016", serde_json::json!("ok"))
+            .await
+            .unwrap();
+        wait_for_test_observation(after_reattach_seen_rx, "after-80016 message").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after 80016 reattach")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-80016"));
+            after_reattach_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Test 16: server sends CLOSED → event loop stops
 // ---------------------------------------------------------------------------
