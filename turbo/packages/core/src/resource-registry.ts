@@ -133,53 +133,53 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "b0ed1fa2b7daa5d543ae3b187edea17f95b0594d2a408d4cc197510caafc26ef",
   playfulEditorial:
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "89326826cc850aae4f4dc0f4aa6bb9cbe562d00059ab1cc040060b840cdbf259",
+  aplocoto: "28a6fbda2f740dbf1cffa52cc0b636746eaf6ebe95aa37d47568980a5564816f",
   botaneOrganic:
-    "246f8f30a23bac6a5aaab879ec6a416700fdc7ea2d9093edab7fb97b50eff3fe",
+    "25feaef1ffd584ae8c09a48826a05ca86696b3731085fa7d06fc12a52eb8ddb6",
   businessData:
-    "d0df888f518eebdb7812a212a5fb0d571283dcf595621c9866b2cde9df900572",
+    "229516a65ebd66d48c789bb626da24f96a8658d313c72229c0d2cabe262248f1",
   presentationDeckTools:
-    "fbf86018b5d34fea84d805bade8dade68c610f09b8cd3a7b799f71a8a88bbea2",
+    "a0674e9238ce0819281fa01f39dd650ccda215b6498578decaaf2042ab8c4531",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
-    "213e826ae2f41dcd63fd02e9f20e7eaec8bfaffb0c53d9e81f9f9043f34d5ef8",
+    "05b88b0490718c329f0cffd38384c7e08af222dcbdc4d58e6c4702bc92669595",
   designSystemCreativeAgency:
     "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
   templateCreativeAgency:
-    "896ce150fc69a3985a37fd3ffc123072661eecec78c0428a09dc307c879fc5d6",
+    "ec6aa675adf8486662cb653327fc2ec46a6622365ffeed06d4dba6b85bb73fa3",
   designSystemDataReport:
     "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
   templateDataReport:
-    "56e2e7d3da83f53dfe5a34667e926d9056198982398f9d6a22f9e20ecad4e872",
+    "256556de59fe261fb86a63767e83c339b98c3c2ca0872f5a0d99a3fe4fdb9282",
   designSystemEditorialMagazine:
     "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
   templateEditorialMagazine:
-    "647f3aec98c6ec12bd587687f26003d68863f4625fb4a357426c2ade60a6ab51",
+    "f5f9500a31980be2e66362d5d6dc475c9435e5dec2b660c6356213596f77a8d2",
   designSystemLandingConsulting:
     "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
   templateLandingConsulting:
-    "ff2b342d126ebac1e173276267286c06dc299aa7ad34bf261cb8efc0fa24b474",
+    "4c3209355a076aef28aea8d70ad5a2b74f5decdd05e4ecfb8a8192148bf8ff7a",
   designSystemLumina:
     "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
   templateLumina:
-    "4076ee669fb7c89aa589cc393bffc78b405548f8040b8df53a25c9c8016ac33e",
+    "599f4cbd8118a2347dd1a84435c6fdb1105b1d906ba49d2e3595fca54a77bee2",
   designSystemMosaicGeometric:
     "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
   templateMosaicGeometric:
-    "58cf038a4e94e9b87ab0636e936bc952157216673dc75b3ec5f38e9bd1f054e1",
+    "112a0aabe92a20bd25427286d6a674725b926ab324e6c06b35574f1e511b911d",
   designSystemPlayfulPop:
     "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
   templatePlayfulPop:
-    "4f281c2365b00cfd88c44a01d012b5f4bc908ae7b570fd432284d8cf4af90c32",
+    "10944b1b02421f7b2e792c4563a7e4e52ee752cb50b34cb31054afd94311906d",
   designSystemNocturne:
     "bc82f6665394cc99039fe34523e5c6095a9bbf5a2a3a81dee128540a43812dec",
   templateNocturne:
-    "4f94ba422af6c66e734e73b784902ed9e01beeefd9d69bc4e947ce645940de26",
+    "8fe867f43313ed8c99c0cd774ce61bef7b097f4912b7e3ef4bd5d228d05d2bde",
   designSystemNeoBrutalism:
     "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
   templateNeoBrutalism:
-    "b6e082199f3927a6bc6e5bf0b5e45d2716ade71e81f678f5d60302537229facb",
+    "cec2dde23a09f38c8a538e5cddcce9853e726cef1ee7bcfde46cd405f7dcd465",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
