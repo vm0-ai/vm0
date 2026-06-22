@@ -4,6 +4,7 @@ import {
   type FirewallPolicy,
   type FirewallPolicyValue,
 } from "../firewall-types";
+import { loadGeneratedFirewallPermissionMetadata } from "./loader.generated";
 import { createFirewallMetadataPolicyResolver } from "./policy-resolver";
 import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./summary.generated";
 import type {
@@ -74,8 +75,6 @@ export async function loadFirewallPermissionMetadata(
   if (!isFirewallMetadataConnectorType(type)) {
     return null;
   }
-  const { loadGeneratedFirewallPermissionMetadata } =
-    await import("./loader.generated");
   return await loadGeneratedFirewallPermissionMetadata(type);
 }
 

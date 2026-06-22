@@ -3,6 +3,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "../firewall-types";
+import { loadGeneratedFirewallPermissionMetadata } from "./loader.generated";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyResolver,
@@ -145,8 +146,6 @@ export function getBuiltinConnectorHostOwner(
 async function loadFirewallPermissionDetail(
   type: FirewallServerMetadataConnectorType,
 ): Promise<FirewallPermissionDetailMetadata> {
-  const { loadGeneratedFirewallPermissionMetadata } =
-    await import("./loader.generated");
   const detail = await loadGeneratedFirewallPermissionMetadata(type);
   if (!detail) {
     throw new Error(`Missing firewall permission metadata: ${type}`);
