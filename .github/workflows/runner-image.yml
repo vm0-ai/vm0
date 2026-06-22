@@ -198,7 +198,7 @@ jobs:
         run: .github/scripts/runner-image-context.sh artifact-name
 
   build:
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     permissions:
@@ -238,7 +238,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-ci
+          shared-key: aarch64-musl-ci-arm64-host
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup SSH via Cloudflare Tunnel
