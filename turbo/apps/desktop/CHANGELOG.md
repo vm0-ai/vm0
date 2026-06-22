@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.18.0...desktop-v0.18.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* refine browser automation setup ([#18496](https://github.com/vm0-ai/vm0/issues/18496)) ([d339f0b](https://github.com/vm0-ai/vm0/commit/d339f0babbec106d1d71d523db7252bb35ad664d))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.17.0...desktop-v0.18.0) (2026-06-22)
 
 
