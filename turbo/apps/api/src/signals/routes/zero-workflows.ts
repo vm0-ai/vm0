@@ -30,6 +30,7 @@ import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
 import {
+  isWorkflowNameTaken,
   loadVisibleWorkflowById,
   requireWorkflowPermission,
   workflowSummary,
@@ -167,6 +168,16 @@ const createWorkflowInner$ = command(
     );
     if (permissionError) {
       return permissionError;
+    }
+
+    const nameTaken = await isWorkflowNameTaken(writeDb, {
+      orgId: auth.orgId,
+      agentId: agent.id,
+      name: body.name,
+    });
+    signal.throwIfAborted();
+    if (nameTaken) {
+      return conflict(`Workflow "${body.name}" already exists on this agent`);
     }
 
     const [inserted] = await writeDb
@@ -379,6 +390,18 @@ const copyWorkflowInner$ = command(
     );
     if (permissionError) {
       return permissionError;
+    }
+
+    const nameTaken = await isWorkflowNameTaken(writeDb, {
+      orgId: auth.orgId,
+      agentId: targetAgent.id,
+      name: source.workflow.name,
+    });
+    signal.throwIfAborted();
+    if (nameTaken) {
+      return conflict(
+        `Workflow "${source.workflow.name}" already exists on this agent`,
+      );
     }
 
     // A copy is a fork owned by the caller: a new private workflow under the

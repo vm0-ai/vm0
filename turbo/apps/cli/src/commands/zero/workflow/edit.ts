@@ -4,11 +4,13 @@ import { readFileSync } from "node:fs";
 import { updateWorkflow } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { readSupplementaryFiles } from "../../../lib/skill-directory";
+import { resolveWorkflowRef } from "./ref";
 
 export const editCommand = new Command()
   .name("edit")
   .description("Update a workflow's instruction, files, or metadata")
-  .argument("<workflowId>", "Workflow ID")
+  .argument("<workflow>", "Workflow ID or name")
+  .option("--agent <agent>", "Agent ID or name to resolve workflow names")
   .option("--instruction <text>", "New instruction text")
   .option(
     "--instruction-file <path>",
@@ -25,6 +27,7 @@ export const editCommand = new Command()
     `
 Examples:
   zero workflow edit <workflow-id> --instruction "New steps"
+  zero workflow edit <workflow-name> --agent <agent-id-or-name> --instruction "New steps"
   zero workflow edit <workflow-id> --instruction-file ./instruction.md
   zero workflow edit <workflow-id> --dir ./workflows/my-workflow/files/
   zero workflow edit <workflow-id> --display-name "My Workflow" --description "Does things"
@@ -36,8 +39,9 @@ Notes:
   .action(
     withErrorHandler(
       async (
-        workflowId: string,
+        workflowRef: string,
         options: {
+          agent?: string;
           instruction?: string;
           instructionFile?: string;
           dir?: string;
@@ -75,6 +79,10 @@ Notes:
           );
           process.exit(1);
         }
+
+        const workflowId = await resolveWorkflowRef(workflowRef, {
+          agent: options.agent,
+        });
 
         const workflow = await updateWorkflow(workflowId, {
           instruction,

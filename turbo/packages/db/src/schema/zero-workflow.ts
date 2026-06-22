@@ -81,8 +81,11 @@ export const zeroWorkflows = pgTable(
   },
   (table) => {
     return {
-      // slug (name) is intentionally NOT unique: duplicates are allowed across
-      // and within an agent; run-time picks a winner by a fixed priority rule.
+      // Workflow slugs are unique within an agent. Different agents can host
+      // workflows with the same slug.
+      agentNameUnique: uniqueIndex("idx_zero_workflows_agent_name_unique")
+        .on(table.agentId, table.name)
+        .where(sql`type = 'workflow'`),
       agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
       orgIdx: index("idx_zero_workflows_org").on(table.orgId),
       ownerIdx: index("idx_zero_workflows_org_owner").on(

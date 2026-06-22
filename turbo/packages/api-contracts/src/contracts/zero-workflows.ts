@@ -12,8 +12,8 @@ export type ZeroWorkflowVisibility = z.infer<
 /**
  * Workflow name (slug) validation regex.
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens.
- * Minimum 2 characters. Slugs are NOT unique — duplicates across and within an
- * agent are allowed; run-time picks a winner by a fixed priority rule.
+ * Minimum 2 characters. Slugs are unique within an agent; different agents can
+ * use the same slug.
  */
 export const zeroWorkflowNameSchema = z
   .string()
@@ -262,6 +262,7 @@ export const zeroWorkflowsCollectionContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Create a workflow under an agent",
   },
@@ -322,6 +323,7 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Copy (fork) a workflow onto another agent",
   },

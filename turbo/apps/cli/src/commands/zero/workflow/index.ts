@@ -24,10 +24,10 @@ export const zeroWorkflowCommand = new Command("workflow")
 Examples:
   Create under an agent:   zero workflow create my-workflow --agent <agent-id> --instruction "Do things"
   List workflows:          zero workflow list
-  View workflow content:   zero workflow view <workflow-id>
-  Update workflow content: zero workflow edit <workflow-id> --instruction "New steps"
-  Copy onto another agent: zero workflow copy <workflow-id> --to-agent <agent-id>
-  Run a workflow once:     zero workflow run <workflow-id>
+  View workflow content:   zero workflow view <workflow>
+  Update workflow content: zero workflow edit <workflow> --instruction "New steps"
+  Copy onto another agent: zero workflow copy <workflow> --to-agent <agent-id>
+  Run a workflow once:     zero workflow run <workflow>
   Manage triggers:         zero workflow trigger --help
-  Delete a workflow:       zero workflow delete <workflow-id> -y`,
+  Delete a workflow:       zero workflow delete <workflow> -y`,
   );

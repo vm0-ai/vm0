@@ -167,6 +167,29 @@ export async function loadVisibleWorkflowById(
   return { workflow: row.workflow, agent: row.agent };
 }
 
+export async function isWorkflowNameTaken(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+  },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: zeroWorkflows.id })
+    .from(zeroWorkflows)
+    .where(
+      and(
+        eq(zeroWorkflows.orgId, args.orgId),
+        eq(zeroWorkflows.agentId, args.agentId),
+        eq(zeroWorkflows.name, args.name),
+        eq(zeroWorkflows.type, "workflow"),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 export function workflowSummary(args: {
   readonly workflow: WorkflowRow;
   readonly agent: WorkflowAgentInfo;
@@ -203,80 +226,6 @@ function injectableWorkflowCondition(userId: string): SQL {
   ) as SQL;
 }
 
-function shadowWinnerFromRows(
-  rows: readonly { readonly workflow: WorkflowRow }[],
-  member: WorkflowMember,
-): Map<string, WorkflowShadow> {
-  const groups = new Map<string, WorkflowRow[]>();
-  for (const row of rows) {
-    const key = `${row.workflow.agentId}:${row.workflow.name}`;
-    groups.set(key, [...(groups.get(key) ?? []), row.workflow]);
-  }
-
-  const winners = new Map<string, WorkflowShadow>();
-  for (const [key, workflows] of groups) {
-    const winner = workflows
-      .filter((workflow) => {
-        return (
-          workflow.visibility === "public" ||
-          workflow.ownerUserId === member.userId
-        );
-      })
-      .sort((a, b) => {
-        const aPrivateOwner =
-          a.visibility === "private" && a.ownerUserId === member.userId;
-        const bPrivateOwner =
-          b.visibility === "private" && b.ownerUserId === member.userId;
-        if (aPrivateOwner !== bPrivateOwner) {
-          return aPrivateOwner ? -1 : 1;
-        }
-        return a.createdAt.getTime() - b.createdAt.getTime();
-      })[0];
-    if (!winner) {
-      continue;
-    }
-    winners.set(key, {
-      id: winner.id,
-      name: winner.name,
-      displayName: winner.displayName,
-    });
-  }
-  return winners;
-}
-
-export async function loadWorkflowShadowWinner(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly member: WorkflowMember;
-    readonly workflow: WorkflowRow;
-  },
-): Promise<WorkflowShadow | null> {
-  const [winner] = await db
-    .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      displayName: zeroWorkflows.displayName,
-    })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.workflow.agentId),
-        eq(zeroWorkflows.name, args.workflow.name),
-        eq(zeroWorkflows.type, "workflow"),
-        injectableWorkflowCondition(args.member.userId),
-      ),
-    )
-    .orderBy(...workflowRunPrioritySort(args.member.userId))
-    .limit(1);
-
-  if (!winner || winner.id === args.workflow.id) {
-    return null;
-  }
-  return winner;
-}
-
 export function zeroWorkflowList(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -308,17 +257,11 @@ export function zeroWorkflowList(args: {
       )
       .orderBy(asc(zeroWorkflows.name));
 
-    const winners = shadowWinnerFromRows(rows, args.member);
-
     return rows.map((row) => {
-      const key = `${row.workflow.agentId}:${row.workflow.name}`;
-      const winner = winners.get(key);
       return workflowSummary({
         workflow: row.workflow,
         agent: row.agent,
         member: args.member,
-        shadowedBy:
-          winner && winner.id !== row.workflow.id ? winner : undefined,
       });
     });
   });
@@ -331,9 +274,8 @@ interface RunWorkflowRef {
 
 /**
  * Workflows injectable into a run on `agentId` by `userId`: the agent's public
- * workflows plus the caller's own private ones. On a slug collision the fixed
- * priority wins — the caller's own private beats public, then earliest
- * `created_at` — and only that single workflow is injected.
+ * workflows plus the caller's own private ones. Names are unique per agent for
+ * new data; this still dedupes defensively for any historical rows.
  */
 export async function loadWorkflowsForRun(
   db: ReadonlyDb,

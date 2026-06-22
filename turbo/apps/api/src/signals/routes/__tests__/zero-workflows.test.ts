@@ -220,81 +220,78 @@ describe("zero workflows", () => {
     );
   });
 
-  it("marks same-slug workflows as shadowed by the runtime priority winner", async () => {
+  it("rejects duplicate workflow names on one agent but allows the same name on different agents", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
-    const agent = await store.set(
+    const firstAgent = await store.set(
       seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        displayName: "Shadow Agent",
+        displayName: "First Agent",
         visibility: "public",
       },
       context.signal,
     );
-    const publicWorkflowId = await store.set(
-      seedWorkflow$,
+    const secondAgent = await store.set(
+      seedAgentForInstructions$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        agentId: agent.agentId,
-        name: "daily-brief",
+        displayName: "Second Agent",
         visibility: "public",
-        displayName: "Public Brief",
-      },
-      context.signal,
-    );
-    const privateWorkflowId = await store.set(
-      seedWorkflow$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        agentId: agent.agentId,
-        name: "daily-brief",
-        visibility: "private",
-        displayName: "Private Brief",
       },
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
 
-    const listed = await accept(
-      collectionClient().list({
+    const first = await accept(
+      collectionClient().create({
         headers: authHeaders(),
-        query: { agentId: agent.agentId },
-      }),
-      [200],
-    );
-    expect(listed.body).toContainEqual(
-      expect.objectContaining({
-        id: publicWorkflowId,
-        shadowedBy: {
-          id: privateWorkflowId,
+        body: {
+          agentId: firstAgent.agentId,
           name: "daily-brief",
-          displayName: "Private Brief",
+          instruction: "# daily brief",
         },
       }),
+      [201],
     );
-    expect(listed.body).toContainEqual(
-      expect.objectContaining({
-        id: privateWorkflowId,
-        shadowedBy: null,
+    expect(first.body).toMatchObject({
+      agentId: firstAgent.agentId,
+      name: "daily-brief",
+    });
+
+    const duplicate = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: firstAgent.agentId,
+          name: "daily-brief",
+          instruction: "# duplicate daily brief",
+        },
       }),
+      [409],
+    );
+    expect(duplicate.body.error.message).toContain(
+      'Workflow "daily-brief" already exists on this agent',
     );
 
-    const detail = await accept(
-      detailClient().get({
+    const acrossAgent = await accept(
+      collectionClient().create({
         headers: authHeaders(),
-        params: { workflowId: publicWorkflowId },
+        body: {
+          agentId: secondAgent.agentId,
+          name: "daily-brief",
+          instruction: "# daily brief on another agent",
+        },
       }),
-      [200],
+      [201],
     );
-    expect(detail.body.shadowedBy).toStrictEqual({
-      id: privateWorkflowId,
+    expect(acrossAgent.body).toMatchObject({
+      agentId: secondAgent.agentId,
       name: "daily-brief",
-      displayName: "Private Brief",
     });
   });
 
@@ -383,6 +380,18 @@ describe("zero workflows", () => {
       canManage: true,
     });
     expect(copied.body.id).not.toBe(workflowId);
+
+    const duplicateCopy = await accept(
+      detailClient().copy({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [409],
+    );
+    expect(duplicateCopy.body.error.message).toContain(
+      'Workflow "copyable-workflow" already exists on this agent',
+    );
 
     // Both the original and the fork are now visible to the owner.
     const listed = await accept(

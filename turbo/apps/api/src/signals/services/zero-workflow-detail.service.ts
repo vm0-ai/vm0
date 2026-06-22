@@ -7,7 +7,6 @@ import type {
 
 import { db$ } from "../external/db";
 import {
-  loadWorkflowShadowWinner,
   loadVisibleWorkflowById,
   workflowSummary,
   type WorkflowMember,
@@ -36,17 +35,10 @@ export function zeroWorkflowDetail(args: {
     }
     const { workflow, agent } = visible;
 
-    const shadowedBy = await loadWorkflowShadowWinner(db, {
-      orgId: args.orgId,
-      member: args.member,
-      workflow,
-    });
-
     const summary = workflowSummary({
       workflow,
       agent,
       member: args.member,
-      shadowedBy,
     });
 
     // The synthesized SKILL.md is derived from the DB instruction; users never
