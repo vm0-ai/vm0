@@ -10,7 +10,6 @@ function computerUseState(
   status: ComputerUseHostRuntimeStatus,
 ): DesktopComputerUseState {
   return {
-    featureSwitchKey: "computerUse",
     platform: "darwin",
     supported: true,
     permissions: { accessibility: true, screenRecording: true },

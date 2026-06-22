@@ -1,8 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
 import { chatThreadComputerUseHostContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 
@@ -13,32 +11,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
-
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" } },
-  };
-}
-
-async function computerUseFeatureEnabled(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<boolean> {
-  const context = await loadUserFeatureSwitchContext(
-    params.db,
-    params.orgId,
-    params.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: context.overrides,
-  });
-}
 
 async function threadExists(params: {
   readonly db: Db;
@@ -107,17 +80,6 @@ const updateComputerUseHostInner$ = command(
 
     const hostId = body.data.computerUseHostId;
     if (hostId !== null) {
-      if (
-        !(await computerUseFeatureEnabled({
-          db,
-          orgId: auth.orgId,
-          userId: auth.userId,
-        }))
-      ) {
-        return forbidden("Computer use is not enabled");
-      }
-      signal.throwIfAborted();
-
       if (
         !(await computerUseHostExists({
           db,

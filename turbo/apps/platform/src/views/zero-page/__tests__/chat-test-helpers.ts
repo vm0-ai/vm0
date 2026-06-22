@@ -22,6 +22,7 @@ import {
   zeroRunsCancelContract,
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -139,6 +140,9 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
       });
     }
     return respond(200, agent);
+  });
+  context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
   });
 }
 
@@ -763,6 +767,9 @@ export function mockChatLifecycle(
   });
   context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
     return respond(200, { position: queuePosition, total: 0 });
+  });
+  context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
   });
 
   return {

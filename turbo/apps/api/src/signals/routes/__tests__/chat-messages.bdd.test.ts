@@ -19,9 +19,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { secrets } from "@vm0/db/schema/secret";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -360,23 +358,6 @@ async function overwriteOrgModelProviderSecret(
         eq(secrets.type, "model-provider"),
       ),
     );
-}
-
-async function updateFeatureSwitches(
-  actor: ApiTestUser,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
-      headers: sessionHeaders(actor),
-      body: { switches },
-    }),
-    [200],
-  );
-}
-
-async function disableComputerUse(actor: ApiTestUser): Promise<void> {
-  await updateFeatureSwitches(actor, { [FeatureSwitchKey.ComputerUse]: false });
 }
 
 async function readThreadComputerUseHostId(
@@ -2183,7 +2164,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
   it("grants computer-use capability only for a selected host", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await cu.enableComputerUse(actor);
     const { hostId, hostToken } = await cu.startComputerUseHost(actor);
 
     // The thread's sticky host is not exposed by any read route, so the
@@ -2289,22 +2269,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       displayName: "Computer-use guard agent",
     });
 
-    // Feature disabled: explicit selections are rejected outright.
-    const featureDisabled = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "use a host without the feature",
-        computerUseHostId: randomUUID(),
-      },
-      [403],
-    );
-    expectApiError(featureDisabled.body);
-    expect(featureDisabled.body.error.message).toBe(
-      "Computer use is not enabled",
-    );
-
-    await cu.enableComputerUse(actor);
     const unknownHost = await chat.requestSendMessage(
       actor,
       {
@@ -2418,13 +2382,13 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     );
     expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
 
-    // Disabling the feature keeps non-explicit sends working without a grant.
+    // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);
     const survivorThread = await chat.requestSendMessage(
       actor,
       {
         agentId: agent.agentId,
-        prompt: "pin a host before the feature is disabled",
+        prompt: "pin a host for a later sticky send",
         computerUseHostId: survivor.hostId,
       },
       [201],
@@ -2432,20 +2396,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     if (survivorThread.status !== 201) {
       throw new Error("Expected the survivor send to be accepted");
     }
-    await disableComputerUse(actor);
-    const disabledStickySend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: survivorThread.body.threadId,
-        prompt: "send with the feature disabled",
-      },
-      [201],
-    );
-    expect(disabledStickySend.body).toMatchObject({
-      threadId: survivorThread.body.threadId,
-    });
-    await cu.enableComputerUse(actor);
 
     // A host that stopped heartbeating goes stale-offline (status still
     // online, not revoked), but explicit selections are still accepted so the

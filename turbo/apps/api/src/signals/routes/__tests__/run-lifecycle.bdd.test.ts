@@ -1699,7 +1699,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ComputerUse]: true,
       [FeatureSwitchKey.SandboxIoLimiters]: true,
     });
 
@@ -1740,13 +1739,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ComputerUse]: true,
       [FeatureSwitchKey.SandboxIoLimiters]: true,
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 
-    // Even with the computer-use switch on, a run-scoped zero token issued
-    // without a host binding cannot reach computer-use write routes.
+    // A run-scoped zero token issued without a host binding cannot reach
+    // computer-use write routes.
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
       throw new Error("Expected the promoted claim to expose the zero token");
