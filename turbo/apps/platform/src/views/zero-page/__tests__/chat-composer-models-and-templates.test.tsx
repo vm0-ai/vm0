@@ -2356,8 +2356,12 @@ describe("chat composer templates", () => {
       fireEvent.mouseEnter(previewRoot);
       expect(playSpy).toHaveBeenCalledTimes(2);
       previewVideo.currentTime = 4;
+      Object.defineProperty(previewVideo, "paused", {
+        configurable: true,
+        value: false,
+      });
       fireEvent.click(previewPlayButton);
-      expect(playSpy).toHaveBeenCalledTimes(3);
+      expect(playSpy).toHaveBeenCalledTimes(2);
       expect(pauseSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.currentTime).toBe(4);
     } finally {

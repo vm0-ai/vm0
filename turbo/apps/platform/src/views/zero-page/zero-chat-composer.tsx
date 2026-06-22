@@ -992,6 +992,13 @@ function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
   markVideoTemplatePreviewPlaying(video, false);
 }
 
+function toggleVideoTemplatePreview(video: HTMLVideoElement | null): void {
+  if (!video || (!video.paused && !video.ended)) {
+    return;
+  }
+  playVideoTemplatePreview(video);
+}
+
 function videoTemplatePosterImage(item: VideoTemplateItem): string {
   if (item.cardPreviewImage !== undefined) {
     return r2ImageTransformUrl(
@@ -1009,7 +1016,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       data-video-template-preview=""
       className="group/video-template-preview relative h-full w-full overflow-hidden bg-muted"
       onMouseEnter={(event) => {
-        playVideoTemplatePreview(event.currentTarget.querySelector("video"));
+        toggleVideoTemplatePreview(event.currentTarget.querySelector("video"));
       }}
       onMouseLeave={(event) => {
         resetVideoTemplatePreview(event.currentTarget.querySelector("video"));
@@ -1050,7 +1057,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          playVideoTemplatePreview(
+          toggleVideoTemplatePreview(
             event.currentTarget.parentElement?.querySelector("video") ?? null,
           );
         }}
