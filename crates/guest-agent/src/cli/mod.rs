@@ -16,6 +16,7 @@
 //! flow are part of the runtime contract.
 
 mod child_env;
+pub mod codex_app_server;
 mod codex_setup;
 mod command;
 mod diagnostics;

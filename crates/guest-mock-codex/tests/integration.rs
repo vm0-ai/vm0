@@ -308,7 +308,8 @@ fn initialize_params() -> Value {
             "version": "0.1.0"
         },
         "capabilities": {
-            "experimentalApi": true
+            "experimentalApi": true,
+            "requestAttestation": false
         }
     })
 }
@@ -536,6 +537,143 @@ fn app_server_invalid_json_exits_without_hanging() -> std::io::Result<()> {
 
     assert!(server.read_message()?.is_none());
     assert_ne!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_records_initialized_notification() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(dir.path(), &["app-server", "--stdio"], None)?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.notify("initialized", json!({}))?;
+
+    let state = server.request(2, "mock/state", json!({}))?;
+    assert_eq!(state["result"]["initializedNotificationReceived"], true);
+    assert_eq!(state["result"]["hasPendingResponse"], false);
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_interleaved_notification_scenario_emits_before_response() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--stdio"],
+        Some("interleaved-notification"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": {}
+    }))?;
+
+    let notification = server.read_required()?;
+    assert_eq!(notification["method"], "experimental/server-notification");
+    assert_eq!(
+        notification["params"]["message"],
+        "guest-mock-codex notification"
+    );
+
+    let response = server.read_required()?;
+    assert_eq!(response["id"], 2);
+    assert!(response["result"]["thread"]["id"].as_str().is_some());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_notification_overflow_scenario_emits_many_notifications() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--stdio"],
+        Some("notification-overflow"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": {}
+    }))?;
+
+    for index in 0..129 {
+        let notification = server.read_required()?;
+        assert_eq!(notification["method"], "experimental/server-notification");
+        assert_eq!(notification["params"]["index"], index);
+    }
+
+    let response = server.read_required()?;
+    assert_eq!(response["id"], 2);
+    assert!(response["result"]["thread"]["id"].as_str().is_some());
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_server_request_scenario_waits_for_client_response() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--stdio"],
+        Some("server-request-before-response"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": {}
+    }))?;
+
+    let server_request = server.read_required()?;
+    assert_eq!(server_request["id"], "guest-mock-codex-server-request-1");
+    assert_eq!(server_request["method"], "experimental/server-request");
+
+    server.send(&json!({
+        "id": "guest-mock-codex-server-request-1",
+        "error": {
+            "code": -32601,
+            "message": "unsupported server request"
+        }
+    }))?;
+
+    let response = server.read_required()?;
+    assert_eq!(response["id"], 2);
+    assert!(response["result"]["thread"]["id"].as_str().is_some());
+
+    let state = server.request(3, "mock/state", json!({}))?;
+    assert_eq!(state["result"]["hasPendingResponse"], false);
+    assert_eq!(
+        state["result"]["serverRequestResponses"][0]["error"]["code"],
+        -32601
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_malformed_stdout_scenario_exits_after_invalid_line() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--stdio"],
+        Some("malformed-stdout"),
+    )?;
+
+    server.send(&json!({
+        "id": 1,
+        "method": "initialize",
+        "params": initialize_params()
+    }))?;
+
+    let error = server.read_required().unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }
 
