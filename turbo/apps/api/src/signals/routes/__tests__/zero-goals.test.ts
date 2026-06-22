@@ -14,6 +14,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
@@ -224,6 +225,10 @@ function markerContent(
 }
 
 describe("zero goals", () => {
+  beforeEach(() => {
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+  });
+
   it("rejects goal writes while the feature switch is disabled", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: false });
 
@@ -500,11 +505,13 @@ describe("zero goals", () => {
 
   it("publishes goal-state markers into the thread on each transition", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const objective =
+      "Ship goal workflows by auditing every implementation detail, creating a release plan, coordinating the rollout across the web app and CLI, and continuing without waiting for more input.";
 
     await accept(
       goalsClient().create({
         headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
+        body: { objective },
       }),
       [201],
     );
@@ -517,15 +524,19 @@ describe("zero goals", () => {
       expect(marker.runId).toBeNull();
     }
     // Creating a goal publishes both dimensions active; the workflow marker
-    // carries the objective and the trigger marker carries the trigger id (for
-    // the client fold + cancel control).
+    // carries the objective brief and the trigger marker carries the trigger id
+    // (for the client fold + cancel control).
     expect(eventIds(afterCreate)).toStrictEqual([
       "goal-trigger:active",
       "goal-workflow:active",
     ]);
-    expect(markerContent(afterCreate, "goal-workflow:active")).toStrictEqual([
-      "ship goal workflows",
-    ]);
+    const [workflowMarkerContent] = markerContent(
+      afterCreate,
+      "goal-workflow:active",
+    );
+    expect(workflowMarkerContent).not.toBe(objective);
+    expect(workflowMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
+    expect(workflowMarkerContent).toMatch(/\.\.\.$/);
     expect(markerContent(afterCreate, "goal-trigger:active")).toStrictEqual([
       goalRows!.triggerId,
     ]);
@@ -555,17 +566,19 @@ describe("zero goals", () => {
       }),
       [201],
     );
+    const objective =
+      "Ship goal workflows v2 by verifying every backend state transition, updating the visible marker copy, coordinating the CLI behavior, and keeping the autonomous continuation prompt unchanged.";
 
     const edited = await accept(
       goalsClient().edit({
         headers: headers(fixture, ["goal-objective:write"]),
-        body: { objective: "ship goal workflows v2", tokenBudget: 5000 },
+        body: { objective, tokenBudget: 5000 },
       }),
       [200],
     );
     expect(edited.body).toStrictEqual({
       active: true,
-      objective: "ship goal workflows v2",
+      objective,
       status: "active",
       tokenBudget: 5000,
     });
@@ -576,10 +589,22 @@ describe("zero goals", () => {
     );
     expect(read.body).toStrictEqual({
       active: true,
-      objective: "ship goal workflows v2",
+      objective,
       status: "active",
       tokenBudget: 5000,
     });
+    const workflowMarkerContents = markerContent(
+      await loadGoalMarkers(fixture),
+      "goal-workflow:active",
+    );
+    expect(workflowMarkerContents).toHaveLength(2);
+    expect(workflowMarkerContents).toContain("ship goal workflows");
+    const editedMarkerContent = workflowMarkerContents.find((content) => {
+      return content !== "ship goal workflows";
+    });
+    expect(editedMarkerContent).not.toBe(objective);
+    expect(editedMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
+    expect(editedMarkerContent).toMatch(/\.\.\.$/);
   });
 
   it("auto-resumes a blocked goal when edited and clears stopReason", async () => {
