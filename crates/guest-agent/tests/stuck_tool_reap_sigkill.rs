@@ -5,6 +5,7 @@
 
 mod common;
 
+use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::time::Duration;
 
 #[tokio::test]
@@ -39,13 +40,21 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
         "mock did not install SIGTERM ignore marker"
     );
 
-    let err = match result {
-        Ok(_) => return Err("stuck tool timeout should fail the run".into()),
-        Err(err) => err,
-    };
+    let result = result.expect("execute_cli returned Err before collecting controlled termination");
+    let err = result
+        .control_error
+        .as_ref()
+        .expect("stuck tool timeout should preserve a controlled execution error");
     assert!(
         err.to_string().contains("Tool timeout: WebFetch"),
         "expected stuck tool timeout error, got {err}"
     );
+    let termination = result
+        .cli_termination
+        .expect("stuck tool timeout should attach CLI termination diagnostic");
+    assert_eq!(termination.reason, CliTerminationReason::StuckToolWatchdog);
+    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigkill));
+    assert!(termination.escalated);
+    assert_eq!(termination.observed_exit_code, Some(common::SIGKILL_EXIT));
     Ok(())
 }

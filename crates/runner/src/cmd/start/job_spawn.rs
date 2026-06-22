@@ -7,7 +7,7 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use agent_diagnostics::{FailureClass, FailureDiagnostic, FailureReason};
+use agent_diagnostics::{CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
@@ -675,6 +675,8 @@ fn log_job_execution_failed(
                 .failure_detail_source
                 .map(|source| source.as_str());
             let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
+            let cli_termination_fields =
+                JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
             error!(
                 run_id = %run_id,
                 exit_code,
@@ -689,6 +691,13 @@ fn log_job_execution_failed(
                 failure_claude_num_turns = diagnostic.claude_num_turns,
                 failure_detail_source,
                 failure_reason,
+                cli_termination_initiator = cli_termination_fields.initiator,
+                cli_termination_reason = cli_termination_fields.reason,
+                cli_termination_signal_sent = cli_termination_fields.signal_sent,
+                cli_termination_signal_pgid = cli_termination_fields.signal_pgid,
+                cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
+                cli_termination_escalated = cli_termination_fields.escalated,
+                cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
                 session_history_status = diagnostic.session_history_status.as_str(),
                 prompt_shape = diagnostic.prompt_shape.as_str(),
                 prompt_bytes = diagnostic.prompt_bytes,
@@ -725,6 +734,8 @@ fn log_job_execution_failed(
             .failure_detail_source
             .map(|source| source.as_str());
         let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
+        let cli_termination_fields =
+            JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
         macro_rules! log_with_diagnostic {
             ($level:ident) => {
                 $level!(
@@ -738,6 +749,13 @@ fn log_job_execution_failed(
                     failure_claude_num_turns = diagnostic.claude_num_turns,
                     failure_detail_source,
                     failure_reason,
+                    cli_termination_initiator = cli_termination_fields.initiator,
+                    cli_termination_reason = cli_termination_fields.reason,
+                    cli_termination_signal_sent = cli_termination_fields.signal_sent,
+                    cli_termination_signal_pgid = cli_termination_fields.signal_pgid,
+                    cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
+                    cli_termination_escalated = cli_termination_fields.escalated,
+                    cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
                     session_history_status = diagnostic.session_history_status.as_str(),
                     prompt_shape = diagnostic.prompt_shape.as_str(),
                     prompt_bytes = diagnostic.prompt_bytes,
@@ -778,6 +796,31 @@ struct JobResourceLogFields {
     guest_root_fs_available_kb: Option<u64>,
     guest_workspace_fs_used_percent: Option<u64>,
     guest_memory_available_mb: Option<u64>,
+}
+
+struct JobCliTerminationLogFields {
+    initiator: Option<&'static str>,
+    reason: Option<&'static str>,
+    signal_sent: Option<&'static str>,
+    signal_pgid: Option<i32>,
+    signal_grace_ms: Option<u64>,
+    escalated: Option<bool>,
+    observed_exit_code: Option<i32>,
+}
+
+impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
+    fn from(diagnostic: Option<&CliTerminationDiagnostic>) -> Self {
+        Self {
+            initiator: diagnostic.map(|diagnostic| diagnostic.initiator.as_str()),
+            reason: diagnostic.map(|diagnostic| diagnostic.reason.as_str()),
+            signal_sent: diagnostic
+                .and_then(|diagnostic| diagnostic.signal_sent.map(|signal| signal.as_str())),
+            signal_pgid: diagnostic.and_then(|diagnostic| diagnostic.signal_pgid),
+            signal_grace_ms: diagnostic.and_then(|diagnostic| diagnostic.signal_grace_ms),
+            escalated: diagnostic.map(|diagnostic| diagnostic.escalated),
+            observed_exit_code: diagnostic.and_then(|diagnostic| diagnostic.observed_exit_code),
+        }
+    }
 }
 
 impl From<Option<executor::ResourceFailureDiagnostics>> for JobResourceLogFields {
@@ -875,7 +918,8 @@ mod tests {
     use std::time::Duration;
 
     use agent_diagnostics::{
-        AgentFramework, FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
+        AgentFramework, CliTerminationDiagnostic, CliTerminationReason, CliTerminationSignal,
+        FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
@@ -907,6 +951,12 @@ mod tests {
             diagnostic = diagnostic.with_failure_reason(reason);
         }
         diagnostic
+    }
+
+    fn post_result_cli_termination() -> CliTerminationDiagnostic {
+        CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
+            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
+            .with_observed_exit_code(143)
     }
 
     fn capture_job_failure_log(failure: &executor::ExecutionFailure) -> CapturedEvent {
@@ -1069,6 +1119,30 @@ mod tests {
             Some("job execution failed")
         );
         assert!(!event.fields.contains_key("failure_reason"));
+        assert!(!event.fields.contains_key("cli_termination_reason"));
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_cli_termination_fields() {
+        let diagnostic =
+            job_failure_diagnostic(None).with_cli_termination(post_result_cli_termination());
+        let failure =
+            executor::ExecutionFailure::new(143, "Agent exited with code 143", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "cli_termination_initiator", "guest_agent");
+        assert_field_eq(&event, "cli_termination_reason", "post_result_reap");
+        assert_field_eq(&event, "cli_termination_signal_sent", "sigterm");
+        assert_field_eq(&event, "cli_termination_signal_pgid", "1401");
+        assert_field_eq(&event, "cli_termination_signal_grace_ms", "10000");
+        assert_field_eq(&event, "cli_termination_escalated", "false");
+        assert_field_eq(&event, "cli_termination_observed_exit_code", "143");
     }
 
     #[test]
@@ -1167,7 +1241,8 @@ mod tests {
 
     #[test]
     fn runner_job_timeout_preserves_diagnostic_fields() {
-        let diagnostic = job_failure_diagnostic(Some(FailureReason::UsageLimit));
+        let diagnostic = job_failure_diagnostic(Some(FailureReason::UsageLimit))
+            .with_cli_termination(post_result_cli_termination());
         let failure = executor::ExecutionFailure::runner_job_timeout(
             124,
             "Timeout",
@@ -1192,6 +1267,13 @@ mod tests {
         assert_field_eq(&event, "failure_framework", "codex");
         assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
         assert_field_eq(&event, "session_history_status", "not_applicable");
+        assert_field_eq(&event, "cli_termination_initiator", "guest_agent");
+        assert_field_eq(&event, "cli_termination_reason", "post_result_reap");
+        assert_field_eq(&event, "cli_termination_signal_sent", "sigterm");
+        assert_field_eq(&event, "cli_termination_signal_pgid", "1401");
+        assert_field_eq(&event, "cli_termination_signal_grace_ms", "10000");
+        assert_field_eq(&event, "cli_termination_escalated", "false");
+        assert_field_eq(&event, "cli_termination_observed_exit_code", "143");
     }
 
     async fn status_idle_sessions_and_active_runs(

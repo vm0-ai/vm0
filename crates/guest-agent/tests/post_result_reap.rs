@@ -6,6 +6,7 @@
 
 mod common;
 
+use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::time::Duration;
 
 #[tokio::test]
@@ -46,5 +47,16 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
         "expected SIGTERM exit ({}) for the post-result reap path, got {exit_code}; SIGKILL escalation is covered by post_result_reap_sigkill",
         common::SIGTERM_EXIT
     );
+    assert!(
+        result.control_error.is_none(),
+        "post-result reap should not set a controlled execution error"
+    );
+    let termination = result
+        .cli_termination
+        .expect("post-result reap should attach CLI termination diagnostic");
+    assert_eq!(termination.reason, CliTerminationReason::PostResultReap);
+    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigterm));
+    assert!(!termination.escalated);
+    assert_eq!(termination.observed_exit_code, Some(common::SIGTERM_EXIT));
     Ok(())
 }
