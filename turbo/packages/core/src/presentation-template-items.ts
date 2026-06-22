@@ -646,7 +646,7 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
     },
     {
       slug: "coinbase-institutional-prime-deck",
-      title: "Coinbase Institutional Prime Deck",
+      title: "Coinbase Institutional Prime",
       prompt:
         "/gen presentation with design system `coinbase` and template `html-ppt-pitch-deck`, create a Coinbase Institutional prime-brokerage sales deck. AUC scale, custody architecture, OTC desk, derivatives roadmap, regulatory posture. Make it feel institutional, sleek, blue-chip.",
       embedUrl:
@@ -1592,7 +1592,7 @@ export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
     },
     {
       slug: "indie-pixel-game-press-deck",
-      title: "Indie Pixel Game Press Deck",
+      title: "Indie Pixel Game Press",
       prompt:
         "/gen presentation with design system `cosmic` and template `html-ppt-zhangzara-8-bit-orbit`, create an indie video game pre-launch press deck. Story pitch, gameplay loop, art direction, soundtrack samples, release window. Make it feel pixel, neon, gaming.",
       embedUrl: "https://indie-pixel-game-press-deck-715f6d07.sites.vm0.io",
@@ -2124,7 +2124,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
   [
     {
       slug: "playful-launch-presentation",
-      title: "Playful launch presentation",
+      title: "Playful launch",
       prompt:
         "/gen presentation with design system `playful-editorial` and template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge. Present it to people and culture leaders with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, testimonials, pricing, and next steps. Make it saturated, joyful, idea-led, and structured.",
       embedUrl:
@@ -2139,7 +2139,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "botane-organic-deck",
-      title: "Botane organic deck",
+      title: "Botane organic",
       prompt:
         "/gen presentation with design system `botane-organic` and template `html-ppt-botane-organic`, create a 15-slide brand story deck for Moss & Moon, a coastal wellness retreat launching a seasonal herb garden, tea bar, and slow-living membership program. Present it to hospitality partners with cover, agenda, origin story, guest philosophy, retreat spaces, treatment menu, garden-to-table process, photography gallery, sustainability metrics, member testimonials, packages, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
@@ -2154,7 +2154,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "business-data-presentation",
-      title: "Business data presentation",
+      title: "Business data",
       prompt:
         "/gen presentation with design system `business-data` and template `html-ppt-business-data`, create a 15-slide executive data readout for HarborCart, an omnichannel grocery retailer reviewing 2026 growth, loyalty behavior, basket mix, and store-to-delivery conversion. Present it to the leadership team with cover, agenda, business context, KPI scorecard, regional segments, channel comparison, customer cohorts, operational drivers, forecast, strategic bets, risks, recommendations, and appendix contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
@@ -2169,7 +2169,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "crayon-learning-deck",
-      title: "Crayon learning deck",
+      title: "Crayon learning",
       prompt:
         "/gen presentation with design system `crayon` and template `html-ppt-crayon`, create a 15-slide parent-night deck for Rainbow Lab, a summer art-and-science camp where kids build storybooks, cardboard cities, and tiny robots. Present it to families with cover, agenda, camp promise, learning goals, weekly themes, instructor team, sample day, workshop stations, student gallery, safety plan, progress metrics, parent quotes, pricing, and registration steps. Make it bright, rounded, joyful, and crayon-like.",
       embedUrl:
@@ -2185,7 +2185,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "creative-agency-presentation",
-      title: "Creative agency presentation",
+      title: "Creative agency",
       prompt:
         "/gen presentation with design system `creative-agency` and template `html-ppt-creative-agency`, create a 15-slide rebrand pitch for Northstar Studio proposing a new identity, website, and launch campaign for a boutique hotel group expanding into three coastal cities. Present it to the client board with cover, agenda, brand challenge, strategic insight, creative direction, visual territories, service scope, project process, case-study gallery, launch roadmap, impact metrics, client quotes, investment, and contact. Make it minimal, editorial, sharp, and agency-grade.",
       embedUrl:
@@ -2201,7 +2201,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "data-report-presentation",
-      title: "Data report presentation",
+      title: "Data report",
       prompt:
         "/gen presentation with design system `data-report` and template `html-ppt-data-report`, create a 15-slide research findings deck for MetroPulse, a city mobility study comparing bike-share, buses, rideshare, and commuter rail across 12 neighborhoods. Present it to urban planning stakeholders with cover, contents, study context, methodology, demand trends, neighborhood segments, mode comparison, peak-hour bottlenecks, equity impact, emissions estimate, 12-month forecast, recommendations, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
       embedUrl:
@@ -2217,7 +2217,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "editorial-magazine-deck",
-      title: "Editorial magazine deck",
+      title: "Editorial magazine",
       prompt:
         "/gen presentation with design system `editorial-magazine` and template `html-ppt-editorial-magazine`, create a 15-slide media kit for Field Notes Quarterly, an independent culture magazine pitching its autumn issue on craft, travel, food, and design to premium sponsors. Include cover, editor letter, issue theme, audience profile, editorial departments, contributor roster, feature previews, photography gallery, distribution plan, partnership formats, audience metrics, sponsor examples, rate card, production timeline, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
       embedUrl:
@@ -2233,7 +2233,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "landing-consulting-deck",
-      title: "Landing consulting deck",
+      title: "Landing consulting",
       prompt:
         "/gen presentation with design system `landing-consulting` and template `html-ppt-landing-consulting`, create a 15-slide growth proposal for ScaleBridge advising a B2B fintech SaaS team on reducing onboarding drop-off and improving trial-to-paid conversion. Present it to the revenue leadership team with cover, agenda, opportunity size, diagnosis, desired outcomes, engagement model, workstreams, sprint process, benchmark gallery, proof metrics, client testimonials, pricing tiers, decision timeline, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
       embedUrl:
@@ -2281,7 +2281,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "playful-pop-deck",
-      title: "Playful pop deck",
+      title: "Playful pop",
       prompt:
         "/gen presentation with design system `playful-pop` and template `html-ppt-playful-pop`, create a 15-slide campus launch deck for FizzPop, a sparkling tea brand planning a colorful back-to-school sampling tour, creator challenge, and limited-edition flavor drop. Present it to retail and student ambassador partners with cover, agenda, brand world, audience insight, campaign idea, flavor lineup, activation map, event flow, content plan, gallery, reach metrics, partner testimonials, budget, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
