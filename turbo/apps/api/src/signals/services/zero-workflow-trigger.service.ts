@@ -4,6 +4,7 @@ import type {
   ZeroWorkflowSchedule,
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
@@ -53,6 +54,16 @@ interface ScheduleColumns {
   readonly timezone: string;
 }
 
+function parseOnceAtTime(
+  schedule: Extract<ZeroWorkflowSchedule, { type: "once" }>,
+): Date {
+  const result = parseScheduledAtTime(schedule.atTime, schedule.timezone);
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+  return result.date;
+}
+
 function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
   if (schedule.type === "cron") {
     return {
@@ -68,7 +79,7 @@ function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
       scheduleType: "once",
       cronExpression: null,
       intervalSeconds: null,
-      atTime: new Date(schedule.atTime),
+      atTime: parseOnceAtTime(schedule),
       timezone: schedule.timezone,
     };
   }
@@ -97,7 +108,11 @@ function validateSchedule(
     return `Invalid timezone: ${schedule.timezone}`;
   }
   if (schedule.type === "once") {
-    if (new Date(schedule.atTime).getTime() <= now.getTime()) {
+    const atTime = parseScheduledAtTime(schedule.atTime, schedule.timezone);
+    if (!atTime.ok) {
+      return atTime.message;
+    }
+    if (atTime.date.getTime() <= now.getTime()) {
       return "Schedule atTime must be in the future";
     }
     return null;
@@ -131,7 +146,7 @@ function resolveNextRunAt(
     return calculateNextRun(schedule.cronExpression, schedule.timezone, now);
   }
   if (schedule.type === "once") {
-    return new Date(schedule.atTime);
+    return parseOnceAtTime(schedule);
   }
   return now;
 }

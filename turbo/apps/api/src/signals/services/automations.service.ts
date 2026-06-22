@@ -3,6 +3,7 @@ import type {
   CreateTriggerRequest,
   UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
+import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -198,13 +199,11 @@ async function resolveTriggerInsert(args: {
         },
       };
     }
-    const atTime = new Date(request.atTime);
-    if (Number.isNaN(atTime.getTime())) {
-      return {
-        kind: "bad_request",
-        message: `Invalid atTime: ${request.atTime}`,
-      };
+    const atTimeResult = parseScheduledAtTime(request.atTime, timezone);
+    if (!atTimeResult.ok) {
+      return { kind: "bad_request", message: atTimeResult.message };
     }
+    const atTime = atTimeResult.date;
     if (atTime <= currentTime) {
       return {
         kind: "bad_request",

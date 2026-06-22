@@ -10,7 +10,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {
   deleteWorkflowsForFixture$,
@@ -132,6 +132,55 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
     expect(created.body.nextRunAt).toBeTruthy();
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
+  });
+
+  it("creates and updates one-time schedules from local atTime and timezone", async () => {
+    mockNow(Date.parse("2026-06-22T07:50:00.000Z"));
+    const { workflowId } = await setupFixture();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: "2026-06-22T15:55:00",
+            timezone: "Asia/Shanghai",
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body.schedule).toStrictEqual({
+      type: "once",
+      atTime: "2026-06-22T07:55:00.000Z",
+      timezone: "Asia/Shanghai",
+    });
+    expect(created.body.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
+
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: "2026-06-22T16:05:00",
+            timezone: "Asia/Shanghai",
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.schedule).toStrictEqual({
+      type: "once",
+      atTime: "2026-06-22T08:05:00.000Z",
+      timezone: "Asia/Shanghai",
+    });
+    expect(updated.body.nextRunAt).toBe("2026-06-22T08:05:00.000Z");
   });
 
   it("rejects creation on a workflow the caller cannot see", async () => {

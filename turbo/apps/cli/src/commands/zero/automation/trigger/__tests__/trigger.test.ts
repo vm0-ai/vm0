@@ -140,12 +140,53 @@ describe("zero automation trigger commands", () => {
         "once",
         "--at",
         "2026-06-10T09:00",
+        "--timezone",
+        "UTC",
       ]);
 
       expect(captured.body).toEqual({
         kind: "once",
         atTime: "2026-06-10T09:00",
+        timezone: "UTC",
       });
+    });
+
+    it("should add a once trigger with an explicit UTC instant without --timezone", async () => {
+      const captured = captureAddTrigger(onceTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        "alerts",
+        "once",
+        "--at",
+        "2026-06-10T09:00:00Z",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "once",
+        atTime: "2026-06-10T09:00:00Z",
+      });
+    });
+
+    it("should reject a local once trigger without --timezone", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          "alerts",
+          "once",
+          "--at",
+          "2026-06-10T09:00",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("requires --timezone"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should add a loop trigger parsing the --every duration", async () => {
@@ -295,12 +336,33 @@ describe("zero automation trigger commands", () => {
         TRIGGER_ID,
         "--at",
         "2026-06-10T09:00",
+        "--timezone",
+        "UTC",
       ]);
 
       expect(captured.body).toEqual({
         kind: "once",
         atTime: "2026-06-10T09:00",
+        timezone: "UTC",
       });
+    });
+
+    it("should reject a local one-time schedule update without --timezone", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "update",
+          TRIGGER_ID,
+          "--at",
+          "2026-06-10T09:00",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("requires --timezone"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should update a loop interval parsing the --every duration", async () => {

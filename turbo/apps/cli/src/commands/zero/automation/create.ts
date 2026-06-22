@@ -3,6 +3,7 @@ import chalk from "chalk";
 import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
 import { createAutomation, resolveCompose } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { requireTimezoneForLocalAtTime } from "./at-time-input";
 import { parseDurationSeconds } from "./duration";
 import { formatTriggerConfig, printWebhookSecret } from "./trigger-display";
 
@@ -50,6 +51,7 @@ function buildInlineTrigger(
     };
   }
   if (options.once) {
+    requireTimezoneForLocalAtTime(options.once, options.timezone, "--once");
     return { kind: "once", atTime: options.once, timezone: options.timezone };
   }
   if (options.loop) {
