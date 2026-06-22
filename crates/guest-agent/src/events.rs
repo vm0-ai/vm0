@@ -138,7 +138,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         "turn.failed" => {
             let error = event.get("error");
-            let structured_error = event.pointer("/turn/error").or(error);
+            let structured_error = codex_nested_turn_error(event).or(error);
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
@@ -147,7 +147,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         "turn.completed" => {
             let status = codex_turn_completed_failure_status(event)?;
-            let error = event.pointer("/turn/error").or_else(|| event.get("error"));
+            let error = codex_nested_turn_error(event).or_else(|| event.get("error"));
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
                 message: codex_error_message(error).unwrap_or_else(|| format!("turn {status}")),
@@ -156,6 +156,12 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         _ => None,
     }
+}
+
+fn codex_nested_turn_error(event: &Value) -> Option<&Value> {
+    event
+        .pointer("/turn/error")
+        .filter(|error| !error.is_null())
 }
 
 fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagnostic> {
@@ -891,6 +897,27 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_null_nested_turn_error_uses_top_level_error() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "code": "invalid_api_key",
+                "message": "Incorrect API key provided"
+            },
+            "turn": {"error": null}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Incorrect API key provided".to_string(),
                 failure_reason: Some(FailureReason::InvalidApiKey),
             })
         );
