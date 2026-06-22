@@ -3,6 +3,7 @@ import chalk from "chalk";
 import type { UpdateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
 import { updateAutomationTrigger } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
+import { requireTimezoneForLocalAtTime } from "../at-time-input";
 import { parseDurationSeconds } from "../duration";
 import { printTriggerDetails } from "../trigger-display";
 
@@ -41,6 +42,7 @@ function buildUpdate(options: UpdateOptions): UpdateTriggerRequest {
     };
   }
   if (options.at) {
+    requireTimezoneForLocalAtTime(options.at, options.timezone, "--at");
     return { kind: "once", atTime: options.at, timezone: options.timezone };
   }
   if (options.every) {

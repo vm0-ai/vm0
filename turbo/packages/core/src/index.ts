@@ -842,7 +842,14 @@ export {
   type SkillFrontmatter,
 } from "./skill-frontmatter";
 export { stripMetadataFrontmatter } from "./instructions-frontmatter";
-export { getGmtOffset } from "./timezone";
+export {
+  getGmtOffset,
+  hasExplicitDateTimeOffset,
+  isValidTimeZone,
+  parseScheduledAtTime,
+  type ScheduledAtTimeParseErrorCode,
+  type ScheduledAtTimeParseResult,
+} from "./timezone";
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
 

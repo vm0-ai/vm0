@@ -59,6 +59,20 @@ const cronTrigger = {
   updatedAt: "2026-06-01T00:00:00Z",
 };
 
+const onceTrigger = {
+  id: TRIGGER_ID,
+  automationId: AUTOMATION_ID,
+  enabled: true,
+  kind: "once",
+  atTime: "2026-06-10T01:00:00Z",
+  timezone: "Asia/Shanghai",
+  nextRunAt: "2026-06-10T01:00:00Z",
+  lastRunAt: null,
+  consecutiveFailures: 0,
+  createdAt: "2026-06-01T00:00:00Z",
+  updatedAt: "2026-06-01T00:00:00Z",
+};
+
 const webhookTrigger = {
   id: TRIGGER_ID,
   automationId: AUTOMATION_ID,
@@ -185,6 +199,67 @@ describe("zero automation create command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain('Automation "alerts" created');
     expect(logCalls).toContain("0 9 * * *");
+  });
+
+  it("should create with an inline once trigger and timezone", async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+
+    server.use(
+      composeByNameHandler(),
+      http.post(
+        "http://localhost:3000/api/automations",
+        async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            { automation: baseAutomation([onceTrigger]) },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    await createCommand.parseAsync([
+      "node",
+      "cli",
+      "-n",
+      "alerts",
+      "--agent",
+      "my-agent",
+      "-p",
+      "Summarize alerts",
+      "--once",
+      "2026-06-10T09:00",
+      "--timezone",
+      "Asia/Shanghai",
+    ]);
+
+    expect(capturedBody?.trigger).toEqual({
+      kind: "once",
+      atTime: "2026-06-10T09:00",
+      timezone: "Asia/Shanghai",
+    });
+  });
+
+  it("should reject an inline local once trigger without --timezone", async () => {
+    await expect(async () => {
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "-n",
+        "alerts",
+        "--agent",
+        "my-agent",
+        "-p",
+        "Summarize alerts",
+        "--once",
+        "2026-06-10T09:00",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("requires --timezone"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should create with an inline loop trigger parsing the duration", async () => {

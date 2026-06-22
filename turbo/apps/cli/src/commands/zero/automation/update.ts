@@ -7,6 +7,7 @@ import {
   updateAutomationTrigger,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { requireTimezoneForLocalAtTime } from "./at-time-input";
 import { parseDurationSeconds } from "./duration";
 import { formatTriggerConfig } from "./trigger-display";
 
@@ -51,6 +52,7 @@ function buildTimingUpdate(
     };
   }
   if (options.once) {
+    requireTimezoneForLocalAtTime(options.once, options.timezone, "--once");
     return { kind: "once", atTime: options.once, timezone: options.timezone };
   }
   if (options.loop) {

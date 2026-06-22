@@ -3,6 +3,7 @@ import chalk from "chalk";
 import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
 import { addAutomationTrigger } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
+import { requireTimezoneForLocalAtTime } from "../at-time-input";
 import { parseDurationSeconds } from "../duration";
 import { printTriggerDetails, printWebhookSecret } from "../trigger-display";
 
@@ -38,6 +39,7 @@ function buildTrigger(kind: string, options: AddOptions): CreateTriggerRequest {
           'once triggers require --at (e.g. --at "2026-06-10T09:00")',
         );
       }
+      requireTimezoneForLocalAtTime(options.at, options.timezone, "--at");
       return { kind: "once", atTime: options.at, timezone: options.timezone };
     case "loop":
       if (!options.every) {

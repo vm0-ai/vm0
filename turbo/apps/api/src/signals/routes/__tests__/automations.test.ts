@@ -151,7 +151,11 @@ interface CreateArgs {
   readonly enabled?: boolean;
   readonly trigger?:
     | { readonly kind: "cron"; readonly cronExpression: string }
-    | { readonly kind: "once"; readonly atTime: string }
+    | {
+        readonly kind: "once";
+        readonly atTime: string;
+        readonly timezone?: string;
+      }
     | { readonly kind: "loop"; readonly intervalSeconds: number }
     | { readonly kind: "webhook" };
 }
@@ -274,6 +278,86 @@ describe("Automations API", () => {
       throw new Error("Expected a cron trigger");
     }
     expect(disabledTrigger.nextRunAt).toBeNull();
+  });
+
+  it("creates and updates one-time triggers by interpreting local atTime in timezone", async () => {
+    mockNow(Date.parse("2026-06-22T07:50:00.000Z"));
+    const fixture = await seedFixture();
+    await enableWebhookTriggers(fixture);
+
+    const created = await createAutomation({
+      name: "once-local-sugar",
+      agentId: fixture.composeId,
+      trigger: {
+        kind: "once",
+        atTime: "2026-06-22T15:55:00",
+        timezone: "Asia/Shanghai",
+      },
+    });
+    const [createdTrigger] = created.automation.triggers;
+    if (createdTrigger?.kind !== "once") {
+      throw new Error("Expected a once trigger");
+    }
+    expect(createdTrigger.atTime).toBe("2026-06-22T07:55:00.000Z");
+    expect(createdTrigger.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
+    expect(createdTrigger.timezone).toBe("Asia/Shanghai");
+
+    const added = await accept(
+      refApi().addTrigger({
+        params: { ref: created.automation.id },
+        headers: SESSION_HEADERS,
+        body: {
+          kind: "once",
+          atTime: "2026-06-22T16:05:00",
+          timezone: "Asia/Shanghai",
+        },
+      }),
+      [201],
+    );
+    if (added.body.trigger.kind !== "once") {
+      throw new Error("Expected a once trigger");
+    }
+    expect(added.body.trigger.atTime).toBe("2026-06-22T08:05:00.000Z");
+    expect(added.body.trigger.nextRunAt).toBe("2026-06-22T08:05:00.000Z");
+
+    const updated = await accept(
+      triggerApi().update({
+        params: { id: added.body.trigger.id },
+        headers: SESSION_HEADERS,
+        body: {
+          kind: "once",
+          atTime: "2026-06-22T16:10:00",
+          timezone: "Asia/Shanghai",
+        },
+      }),
+      [200],
+    );
+    if (updated.body.kind !== "once") {
+      throw new Error("Expected a once trigger");
+    }
+    expect(updated.body.atTime).toBe("2026-06-22T08:10:00.000Z");
+    expect(updated.body.nextRunAt).toBe("2026-06-22T08:10:00.000Z");
+  });
+
+  it("keeps explicit one-time instants unchanged", async () => {
+    mockNow(Date.parse("2026-06-22T07:50:00.000Z"));
+    const fixture = await seedFixture();
+
+    const created = await createAutomation({
+      name: "once-explicit-offset",
+      agentId: fixture.composeId,
+      trigger: {
+        kind: "once",
+        atTime: "2026-06-22T15:55:00+08:00",
+        timezone: "UTC",
+      },
+    });
+    const [trigger] = created.automation.triggers;
+    if (trigger?.kind !== "once") {
+      throw new Error("Expected a once trigger");
+    }
+    expect(trigger.atTime).toBe("2026-06-22T07:55:00.000Z");
+    expect(trigger.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
   });
 
   it("creates an automation with a webhook trigger and returns the secret once", async () => {

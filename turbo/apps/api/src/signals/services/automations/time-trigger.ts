@@ -1,4 +1,5 @@
 import { automationTriggers } from "@vm0/db/schema/automation";
+import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { Cron } from "croner";
 import { and, eq } from "drizzle-orm";
 
@@ -65,7 +66,11 @@ export class TimeTrigger {
       };
     }
     if (spec.atTime) {
-      return { triggerType: "once", nextRunAt: new Date(spec.atTime) };
+      const atTime = parseScheduledAtTime(spec.atTime, spec.timezone);
+      if (!atTime.ok) {
+        throw new Error(atTime.message);
+      }
+      return { triggerType: "once", nextRunAt: atTime.date };
     }
     return {
       triggerType: "loop",
