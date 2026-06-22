@@ -4,7 +4,10 @@ import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  type ApplyUserPermissionGrant,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
@@ -93,6 +96,53 @@ async function readStoredGrant(args: {
   return row ?? null;
 }
 
+type ApplyPermissionGrantRequest = {
+  readonly agentId: string;
+  readonly connectorRef: string;
+} & ApplyUserPermissionGrant;
+
+async function applyPermissionGrant(
+  body: ApplyPermissionGrantRequest,
+): Promise<{
+  readonly agentId: string;
+  readonly connectorRef: string;
+  readonly permission: string;
+  readonly action: "allow" | "deny";
+  readonly expiresAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}> {
+  const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+  const response = await accept(
+    client.apply({
+      body: {
+        agentId: body.agentId,
+        connectorRef: body.connectorRef,
+        mode: "patch",
+        grants: [
+          body.action === "allow"
+            ? {
+                permission: body.permission,
+                action: "allow",
+                ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+              }
+            : {
+                permission: body.permission,
+                action: "deny",
+              },
+        ],
+      },
+      headers: AUTH_HEADERS,
+    }),
+    [200],
+  );
+  const grant = response.body[0];
+  if (!grant) {
+    throw new Error("User permission grant apply did not return a grant");
+  }
+  return grant;
+}
+
 describe("zero user permission grants", () => {
   const fixtures: UsageInsightFixture[] = [];
   const trackedOrgIds: string[] = [];
@@ -134,34 +184,27 @@ describe("zero user permission grants", () => {
     }
   });
 
-  it("upserts and lists only the authenticated user's active grants", async () => {
+  it("patches one grant and lists only the authenticated user's active grants", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
-    const upserted = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-
-    expect(upserted.body).toMatchObject({
+    const patched = await applyPermissionGrant({
       agentId,
       connectorRef: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
-    expect(upserted.body.expiresAt).toBeNull();
+
+    expect(patched).toMatchObject({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+    expect(patched.expiresAt).toBeNull();
 
     const db = store.set(writeDb$);
     await db.insert(userPermissionGrants).values({
@@ -175,7 +218,7 @@ describe("zero user permission grants", () => {
     });
 
     const listed = await accept(
-      client.list({
+      setupApp({ context })(zeroUserPermissionGrantsContract).list({
         query: { agentId },
         headers: AUTH_HEADERS,
       }),
@@ -219,42 +262,30 @@ describe("zero user permission grants", () => {
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
-    const ownerResponse = await accept(
-      client.upsert({
-        body: {
-          agentId: privateAgentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(ownerResponse.body.agentId).toBe(privateAgentId);
+    const ownerResponse = await applyPermissionGrant({
+      agentId: privateAgentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+    expect(ownerResponse.agentId).toBe(privateAgentId);
 
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
-    const sameOrgPublicResponse = await accept(
-      client.upsert({
-        body: {
-          agentId: publicAgentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(sameOrgPublicResponse.body.agentId).toBe(publicAgentId);
+    const sameOrgPublicResponse = await applyPermissionGrant({
+      agentId: publicAgentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+    expect(sameOrgPublicResponse.agentId).toBe(publicAgentId);
 
     const sameOrgResponse = await accept(
-      client.upsert({
+      client.apply({
         body: {
           agentId: privateAgentId,
           connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
+          mode: "patch",
+          grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
         },
         headers: AUTH_HEADERS,
       }),
@@ -289,12 +320,12 @@ describe("zero user permission grants", () => {
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
     const unknownConnector = await accept(
-      client.upsert({
+      client.apply({
         body: {
           agentId,
           connectorRef: "not-a-real-connector",
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
+          mode: "patch",
+          grants: [{ permission: SLACK_READ_PERMISSION, action: "allow" }],
         },
         headers: AUTH_HEADERS,
       }),
@@ -303,12 +334,12 @@ describe("zero user permission grants", () => {
     expect(unknownConnector.body.error.code).toBe("VALIDATION_ERROR");
 
     const unknownPermissionForUnknownConnector = await accept(
-      client.upsert({
+      client.apply({
         body: {
           agentId,
           connectorRef: "not-a-real-connector",
-          permission: UNKNOWN_PERMISSION_GRANT,
-          action: "allow",
+          mode: "patch",
+          grants: [{ permission: UNKNOWN_PERMISSION_GRANT, action: "allow" }],
         },
         headers: AUTH_HEADERS,
       }),
@@ -319,12 +350,12 @@ describe("zero user permission grants", () => {
     );
 
     const unknownPermission = await accept(
-      client.upsert({
+      client.apply({
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          permission: "not-a-real-permission",
-          action: "allow",
+          mode: "patch",
+          grants: [{ permission: "not-a-real-permission", action: "allow" }],
         },
         headers: AUTH_HEADERS,
       }),
@@ -332,42 +363,44 @@ describe("zero user permission grants", () => {
     );
     expect(unknownPermission.body.error.code).toBe("VALIDATION_ERROR");
 
-    const unknownGrant = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: UNKNOWN_PERMISSION_GRANT,
-          action: "deny",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(unknownGrant.body).toMatchObject({
+    const unknownGrant = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
+    expect(unknownGrant).toMatchObject({
       connectorRef: SLACK_CONNECTOR,
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "deny",
     });
 
     const app = createApp({ signal: context.signal });
-    const askResponse = await app.request("/api/zero/user-permission-grants", {
-      method: "PUT",
-      headers: {
-        authorization: AUTH_HEADERS.authorization,
-        "content-type": "application/json",
+    const askResponse = await app.request(
+      "/api/zero/user-permission-grants/apply",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          mode: "patch",
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "ask",
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        agentId,
-        connectorRef: SLACK_CONNECTOR,
-        permission: SLACK_READ_PERMISSION,
-        action: "ask",
-      }),
-    });
+    );
     expect(askResponse.status).toBe(400);
   });
 
-  it("applies an empty connector grant set as reset", async () => {
+  it("replaces connector grants with an empty grant set", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
@@ -424,7 +457,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: true,
+          mode: "replace",
           grants: [],
         },
         headers: AUTH_HEADERS,
@@ -533,7 +566,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: false,
+          mode: "patch",
           grants: [
             {
               permission: SLACK_READ_PERMISSION,
@@ -616,7 +649,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: "not-a-real-connector",
-          reset: false,
+          mode: "patch",
           grants: [],
         },
         headers: AUTH_HEADERS,
@@ -630,7 +663,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: false,
+          mode: "patch",
           grants: [
             { permission: SLACK_READ_PERMISSION, action: "allow" },
             { permission: SLACK_READ_PERMISSION, action: "deny" },
@@ -647,7 +680,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: false,
+          mode: "patch",
           grants: [{ permission: "not-a-real-permission", action: "allow" }],
         },
         headers: AUTH_HEADERS,
@@ -668,7 +701,7 @@ describe("zero user permission grants", () => {
         body: JSON.stringify({
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: false,
+          mode: "patch",
           grants: [
             {
               permission: SLACK_READ_PERMISSION,
@@ -682,7 +715,7 @@ describe("zero user permission grants", () => {
     expect(denyExpiration.status).toBe(400);
   });
 
-  it("resets then applies changed grants when requested", async () => {
+  it("replaces then applies changed grants when requested", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -712,7 +745,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: true,
+          mode: "replace",
           grants: [
             {
               permission: SLACK_WRITE_PERMISSION,
@@ -765,7 +798,7 @@ describe("zero user permission grants", () => {
         body: {
           agentId: privateAgentId,
           connectorRef: SLACK_CONNECTOR,
-          reset: false,
+          mode: "patch",
           grants: [],
         },
         headers: AUTH_HEADERS,
@@ -868,20 +901,13 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
-    await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
+    await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
 
     const oldTimestamp = new Date("2024-01-01T00:00:00.000Z");
     const oldExpiresAt = new Date("2099-01-01T00:05:00.000Z");
@@ -903,20 +929,14 @@ describe("zero user permission grants", () => {
         ),
       );
 
-    const second = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(second.body.action).toBe("allow");
-    expect(second.body.expiresAt).toBe(oldExpiresAt.toISOString());
+    const second = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+    expect(second.action).toBe("allow");
+    expect(second.expiresAt).toBe(oldExpiresAt.toISOString());
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -935,36 +955,23 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
-    await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "1h",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
+    await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "1h",
+    });
 
-    const denied = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "deny",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(denied.body.action).toBe("deny");
-    expect(denied.body.expiresAt).toBeNull();
+    const denied = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "deny",
+    });
+    expect(denied.action).toBe("deny");
+    expect(denied.expiresAt).toBeNull();
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -981,36 +988,23 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
-    await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "1h",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
+    await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "1h",
+    });
 
-    const cleared = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "always",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(cleared.body.expiresAt).toBeNull();
+    const cleared = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "always",
+    });
+    expect(cleared.expiresAt).toBeNull();
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -1026,7 +1020,6 @@ describe("zero user permission grants", () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
     const db = store.set(writeDb$);
     await db.insert(userPermissionGrants).values({
       orgId: fixture.orgId,
@@ -1038,89 +1031,58 @@ describe("zero user permission grants", () => {
       expiresAt: new Date("2000-01-01T00:00:00.000Z"),
     });
 
-    const revived = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(revived.body.action).toBe("allow");
-    expect(revived.body.expiresAt).toBeNull();
+    const revived = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+    expect(revived.action).toBe("allow");
+    expect(revived.expiresAt).toBeNull();
   });
 
   it("computes grant expiration from server-side expiresIn", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
     const timestamp = new Date("2026-02-01T12:00:00.000Z");
     mockNow(timestamp);
 
-    const oneHour = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "1h",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(oneHour.body.expiresAt).toBe("2026-02-01T13:00:00.000Z");
+    const oneHour = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "1h",
+    });
+    expect(oneHour.expiresAt).toBe("2026-02-01T13:00:00.000Z");
 
-    const oneDay = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "24h",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(oneDay.body.expiresAt).toBe("2026-02-02T12:00:00.000Z");
+    const oneDay = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "24h",
+    });
+    expect(oneDay.expiresAt).toBe("2026-02-02T12:00:00.000Z");
 
-    const sevenDays = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "7d",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(sevenDays.body.expiresAt).toBe("2026-02-08T12:00:00.000Z");
+    const sevenDays = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "7d",
+    });
+    expect(sevenDays.expiresAt).toBe("2026-02-08T12:00:00.000Z");
 
-    const always = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          expiresIn: "always",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-    expect(always.body.expiresAt).toBeNull();
+    const always = await applyPermissionGrant({
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresIn: "always",
+    });
+    expect(always.expiresAt).toBeNull();
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -1138,20 +1100,28 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal });
 
-    const response = await app.request("/api/zero/user-permission-grants", {
-      method: "PUT",
-      headers: {
-        authorization: AUTH_HEADERS.authorization,
-        "content-type": "application/json",
+    const response = await app.request(
+      "/api/zero/user-permission-grants/apply",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          mode: "patch",
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "allow",
+              expiresIn: "2h",
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        agentId,
-        connectorRef: SLACK_CONNECTOR,
-        permission: SLACK_READ_PERMISSION,
-        action: "allow",
-        expiresIn: "2h",
-      }),
-    });
+    );
     expect(response.status).toBe(400);
   });
 
@@ -1161,20 +1131,28 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal });
 
-    const response = await app.request("/api/zero/user-permission-grants", {
-      method: "PUT",
-      headers: {
-        authorization: AUTH_HEADERS.authorization,
-        "content-type": "application/json",
+    const response = await app.request(
+      "/api/zero/user-permission-grants/apply",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          mode: "patch",
+          grants: [
+            {
+              permission: SLACK_READ_PERMISSION,
+              action: "deny",
+              expiresIn: "1h",
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        agentId,
-        connectorRef: SLACK_CONNECTOR,
-        permission: SLACK_READ_PERMISSION,
-        action: "deny",
-        expiresIn: "1h",
-      }),
-    });
+    );
     expect(response.status).toBe(400);
   });
 });

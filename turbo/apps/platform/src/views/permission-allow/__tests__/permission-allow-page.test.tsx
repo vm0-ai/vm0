@@ -121,19 +121,24 @@ describe("permission allow page", () => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const appliedGrant = body.grants[0];
+        if (!appliedGrant) {
+          throw new Error("Expected a permission grant");
+        }
+        expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
           connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
+          permission: appliedGrant.permission,
+          action: appliedGrant.action,
           expiresAt: null,
           createdAt: grants[0]?.createdAt ?? "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
         };
         grants = [grant];
-        return respond(200, grant);
+        return respond(200, [grant]);
       },
     );
 
@@ -242,19 +247,24 @@ describe("permission allow page", () => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const appliedGrant = body.grants[0];
+        if (!appliedGrant) {
+          throw new Error("Expected a permission grant");
+        }
+        expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
           connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
+          permission: appliedGrant.permission,
+          action: appliedGrant.action,
           expiresAt: "2026-03-10T01:00:00Z",
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
         };
         grants = [grant];
-        return respond(200, grant);
+        return respond(200, [grant]);
       },
     );
 

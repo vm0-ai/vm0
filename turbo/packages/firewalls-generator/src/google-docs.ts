@@ -1,0 +1,177 @@
+/**
+ * Generate the Google Docs firewall config.
+ *
+ * Google Docs Discovery method scopes are OAuth authorization constraints, not
+ * vm0 firewall permission groups. Keep route coverage official by loading Docs
+ * Discovery, but keep the firewall permission taxonomy explicit here.
+ */
+
+import { fetchSpec, logStats, writeOutput } from "./codegen";
+import {
+  compileGoogleManifestFirewall,
+  renderGoogleManifestFirewall,
+  validateGoogleManifestPermissionManifest,
+} from "./google-manifest";
+import type { GoogleManifestPermission } from "./google-manifest";
+
+const GOOGLE_DOCS_ROUTE_KEY_KINDS = ["base"] as const;
+type GoogleDocsRouteKeyKind = (typeof GOOGLE_DOCS_ROUTE_KEY_KINDS)[number];
+
+interface DiscoveryMethod {
+  id?: string;
+  httpMethod?: string;
+  path?: string;
+  flatPath?: string;
+}
+
+interface DiscoveryResource {
+  methods?: Record<string, DiscoveryMethod>;
+  resources?: Record<string, DiscoveryResource>;
+}
+
+export interface GoogleDocsDiscoveryDocument {
+  version?: string;
+  resources?: Record<string, DiscoveryResource>;
+}
+
+export interface GoogleDocsManifestPermission extends GoogleManifestPermission {
+  readonly name: string;
+  readonly description: string;
+  readonly routeKeys: readonly string[];
+}
+
+export const GOOGLE_DOCS_DISCOVERY_URL =
+  "https://docs.googleapis.com/$discovery/rest?version=v1";
+
+const GOOGLE_DOCS_BASE_URL = "https://docs.googleapis.com";
+const GOOGLE_DOCS_TOKEN_PLACEHOLDER =
+  "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
+
+const DEFAULT_ALLOWED_GOOGLE_DOCS_PERMISSIONS = ["documents.read"];
+
+export const GOOGLE_DOCS_PERMISSION_MANIFEST: readonly GoogleDocsManifestPermission[] =
+  [
+    {
+      name: "documents.create",
+      description: "Create Google Docs documents.",
+      routeKeys: ["base:POST /v1/documents"],
+    },
+    {
+      name: "documents.read",
+      description: "Read Google Docs documents.",
+      routeKeys: ["base:GET /v1/documents/{documentId}"],
+    },
+    {
+      name: "documents.write",
+      description: "Apply batch updates to Google Docs documents.",
+      routeKeys: ["base:POST /v1/documents/{documentId}:batchUpdate"],
+    },
+  ];
+
+function extractMethods(
+  resources: Record<string, DiscoveryResource>,
+): DiscoveryMethod[] {
+  const methods: DiscoveryMethod[] = [];
+  for (const resource of Object.values(resources)) {
+    if (resource.methods) {
+      methods.push(...Object.values(resource.methods));
+    }
+    if (resource.resources) {
+      methods.push(...extractMethods(resource.resources));
+    }
+  }
+  return methods;
+}
+
+function ruleForMethod(method: DiscoveryMethod): string {
+  const httpMethod = method.httpMethod;
+  const methodPath = method.flatPath ?? method.path;
+  if (!httpMethod || !methodPath) {
+    throw new Error(
+      `Google Docs method missing httpMethod or path: ${method.id ?? "unknown"}`,
+    );
+  }
+  const path = methodPath.startsWith("/") ? methodPath : `/${methodPath}`;
+  return `${httpMethod.toUpperCase()} ${path}`;
+}
+
+export function buildGoogleDocsOfficialRouteKeys(
+  discovery: GoogleDocsDiscoveryDocument,
+): Set<string> {
+  const routeKeys = new Set<string>();
+  console.error(`  API version: ${discovery.version ?? "unknown"}`);
+  for (const method of extractMethods(discovery.resources ?? {})) {
+    routeKeys.add(`base:${ruleForMethod(method)}`);
+  }
+  return routeKeys;
+}
+
+export function validateGoogleDocsPermissionManifest(
+  officialRouteKeys: ReadonlySet<string>,
+  manifest: readonly GoogleDocsManifestPermission[],
+): void {
+  validateGoogleManifestPermissionManifest({
+    serviceLabel: "Google Docs",
+    routeKinds: GOOGLE_DOCS_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest,
+  });
+}
+
+async function loadGoogleDocsDiscovery(): Promise<GoogleDocsDiscoveryDocument> {
+  const res = await fetchSpec(
+    GOOGLE_DOCS_DISCOVERY_URL,
+    "google-docs discovery document",
+  );
+  return (await res.json()) as GoogleDocsDiscoveryDocument;
+}
+
+export async function generate(): Promise<void> {
+  const discovery = await loadGoogleDocsDiscovery();
+  const officialRouteKeys = buildGoogleDocsOfficialRouteKeys(discovery);
+  const compiled = compileGoogleManifestFirewall<
+    GoogleDocsRouteKeyKind,
+    GoogleDocsManifestPermission
+  >({
+    serviceLabel: "Google Docs",
+    routeKinds: GOOGLE_DOCS_ROUTE_KEY_KINDS,
+    officialRouteKeys,
+    manifest: GOOGLE_DOCS_PERMISSION_MANIFEST,
+    apis: [
+      {
+        base: GOOGLE_DOCS_BASE_URL,
+        kind: "base",
+      },
+    ],
+  });
+
+  const ts = renderGoogleManifestFirewall({
+    headerLines: [
+      "// Auto-generated from Google's Docs Discovery API and vm0's Docs permission manifest.",
+      `// Source: ${GOOGLE_DOCS_DISCOVERY_URL}`,
+      "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-docs",
+      "//",
+      "// DO NOT EDIT THIS FILE MANUALLY.",
+    ],
+    firewallVarName: "googleDocsFirewall",
+    firewallName: "google-docs",
+    firewallDescription: "Google Docs API",
+    tokenPlaceholderName: "GOOGLE_DOCS_TOKEN",
+    tokenPlaceholderValue: GOOGLE_DOCS_TOKEN_PLACEHOLDER,
+    apis: compiled.apis,
+    defaultAllowed: {
+      varName: "googleDocsDefaultAllowed",
+      permissions: DEFAULT_ALLOWED_GOOGLE_DOCS_PERMISSIONS,
+    },
+    defaultUnknownPolicy: {
+      varName: "googleDocsDefaultUnknownPolicy",
+      policy: "deny",
+    },
+  });
+  logStats(
+    GOOGLE_DOCS_PERMISSION_MANIFEST.map((permission) => {
+      return { ...permission, rules: [...permission.routeKeys] };
+    }),
+  );
+  writeOutput("google-docs", ts, import.meta.dirname);
+}

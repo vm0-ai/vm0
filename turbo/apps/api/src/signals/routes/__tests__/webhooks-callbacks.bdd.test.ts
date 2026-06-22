@@ -3341,7 +3341,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     expect(schedule.automation.name).toContain("teardown");
     const botToken = await registerTelegramBot(actor, agent.agentId);
-    await runs.upsertUserPermissionGrant(actor, {
+    await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
       connectorRef: "slack",
       permission: "channels:read",
@@ -3718,13 +3718,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect((await gh.readInstallation(doomed)).isConnected).toBeTruthy();
     const botToken = await registerTelegramBot(doomed, doomedAgent.agentId);
 
-    await runs.upsertUserPermissionGrant(doomed, {
+    await runs.applyUserPermissionGrant(doomed, {
       agentId: sharedAgent.agentId,
       connectorRef: "slack",
       permission: "channels:read",
       action: "allow",
     });
-    await runs.upsertUserPermissionGrant(peer, {
+    await runs.applyUserPermissionGrant(peer, {
       agentId: sharedAgent.agentId,
       connectorRef: "slack",
       permission: "chat:write",

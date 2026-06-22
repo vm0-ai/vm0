@@ -83,7 +83,7 @@ jobs:
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
       runner-image-job-ref: ${{ steps.host.outputs.image-job-ref }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -280,7 +280,7 @@ jobs:
     needs: [detect]
     if: needs.detect.outputs.any-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -339,7 +339,7 @@ jobs:
       needs.detect.outputs.ci-changed == 'true' ||
       needs.detect.outputs.api-contracts-rust-bindings-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Check API Contracts Rust Bindings
         working-directory: turbo
@@ -355,7 +355,7 @@ jobs:
       needs.detect.outputs.any-changed == 'true' ||
       needs.detect.outputs.mitm-addon-pricing-seed-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -389,7 +389,7 @@ jobs:
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -443,7 +443,7 @@ jobs:
       default-rootfs-hash: ${{ steps.manifest.outputs.selected-rootfs-hash }}
       default-snapshot-hash: ${{ steps.manifest.outputs.selected-snapshot-hash }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Wait for runner image manifest
         id: manifest
@@ -463,7 +463,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -606,7 +606,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -662,7 +662,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -952,7 +952,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1064,7 +1064,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1255,7 +1255,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1489,7 +1489,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1629,7 +1629,7 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel

@@ -211,6 +211,7 @@ struct FinalizationPhase {
     completion_auth: CompletionAuth,
     active_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
+    workspace_disk_mb: u32,
     profile_name: String,
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
@@ -242,6 +243,7 @@ impl FinalizationPhase {
             completion_auth,
             active_lease,
             reuse_result,
+            workspace_disk_mb,
             profile_name,
             cli_agent_session_id,
             storage_fingerprints,
@@ -299,6 +301,7 @@ impl FinalizationPhase {
                 source_ip,
                 network_log_session,
                 workspace_image,
+                workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
                 workspace_promotable,
                 storage_fingerprints,
                 device_rate_limits,
@@ -445,6 +448,7 @@ pub(super) fn spawn_job(
     };
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
+    let workspace_disk_mb = job_profile.workspace_disk_mb;
     let active_lease = job_profile.budget_lease;
     let profile_name = job_profile.profile_name;
     let factory = job_profile.factory;
@@ -453,7 +457,7 @@ pub(super) fn spawn_job(
         profile_name: profile_name.clone(),
         vcpu,
         memory_mb,
-        workspace_disk_mb: job_profile.workspace_disk_mb,
+        workspace_disk_mb,
         restore_guest_state: job_profile.restore_guest_state,
         device_rate_limits: job_profile.device_rate_limits.clone(),
     };
@@ -532,6 +536,7 @@ pub(super) fn spawn_job(
         completion_auth,
         active_lease,
         reuse_result,
+        workspace_disk_mb,
         profile_name,
         cli_agent_session_id,
         storage_fingerprints,

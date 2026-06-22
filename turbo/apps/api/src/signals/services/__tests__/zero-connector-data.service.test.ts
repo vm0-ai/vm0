@@ -214,13 +214,6 @@ describe("zeroConnectorList", () => {
       type: "meta-ads",
       authMethod: "oauth",
     });
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: {
-        [FeatureSwitchKey.MetaAdsConnector]: true,
-      },
-    });
     await writeDb.insert(secrets).values([
       {
         orgId,

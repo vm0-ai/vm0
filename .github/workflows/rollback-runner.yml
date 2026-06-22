@@ -104,7 +104,7 @@ jobs:
       # (`service install` / `service drain` / `service stop` / `service
       # resume` / `doctor` / `gc` / `setup` / `build` / `config`), so it
       # works against any target binary the runner CLI contract supports.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Preflight: confirm the release asset is downloadable before we go
       # SSH-tinkering with production hosts. gc typically keeps the last

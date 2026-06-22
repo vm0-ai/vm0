@@ -1,4 +1,4 @@
-use crate::support::{Harness, shell_quote};
+use crate::support::{Harness, captured_output_bytes, exec_exit_code, run_exec, shell_quote};
 use std::fs;
 
 #[test]
@@ -21,14 +21,18 @@ async fn test_write_file() {
         .expect("write_file failed");
 
     // Verify by reading the file back via exec
-    let result = h
-        .host()
-        .exec(&format!("cat '{file_path_str}'"), 5000, &[], false)
-        .await
-        .expect("exec cat failed");
+    let result = run_exec(
+        h.host(),
+        &format!("cat '{file_path_str}'"),
+        5000,
+        &[],
+        false,
+    )
+    .await
+    .expect("exec cat failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, content);
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), content);
     h.finish();
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.480.1",
+  "version": "0.480.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.125.10",
-    "@clerk/clerk-react": "^5.61.6",
+    "@clerk/clerk-react": "^5.61.8",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -58,8 +58,8 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.61.0",
-    "@typescript-eslint/utils": "^8.61.0",
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "@typescript-eslint/utils": "^8.61.1",
     "@vitejs/plugin-react": "^6.0.1",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
@@ -72,8 +72,8 @@
     "oxlint-tsgolint": "0.23.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.0",
+    "typescript-eslint": "^8.61.1",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }

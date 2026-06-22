@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.362.2](https://github.com/vm0-ai/vm0/compare/core-v8.362.1...core-v8.362.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* update playful launch presentation card preview ([#18432](https://github.com/vm0-ai/vm0/issues/18432)) ([6dd6622](https://github.com/vm0-ai/vm0/commit/6dd662282fdd8679a11a789958c9ac9f18d2fbc8))
+
+
+### Refactoring
+
+* agent-scoped workflow ownership and management (1:N redesign) ([#18436](https://github.com/vm0-ai/vm0/issues/18436)) ([9275df5](https://github.com/vm0-ai/vm0/commit/9275df501a6908443d913284da05703768e778d6))
+* remove delivered connector feature switches ([#18453](https://github.com/vm0-ai/vm0/issues/18453)) ([d970411](https://github.com/vm0-ai/vm0/commit/d97041194d7e53981248ca24abd1037785f2524c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.0
+    * @vm0/connectors bumped to 1.99.0
+
 ## [8.362.1](https://github.com/vm0-ai/vm0/compare/core-v8.362.0...core-v8.362.1) (2026-06-21)
 
 

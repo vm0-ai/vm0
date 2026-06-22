@@ -9,8 +9,8 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ProcessControlMode, ProcessExit, ProcessOutputChunk,
-    ProcessOutputMode, ProcessTerminationKind, Sandbox, SandboxError, SandboxFactory, SandboxId,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxId,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 

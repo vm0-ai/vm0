@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.98.1",
+  "version": "1.99.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -47,6 +47,10 @@
     "./firewall-metadata/server": {
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
+    },
+    "./firewall-execution-metadata/server": {
+      "import": "./src/firewall-execution-metadata/server.ts",
+      "types": "./src/firewall-execution-metadata/server.ts"
     },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
@@ -115,6 +119,6 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
     "typescript": "6.0.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }

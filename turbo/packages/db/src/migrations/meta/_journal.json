@@ -3368,6 +3368,13 @@
       "when": 1782063696740,
       "tag": "0480_agent_scoped_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1782098880136,
+      "tag": "0481_remap_google_docs_permission_grants",
+      "breakpoints": true
     }
   ]
 }

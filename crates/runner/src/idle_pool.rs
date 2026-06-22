@@ -6,6 +6,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
@@ -13,7 +14,10 @@ use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::HeldSessionState;
-use crate::workspace_image_cache::WorkspaceImagePromotionContext;
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest,
+};
 use crate::workspace_promotion::promote_workspace_image_from_parked_sandbox;
 
 /// Default idle timeout for kept-alive VMs (30 minutes).
@@ -134,6 +138,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) budget_lease: BudgetLease,
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
+    pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
@@ -291,6 +296,7 @@ impl IdleParkRequest {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            workspace_image_size_bytes,
             workspace_promotion,
         } = self.parts;
 
@@ -302,6 +308,33 @@ impl IdleParkRequest {
             source_ip,
             storage_fingerprints,
         );
+
+        if let Some(promotion) = workspace_promotion.as_ref()
+            && let Err(mismatch) =
+                promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
+                    sandbox_id: metadata.sandbox_id,
+                    profile_name: &metadata.profile_name,
+                    cli_agent_session_id: metadata.cli_agent_session_id(),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: workspace_image_size_bytes,
+                })
+        {
+            tracing::warn!(
+                sandbox_id = %metadata.sandbox_id,
+                profile_name = %metadata.profile_name,
+                mismatch = mismatch.as_str(),
+                "workspace promotion identity mismatch before idle park; destroying without workspace promotion"
+            );
+            return Err(IdleParkFailure {
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion: None,
+                },
+                budget_lease,
+                error: format!("workspace promotion identity mismatch: {mismatch}"),
+            });
+        }
 
         match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
             Ok(Ok(())) => Ok(ParkedIdleCandidate {
@@ -371,6 +404,29 @@ impl ParkedIdleCandidate {
                 sandbox: parts.sandbox,
                 factory: parts.factory,
                 workspace_promotion: None,
+            },
+            metadata: IdleSandboxMetadata::new(
+                parts.cli_agent_session_id,
+                parts.sandbox_id,
+                parts.profile_name,
+                parts.device_rate_limits,
+                parts.source_ip,
+                parts.storage_fingerprints,
+            ),
+            budget_lease: parts.budget_lease,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn synthetic_for_test_with_workspace_promotion(
+        parts: SyntheticParkedIdleCandidateParts,
+        workspace_promotion: WorkspaceImagePromotionContext,
+    ) -> Self {
+        Self {
+            resources: IdleSandboxResources {
+                sandbox: parts.sandbox,
+                factory: parts.factory,
+                workspace_promotion: Some(workspace_promotion),
             },
             metadata: IdleSandboxMetadata::new(
                 parts.cli_agent_session_id,
@@ -734,6 +790,31 @@ impl IdleEntry {
 
     pub fn into_destroy_job(self) -> IdleDestroyJob {
         self.into_destroy_job_with_workspace_promotion(WorkspacePromotionPolicy::Keep)
+    }
+
+    pub fn into_destroy_job_without_workspace_promotion_for_mismatch(self) -> IdleDestroyJob {
+        self.into_destroy_job_without_workspace_promotion()
+    }
+
+    pub fn validate_workspace_promotion_identity(
+        &self,
+        cache: &SessionWorkspaceCache,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        let Some(promotion) = self.resources.workspace_promotion.as_ref() else {
+            return Ok(());
+        };
+        promotion.validate_expected_identity(
+            cache,
+            WorkspaceImagePromotionIdentityRequest {
+                sandbox_id: self.metadata.sandbox_id,
+                profile_name: &self.metadata.profile_name,
+                cli_agent_session_id: self.metadata.cli_agent_session_id(),
+                working_dir,
+                image_size_bytes,
+            },
+        )
     }
 
     fn into_destroy_job_without_workspace_promotion(self) -> IdleDestroyJob {
@@ -1113,6 +1194,7 @@ mod tests {
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
+            workspace_image_size_bytes: 0,
             workspace_promotion: None,
         })
     }
@@ -1180,6 +1262,7 @@ mod tests {
             budget_lease,
             source_ip: source_ip.into(),
             storage_fingerprints,
+            workspace_image_size_bytes: 0,
             workspace_promotion: None,
         });
 

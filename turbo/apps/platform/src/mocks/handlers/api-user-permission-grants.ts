@@ -67,47 +67,30 @@ export const apiUserPermissionGrantsHandlers = [
     );
   }),
 
-  mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
-    const now = nowDate();
-    const existing = mockUserPermissionGrants.find((grant) => {
-      return grantKey(grant) === grantKey(body);
-    });
-    const grant: UserPermissionGrantResponse = {
-      agentId: body.agentId,
-      connectorRef: body.connectorRef,
-      permission: body.permission,
-      action: body.action,
-      expiresAt: resolvedMockExpiresAt({
-        existing,
-        action: body.action,
-        expiresIn: body.expiresIn,
-        preserveExisting: true,
-        now,
-      }),
-      createdAt: existing?.createdAt ?? now.toISOString(),
-      updatedAt: now.toISOString(),
-    };
-
-    mockUserPermissionGrants = [
-      ...mockUserPermissionGrants.filter((current) => {
-        return grantKey(current) !== grantKey(grant);
-      }),
-      grant,
-    ];
-
-    return respond(200, grant);
-  }),
-
   mockApi(zeroUserPermissionGrantsContract.apply, ({ body, respond }) => {
     const now = nowDate();
-    const existingGrants = body.reset
-      ? []
-      : mockUserPermissionGrants.filter((grant) => {
-          return (
-            grant.agentId === body.agentId &&
-            grant.connectorRef === body.connectorRef
-          );
+    const seenPermissions = new Set<string>();
+    for (const grant of body.grants) {
+      if (seenPermissions.has(grant.permission)) {
+        return respond(400, {
+          error: {
+            message: `Duplicate permission grant: ${grant.permission}`,
+            code: "VALIDATION_ERROR",
+          },
         });
+      }
+      seenPermissions.add(grant.permission);
+    }
+
+    const existingGrants =
+      body.mode === "replace"
+        ? []
+        : mockUserPermissionGrants.filter((grant) => {
+            return (
+              grant.agentId === body.agentId &&
+              grant.connectorRef === body.connectorRef
+            );
+          });
     const existingGrantsByPermission = new Map(
       existingGrants.map((grant) => {
         return [grant.permission, grant] as const;
@@ -141,7 +124,7 @@ export const apiUserPermissionGrantsHandlers = [
     mockUserPermissionGrants = [
       ...mockUserPermissionGrants.filter((grant) => {
         if (
-          body.reset &&
+          body.mode === "replace" &&
           grant.agentId === body.agentId &&
           grant.connectorRef === body.connectorRef
         ) {

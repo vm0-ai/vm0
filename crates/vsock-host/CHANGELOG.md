@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.39](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.38...vsock-host-v0.17.39) (2026-06-22)
+
+
+### Refactoring
+
+* remove legacy exec result projections ([#18429](https://github.com/vm0-ai/vm0/issues/18429)) ([19b22fb](https://github.com/vm0-ai/vm0/commit/19b22fbde865689860394e2e9e9f699347f633b3))
+
 ## [0.17.38](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.37...vsock-host-v0.17.38) (2026-06-20)
 
 ## [0.17.37](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.36...vsock-host-v0.17.37) (2026-06-18)

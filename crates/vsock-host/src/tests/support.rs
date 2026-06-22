@@ -16,7 +16,10 @@ use vsock_proto::{
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
-use crate::{ConnectionState, NormalOperationFence, VsockHost};
+use crate::{
+    ConnectionState, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
+    FrameWriteObserver, NormalOperationFence, VsockHost,
+};
 
 const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
 // Keep the task guard wider than multi-frame reads so the per-frame
@@ -195,6 +198,44 @@ pub(crate) fn fence_normal_operations(host: &VsockHost) -> NormalOperationFence 
 
 pub(crate) fn poison_connection(host: &VsockHost) {
     host.shared.poison_connection();
+}
+
+pub(crate) async fn exec_capture_default(
+    host: &VsockHost,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> io::Result<ExecOperationResult> {
+    host.exec_operation_capture_default(
+        command,
+        timeout_ms,
+        env,
+        sudo,
+        "exec",
+        Duration::from_millis(timeout_ms as u64 + 5000),
+    )
+    .await
+}
+
+pub(crate) async fn exec_capture_with_write_observer(
+    host: &VsockHost,
+    request: ExecCaptureRequest<'_>,
+    write_observer: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    crate::exec_operation::exec_operation_capture_on_shared_with_write_observer(
+        &host.shared,
+        request,
+        write_observer,
+    )
+    .await
+}
+
+pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
+    match output {
+        ExecOwnedCapturedOutput::Captured { bytes, .. } => bytes,
+        ExecOwnedCapturedOutput::Discarded => panic!("expected captured output"),
+    }
 }
 
 pub(crate) fn drop_idle_request_write_guard(host: &VsockHost) {
@@ -401,7 +442,7 @@ pub(crate) async fn assert_connection_accepts_exec_operation(
 ) {
     let exec_task = {
         let host = Arc::clone(host);
-        tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "echo ok", 5000, &[], false).await })
     };
     let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
@@ -417,5 +458,5 @@ pub(crate) async fn assert_connection_accepts_exec_operation(
     )
     .await;
     let exec_result = exec_task.await.unwrap().unwrap();
-    assert_eq!(exec_result.stdout, b"ok");
+    assert_eq!(captured_output_bytes(&exec_result.stdout), b"ok");
 }

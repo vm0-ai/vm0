@@ -24,7 +24,6 @@ export enum FeatureSwitchKey {
   CloseConnector = "closeConnector",
   OutlookMailConnector = "outlookMailConnector",
   OutlookCalendarConnector = "outlookCalendarConnector",
-  MetaAdsConnector = "metaAdsConnector",
   TikTokAdsConnector = "tiktokAdsConnector",
   AwsConnector = "awsConnector",
   PosthogConnector = "posthogConnector",

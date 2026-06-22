@@ -31,6 +31,7 @@ describe("computer-use contract", () => {
   it.each([
     "app_not_found",
     "app_open_failed",
+    "automation_permission_denied",
     "element_not_editable",
     "window_unavailable",
   ])("accepts %s command failures", (code) => {

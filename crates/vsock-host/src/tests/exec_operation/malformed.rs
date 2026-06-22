@@ -6,8 +6,9 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, normal_operation_readiness, operation_count,
-    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    assert_connection_accepts_exec_operation, exec_capture_default, normal_operation_readiness,
+    operation_count, read_guest_message, send_exec_result, setup_host_and_guest,
+    wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::{ExecOwnedCapturedOutput, operation_tracker::NormalOperationReadiness};
@@ -103,7 +104,9 @@ async fn malformed_exec_frames_after_handle_drop_are_ignored() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
-    let err = host.exec("after-drop", 5000, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "after-drop", 5000, &[], false)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 

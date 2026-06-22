@@ -3057,10 +3057,68 @@ func appleScriptFailureMessage(result: AppleScriptRunResult) -> String {
     return "Apple Events browser navigation failed with status \(result.status)."
 }
 
+func automationPermissionTarget(named target: String) -> BrowserAddressNavigationTarget? {
+    switch target.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "chrome":
+        return .chrome
+    case "safari":
+        return .safari
+    default:
+        return nil
+    }
+}
+
+func automationPermissionDeniedMessage(_ message: String) -> Bool {
+    let lowercased = message.lowercased()
+    return message.contains("-1743") || lowercased.contains("not authorized")
+}
+
+func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [String: Any] {
+    let targetKey = try requiredString(request, "target")
+    guard let target = automationPermissionTarget(named: targetKey) else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Unsupported Automation permission target: \(targetKey)"
+        )
+    }
+
+    let bundleId = target.rawValue
+    guard applicationURL(forBundleId: bundleId) != nil else {
+        return [
+            "status": "not_installed",
+            "reason": "Target browser is not installed.",
+        ]
+    }
+    guard findRunningApp(named: bundleId) != nil else {
+        return [
+            "status": "not_running",
+            "reason": "Open the target browser before testing Automation permission.",
+        ]
+    }
+
+    let script = "tell application id \(appleScriptStringLiteral(bundleId)) to get name"
+    let result = try runAppleScript(script, timeout: 3)
+    if !result.timedOut, result.status == 0 {
+        return ["status": "granted"]
+    }
+
+    let message = appleScriptFailureMessage(result: result)
+    if automationPermissionDeniedMessage(message) {
+        return [
+            "status": "denied",
+            "reason": message,
+        ]
+    }
+
+    return [
+        "status": "unknown",
+        "reason": message,
+    ]
+}
+
 func throwBrowserNavigationFailure(result: AppleScriptRunResult) throws -> Never {
     let message = appleScriptFailureMessage(result: result)
-    let lowercased = message.lowercased()
-    if message.contains("-1743") || lowercased.contains("not authorized") {
+    if automationPermissionDeniedMessage(message) {
         throw HelperFailure(
             code: "automation_permission_denied",
             message:
@@ -4807,6 +4865,8 @@ func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throw
         return handlePermissionsRequestAccessibility()
     case "permissions.request_screen_recording":
         return handlePermissionsRequestScreenRecording()
+    case "permissions.probe_automation":
+        return try handlePermissionsProbeAutomation(request)
     case "apps.list":
         return handleAppsList()
     case "app.state":

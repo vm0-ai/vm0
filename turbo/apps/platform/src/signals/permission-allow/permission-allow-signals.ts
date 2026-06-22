@@ -1,6 +1,7 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
   type ApplyUserPermissionGrant,
+  type UserPermissionGrantApplyMode,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   type UserPermissionGrantResponse,
@@ -159,37 +160,26 @@ export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
   return await get(userPermissionGrantsByAgent({ agentId }));
 });
 
-export const upsertUserPermissionGrant$ = command(
+export const applyUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
       agentId: string;
       connectorRef: string;
-      permission: string;
-      action: UserPermissionGrantAction;
-      expiresIn?: UserPermissionGrantExpiresIn;
+      mode: UserPermissionGrantApplyMode;
+      grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<UserPermissionGrantResponse> => {
+  ): Promise<readonly UserPermissionGrantResponse[]> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const body =
-      params.action === "allow"
-        ? {
-            agentId: params.agentId,
-            connectorRef: params.connectorRef,
-            permission: params.permission,
-            action: "allow" as const,
-            ...(params.expiresIn ? { expiresIn: params.expiresIn } : {}),
-          }
-        : {
-            agentId: params.agentId,
-            connectorRef: params.connectorRef,
-            permission: params.permission,
-            action: "deny" as const,
-          };
     const result = await accept(
-      client.upsert({
-        body,
+      client.apply({
+        body: {
+          agentId: params.agentId,
+          connectorRef: params.connectorRef,
+          mode: params.mode,
+          grants: [...params.grants],
+        },
         fetchOptions: { signal },
       }),
       [200],
@@ -206,38 +196,43 @@ export const upsertUserPermissionGrant$ = command(
   },
 );
 
-export const applyUserPermissionGrants$ = command(
+export const applyUserPermissionGrant$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       agentId: string;
       connectorRef: string;
-      reset: boolean;
-      grants: readonly ApplyUserPermissionGrant[];
+      permission: string;
+      action: UserPermissionGrantAction;
+      expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ): Promise<readonly UserPermissionGrantResponse[]> => {
-    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await accept(
-      client.apply({
-        body: {
-          agentId: params.agentId,
-          connectorRef: params.connectorRef,
-          reset: params.reset,
-          grants: [...params.grants],
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
+  ): Promise<UserPermissionGrantResponse> => {
+    const grants = await set(
+      applyUserPermissionGrants$,
+      {
+        agentId: params.agentId,
+        connectorRef: params.connectorRef,
+        mode: "patch",
+        grants: [
+          params.action === "allow"
+            ? {
+                permission: params.permission,
+                action: "allow",
+                ...(params.expiresIn ? { expiresIn: params.expiresIn } : {}),
+              }
+            : {
+                permission: params.permission,
+                action: "deny",
+              },
+        ],
+      },
+      signal,
     );
-    signal.throwIfAborted();
-    set(internalUserPermissionGrantsReload$, (prev) => {
-      return prev + 1;
-    });
-    set(internalAgentReload$, (prev) => {
-      return prev + 1;
-    });
-    set(reloadAgentById$);
-    return result.body;
+    const grant = grants[0];
+    if (!grant) {
+      throw new Error("User permission grant apply did not return a grant");
+    }
+    return grant;
   },
 );

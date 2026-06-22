@@ -6,8 +6,9 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
-    operation_count, read_guest_message, send_exec_output, send_exec_result, setup_host_and_guest,
+    assert_connection_accepts_exec_operation, exec_capture_default, is_connected,
+    normal_operation_readiness, operation_count, read_guest_message, send_exec_output,
+    send_exec_result, setup_host_and_guest,
 };
 use super::start_capture_operation;
 use crate::{
@@ -180,7 +181,8 @@ async fn exec_output_after_result_does_not_poison_or_resurrect_state() {
     )
     .await;
 
-    let exec_task = tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await });
+    let exec_task =
+        tokio::spawn(async move { exec_capture_default(&host, "echo ok", 5000, &[], false).await });
     let exec_msg = read_guest_message(&mut guest).await;
     assert_eq!(exec_msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&exec_msg.payload).unwrap();
@@ -194,7 +196,13 @@ async fn exec_output_after_result_does_not_poison_or_resurrect_state() {
     )
     .await;
     let exec_result = exec_task.await.unwrap().unwrap();
-    assert_eq!(exec_result.stdout, b"ok");
+    assert_eq!(
+        exec_result.stdout,
+        ExecOwnedCapturedOutput::Captured {
+            bytes: b"ok".to_vec(),
+            truncated: false,
+        }
+    );
 }
 
 #[tokio::test]

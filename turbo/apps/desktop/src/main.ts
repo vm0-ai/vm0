@@ -35,6 +35,7 @@ import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
+  type ComputerUseAutomationPermissionTarget,
   type ComputerUseHostRuntimeState,
   type DesktopComputerUseState,
 } from "./computer-use-types";
@@ -45,7 +46,9 @@ import {
 } from "./computer-use-startup-gate";
 import {
   getComputerUsePermissionState,
+  probeComputerUseAutomationPermission,
   refreshComputerUsePermissionState,
+  recordComputerUseAutomationPermissionDenied,
   requestComputerUseAccessibilityPermission,
   requestComputerUseScreenRecordingPermission,
   setComputerUsePermissionNativeBackend,
@@ -161,6 +164,10 @@ const automationPermissionPrompt = createAutomationPermissionDeniedPrompt({
   },
   openAutomationSettings: () => {
     openExternal(MAC_AUTOMATION_SETTINGS_URL);
+  },
+  onPermissionDenied: (target, reason) => {
+    recordComputerUseAutomationPermissionDenied(target, reason);
+    notifyComputerUseChanged();
   },
   onError: (error) => {
     console.error("Automation permission prompt failed", error);
@@ -552,6 +559,14 @@ async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState>
   return getComputerUseBridgeState();
 }
 
+async function probeComputerUseAutomation(
+  target: ComputerUseAutomationPermissionTarget,
+): Promise<DesktopComputerUseState> {
+  await probeComputerUseAutomationPermission(target);
+  notifyComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
 function installComputerUse(): void {
   installComputerUseIpc(
     {
@@ -561,6 +576,7 @@ function installComputerUse(): void {
       stop: stopComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
+      probeAutomationPermission: probeComputerUseAutomation,
       setKeepAwakeEnabled,
     },
     { rendererUrl: localRendererUrl },

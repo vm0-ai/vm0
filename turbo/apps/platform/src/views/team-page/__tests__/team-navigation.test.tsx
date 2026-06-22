@@ -803,7 +803,7 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "cloudflare",
-        reset: false,
+        mode: "patch",
         grants: [
           {
             permission: "memberships.read",
@@ -879,9 +879,23 @@ describe("team page navigation", () => {
             };
           },
         );
+        const appliedGrantKeys = new Set(
+          appliedGrants.map((grant) => {
+            return `${grant.agentId}\u0000${grant.connectorRef}\u0000${grant.permission}`;
+          }),
+        );
         grants = [
           ...grants.filter((current) => {
-            return current.connectorRef !== body.connectorRef;
+            if (
+              body.mode === "replace" &&
+              current.agentId === body.agentId &&
+              current.connectorRef === body.connectorRef
+            ) {
+              return false;
+            }
+            return !appliedGrantKeys.has(
+              `${current.agentId}\u0000${current.connectorRef}\u0000${current.permission}`,
+            );
           }),
           ...appliedGrants,
         ];
@@ -924,7 +938,7 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "axiom",
-        reset: false,
+        mode: "patch",
         grants: [
           {
             permission: "annotations|create",

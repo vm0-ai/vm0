@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -57,6 +58,15 @@ struct AdmittedClaim {
     claimed: ClaimedJob,
     budget_lease: BudgetLease,
     cancel: RunCancellationHandle,
+}
+
+struct ReuseAdmissionRequest<'a> {
+    profile_name: &'a str,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    workspace_disk_mb: u32,
+    context: &'a ExecutionContext,
+    resume_session_valid: bool,
+    job_lease: BudgetLease,
 }
 
 impl LocalAdmission {
@@ -124,11 +134,14 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
         run_id,
-        &profile_name,
-        &device_rate_limits,
-        claimed.context(),
-        resume_session_valid,
-        job_lease,
+        ReuseAdmissionRequest {
+            profile_name: &profile_name,
+            device_rate_limits: &device_rate_limits,
+            workspace_disk_mb: job_workspace_disk_mb,
+            context: claimed.context(),
+            resume_session_valid,
+            job_lease,
+        },
         &mut ctx,
     )
     .await;
@@ -268,11 +281,7 @@ async fn claim_with_local_admission(
 
 async fn try_reuse_from_pool(
     run_id: RunId,
-    profile_name: &str,
-    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
-    context: &ExecutionContext,
-    resume_session_valid: bool,
-    job_lease: BudgetLease,
+    request: ReuseAdmissionRequest<'_>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> (
     Option<ReusableIdleSandbox>,
@@ -280,6 +289,15 @@ async fn try_reuse_from_pool(
     SandboxReuseResult,
     Option<IdlePoolSnapshot>,
 ) {
+    let ReuseAdmissionRequest {
+        profile_name,
+        device_rate_limits,
+        workspace_disk_mb,
+        context,
+        resume_session_valid,
+        job_lease,
+    } = request;
+
     if !resume_session_valid {
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     }
@@ -313,6 +331,27 @@ async fn try_reuse_from_pool(
             if entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits =>
         {
+            if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref()
+                && let Err(mismatch) = entry.validate_workspace_promotion_identity(
+                    cache,
+                    CANONICAL_WORKING_DIR,
+                    u64::from(workspace_disk_mb) * 1024 * 1024,
+                )
+            {
+                warn!(
+                    run_id = %run_id,
+                    session_fingerprint = %session_fingerprint,
+                    profile = %profile_name,
+                    mismatch = mismatch.as_str(),
+                    "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
+                );
+                spawn_idle_destroy_job(
+                    ctx.destroy_tasks,
+                    entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
+                    "reuse_workspace_promotion_mismatch",
+                );
+                return (None, job_lease, SandboxReuseResult::PoolMiss, snapshot);
+            }
             match entry.try_unpark().await {
                 IdleUnparkResult::Reused {
                     sandbox,

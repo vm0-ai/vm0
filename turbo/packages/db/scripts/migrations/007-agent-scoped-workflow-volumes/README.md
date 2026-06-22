@@ -14,7 +14,8 @@ The SQL migration already transformed the database:
 - `zero_workflow_agents` was dropped.
 
 What SQL could **not** do (it needs object-storage I/O) is the R2 volume work
-and the `instruction` backfill. That is what this script does.
+and the `instruction` backfill. That is what this script does after `0480`, and
+it can also pre-seed the R2 copies before `0480` to reduce the cutover window.
 
 A workflow's files live in an org-scoped storage "volume": a `storages` row
 (`orgId`, `userId = VOLUME_ORG_USER_ID`, `name`, `type='volume'`,
@@ -35,24 +36,29 @@ For each org that owns workflows (or a single `--org`), in order:
    and every `storage_versions` row are recreated and each version's S3 objects
    (`archive.tar.gz`, `manifest.json`) are copied under the new key. Because
    duplicated rows share a `name`, **each id-keyed row gets its own copy** and
-   never shares an `s3Prefix`. Always copies (never renames in place) so the
-   legacy volume stays intact for the other duplicates.
+   never shares an `s3Prefix`. Always copies (never renames in place). When an
+   id-keyed volume already exists, the script compares it with the legacy head
+   and syncs it forward if the legacy volume changed after a pre-seed run.
 
-2. **Backfill `instruction`.** For each workflow whose `instruction` is `null`,
+2. **Backfill `instruction`** (post-`0480` mode only). For each workflow whose
+   `instruction` is `null`,
    reads `SKILL.md` from the id-keyed volume's head version archive, runs
    `extractInstructionFromSkillMd` (from `@vm0/core`), and writes the body back
    to `zero_workflows.instruction`. Empty bodies / missing SKILL.md are left
    `null`.
 
-3. **Delete legacy name-keyed volumes.** After all workflows in an org have
-   been re-keyed, deletes every leftover `custom-skill@*` volume that is not a
-   current id-keyed volume and is not being preserved because its workflow could
-   not be safely re-keyed in this run (storages row + versions via FK cascade +
-   S3 objects).
+3. **Preserve legacy name-keyed volumes by default.** Cleanup is a separate,
+   explicit `--cleanup-legacy` run. Cleanup is deletion-only: it verifies each
+   current workflow already has an id-keyed volume, preserves the legacy volume
+   for any workflow that does not, and deletes only the remaining legacy
+   `custom-skill@{name}` volumes. It never syncs legacy content back into an
+   existing id-keyed volume, so it is safe to run after the new code has started
+   writing id-keyed volumes.
 
 The script is **idempotent** and **defaults to dry-run**. It only mutates when
-`--migrate` is passed. Re-running detects already-id-keyed volumes and
-already-backfilled instructions and skips them.
+`--migrate` is passed. Re-running detects already-id-keyed volumes, syncs them
+when the legacy head changed during the preseed/backfill phases, and skips
+already-backfilled instructions.
 
 ## Prerequisites
 
@@ -77,14 +83,26 @@ These mirror the S3/R2 client construction in
 From `turbo/packages/db`:
 
 ```bash
-# Dry run (default) — prints the plan with counts, makes no changes
-pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts
+# 1. Before SQL migration 0480: pre-seed existing workflow volumes only.
+#    This uses the pre-0480 schema, does not touch instruction, and preserves
+#    legacy name-keyed volumes.
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --preseed
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --preseed --migrate
 
-# Execute for all orgs that own workflows
+# 2. After SQL migration 0480: sync all current rows, including duplicated
+#    multi-agent workflow rows created by SQL, and backfill instruction. Legacy
+#    name-keyed volumes are still preserved by default.
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts
 pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate
 
-# Execute for a single org
+# Execute for a single org in either phase
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --preseed --migrate --org=org_xxx
 pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --org=org_xxx
+
+# 3. After production verification: delete leftover legacy name-keyed volumes.
+#    This is deletion-only and does not sync legacy content into id-keyed volumes.
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --cleanup-legacy
+pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --cleanup-legacy
 ```
 
 ## Verification
@@ -112,8 +130,10 @@ After a `--migrate` run:
    -- residual nulls = goals or workflows whose SKILL.md body was empty/missing
    ```
 
-3. **No leftover legacy name-keyed volumes.** Confirm remaining `custom-skill@*`
-   volumes are all id-keyed (name matches an existing `zero_workflows.id`):
+3. **Legacy name-keyed volumes preserved until cleanup.** Before cleanup, this
+   query may return rows by design. After a `--cleanup-legacy --migrate` run,
+   confirm remaining `custom-skill@*` volumes are all id-keyed (name matches an
+   existing `zero_workflows.id`):
 
    ```sql
    SELECT s.name
@@ -140,8 +160,12 @@ After a `--migrate` run:
 
 ## Notes
 
-- **Idempotent**: safe to re-run; already-migrated volumes/instructions are
-  skipped.
+- **Idempotent**: safe to re-run; existing id-keyed volumes are synced forward
+  during preseed/backfill when the legacy head changed, cleanup only deletes
+  legacy volumes, and already-backfilled instructions are skipped.
+- **Pre-seed is partial by design**: it can only create id-keyed volumes for
+  workflow rows that exist before `0480`. Run the post-`0480` backfill again so
+  duplicated workflow rows receive their own id-keyed copies.
 - **Excluded from CI**: like all `scripts/migrations/**`, this directory is
   excluded from the package `tsconfig.json` (`exclude`) and `eslint.config.mjs`
   (`ignores`), so it does not participate in the `@vm0/db` build, type-check, or

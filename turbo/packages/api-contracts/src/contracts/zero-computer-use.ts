@@ -38,6 +38,7 @@ export const computerUseCommandErrorCodeSchema = z.enum([
   "no_host",
   "permission_denied",
   "accessibility_unavailable",
+  "automation_permission_denied",
   "window_unavailable",
   "screen_recording_unavailable",
   "app_not_found",
@@ -69,6 +70,39 @@ const elementIndexSchema = z.number().int().min(0);
 const computerUsePermissionsSchema = z.object({
   accessibility: z.boolean(),
   screenRecording: z.boolean(),
+  automation: z
+    .object({
+      chrome: z
+        .object({
+          status: z.enum([
+            "unknown",
+            "granted",
+            "denied",
+            "not_installed",
+            "not_running",
+          ]),
+          updatedAt: z.string().nullable().default(null),
+          reason: z.string().nullable().default(null),
+        })
+        .default({ status: "unknown", updatedAt: null, reason: null }),
+      safari: z
+        .object({
+          status: z.enum([
+            "unknown",
+            "granted",
+            "denied",
+            "not_installed",
+            "not_running",
+          ]),
+          updatedAt: z.string().nullable().default(null),
+          reason: z.string().nullable().default(null),
+        })
+        .default({ status: "unknown", updatedAt: null, reason: null }),
+    })
+    .default({
+      chrome: { status: "unknown", updatedAt: null, reason: null },
+      safari: { status: "unknown", updatedAt: null, reason: null },
+    }),
 });
 
 const computerUseRuntimeBodySchema = z.object({

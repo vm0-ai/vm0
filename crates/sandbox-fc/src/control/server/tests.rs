@@ -4,14 +4,12 @@ use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 
 use base64::Engine;
-use sandbox::SandboxExecTermination;
+use sandbox::ExecTermination;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
-use vsock_proto::{
-    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
-};
+use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
 
 use crate::control::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
@@ -120,7 +118,7 @@ fn exec_request(command: &str) -> ExecRequest {
 }
 
 fn control_exec_result(
-    termination: ExecTermination,
+    termination: vsock_proto::ExecTermination,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     diagnostic: &str,
@@ -143,7 +141,7 @@ fn control_exec_result(
 
 fn expect_exec_success(
     response: ExecResponse,
-) -> (SandboxExecTermination, Vec<u8>, Vec<u8>, bool, bool, String) {
+) -> (ExecTermination, Vec<u8>, Vec<u8>, bool, bool, String) {
     match response {
         ExecResponse::Success {
             termination,
@@ -216,7 +214,7 @@ async fn bind_server_sets_private_socket_mode() {
 #[test]
 fn control_exec_result_preserves_ordinary_exit_state() {
     let response = exec_response_from_operation_result(control_exec_result(
-        ExecTermination::Exited { exit_code: 7 },
+        vsock_proto::ExecTermination::Exited { exit_code: 7 },
         b"out".to_vec(),
         b"err".to_vec(),
         "ignored",
@@ -225,7 +223,7 @@ fn control_exec_result_preserves_ordinary_exit_state() {
 
     let (termination, stdout, stderr, stdout_truncated, stderr_truncated, diagnostic) =
         expect_exec_success(response);
-    assert_eq!(termination, SandboxExecTermination::Exited { exit_code: 7 });
+    assert_eq!(termination, ExecTermination::Exited { exit_code: 7 });
     assert_eq!(stdout, b"out");
     assert_eq!(stderr, b"err");
     assert!(stdout_truncated);
@@ -237,27 +235,27 @@ fn control_exec_result_preserves_ordinary_exit_state() {
 fn control_exec_result_preserves_structured_terminal_state() {
     for (termination, diagnostic, expected_termination, expected_stderr) in [
         (
-            ExecTermination::TimedOut,
+            vsock_proto::ExecTermination::TimedOut,
             "",
-            SandboxExecTermination::TimedOut,
+            ExecTermination::TimedOut,
             Vec::new(),
         ),
         (
-            ExecTermination::Cancelled,
+            vsock_proto::ExecTermination::Cancelled,
             "cancel diagnostic",
-            SandboxExecTermination::Cancelled,
+            ExecTermination::Cancelled,
             Vec::new(),
         ),
         (
-            ExecTermination::StartFailed,
+            vsock_proto::ExecTermination::StartFailed,
             "spawn failed",
-            SandboxExecTermination::StartFailed,
+            ExecTermination::StartFailed,
             Vec::new(),
         ),
         (
-            ExecTermination::WaitFailed,
+            vsock_proto::ExecTermination::WaitFailed,
             "wait failed",
-            SandboxExecTermination::WaitFailed,
+            ExecTermination::WaitFailed,
             b"stderr clue".to_vec(),
         ),
     ] {
@@ -281,7 +279,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     let overflow = exec_response_from_operation_result(vsock_host::ExecOperationResult {
         stream_overflowed: true,
         ..control_exec_result(
-            ExecTermination::Exited { exit_code: 0 },
+            vsock_proto::ExecTermination::Exited { exit_code: 0 },
             Vec::new(),
             Vec::new(),
             "",
@@ -294,7 +292,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     let stdout_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
         stdout: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
-            ExecTermination::Exited { exit_code: 0 },
+            vsock_proto::ExecTermination::Exited { exit_code: 0 },
             Vec::new(),
             Vec::new(),
             "",
@@ -307,7 +305,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     let stderr_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
         stderr: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
-            ExecTermination::Exited { exit_code: 0 },
+            vsock_proto::ExecTermination::Exited { exit_code: 0 },
             Vec::new(),
             Vec::new(),
             "",

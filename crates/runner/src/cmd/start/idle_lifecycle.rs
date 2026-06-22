@@ -250,6 +250,7 @@ mod tests {
             budget_lease: lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
+            workspace_image_size_bytes: b"workspace image".len() as u64,
             workspace_promotion: Some(fixture.promotion),
         });
         let candidate = match request.park_for_idle().await {

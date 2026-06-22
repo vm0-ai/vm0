@@ -136,7 +136,7 @@ type ApplyUserPermissionGrants = (
   params: {
     agentId: string;
     connectorRef: string;
-    reset: boolean;
+    mode: "patch" | "replace";
     grants: readonly ApplyUserPermissionGrant[];
   },
   signal: AbortSignal,
@@ -748,7 +748,7 @@ async function saveUserGrantPolicies({
     {
       agentId,
       connectorRef: connectorType,
-      reset: resetPending,
+      mode: resetPending ? "replace" : "patch",
       grants: buildAppliedUserGrantPolicies({
         connectorType,
         metadata,
