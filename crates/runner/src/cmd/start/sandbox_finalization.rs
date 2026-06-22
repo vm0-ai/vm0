@@ -192,7 +192,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 );
                 let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
                     sandbox.as_ref(),
-                    workspace_promotion.as_ref(),
+                    workspace_promotion,
                     "park_failed",
                 )
                 .await;
@@ -386,7 +386,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         // No parkable session — stop + destroy.
         let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
             sandbox.as_ref(),
-            workspace_promotion.as_ref(),
+            workspace_promotion,
             active_cleanup_reason(
                 exit_code,
                 cancelled,
@@ -927,10 +927,9 @@ mod tests {
         );
 
         let promoted =
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
+            promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test").await;
 
         assert!(promoted);
-        drop(promotion);
         let states = cache.held_session_states().await;
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].session_id, "sess-promote");
@@ -977,11 +976,10 @@ mod tests {
             );
 
             let promoted =
-                promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test")
+                promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
                     .await;
 
             assert!(promoted);
-            drop(promotion);
             let checkout = cache
                 .prepare(WorkspaceImagePrepareRequest {
                     identity: WorkspaceImageLeaseIdentity {
@@ -1040,7 +1038,7 @@ mod tests {
         );
 
         let promoted =
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
+            promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test").await;
 
         assert!(!promoted);
         assert!(

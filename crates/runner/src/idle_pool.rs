@@ -18,7 +18,9 @@ use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
 };
-use crate::workspace_promotion::promote_workspace_image_from_parked_sandbox;
+use crate::workspace_promotion::{
+    abandon_unpublished_workspace_promotion, promote_workspace_image_from_parked_sandbox,
+};
 
 /// Default idle timeout for kept-alive VMs (30 minutes).
 ///
@@ -201,21 +203,9 @@ struct IdleSandboxResources {
 
 impl IdleSandboxResources {
     fn into_destroy_payload(self, policy: WorkspacePromotionPolicy) -> IdleDestroyPayload {
-        let Self {
-            sandbox,
-            factory,
-            workspace_promotion,
-        } = self;
-        let workspace_promotion = match policy {
-            WorkspacePromotionPolicy::Keep => workspace_promotion,
-            WorkspacePromotionPolicy::Drop => None,
-        };
         IdleDestroyPayload {
-            resources: Self {
-                sandbox,
-                factory,
-                workspace_promotion,
-            },
+            resources: self,
+            workspace_promotion_policy: policy,
         }
     }
 
@@ -230,8 +220,8 @@ impl IdleSandboxResources {
 }
 
 enum WorkspacePromotionPolicy {
-    Keep,
-    Drop,
+    Promote,
+    AbandonUnpublished(&'static str),
 }
 
 /// Active-owned sandbox after `Sandbox::park()` succeeds, before idle-pool
@@ -325,6 +315,11 @@ impl IdleParkRequest {
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch before idle park; destroying without workspace promotion"
             );
+            abandon_unpublished_workspace_promotion(
+                workspace_promotion,
+                "promotion_identity_mismatch",
+            )
+            .await;
             return Err(IdleParkFailure {
                 resources: IdleSandboxResources {
                     sandbox,
@@ -355,17 +350,20 @@ impl IdleParkRequest {
                 budget_lease,
                 error: e.to_string(),
             }),
-            Err(_) => Err(IdleParkFailure {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    // A panic leaves the park transition state uncertain; destroy
-                    // the sandbox, but do not publish a workspace cache image.
-                    workspace_promotion: None,
-                },
-                budget_lease,
-                error: "sandbox park panicked".into(),
-            }),
+            Err(_) => {
+                // A panic leaves the park transition state uncertain; destroy
+                // the sandbox, but do not publish a workspace cache image.
+                abandon_unpublished_workspace_promotion(workspace_promotion, "park_panicked").await;
+                Err(IdleParkFailure {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion: None,
+                    },
+                    budget_lease,
+                    error: "sandbox park panicked".into(),
+                })
+            }
         }
     }
 }
@@ -477,7 +475,7 @@ impl ParkedIdleCandidate {
             ..
         } = self;
         (
-            resources.into_destroy_payload(WorkspacePromotionPolicy::Keep),
+            resources.into_destroy_payload(WorkspacePromotionPolicy::Promote),
             budget_lease,
         )
     }
@@ -490,7 +488,7 @@ impl ParkedIdleCandidate {
         } = self;
 
         RejectedParkedIdleCandidate {
-            payload: resources.into_destroy_payload(WorkspacePromotionPolicy::Keep),
+            payload: resources.into_destroy_payload(WorkspacePromotionPolicy::Promote),
             budget_lease,
         }
     }
@@ -582,6 +580,7 @@ impl ReusableIdleSandbox {
 /// Physical resources needed to destroy an idle VM, without its budget lease.
 pub(crate) struct IdleDestroyPayload {
     resources: IdleSandboxResources,
+    workspace_promotion_policy: WorkspacePromotionPolicy,
 }
 
 pub(crate) struct IdleDestroyResult {
@@ -607,12 +606,20 @@ impl IdleDestroyPayload {
             factory,
             workspace_promotion,
         } = self.resources;
-        let workspace_cache_promoted = promote_workspace_image_from_parked_sandbox(
-            sandbox.as_mut(),
-            workspace_promotion.as_ref(),
-            context,
-        )
-        .await;
+        let workspace_cache_promoted = match self.workspace_promotion_policy {
+            WorkspacePromotionPolicy::Promote => {
+                promote_workspace_image_from_parked_sandbox(
+                    sandbox.as_mut(),
+                    workspace_promotion,
+                    context,
+                )
+                .await
+            }
+            WorkspacePromotionPolicy::AbandonUnpublished(reason) => {
+                abandon_unpublished_workspace_promotion(workspace_promotion, reason).await;
+                false
+            }
+        };
         let mut uncertain = false;
         match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
             Ok(Ok(())) => {}
@@ -759,11 +766,15 @@ impl IdleEntry {
                 }
             }
             Ok(Err(e)) => IdleUnparkResult::Failed {
-                destroy_job: Box::new(self.into_destroy_job_without_workspace_promotion()),
+                destroy_job: Box::new(
+                    self.into_destroy_job_abandoning_workspace_promotion("unpark_failed"),
+                ),
                 error: e.to_string(),
             },
             Err(_) => IdleUnparkResult::Failed {
-                destroy_job: Box::new(self.into_destroy_job_without_workspace_promotion()),
+                destroy_job: Box::new(
+                    self.into_destroy_job_abandoning_workspace_promotion("unpark_panicked"),
+                ),
                 error: "sandbox unpark panicked".into(),
             },
         }
@@ -789,11 +800,11 @@ impl IdleEntry {
     }
 
     pub fn into_destroy_job(self) -> IdleDestroyJob {
-        self.into_destroy_job_with_workspace_promotion(WorkspacePromotionPolicy::Keep)
+        self.into_destroy_job_with_workspace_promotion(WorkspacePromotionPolicy::Promote)
     }
 
     pub fn into_destroy_job_without_workspace_promotion_for_mismatch(self) -> IdleDestroyJob {
-        self.into_destroy_job_without_workspace_promotion()
+        self.into_destroy_job_abandoning_workspace_promotion("promotion_identity_mismatch")
     }
 
     pub fn validate_workspace_promotion_identity(
@@ -817,8 +828,13 @@ impl IdleEntry {
         )
     }
 
-    fn into_destroy_job_without_workspace_promotion(self) -> IdleDestroyJob {
-        self.into_destroy_job_with_workspace_promotion(WorkspacePromotionPolicy::Drop)
+    fn into_destroy_job_abandoning_workspace_promotion(
+        self,
+        reason: &'static str,
+    ) -> IdleDestroyJob {
+        self.into_destroy_job_with_workspace_promotion(
+            WorkspacePromotionPolicy::AbandonUnpublished(reason),
+        )
     }
 
     fn into_destroy_job_with_workspace_promotion(

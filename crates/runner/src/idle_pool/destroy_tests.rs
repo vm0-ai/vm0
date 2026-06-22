@@ -45,6 +45,7 @@ async fn make_idle_destroy_payload_for(
             factory,
             workspace_promotion,
         },
+        workspace_promotion_policy: WorkspacePromotionPolicy::Promote,
     }
 }
 

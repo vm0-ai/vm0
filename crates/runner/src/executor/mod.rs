@@ -119,8 +119,10 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
-    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
+    WorkspaceImagePromotionIdentityFailure, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest,
 };
+use crate::workspace_promotion::abandon_unpublished_workspace_promotion;
 
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
     let run_id = run_id.to_string();
@@ -520,13 +522,22 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                     &idle_cli_agent_session_id,
                 ) {
                     Ok(lease) => Some(lease),
-                    Err(mismatch) => {
+                    Err(identity_failure) => {
+                        let WorkspaceImagePromotionIdentityFailure {
+                            promotion,
+                            mismatch,
+                        } = *identity_failure;
                         let failure = workspace_promotion_identity_failure(
                             run_id,
                             sandbox_id,
                             &params.profile_name,
                             mismatch,
                         );
+                        abandon_unpublished_workspace_promotion(
+                            Some(promotion),
+                            "reuse_workspace_promotion_mismatch",
+                        )
+                        .await;
                         return (
                             ExecuteOutcome {
                                 failure: Some(failure),
@@ -600,13 +611,22 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                     expected_session_id,
                 ) {
                     Ok(lease) => lease,
-                    Err(mismatch) => {
+                    Err(identity_failure) => {
+                        let WorkspaceImagePromotionIdentityFailure {
+                            promotion,
+                            mismatch,
+                        } = *identity_failure;
                         let failure = workspace_promotion_identity_failure(
                             run_id,
                             sandbox_id,
                             &params.profile_name,
                             mismatch,
                         );
+                        abandon_unpublished_workspace_promotion(
+                            Some(promotion),
+                            "reuse_workspace_promotion_mismatch",
+                        )
+                        .await;
                         return (
                             ExecuteOutcome {
                                 failure: Some(failure),
@@ -716,8 +736,8 @@ fn reused_promotion_into_active_lease(
     sandbox_id: SandboxId,
     params: &JobParams,
     cli_agent_session_id: &str,
-) -> Result<WorkspaceImageLease, WorkspaceImagePromotionIdentityMismatch> {
-    let expected = cache
+) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
+    let expected = match cache
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: &params.profile_name,
@@ -733,8 +753,16 @@ fn reused_promotion_into_active_lease(
                 mismatch = mismatch.as_str(),
                 "workspace promotion expected identity could not be constructed"
             );
-        })?;
-    promotion.try_into_active_lease(&expected, true)
+        }) {
+        Ok(expected) => expected,
+        Err(mismatch) => {
+            return Err(Box::new(WorkspaceImagePromotionIdentityFailure {
+                promotion,
+                mismatch,
+            }));
+        }
+    };
+    promotion.try_into_active_lease_preserving_context(&expected, true)
 }
 
 fn workspace_promotion_identity_failure(
