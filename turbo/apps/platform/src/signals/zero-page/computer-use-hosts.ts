@@ -7,6 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { onRef } from "../utils.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
@@ -32,6 +33,16 @@ export const subscribeComputerUseHostsChanged$ = command(
     });
     await set(setAblyLoop$, "computerUseHostsChanged", onChanged$, signal);
   },
+);
+
+const subscribeComputerUseHostsChangedOnRef$ = command(
+  async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    await set(subscribeComputerUseHostsChanged$, signal);
+  },
+);
+
+export const subscribeComputerUseHostsChangedRef$ = onRef(
+  subscribeComputerUseHostsChangedOnRef$,
 );
 
 interface ListedComputerUseHost extends Pick<

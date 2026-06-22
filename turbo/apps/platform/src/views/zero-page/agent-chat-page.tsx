@@ -58,6 +58,7 @@ import {
 import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
+  subscribeComputerUseHostsChangedRef$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -474,6 +475,9 @@ export function AgentChatPage() {
     useNewThreadComputerUse();
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
+  const subscribeComputerUseHostsChangedRef = useSet(
+    subscribeComputerUseHostsChangedRef$,
+  );
   const {
     modelSelection,
     modelPicker,
@@ -550,6 +554,7 @@ export function AgentChatPage() {
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
+      <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
           <InviteButton pageSignal={pageSignal} />
