@@ -1009,6 +1009,10 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
   return r2ImageTransformUrl(item.previewImage, TEMPLATE_CARD_PREVIEW_SIZE);
 }
 
+function videoTemplatePreviewWebm(item: VideoTemplateItem): string {
+  return `/video-template-previews/${item.slug}.webm`;
+}
+
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   const posterImage = videoTemplatePosterImage(item);
   return (
@@ -1023,7 +1027,6 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       }}
     >
       <video
-        src={item.previewVideo}
         poster={posterImage}
         className="peer h-full w-full object-cover"
         preload="none"
@@ -1042,7 +1045,13 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         onError={(event) => {
           markVideoTemplatePreviewPlaying(event.currentTarget, false);
         }}
-      />
+      >
+        <source
+          src={videoTemplatePreviewWebm(item)}
+          type="video/webm; codecs=vp9"
+        />
+        <source src={item.previewVideo} type="video/mp4" />
+      </video>
       <img
         src={posterImage}
         alt=""
@@ -1053,7 +1062,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       <button
         type="button"
         aria-label={`Play video template preview ${item.title}`}
-        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-0 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:opacity-100 focus-visible:outline-none group-hover/video-template-preview:opacity-100 group-focus-within/video-template-preview:opacity-100 peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0 [@media(hover:none)]:opacity-100"
+        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-100 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:outline-none peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();

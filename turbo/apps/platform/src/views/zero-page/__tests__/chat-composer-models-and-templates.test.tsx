@@ -2296,12 +2296,10 @@ describe("chat composer templates", () => {
             height: 270,
           },
         );
-        const previewVideo = Array.from(
-          document.querySelectorAll("video"),
-        ).find((video) => {
-          return video.getAttribute("src") === videoStyle.previewVideo;
-        });
-        if (!previewVideo) {
+        const previewVideo = document
+          .querySelector(`source[src="${videoStyle.previewVideo}"]`)
+          ?.closest("video");
+        if (!(previewVideo instanceof HTMLVideoElement)) {
           throw new Error("Video template preview video not found");
         }
         const previewRoot = previewVideo.closest(
@@ -2313,6 +2311,12 @@ describe("chat composer templates", () => {
         expect(
           previewRoot.querySelector("[data-video-template-poster]"),
         ).toHaveAttribute("src", posterUrl);
+        expect(
+          previewVideo.querySelector('source[type="video/webm; codecs=vp9"]'),
+        ).toHaveAttribute(
+          "src",
+          `/video-template-previews/${videoStyle.slug}.webm`,
+        );
         expect(previewVideo).toHaveAttribute("poster", posterUrl);
         expect(previewVideo).toHaveAttribute("preload", "none");
         expect(
@@ -2324,12 +2328,10 @@ describe("chat composer templates", () => {
         expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
       });
 
-      const previewVideo = Array.from(document.querySelectorAll("video")).find(
-        (video) => {
-          return video.getAttribute("src") === videoStyle.previewVideo;
-        },
-      );
-      if (!previewVideo) {
+      const previewVideo = document
+        .querySelector(`source[src="${videoStyle.previewVideo}"]`)
+        ?.closest("video");
+      if (!(previewVideo instanceof HTMLVideoElement)) {
         throw new Error("Video template preview video not found");
       }
       const previewRoot = previewVideo.closest("[data-video-template-preview]");
