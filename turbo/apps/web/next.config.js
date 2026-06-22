@@ -1,6 +1,7 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import createNextIntlPlugin from "next-intl/plugin";
 import { API_BACKEND_REWRITES } from "./api-backend-rewrites.js";
+import { buildSoFrontendRewrites } from "./so-frontend-rewrites.js";
 
 const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
@@ -74,6 +75,7 @@ const nextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        ...buildSoFrontendRewrites(process.env),
         ...API_BACKEND_REWRITES.flatMap(([source, destinationPath]) => {
           const destination = buildApiBackendDestination(destinationPath);
           if (!destination) {
