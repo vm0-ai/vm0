@@ -265,7 +265,7 @@ const RESOLVER_METADATA = {
 } satisfies FirewallPermissionDetailMetadata;
 
 describe("firewall metadata", () => {
-  it("keeps the public entrypoint summary-first", () => {
+  it("keeps the public entrypoint off detail modules", () => {
     const entrypoint = path.resolve(
       import.meta.dirname,
       "../firewall-metadata/index.ts",
@@ -274,6 +274,7 @@ describe("firewall metadata", () => {
 
     expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
       "../firewall-types",
+      "./loader.generated",
       "./policy-resolver",
       "./summary.generated",
       "./types",
@@ -282,9 +283,24 @@ describe("firewall metadata", () => {
       "./policy-resolver",
       "./types",
     ]);
-    expect(dynamicImportSpecifiers(source)).toStrictEqual([
-      "./loader.generated",
-    ]);
+    expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
+  });
+
+  it("keeps permission detail metadata behind connector-specific dynamic imports", () => {
+    const loader = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/loader.generated.ts",
+    );
+    const source = fs.readFileSync(loader, "utf-8");
+    const dynamicSpecifiers = dynamicImportSpecifiers(source);
+
+    expect(staticImportSpecifiers(source)).toStrictEqual(["./types"]);
+    expect(dynamicSpecifiers).toContain("./details/slack.generated");
+    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+    for (const specifier of dynamicSpecifiers) {
+      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+    }
   });
 
   it("keeps server metadata behind an explicit package subpath", () => {
