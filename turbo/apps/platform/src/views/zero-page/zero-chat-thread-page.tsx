@@ -4475,6 +4475,7 @@ function permissionActionVerb(action: PermissionAction): string {
 
 function permissionActionButtonLabel(
   state: PermissionActionButtonState,
+  action: PermissionAction,
 ): string {
   if (state.loading) {
     return "Checking permissions";
@@ -4488,7 +4489,7 @@ function permissionActionButtonLabel(
   if (state.saving) {
     return "Saving...";
   }
-  return "Confirm";
+  return permissionActionVerb(action);
 }
 
 function permissionActionButtonDisabled(
@@ -4535,15 +4536,21 @@ function PermissionActionButton({
     );
   }
 
+  const allowClassName =
+    "border-transparent bg-foreground text-background hover:bg-foreground/90";
+  const denyClassName =
+    "border-border bg-background text-foreground hover:bg-accent";
   return (
     <button
       type="button"
       disabled={permissionActionButtonDisabled(state)}
       onClick={onClick}
-      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      className={`inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-[0.9375rem] font-medium transition-colors sm:w-auto ${
+        action === "allow" ? allowClassName : denyClassName
+      }`}
     >
       {state.saving && <IconLoader2 size={15} className="animate-spin" />}
-      {permissionActionButtonLabel(state)}
+      {permissionActionButtonLabel(state, action)}
     </button>
   );
 }

@@ -79,8 +79,9 @@ async function waitForButtonByText(
 async function confirmPermissionAction(
   user: ReturnType<typeof userEvent.setup>,
   card: HTMLElement,
+  label = "Allow",
 ): Promise<void> {
-  await user.click(await waitForButtonByText("Confirm", card));
+  await user.click(await waitForButtonByText(label, card));
 }
 
 describe("chat message action cards", () => {
@@ -216,7 +217,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Allow messages.write"),
     ).toBeInTheDocument();
 
-    await waitForButtonByText("Confirm", permissionCard);
+    await waitForButtonByText("Allow", permissionCard);
     expect(listRequests).toBe(2);
     expect(
       within(permissionCard).queryByText("Failed to load permissions"),
@@ -346,7 +347,7 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
-    await waitForButtonByText("Confirm", permissionCard);
+    await waitForButtonByText("Allow", permissionCard);
     await user.click(
       within(permissionCard).getByLabelText("Permission duration"),
     );
@@ -533,7 +534,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Deny admin.analytics:read"),
     ).toBeInTheDocument();
 
-    await confirmPermissionAction(user, permissionCard);
+    await confirmPermissionAction(user, permissionCard, "Deny");
 
     await waitFor(() => {
       expect(
