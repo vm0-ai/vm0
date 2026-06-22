@@ -348,6 +348,8 @@ impl CodexAppServerClient {
         result: Result<std::io::Result<ExitStatus>, oneshot::error::RecvError>,
     ) -> Result<ExitStatus, CodexAppServerError> {
         self.wait_rx = None;
+        self.process_id = None;
+        self.process_group_id = None;
         match result {
             Ok(Ok(status)) => Ok(status),
             Ok(Err(error)) => Err(CodexAppServerError::Io(error)),

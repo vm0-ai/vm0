@@ -391,6 +391,7 @@ async fn codex_app_server_shutdown_reaps_child() -> Result<(), String> {
     wait_result(client.initialize(), "initialize").await?;
 
     wait_result(client.shutdown(), "shutdown").await?;
+    assert!(client.process_id().is_none());
     assert_process_exited(pid)?;
     wait_result(client.shutdown(), "second shutdown").await
 }
