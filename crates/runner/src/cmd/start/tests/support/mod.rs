@@ -9,8 +9,9 @@ pub(super) use self::env::{
     mock_run_config_with_overrides, mock_run_config_with_runtime, test_profiles, two_profiles,
 };
 pub(super) use self::idle_pool::{
-    TestParkedIdleCandidateSpec, seed_idle_pool, seed_idle_pool_expired,
-    seed_idle_pool_with_overrides, seed_idle_pool_with_timing,
+    TestParkedIdleCandidateSpec, WorkspacePromotionSeedSpec, seed_idle_pool,
+    seed_idle_pool_expired, seed_idle_pool_with_overrides, seed_idle_pool_with_timing,
+    seed_idle_pool_with_workspace_promotion,
 };
 pub(super) use self::jobs::{
     TEST_SESSION_LAST_COMPLETED_AT, context_with_session, minimal_context, push_job, shutdown,

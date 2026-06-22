@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::ids::RunId;
@@ -44,6 +46,59 @@ pub(crate) struct WorkspaceImagePrepareRequest<'a> {
 pub(crate) struct WorkspaceImageActiveLeaseRequest<'a> {
     pub(crate) identity: WorkspaceImageLeaseIdentity<'a>,
     pub(crate) workspace_drive_available: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceImagePromotionIdentityRequest<'a> {
+    pub(crate) sandbox_id: sandbox::SandboxId,
+    pub(crate) profile_name: &'a str,
+    pub(crate) cli_agent_session_id: &'a str,
+    pub(crate) working_dir: &'a str,
+    pub(crate) image_size_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceImagePromotionIdentity {
+    pub(crate) sandbox_id: sandbox::SandboxId,
+    pub(crate) profile_name: String,
+    pub(crate) cli_agent_session_id: String,
+    pub(crate) working_dir: String,
+    pub(crate) image_size_bytes: u64,
+    pub(crate) active_image: PathBuf,
+    pub(crate) cache_key: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspaceImagePromotionIdentityMismatch {
+    UnsafeWorkingDir,
+    SandboxId,
+    ProfileName,
+    CliAgentSessionId,
+    WorkingDir,
+    ImageSizeBytes,
+    ActiveImage,
+    CacheKey,
+}
+
+impl WorkspaceImagePromotionIdentityMismatch {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsafeWorkingDir => "unsafe working directory",
+            Self::SandboxId => "sandbox id mismatch",
+            Self::ProfileName => "profile mismatch",
+            Self::CliAgentSessionId => "cli agent session id mismatch",
+            Self::WorkingDir => "working directory mismatch",
+            Self::ImageSizeBytes => "image size mismatch",
+            Self::ActiveImage => "active image path mismatch",
+            Self::CacheKey => "cache key mismatch",
+        }
+    }
+}
+
+impl std::fmt::Display for WorkspaceImagePromotionIdentityMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 pub(crate) struct WorkspaceImagePromotionRequest<'a> {

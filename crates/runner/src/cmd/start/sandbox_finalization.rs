@@ -67,6 +67,7 @@ pub(super) struct FinalizeContext {
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
+    pub(super) workspace_image_size_bytes: u64,
     pub(super) workspace_promotable: bool,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
@@ -104,6 +105,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         source_ip,
         mut network_log_session,
         workspace_image,
+        workspace_image_size_bytes,
         workspace_promotable,
         storage_fingerprints,
         device_rate_limits,
@@ -169,6 +171,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             budget_lease: active_lease.into_idle_park_lease(),
             source_ip,
             storage_fingerprints,
+            workspace_image_size_bytes,
             workspace_promotion,
         });
         let candidate = match park_request.park_for_idle().await {
@@ -581,7 +584,7 @@ mod tests {
 
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
-    use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
+    use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{
@@ -675,6 +678,7 @@ mod tests {
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
+                workspace_image_size_bytes: 0,
                 workspace_promotable: false,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
@@ -1087,6 +1091,7 @@ mod tests {
         context.cli_agent_session_id = None;
         context.discovered_cli_agent_session_id = Some("sess-guest".into());
         context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
         context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
@@ -1111,6 +1116,78 @@ mod tests {
         assert!(
             cache_states.is_empty(),
             "parked sandboxes keep the live workspace mounted and must not publish a separate cache image"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_rejects_mismatched_workspace_promotion_before_parking() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some("sess-mismatch"),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-mismatch",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64 + 1;
+        context.workspace_promotable = true;
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(
+            overrides.park_call_count(),
+            0,
+            "mismatched promotion should be rejected before sandbox park"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        assert!(
+            cache.held_session_states().await.is_empty(),
+            "mismatched park-time promotion must not publish workspace cache"
         );
     }
 
@@ -1170,6 +1247,7 @@ mod tests {
             RunCancellationHandle::new(),
         );
         context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
         context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
@@ -1251,6 +1329,7 @@ mod tests {
             device_rate_limits: None,
             budget_lease: existing_lease,
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
+            workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })
         .park_for_idle()
