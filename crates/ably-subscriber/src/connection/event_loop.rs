@@ -560,6 +560,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
         &p.channel,
         p.channel_params.as_ref(),
         p.session.channel_serial(),
+        p.session.attach_mode(),
     ) {
         Ok(data) => data,
         Err(e) => {
@@ -948,6 +949,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                 &p.channel,
                 p.channel_params.as_ref(),
                 p.session.channel_serial(),
+                p.session.attach_mode(),
             )?;
             ws_write
                 .send(tungstenite::Message::Binary(data.into()))
@@ -974,6 +976,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                         &p.channel,
                         p.channel_params.as_ref(),
                         p.session.channel_serial(),
+                        p.session.attach_mode(),
                     )?;
                     ws_write
                         .send(tungstenite::Message::Binary(data.into()))
