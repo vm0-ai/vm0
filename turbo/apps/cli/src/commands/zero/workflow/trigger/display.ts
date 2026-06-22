@@ -3,7 +3,7 @@ import type { ZeroWorkflowTriggerSummary } from "@vm0/api-contracts/contracts/ze
 import { formatRelativeTime } from "../../../../lib/domain/schedule-utils";
 import { formatDurationSeconds } from "../../automation/duration";
 
-export function formatWorkflowTriggerSchedule(
+function formatWorkflowTriggerSchedule(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
   const { schedule } = trigger;
