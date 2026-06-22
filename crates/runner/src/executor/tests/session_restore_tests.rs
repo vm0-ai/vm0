@@ -13,7 +13,7 @@ use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_wri
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::ResumeSession;
 
-static RESTORE_EVENT_CAPTURE_LOCK: Mutex<()> = Mutex::new(());
+static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn session_id_validation_rejects_path_traversal() {
@@ -62,8 +62,8 @@ fn codex_thread_id_canonicalizes_uuid_spellings() {
     assert!(canonical_codex_thread_id("codex-safe-but-not-uuid").is_none());
 }
 
-#[tokio::test]
-async fn restore_session_writes_history() {
+#[test]
+fn restore_session_writes_history() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
@@ -71,7 +71,7 @@ async fn restore_session_writes_history() {
         cli_agent_session_id: "sess-abc-123".into(),
         session_history: r#"{"type":"init"}"#.into(),
     };
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 }
 
 #[tokio::test]
@@ -122,8 +122,8 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
     );
 }
 
-#[tokio::test]
-async fn restore_session_unknown_framework_uses_claude_fallback() {
+#[test]
+fn restore_session_unknown_framework_uses_claude_fallback() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "custom-agent".into();
@@ -132,7 +132,7 @@ async fn restore_session_unknown_framework_uses_claude_fallback() {
         session_history: "data".into(),
     };
 
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -143,8 +143,8 @@ async fn restore_session_unknown_framework_uses_claude_fallback() {
     assert_eq!(writes[0].content, b"data");
 }
 
-#[tokio::test]
-async fn restore_session_allows_empty_agent_type() {
+#[test]
+fn restore_session_allows_empty_agent_type() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = String::new(); // empty defaults to claude-code
@@ -153,11 +153,11 @@ async fn restore_session_allows_empty_agent_type() {
         session_history: "{}".into(),
     };
     // Should proceed (empty agent type treated as claude-code).
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 }
 
-#[tokio::test]
-async fn restore_session_writes_codex_session() {
+#[test]
+fn restore_session_writes_codex_session() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -182,7 +182,7 @@ async fn restore_session_writes_codex_session() {
             }),
         ),
     };
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
 
@@ -242,8 +242,8 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
     );
 }
 
-#[tokio::test]
-async fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
+#[test]
+fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -252,7 +252,7 @@ async fn restore_session_writes_codex_session_with_canonical_fallback_filename()
         session_history: "{\"type\":\"thread.started\"}\n{not-json}\n".into(),
     };
 
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
 
@@ -279,8 +279,8 @@ async fn restore_session_writes_codex_session_with_canonical_fallback_filename()
     assert_eq!(writes[0].content, session.session_history.as_bytes());
 }
 
-#[tokio::test]
-async fn restore_session_canonicalizes_codex_session_id() {
+#[test]
+fn restore_session_canonicalizes_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -289,7 +289,7 @@ async fn restore_session_canonicalizes_codex_session_id() {
         session_history: "{}\n".into(),
     };
 
-    restore_session(&sandbox, &ctx, &session).await.unwrap();
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
 
@@ -805,20 +805,37 @@ fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
 where
     F: std::future::Future,
 {
-    let _capture_guard = RESTORE_EVENT_CAPTURE_LOCK
+    let _capture_guard = RESTORE_SESSION_LOG_CALLSITE_LOCK
         .lock()
-        .expect("restore event capture lock poisoned");
+        .expect("restore session log callsite lock poisoned");
     let captured = CapturedEvents::default();
     let subscriber = tracing_subscriber::registry().with(captured.clone());
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("build restore event capture runtime");
-    let output = runtime.block_on(future);
+    let output = block_on_restore_session(future);
     drop(guard);
     (output, captured.entries())
+}
+
+fn run_restore_session<F>(future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    let _capture_guard = RESTORE_SESSION_LOG_CALLSITE_LOCK
+        .lock()
+        .expect("restore session log callsite lock poisoned");
+    block_on_restore_session(future)
+}
+
+fn block_on_restore_session<F>(future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build restore session test runtime")
+        .block_on(future)
 }
 
 fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
