@@ -117,7 +117,7 @@ pub(super) async fn restore_codex_session(
     info!(
         run_id = %context.run_id,
         framework = "codex",
-        session_fingerprint = %diagnostic_session_fingerprint(&session_id),
+        session_fingerprint = %diagnostic_session_fingerprint(session_id),
         bytes_in = session.session_history.len(),
         "restored session history",
     );
