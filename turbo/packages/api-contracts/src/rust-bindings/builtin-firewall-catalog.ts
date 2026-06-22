@@ -1,5 +1,5 @@
 import type { Firewall, FirewallApi } from "@vm0/connectors/firewall-types";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls";
+import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "../contracts/model-providers";
 
 type JsonValue =

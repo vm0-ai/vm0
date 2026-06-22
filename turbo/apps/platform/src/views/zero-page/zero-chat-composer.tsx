@@ -225,6 +225,13 @@ function isHappyDomTestEnvironment(): boolean {
   );
 }
 
+function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
+  return (
+    Reflect.get(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom") ===
+    true
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -2323,9 +2330,10 @@ function presentationTemplateThemeVariables(
 
 interface PresentationTemplateThumbnailCache {
   readonly htmlByHost: WeakMap<HTMLDivElement, string>;
+  readonly pendingRenderKeysByHost: WeakMap<HTMLDivElement, string>;
   readonly previewHtmlsByDraft: WeakMap<
     PresentationEditDraft,
-    readonly string[]
+    Map<string, string>
   >;
   readonly themeVariablesByTheme: WeakMap<
     PresentationTemplateThemeOption,
@@ -2344,9 +2352,10 @@ function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCach
 
   const cache: PresentationTemplateThumbnailCache = {
     htmlByHost: new WeakMap<HTMLDivElement, string>(),
+    pendingRenderKeysByHost: new WeakMap<HTMLDivElement, string>(),
     previewHtmlsByDraft: new WeakMap<
       PresentationEditDraft,
-      readonly string[]
+      Map<string, string>
     >(),
     themeVariablesByTheme: new WeakMap<
       PresentationTemplateThemeOption,
@@ -2371,27 +2380,27 @@ function getPresentationTemplateThumbnailThemeVariables(
   return variables;
 }
 
-function getPresentationTemplateThumbnailPreviewHtmls(
-  draft: PresentationEditDraft | undefined,
-): readonly string[] {
-  if (draft === undefined) {
-    return [];
-  }
-
+function getPresentationTemplateThumbnailPreviewHtml(
+  draft: PresentationEditDraft,
+  slideId: string,
+): string {
   const cache = presentationTemplateThumbnailCache();
-  const cachedHtmls = cache.previewHtmlsByDraft.get(draft);
-  if (cachedHtmls !== undefined) {
-    return cachedHtmls;
+  let htmls = cache.previewHtmlsByDraft.get(draft);
+  if (htmls === undefined) {
+    htmls = new Map<string, string>();
+    cache.previewHtmlsByDraft.set(draft, htmls);
+  }
+  const cachedHtml = htmls.get(slideId);
+  if (cachedHtml !== undefined) {
+    return cachedHtml;
   }
 
-  const htmls = draft.slides.slice(0, 15).map((slide) => {
-    return previewPresentationHtml({
-      activeSlideId: slide.id,
-      html: draft.html,
-    });
+  const html = previewPresentationHtml({
+    activeSlideId: slideId,
+    html: draft.html,
   });
-  cache.previewHtmlsByDraft.set(draft, htmls);
-  return htmls;
+  htmls.set(slideId, html);
+  return html;
 }
 
 function applyPresentationTemplateThumbnailTheme(
@@ -2485,39 +2494,90 @@ function renderPresentationTemplateShadowThumbnail(
   applyPresentationTemplateThumbnailTheme(host, themeVariables);
 }
 
+function schedulePresentationTemplateShadowThumbnailRender({
+  draft,
+  host,
+  slideId,
+  themeVariables,
+}: {
+  readonly draft: PresentationEditDraft;
+  readonly host: HTMLDivElement;
+  readonly slideId: string;
+  readonly themeVariables: PresentationTemplateThemeVariables;
+}): void {
+  const cache = presentationTemplateThumbnailCache();
+  const render = () => {
+    renderPresentationTemplateShadowThumbnail(
+      host,
+      getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
+      themeVariables,
+    );
+  };
+  if (cache.htmlByHost.has(host)) {
+    render();
+    return;
+  }
+
+  const renderKey = `${slideId}:${Object.values(themeVariables).join("|")}`;
+  cache.pendingRenderKeysByHost.set(host, renderKey);
+  const renderWhenCurrent = () => {
+    if (
+      !host.isConnected ||
+      cache.pendingRenderKeysByHost.get(host) !== renderKey
+    ) {
+      return;
+    }
+    cache.pendingRenderKeysByHost.delete(host);
+    render();
+  };
+
+  if (window.requestIdleCallback !== undefined) {
+    window.requestIdleCallback(renderWhenCurrent, { timeout: 250 });
+    return;
+  }
+
+  window.setTimeout(renderWhenCurrent, 0);
+}
+
 function PresentationTemplateShadowThumbnail({
+  draft,
   fallbackImage,
-  html,
+  slideId,
   themeVariables,
   title,
 }: {
+  readonly draft: PresentationEditDraft | undefined;
   readonly fallbackImage: string;
-  readonly html: string | null;
+  readonly slideId: string | null;
   readonly themeVariables: PresentationTemplateThemeVariables;
   readonly title: string;
 }) {
-  if (html === null) {
-    return (
+  return (
+    <>
       <img
         src={fallbackImage}
         alt=""
         loading="lazy"
         className="absolute inset-0 h-full w-full object-cover"
       />
-    );
-  }
-
-  return (
-    <div
-      ref={(node) => {
-        if (node !== null) {
-          renderPresentationTemplateShadowThumbnail(node, html, themeVariables);
-        }
-      }}
-      aria-label={title}
-      className="pointer-events-none absolute inset-0"
-      style={themeVariables}
-    />
+      {draft !== undefined && slideId !== null ? (
+        <div
+          ref={(node) => {
+            if (node !== null) {
+              schedulePresentationTemplateShadowThumbnailRender({
+                draft,
+                host: node,
+                slideId,
+                themeVariables,
+              });
+            }
+          }}
+          aria-label={title}
+          className="pointer-events-none absolute inset-0"
+          style={themeVariables}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2569,7 +2629,7 @@ function TemplatePreview({
   priority = false,
 }: {
   item: PresentationTemplateItem;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
   const hover = useGet(templateCardHover$);
@@ -2604,6 +2664,15 @@ function TemplatePreview({
     failedImageUrls[preferredStaticPreviewImage] === true
       ? presentationTemplateFallbackSlideImage(item, hoverSlideIndex)
       : preferredStaticPreviewImage;
+  const currentPreviewSlideIndex = () => {
+    const index =
+      presentationTemplateHtmlPreviewCache().activeIndexes.get(item.embedUrl) ??
+      hoverSlideIndex;
+    return Math.max(0, Math.min(index, scrubSlideCount - 1));
+  };
+  const openPreview = () => {
+    onPreview(item, currentPreviewSlideIndex());
+  };
 
   const startHtmlPreviewLoad = () => {
     const cache = presentationTemplateHtmlPreviewCache();
@@ -2817,17 +2886,23 @@ function TemplatePreview({
         }}
       />
       {visibleHtmlPreview?.loading ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-0.5 overflow-hidden bg-muted">
           <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
         </div>
       ) : null}
       <button
         type="button"
+        aria-label={`Preview ${item.title} at current slide`}
+        className="absolute inset-0 z-10 cursor-zoom-in bg-transparent transition-colors hover:bg-foreground/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={openPreview}
+      />
+      <button
+        type="button"
         aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
-          onPreview(item);
+          openPreview();
         }}
       >
         <IconEye size={16} stroke={1.8} />
@@ -2871,8 +2946,6 @@ function TemplatePreviewPage({
   );
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
-  const thumbnailPreviewHtmls =
-    getPresentationTemplateThumbnailPreviewHtmls(cachedDetailDraft);
 
   const setLoadedDetailPreview = (params: {
     readonly draft: PresentationEditDraft;
@@ -2906,10 +2979,14 @@ function TemplatePreviewPage({
   };
 
   const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    const hasVisibleDetailPreviewResult =
+      visibleDetailPreview !== null &&
+      (visibleDetailPreview.frameUrl !== null || visibleDetailPreview.failed);
     if (
       node === null ||
-      isHappyDomTestEnvironment() ||
-      visibleDetailPreview !== null
+      hasVisibleDetailPreviewResult ||
+      (isHappyDomTestEnvironment() &&
+        !shouldLoadTemplateDetailHtmlPreviewInHappyDom())
     ) {
       return;
     }
@@ -2958,16 +3035,18 @@ function TemplatePreviewPage({
       pendingLoad = loadPresentationTemplateHtmlPreview({ item });
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
-    setDetailPreview({
-      slug: item.slug,
-      embedUrl: item.embedUrl,
-      themeId: selectedTheme.id,
-      index: activeSlideIndex,
-      loading: true,
-      failed: false,
-      frameUrl: null,
-      slideCount: fallbackSlideCount,
-    });
+    if (visibleDetailPreview?.loading !== true) {
+      setDetailPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: selectedTheme.id,
+        index: activeSlideIndex,
+        loading: true,
+        failed: false,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+    }
     detach(
       (async () => {
         const result = await settle(pendingLoad);
@@ -3048,16 +3127,18 @@ function TemplatePreviewPage({
 
   return (
     <>
-      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
+      <DialogHeader className="shrink-0 border-b border-border py-4 pl-5 pr-16">
+        <DialogTitle className="flex min-w-0 items-center gap-2 text-base leading-none">
           <button
             type="button"
-            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
             Template
-          </button>{" "}
-          <span className="min-w-0 truncate">{item.title}</span>
+          </button>
+          <span className="block min-w-0 flex-1 truncate leading-none">
+            {item.title}
+          </span>
         </DialogTitle>
       </DialogHeader>
       <div
@@ -3115,7 +3196,8 @@ function TemplatePreviewPage({
                 item,
                 slideIndex,
               );
-              const thumbnailHtml = thumbnailPreviewHtmls[slideIndex] ?? null;
+              const thumbnailSlide =
+                cachedDetailDraft?.slides[slideIndex] ?? null;
               return (
                 <button
                   key={slideNumber}
@@ -3133,8 +3215,9 @@ function TemplatePreviewPage({
                   )}
                 >
                   <PresentationTemplateShadowThumbnail
+                    draft={cachedDetailDraft}
                     fallbackImage={thumbnailImage}
-                    html={thumbnailHtml}
+                    slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
                     title={`${item.title} slide ${slideNumber} preview`}
                   />
@@ -3272,7 +3355,7 @@ function PptCard({
   item: PresentationTemplateItem;
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
   return (
@@ -3933,7 +4016,7 @@ function PptTemplateGrid({
   items: PresentationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -3977,6 +4060,7 @@ function TemplatePickerDialog({
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -3985,7 +4069,7 @@ function TemplatePickerDialog({
     }) ?? null;
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
-    "p-0 gap-0 overflow-hidden",
+    "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     // The auto-rendered close button defaults to top-4, which is tuned for the
     // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
     // 36px (size-9) close button within the 50px header.
@@ -4078,8 +4162,9 @@ function TemplatePickerDialog({
     onClose();
   };
 
-  const handlePreview = (item: PresentationTemplateItem) => {
+  const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
     setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
+    setDetailSlideIndex(item.slug, Math.max(0, Math.floor(slideIndex)));
     setPreviewSlug(item.slug);
   };
 

@@ -158,6 +158,23 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Sheets read and search permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-sheets");
+
+    expect(policy.policies["spreadsheets.read"]).toBe("allow");
+    expect(policy.policies["spreadsheets.read-by-data-filter"]).toBe("allow");
+    expect(policy.policies["values.read"]).toBe("allow");
+    expect(policy.policies["values.read-by-data-filter"]).toBe("allow");
+    expect(policy.policies["developer-metadata.read"]).toBe("allow");
+    expect(policy.policies["developer-metadata.search"]).toBe("allow");
+    expect(policy.policies["spreadsheets.create"]).toBe("deny");
+    expect(policy.policies["spreadsheets.write"]).toBe("deny");
+    expect(policy.policies["values.write"]).toBe("deny");
+    expect(policy.policies["values.clear"]).toBe("deny");
+    expect(policy.policies["sheets.copy"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -232,6 +249,7 @@ describe("resolveFirewallPolicies", () => {
       "google-cloud",
       "google-docs",
       "google-meet",
+      "google-sheets",
       "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
@@ -240,6 +258,7 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-docs"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-meet"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-sheets"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
 

@@ -1246,7 +1246,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.39.3"
+version = "0.40.0"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.2.5"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2336,9 +2336,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.126.0"
+version = "0.127.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",

@@ -2,7 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { getAllConnectorFirewalls, getConnectorFirewall } from "../firewalls";
+import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+import * as defaultFirewallEntrypoint from "../firewalls";
+import { getConnectorFirewall } from "../firewalls";
 import {
   isRuntimeFirewallConnectorType,
   loadConnectorFirewall,
@@ -70,6 +72,33 @@ describe("firewall runtime loader", () => {
       types: "./src/firewall-runtime.ts",
     });
     expect(rootEntrypoint).not.toContain("firewalls/runtime");
+  });
+
+  it("keeps all-catalog access behind an explicit package subpath", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+
+    expect(packageJson.exports["./firewalls/all"]).toStrictEqual({
+      import: "./src/firewall-runtime-all.ts",
+      types: "./src/firewall-runtime-all.ts",
+    });
+    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+      "getAllConnectorFirewalls",
+    );
+    expect(staticValueModuleSpecifiers(rootEntrypoint)).not.toContain(
+      "./firewall-runtime-all",
+    );
+    expect(staticValueModuleSpecifiers(rootEntrypoint)).not.toContain(
+      "./firewalls/all",
+    );
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

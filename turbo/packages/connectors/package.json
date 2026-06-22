@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.100.0",
+  "version": "1.101.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -51,6 +51,10 @@
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"
+    },
+    "./firewalls/all": {
+      "import": "./src/firewall-runtime-all.ts",
+      "types": "./src/firewall-runtime-all.ts"
     },
     "./firewalls/runtime": {
       "import": "./src/firewall-runtime.ts",

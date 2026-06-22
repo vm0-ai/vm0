@@ -13,6 +13,7 @@ const CATEGORIZED_CONNECTORS = [
   "google-cloud",
   "google-drive",
   "google-meet",
+  "google-sheets",
   "slack",
   "gmail",
   "stripe",

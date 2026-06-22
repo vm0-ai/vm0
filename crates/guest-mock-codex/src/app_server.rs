@@ -3,16 +3,36 @@ use chrono::Utc;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
+use std::process::Command;
+use std::thread;
 use uuid::Uuid;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
+const LARGE_NOTIFICATION_MESSAGE_BYTES: usize = 17 * 1024 * 1024;
+const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
+const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scenario {
     Success,
     DisconnectAfterInitialize,
     ExitOnTurnStart,
+    InterleavedNotification,
+    InvalidResponseId,
+    MalformedErrorResponse,
+    MalformedInitializeResult,
+    LargeNotificationBeforeResponse,
+    HangAfterInitializeResponse,
+    HangOnThreadStart,
+    MalformedStdout,
+    HangOnStdinEof,
+    NullIdServerRequestBeforeResponse,
+    NotificationOverflow,
+    OversizedStdout,
+    ServerRequestBeforeResponse,
+    StderrHolderOnStdinEof,
+    UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
 }
@@ -24,6 +44,23 @@ impl Scenario {
             Ok(value) => match value.as_str() {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
+                "interleaved-notification" => Ok(Self::InterleavedNotification),
+                "invalid-response-id" => Ok(Self::InvalidResponseId),
+                "malformed-error-response" => Ok(Self::MalformedErrorResponse),
+                "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
+                "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
+                "hang-after-initialize-response" => Ok(Self::HangAfterInitializeResponse),
+                "hang-on-thread-start" => Ok(Self::HangOnThreadStart),
+                "malformed-stdout" => Ok(Self::MalformedStdout),
+                "hang-on-stdin-eof" => Ok(Self::HangOnStdinEof),
+                "null-id-server-request-before-response" => {
+                    Ok(Self::NullIdServerRequestBeforeResponse)
+                }
+                "notification-overflow" => Ok(Self::NotificationOverflow),
+                "oversized-stdout" => Ok(Self::OversizedStdout),
+                "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
+                "stderr-holder-on-stdin-eof" => Ok(Self::StderrHolderOnStdinEof),
+                "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 _ => Err(io::Error::new(
@@ -61,7 +98,16 @@ struct AppServerState {
     session_artifact_thread_ids: BTreeMap<String, String>,
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
+    initialized_notification_received: bool,
+    pending_response: Option<PendingResponse>,
+    server_request_responses: Vec<Value>,
     scenario: Scenario,
+}
+
+#[derive(Debug)]
+struct PendingResponse {
+    id: Value,
+    result: Value,
 }
 
 #[derive(Debug)]
@@ -79,6 +125,9 @@ impl AppServerState {
             session_artifact_thread_ids: BTreeMap::new(),
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
+            initialized_notification_received: false,
+            pending_response: None,
+            server_request_responses: Vec::new(),
             scenario,
         }
     }
@@ -96,6 +145,15 @@ impl AppServerState {
                 return Ok(());
             }
         }
+        match self.scenario {
+            Scenario::HangOnStdinEof => loop {
+                thread::park();
+            },
+            Scenario::StderrHolderOnStdinEof => {
+                spawn_stderr_holder()?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -104,17 +162,16 @@ impl AppServerState {
         message: Value,
         output: &mut W,
     ) -> io::Result<ServerAction> {
-        let method = message
-            .get("method")
-            .and_then(Value::as_str)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing method"))?;
-        let params = message.get("params").unwrap_or(&Value::Null);
-
-        if let Some(id) = message.get("id").cloned() {
-            self.handle_request(id, method, params, output)
+        if let Some(method) = message.get("method").and_then(Value::as_str) {
+            let params = message.get("params").unwrap_or(&Value::Null);
+            if let Some(id) = message.get("id").cloned() {
+                self.handle_request(id, method, params, output)
+            } else {
+                self.handle_notification(method);
+                Ok(ServerAction::Continue)
+            }
         } else {
-            self.handle_notification(method);
-            Ok(ServerAction::Continue)
+            self.handle_client_response(message, output)
         }
     }
 
@@ -135,8 +192,33 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, message)?;
                     return Ok(ServerAction::Continue);
                 }
+                if self.scenario == Scenario::MalformedStdout {
+                    writeln!(output, "{{not-valid-json")?;
+                    output.flush()?;
+                    return Ok(ServerAction::Stop);
+                }
+                if self.scenario == Scenario::OversizedStdout {
+                    writeln!(output, "{}", "x".repeat(OVERSIZED_STDOUT_BYTES))?;
+                    output.flush()?;
+                    return Ok(ServerAction::Stop);
+                }
+                if self.scenario == Scenario::MalformedInitializeResult {
+                    write_json_line(
+                        output,
+                        &json!({
+                            "id": id,
+                            "result": "do-not-log-malformed-initialize-result"
+                        }),
+                    )?;
+                    return Ok(ServerAction::Continue);
+                }
                 self.initialized = true;
                 write_success(output, id, initialize_response())?;
+                if self.scenario == Scenario::HangAfterInitializeResponse {
+                    loop {
+                        thread::park();
+                    }
+                }
                 if self.scenario == Scenario::DisconnectAfterInitialize {
                     return Ok(ServerAction::Stop);
                 }
@@ -147,9 +229,68 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
                     return Ok(ServerAction::Continue);
                 }
+                if self.scenario == Scenario::HangOnThreadStart {
+                    loop {
+                        thread::park();
+                    }
+                }
                 let thread_id = Uuid::now_v7().to_string();
                 self.set_current_thread(thread_id.clone());
-                write_success(output, id, thread_response(&thread_id, false))?;
+                let result = thread_response(&thread_id, false);
+                match self.scenario {
+                    Scenario::InvalidResponseId => {
+                        write_success(
+                            output,
+                            json!({ "secret": "do-not-log-invalid-response-id" }),
+                            result,
+                        )?;
+                    }
+                    Scenario::MalformedErrorResponse => {
+                        write_json_line(
+                            output,
+                            &json!({
+                                "id": id,
+                                "error": "do-not-log-malformed-error-payload"
+                            }),
+                        )?;
+                    }
+                    Scenario::InterleavedNotification => {
+                        write_json_line(output, &server_notification())?;
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::LargeNotificationBeforeResponse => {
+                        write_json_line(output, &large_server_notification())?;
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::ServerRequestBeforeResponse
+                    | Scenario::NullIdServerRequestBeforeResponse => {
+                        let request_id =
+                            if self.scenario == Scenario::NullIdServerRequestBeforeResponse {
+                                Value::Null
+                            } else {
+                                json!("guest-mock-codex-server-request-1")
+                            };
+                        write_json_line(output, &server_request(request_id))?;
+                        self.pending_response = Some(PendingResponse { id, result });
+                    }
+                    Scenario::NotificationOverflow => {
+                        for index in 0..NOTIFICATION_OVERFLOW_COUNT {
+                            write_json_line(output, &server_notification_with_index(index))?;
+                        }
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::UnknownResponseBeforeResponse => {
+                        write_success(
+                            output,
+                            json!("do-not-log-unknown-response-id"),
+                            json!({ "ignored": true }),
+                        )?;
+                        write_success(output, id, result)?;
+                    }
+                    _ => {
+                        write_success(output, id, result)?;
+                    }
+                }
                 Ok(ServerAction::Continue)
             }
             "thread/resume" => {
@@ -281,6 +422,18 @@ impl AppServerState {
                 )?;
                 Ok(ServerAction::Continue)
             }
+            "mock/state" => {
+                write_success(
+                    output,
+                    id,
+                    json!({
+                        "initializedNotificationReceived": self.initialized_notification_received,
+                        "serverRequestResponses": &self.server_request_responses,
+                        "hasPendingResponse": self.pending_response.is_some(),
+                    }),
+                )?;
+                Ok(ServerAction::Continue)
+            }
             _ => {
                 write_error(output, id, METHOD_NOT_FOUND, "unsupported method")?;
                 Ok(ServerAction::Continue)
@@ -288,10 +441,46 @@ impl AppServerState {
         }
     }
 
-    fn handle_notification(&mut self, _method: &str) {
+    fn handle_client_response<W: Write>(
+        &mut self,
+        message: Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if message.get("id").is_none()
+            || (message.get("result").is_none() && message.get("error").is_none())
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "missing method"));
+        }
+
+        if !matches!(
+            self.scenario,
+            Scenario::ServerRequestBeforeResponse | Scenario::NullIdServerRequestBeforeResponse
+        ) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        }
+
+        let Some(pending) = self.pending_response.take() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        };
+        self.server_request_responses.push(message);
+        write_success(output, pending.id, pending.result)?;
+
+        Ok(ServerAction::Continue)
+    }
+
+    fn handle_notification(&mut self, method: &str) {
         // The client sends `initialized` after the `initialize` request. It
         // must not substitute for the request itself because later requests
         // need initialize response state to exist.
+        if method == "initialized" {
+            self.initialized_notification_received = true;
+        }
     }
 
     fn set_current_thread(&mut self, thread_id: String) {
@@ -346,6 +535,12 @@ fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {
     if client_info.get("version").and_then(Value::as_str).is_none() {
         return Err("missing clientInfo.version");
     }
+    let Some(capabilities) = params.get("capabilities") else {
+        return Err("missing capabilities");
+    };
+    if capabilities.get("experimentalApi").and_then(Value::as_bool) != Some(true) {
+        return Err("missing capabilities.experimentalApi");
+    }
     Ok(())
 }
 
@@ -371,6 +566,44 @@ fn thread_response(thread_id: &str, resume: bool) -> Value {
         fields.insert("initialTurnsPage".to_string(), Value::Null);
     }
     response
+}
+
+fn server_notification() -> Value {
+    server_notification_with_index(0)
+}
+
+fn server_notification_with_index(index: usize) -> Value {
+    json!({
+        "method": "experimental/server-notification",
+        "params": {
+            "message": "guest-mock-codex notification",
+            "index": index
+        }
+    })
+}
+
+fn large_server_notification() -> Value {
+    json!({
+        "method": "experimental/server-notification",
+        "params": {
+            "message": "x".repeat(LARGE_NOTIFICATION_MESSAGE_BYTES),
+        }
+    })
+}
+
+fn server_request(id: Value) -> Value {
+    json!({
+        "id": id,
+        "method": "experimental/server-request",
+        "params": {
+            "message": "guest-mock-codex server request"
+        }
+    })
+}
+
+fn spawn_stderr_holder() -> io::Result<()> {
+    let _child = Command::new("tail").args(["-f", "/dev/null"]).spawn()?;
+    Ok(())
 }
 
 fn thread(thread_id: &str) -> Value {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.3...guest-agent-v0.40.0) (2026-06-22)
+
+
+### Features
+
+* add Codex app-server JSON-RPC client ([#18428](https://github.com/vm0-ai/vm0/issues/18428)) ([8c49a61](https://github.com/vm0-ai/vm0/commit/8c49a6119ad8a6fe483d518ea7f4436114b18082))
+
 ## [0.39.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.2...guest-agent-v0.39.3) (2026-06-22)
 
 

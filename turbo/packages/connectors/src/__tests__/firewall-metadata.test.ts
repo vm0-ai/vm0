@@ -38,13 +38,13 @@ import {
 import {
   BILLABLE_CONNECTORS,
   getAllBuiltinConnectorHosts,
-  getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
   groupPermissionsByCategory,
   resolveFirewallPolicies,
   type FirewallConnectorType,
 } from "../firewalls";
+import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
 
 const FORBIDDEN_METADATA_KEYS = new Set([
   "auth",
@@ -537,10 +537,17 @@ describe("firewall metadata", () => {
   });
 
   it("keeps server permission indexes aligned with generated summaries", async () => {
+    const loadedIndexes = await Promise.all(
+      Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {
+        return [type, await loadFirewallPermissionIndex(type)] as const;
+      }),
+    );
+    const indexesByType = Object.fromEntries(loadedIndexes);
+
     for (const [type, summary] of Object.entries(
       FIREWALL_PERMISSION_METADATA_SUMMARIES,
     )) {
-      const index = await loadFirewallPermissionIndex(type);
+      const index = indexesByType[type];
       expect(index).not.toBeNull();
       expect(index!.type).toBe(type);
       expect(index!.label).toBe(summary.label);
