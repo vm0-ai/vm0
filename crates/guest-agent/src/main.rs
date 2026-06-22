@@ -424,23 +424,34 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
 }
 
 fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
-    const MARKER: &str = "api error: 529";
+    const MARKER: &str = "api error:";
     normalized.match_indices(MARKER).any(|(index, _)| {
-        let detail = &normalized[index + MARKER.len()..];
-        let detail = detail
-            .trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'));
-        starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
+        claude_529_error_detail(&normalized[index + MARKER.len()..]).is_some_and(|detail| {
+            starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
+        })
     })
 }
 
+fn claude_529_error_detail(detail: &str) -> Option<&str> {
+    let detail = trim_error_detail_start(detail);
+    let detail = if let Some(remaining) = strip_word_prefix(detail, "repeated") {
+        trim_error_detail_start(remaining)
+    } else {
+        detail
+    };
+    let detail = detail.strip_prefix("529")?;
+    if detail.chars().next().is_some_and(is_error_type_char) {
+        return None;
+    }
+    Some(trim_error_detail_start(detail))
+}
+
+fn trim_error_detail_start(detail: &str) -> &str {
+    detail.trim_start_matches(|c: char| c.is_ascii_whitespace() || matches!(c, ':' | '-' | '.'))
+}
+
 fn starts_with_overloaded_word(detail: &str) -> bool {
-    const TOKEN: &str = "overloaded";
-    detail.strip_prefix(TOKEN).is_some_and(|remaining| {
-        remaining
-            .chars()
-            .next()
-            .is_none_or(|c| !is_error_type_char(c))
-    })
+    strip_word_prefix(detail, "overloaded").is_some()
 }
 
 fn contains_overloaded_error_type(detail: &str) -> bool {
@@ -449,6 +460,15 @@ fn contains_overloaded_error_type(detail: &str) -> bool {
         let before = detail[..index].chars().next_back();
         let after = detail[index + TOKEN.len()..].chars().next();
         !before.is_some_and(is_error_type_char) && !after.is_some_and(is_error_type_char)
+    })
+}
+
+fn strip_word_prefix<'a>(text: &'a str, token: &str) -> Option<&'a str> {
+    text.strip_prefix(token).filter(|remaining| {
+        remaining
+            .chars()
+            .next()
+            .is_none_or(|c| !is_error_type_char(c))
     })
 }
 
@@ -1319,8 +1339,47 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_claude_repeated_529_provider_overloaded() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: Repeated 529 Overloaded errors. The API is at capacity - this is usually temporary.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
     fn cli_failure_reason_classifies_claude_result_provider_overloaded_diagnostic() {
         let message = "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_repeated_529_provider_overloaded_diagnostic() {
+        let message = "API Error: Repeated 529 Overloaded errors. The API is at capacity - this is usually temporary.";
         let msg = cli_failure_message(
             1,
             &["background stderr noise".to_string()],
@@ -1445,6 +1504,18 @@ mod tests {
         );
 
         assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_repeated_claude_529_false_overloaded_text() {
+        for message in [
+            "API Error: Repeated 529 not overloaded errors.",
+            "API Error: Repeated 529 overloadedness check failed.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
