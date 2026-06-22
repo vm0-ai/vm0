@@ -11,6 +11,7 @@ pub struct FailureDiagnostic {
     pub failure_class: FailureClass,
     pub framework: AgentFramework,
     pub cli_exit_code: Option<i32>,
+    pub cli_termination: Option<CliTerminationDiagnostic>,
     pub claude_num_turns: Option<u64>,
     pub failure_detail_source: Option<FailureDetailSource>,
     pub failure_reason: Option<FailureReason>,
@@ -32,6 +33,7 @@ impl FailureDiagnostic {
             failure_class,
             framework,
             cli_exit_code: None,
+            cli_termination: None,
             claude_num_turns: None,
             failure_detail_source: None,
             failure_reason: None,
@@ -45,6 +47,12 @@ impl FailureDiagnostic {
     #[must_use]
     pub fn with_cli_exit_code(mut self, cli_exit_code: i32) -> Self {
         self.cli_exit_code = Some(cli_exit_code);
+        self
+    }
+
+    #[must_use]
+    pub fn with_cli_termination(mut self, cli_termination: CliTerminationDiagnostic) -> Self {
+        self.cli_termination = Some(cli_termination);
         self
     }
 
@@ -76,6 +84,110 @@ impl FailureDiagnostic {
     ) -> Self {
         self.session_history_status = session_history_status;
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTerminationDiagnostic {
+    pub initiator: CliTerminationInitiator,
+    pub reason: CliTerminationReason,
+    pub signal_sent: Option<CliTerminationSignal>,
+    pub signal_pgid: Option<i32>,
+    pub signal_grace_ms: Option<u64>,
+    pub escalated: bool,
+    pub observed_exit_code: Option<i32>,
+}
+
+impl CliTerminationDiagnostic {
+    #[must_use]
+    pub const fn new(reason: CliTerminationReason) -> Self {
+        Self {
+            initiator: CliTerminationInitiator::GuestAgent,
+            reason,
+            signal_sent: None,
+            signal_pgid: None,
+            signal_grace_ms: None,
+            escalated: false,
+            observed_exit_code: None,
+        }
+    }
+
+    #[must_use]
+    pub fn record_signal(
+        mut self,
+        signal_sent: CliTerminationSignal,
+        signal_pgid: Option<i32>,
+        signal_grace_ms: Option<u64>,
+    ) -> Self {
+        if self.signal_sent.is_some() || matches!(signal_sent, CliTerminationSignal::Sigkill) {
+            self.escalated = true;
+        }
+        self.signal_sent = Some(signal_sent);
+        self.signal_pgid = signal_pgid;
+        self.signal_grace_ms = signal_grace_ms;
+        self
+    }
+
+    #[must_use]
+    pub fn with_observed_exit_code(mut self, observed_exit_code: i32) -> Self {
+        self.observed_exit_code = Some(observed_exit_code);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CliTerminationInitiator {
+    GuestAgent,
+}
+
+impl CliTerminationInitiator {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GuestAgent => "guest_agent",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CliTerminationReason {
+    PostResultReap,
+    StuckToolWatchdog,
+    HeartbeatError,
+    HeartbeatPanic,
+    InitialPromptStdin,
+}
+
+impl CliTerminationReason {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PostResultReap => "post_result_reap",
+            Self::StuckToolWatchdog => "stuck_tool_watchdog",
+            Self::HeartbeatError => "heartbeat_error",
+            Self::HeartbeatPanic => "heartbeat_panic",
+            Self::InitialPromptStdin => "initial_prompt_stdin",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CliTerminationSignal {
+    Sigterm,
+    Sigkill,
+}
+
+impl CliTerminationSignal {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sigterm => "sigterm",
+            Self::Sigkill => "sigkill",
+        }
     }
 }
 
@@ -308,6 +420,62 @@ mod tests {
     }
 
     #[test]
+    fn failure_diagnostic_serializes_cli_termination() {
+        let cli_termination = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
+            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
+            .with_observed_exit_code(143);
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(143)
+        .with_cli_termination(cli_termination);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(
+            json["cliTermination"],
+            serde_json::json!({
+                "initiator": "guest_agent",
+                "reason": "post_result_reap",
+                "signalSent": "sigterm",
+                "signalPgid": 1401,
+                "signalGraceMs": 10_000,
+                "escalated": false,
+                "observedExitCode": 143
+            })
+        );
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_reason_and_cli_termination_reason_are_independent() {
+        let cli_termination =
+            CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
+                .record_signal(CliTerminationSignal::Sigkill, Some(234), Some(1_000))
+                .with_observed_exit_code(137);
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(137)
+        .with_failure_reason(FailureReason::ProviderOverloaded)
+        .with_cli_termination(cli_termination);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "provider_overloaded");
+        assert_eq!(json["cliTermination"]["reason"], "stuck_tool_watchdog");
+        assert_eq!(json["cliTermination"]["signalSent"], "sigkill");
+        assert_eq!(json["cliTermination"]["escalated"], true);
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
     fn failure_diagnostic_serializes_usage_limit_reason() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -415,5 +583,6 @@ mod tests {
 
         assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
+        assert_eq!(diagnostic.cli_termination, None);
     }
 }

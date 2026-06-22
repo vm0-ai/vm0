@@ -36,7 +36,10 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use agent_diagnostics::{FailureDetailSource, FailureReason};
+use agent_diagnostics::{
+    CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
+    CliTerminationSignal, FailureDetailSource, FailureReason,
+};
 use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
@@ -158,7 +161,7 @@ pub struct CliFailureDiagnostic {
 ///
 /// The guest agent uses this summary to report final run status and to persist
 /// the event-drain watermark consumed by host/API clients.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliExecutionResult {
     /// Process exit code for the CLI.
     ///
@@ -197,6 +200,14 @@ pub struct CliExecutionResult {
     /// stderr. Keeping the diagnostic here lets the guest-agent surface the
     /// actual failure reason in its final run error.
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
+
+    /// Guest-agent control-path error that caused the CLI process group to be
+    /// terminated after a meaningful process summary could still be collected.
+    pub control_error: Option<AgentError>,
+
+    /// Structured attribution for guest-agent initiated CLI process-group
+    /// termination.
+    pub cli_termination: Option<CliTerminationDiagnostic>,
 }
 
 /// Heartbeat completion signal observed by [`execute_cli`].
@@ -387,6 +398,7 @@ async fn execute_cli_inner(
     tokio::pin!(termination_deadline);
     let mut termination_state = TerminationState::Idle;
     let mut termination_error: Option<AgentError> = None;
+    let mut cli_termination: Option<CliTerminationDiagnostic> = None;
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
@@ -459,9 +471,17 @@ async fn execute_cli_inner(
                             "Claude stdin writer failed, SIGTERM pgid={}: {error}",
                             pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
+                        record_cli_termination_signal(
+                            &mut cli_termination,
+                            TerminationReason::InitialPromptStdin,
+                            CliTerminationSignal::Sigterm,
+                            pgid,
+                            env::post_result_sigkill_grace_secs(),
+                        );
                         if let Some(pid) = pgid {
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
+                        termination_error = Some(error);
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -480,9 +500,19 @@ async fn execute_cli_inner(
                             "Claude stdin writer task failed, SIGTERM pgid={}: {error}",
                             pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
+                        record_cli_termination_signal(
+                            &mut cli_termination,
+                            TerminationReason::InitialPromptStdin,
+                            CliTerminationSignal::Sigterm,
+                            pgid,
+                            env::post_result_sigkill_grace_secs(),
+                        );
                         if let Some(pid) = pgid {
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
+                        termination_error = Some(AgentError::Execution(format!(
+                            "Claude stdin writer task failed: {error}"
+                        )));
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -709,6 +739,13 @@ async fn execute_cli_inner(
                                     reason.label()
                                 );
                             }
+                            record_cli_termination_signal(
+                                &mut cli_termination,
+                                reason,
+                                CliTerminationSignal::Sigterm,
+                                pgid,
+                                grace,
+                            );
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
                         termination_state = TerminationState::SigkillPending { reason };
@@ -724,6 +761,13 @@ async fn execute_cli_inner(
                                 LOG_TAG,
                                 "CLI did not exit after {} SIGTERM+{grace}s, SIGKILL pgid={pid}",
                                 reason.label()
+                            );
+                            record_cli_termination_signal(
+                                &mut cli_termination,
+                                reason,
+                                CliTerminationSignal::Sigkill,
+                                pgid,
+                                grace,
                             );
                             unsafe { libc::kill(-pid, libc::SIGKILL); }
                         }
@@ -776,6 +820,13 @@ async fn execute_cli_inner(
                         "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={}",
                         pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                     );
+                    record_cli_termination_signal(
+                        &mut cli_termination,
+                        TerminationReason::StuckTool,
+                        CliTerminationSignal::Sigterm,
+                        pgid,
+                        env::post_result_sigkill_grace_secs(),
+                    );
                     if let Some(pid) = pgid {
                         unsafe { libc::kill(-pid, libc::SIGTERM); }
                     }
@@ -808,6 +859,13 @@ async fn execute_cli_inner(
                                 "Heartbeat failed, SIGTERM pgid={}",
                                 pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
+                            record_cli_termination_signal(
+                                &mut cli_termination,
+                                TerminationReason::HeartbeatError,
+                                CliTerminationSignal::Sigterm,
+                                pgid,
+                                env::post_result_sigkill_grace_secs(),
+                            );
                             if let Some(pid) = pgid {
                                 unsafe { libc::kill(-pid, libc::SIGTERM); }
                             }
@@ -833,6 +891,13 @@ async fn execute_cli_inner(
                                 "Heartbeat task panicked, SIGTERM pgid={}",
                                 pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
+                            record_cli_termination_signal(
+                                &mut cli_termination,
+                                TerminationReason::HeartbeatPanic,
+                                CliTerminationSignal::Sigterm,
+                                pgid,
+                                env::post_result_sigkill_grace_secs(),
+                            );
                             if let Some(pid) = pgid {
                                 unsafe { libc::kill(-pid, libc::SIGTERM); }
                             }
@@ -853,6 +918,13 @@ async fn execute_cli_inner(
                                 LOG_TAG,
                                 "Heartbeat task stopped before reporting status, SIGTERM pgid={}",
                                 pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            record_cli_termination_signal(
+                                &mut cli_termination,
+                                TerminationReason::HeartbeatPanic,
+                                CliTerminationSignal::Sigterm,
+                                pgid,
+                                env::post_result_sigkill_grace_secs(),
                             );
                             if let Some(pid) = pgid {
                                 unsafe { libc::kill(-pid, libc::SIGTERM); }
@@ -897,9 +969,11 @@ async fn execute_cli_inner(
         }
     }
 
-    let event_result = match termination_error {
-        Some(err) => Err(err),
-        None => event_result,
+    let has_control_error = termination_error.is_some();
+    let event_error = if has_control_error {
+        None
+    } else {
+        event_result.err()
     };
 
     // Close the channel so the background sender can finish.
@@ -907,7 +981,7 @@ async fn execute_cli_inner(
     // so we drop unsent events to avoid stalling on retries.
     drop(event_tx);
     let mut last_event_sequence = None;
-    if event_result.is_ok() {
+    if event_error.is_none() && !has_control_error {
         match event_sender.await {
             Ok(sequence) => {
                 last_event_sequence = sequence;
@@ -982,8 +1056,12 @@ async fn execute_cli_inner(
     };
     let masked_stderr_lines = masker.mask_diagnostic_lines(stderr_lines);
 
-    // If event loop had an error, propagate it
-    event_result?;
+    let cli_termination =
+        cli_termination.map(|diagnostic| diagnostic.with_observed_exit_code(exit_code));
+
+    if let Some(err) = event_error {
+        return Err(err);
+    }
 
     Ok(CliExecutionResult {
         exit_code,
@@ -991,7 +1069,33 @@ async fn execute_cli_inner(
         last_event_sequence,
         claude_result,
         failure_diagnostic,
+        control_error: termination_error,
+        cli_termination,
     })
+}
+
+fn record_cli_termination_signal(
+    cli_termination: &mut Option<CliTerminationDiagnostic>,
+    reason: TerminationReason,
+    signal: CliTerminationSignal,
+    pgid: Option<i32>,
+    grace_secs: u64,
+) {
+    let diagnostic = cli_termination
+        .take()
+        .unwrap_or_else(|| CliTerminationDiagnostic::new(diagnostic_termination_reason(reason)));
+    *cli_termination =
+        Some(diagnostic.record_signal(signal, pgid, Some(grace_secs.saturating_mul(1000))));
+}
+
+fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTerminationReason {
+    match reason {
+        TerminationReason::PostResult => DiagnosticTerminationReason::PostResultReap,
+        TerminationReason::InitialPromptStdin => DiagnosticTerminationReason::InitialPromptStdin,
+        TerminationReason::StuckTool => DiagnosticTerminationReason::StuckToolWatchdog,
+        TerminationReason::HeartbeatError => DiagnosticTerminationReason::HeartbeatError,
+        TerminationReason::HeartbeatPanic => DiagnosticTerminationReason::HeartbeatPanic,
+    }
 }
 
 fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
@@ -1062,10 +1166,13 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, claude_initial_prompt_frame, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        CliFailureDiagnostic, TerminationReason, claude_initial_prompt_frame,
+        record_cli_termination_signal, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
     };
-    use agent_diagnostics::{FailureDetailSource, FailureReason};
+    use agent_diagnostics::{
+        CliTerminationReason, CliTerminationSignal, FailureDetailSource, FailureReason,
+    };
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
@@ -1098,6 +1205,42 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .expect("uuid");
         uuid::Uuid::parse_str(uuid).expect("valid uuid");
+    }
+
+    #[test]
+    fn cli_termination_signal_records_initial_prompt_stdin_and_escalation() {
+        let mut diagnostic = None;
+
+        record_cli_termination_signal(
+            &mut diagnostic,
+            TerminationReason::InitialPromptStdin,
+            CliTerminationSignal::Sigterm,
+            Some(42),
+            1,
+        );
+
+        let first = diagnostic.expect("diagnostic after SIGTERM");
+        assert_eq!(first.reason, CliTerminationReason::InitialPromptStdin);
+        assert_eq!(first.signal_sent, Some(CliTerminationSignal::Sigterm));
+        assert_eq!(first.signal_pgid, Some(42));
+        assert_eq!(first.signal_grace_ms, Some(1_000));
+        assert!(!first.escalated);
+
+        let mut diagnostic = Some(first);
+        record_cli_termination_signal(
+            &mut diagnostic,
+            TerminationReason::InitialPromptStdin,
+            CliTerminationSignal::Sigkill,
+            Some(42),
+            2,
+        );
+
+        let escalated = diagnostic.expect("diagnostic after SIGKILL");
+        assert_eq!(escalated.reason, CliTerminationReason::InitialPromptStdin);
+        assert_eq!(escalated.signal_sent, Some(CliTerminationSignal::Sigkill));
+        assert_eq!(escalated.signal_pgid, Some(42));
+        assert_eq!(escalated.signal_grace_ms, Some(2_000));
+        assert!(escalated.escalated);
     }
 
     #[tokio::test]

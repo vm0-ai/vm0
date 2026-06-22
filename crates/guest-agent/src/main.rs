@@ -15,8 +15,8 @@ use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use agent_diagnostics::{
-    AgentFramework, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
-    PromptMetadata, SessionHistoryStatus,
+    AgentFramework, CliTerminationDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic,
+    FailureReason, PromptMetadata, SessionHistoryStatus,
 };
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -216,7 +216,16 @@ async fn execute(
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
             let cli_exit_code = cli_result.exit_code;
-            if cli_exit_code != 0 {
+            if let Some(control_error) = cli_result.control_error.as_ref() {
+                let msg = control_error.to_string();
+                let diagnostic = cli_result_failure_diagnostic(
+                    FailureClass::CliExecutionError,
+                    cli_exit_code,
+                    cli_result.claude_result,
+                );
+                let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
+                (cli_exit_code, 1, msg, false, Some(diagnostic))
+            } else if cli_exit_code != 0 {
                 let failure_message = cli_failure_message(
                     cli_exit_code,
                     &cli_result.stderr_lines,
@@ -228,6 +237,7 @@ async fn execute(
                     cli_result.claude_result,
                 )
                 .with_failure_detail_source(failure_message.source);
+                let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 let diagnostic = with_cli_failure_reason(
                     diagnostic,
                     failure_message.message.as_str(),
@@ -315,6 +325,17 @@ fn is_claude_zero_turn_result(
         && cli_result
             .claude_result
             .is_some_and(|result| result.num_turns == Some(0))
+}
+
+fn with_cli_termination(
+    diagnostic: FailureDiagnostic,
+    cli_termination: Option<CliTerminationDiagnostic>,
+) -> FailureDiagnostic {
+    if let Some(cli_termination) = cli_termination {
+        diagnostic.with_cli_termination(cli_termination)
+    } else {
+        diagnostic
+    }
 }
 
 fn cli_result_failure_diagnostic(
@@ -1737,6 +1758,36 @@ mod tests {
     }
 
     #[test]
+    fn cli_termination_is_attached_without_changing_failure_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(143)
+        .with_failure_reason(FailureReason::ProviderOverloaded);
+        let termination =
+            CliTerminationDiagnostic::new(agent_diagnostics::CliTerminationReason::PostResultReap)
+                .record_signal(
+                    agent_diagnostics::CliTerminationSignal::Sigterm,
+                    Some(1401),
+                    Some(10_000),
+                )
+                .with_observed_exit_code(143);
+
+        let with_termination = with_cli_termination(diagnostic.clone(), Some(termination));
+        let unchanged = with_cli_termination(diagnostic.clone(), None);
+
+        assert_eq!(with_termination.failure_class, FailureClass::CliNonzero);
+        assert_eq!(
+            with_termination.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(with_termination.cli_termination, Some(termination));
+        assert_eq!(unchanged, diagnostic);
+    }
+
+    #[test]
     fn is_claude_zero_turn_result_requires_all_guards() {
         let zero_turn = cli::CliExecutionResult {
             exit_code: 0,
@@ -1744,14 +1795,26 @@ mod tests {
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
             failure_diagnostic: None,
+            control_error: None,
+            cli_termination: None,
         };
         let one_turn = cli::CliExecutionResult {
+            exit_code: 0,
+            stderr_lines: Vec::new(),
+            last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(1) }),
-            ..zero_turn.clone()
+            failure_diagnostic: None,
+            control_error: None,
+            cli_termination: None,
         };
         let failed_zero_turn = cli::CliExecutionResult {
             exit_code: 1,
-            ..zero_turn.clone()
+            stderr_lines: Vec::new(),
+            last_event_sequence: None,
+            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+            failure_diagnostic: None,
+            control_error: None,
+            cli_termination: None,
         };
 
         assert!(is_claude_zero_turn_result(
