@@ -35,6 +35,22 @@ fn write_codex_marker_path_file(
     thread_id: &str,
 ) -> Result<PathBuf, String> {
     let path_file = root.join("path.txt");
+    let sessions_dir = sessions_dir.to_string_lossy();
+    let marker = format!(
+        "CODEX_SEARCH_V2:{}:{sessions_dir}:{thread_id}",
+        sessions_dir.len()
+    );
+    std::fs::write(&path_file, marker.as_bytes())
+        .map_err(|e| format!("write {}: {e}", path_file.display()))?;
+    Ok(path_file)
+}
+
+fn write_legacy_codex_marker_path_file(
+    root: &Path,
+    sessions_dir: &Path,
+    thread_id: &str,
+) -> Result<PathBuf, String> {
+    let path_file = root.join("path.txt");
     let marker = format!(
         "CODEX_SEARCH:{}:{thread_id}",
         sessions_dir.to_string_lossy()
@@ -79,6 +95,72 @@ fn read_session_history_resolves_literal_codex_marker_end_to_end() {
     let bytes =
         guest_agent::session_history::read_session_history(path_file.to_str().unwrap()).unwrap();
     assert_eq!(bytes, history);
+}
+
+#[test]
+fn read_session_history_resolves_legacy_codex_marker_end_to_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let history = b"{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{VALID_CODEX_THREAD_ID}.jsonl"),
+        history,
+    )
+    .unwrap();
+
+    let path_file =
+        write_legacy_codex_marker_path_file(tmp.path(), &sessions_dir, VALID_CODEX_THREAD_ID)
+            .unwrap();
+
+    let bytes =
+        guest_agent::session_history::read_session_history(path_file.to_str().unwrap()).unwrap();
+    assert_eq!(bytes, history);
+}
+
+#[test]
+fn read_session_history_resolves_codex_marker_with_colon_in_sessions_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions:with:colon");
+    let history = b"{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{VALID_CODEX_THREAD_ID}.jsonl"),
+        history,
+    )
+    .unwrap();
+
+    let path_file =
+        write_codex_marker_path_file(tmp.path(), &sessions_dir, VALID_CODEX_THREAD_ID).unwrap();
+
+    let bytes =
+        guest_agent::session_history::read_session_history(path_file.to_str().unwrap()).unwrap();
+    assert_eq!(bytes, history);
+}
+
+#[test]
+fn read_session_history_rejects_malformed_codex_marker_without_literal_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path_file = tmp.path().join("path.txt");
+    std::fs::write(
+        &path_file,
+        format!("CODEX_SEARCH_V2:not-a-length:/tmp:{VALID_CODEX_THREAD_ID}"),
+    )
+    .unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("malformed codex marker must not fall back to literal path reads");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Invalid Codex session history marker"),
+        "expected invalid marker error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(VALID_CODEX_THREAD_ID),
+        "invalid marker error must not expose the thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -339,6 +421,31 @@ fn read_session_history_codex_marker_rejects_decorated_thread_id() {
     assert!(
         msg.contains("Codex session file not found"),
         "expected decorated thread id to fail fast, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_codex_marker_rejects_urn_thread_id_with_colons() {
+    let thread_id = format!("urn:uuid:{VALID_CODEX_THREAD_ID}");
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let misleading_dir = tmp.path().join("sessions:urn:uuid");
+    write_session_file(
+        &misleading_dir,
+        &["2026", "04", "28"],
+        &format!("{VALID_CODEX_THREAD_ID}.jsonl"),
+        b"history\n",
+    )
+    .unwrap();
+
+    let path_file = write_codex_marker_path_file(tmp.path(), &sessions_dir, &thread_id).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("urn codex thread id must not be split into a directory suffix");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected urn thread id to fail fast, got: {msg}"
     );
 }
 

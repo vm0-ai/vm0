@@ -365,9 +365,9 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///
 /// The on-disk format of `session_history_path_file()` differs by framework:
 /// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
-/// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
-///   doesn't write the session file until turn-completion, so resolution
-///   is deferred to checkpoint time.
+/// - Codex: length-prefixed `CODEX_SEARCH_V2:{dir_len}:{sessions_dir}:{thread_id}`
+///   marker — codex doesn't write the session file until turn-completion, so
+///   resolution is deferred to checkpoint time.
 pub(crate) struct SessionMetadataCapture {
     existing_session_id_seeded: bool,
 }

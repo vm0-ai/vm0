@@ -149,7 +149,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
     let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
         .expect("history-path file written");
     assert!(
-        marker.starts_with("CODEX_SEARCH:"),
+        marker.starts_with("CODEX_SEARCH_V2:"),
         "codex framework should write a marker, got: {marker}"
     );
     assert!(
@@ -172,7 +172,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "system log must not contain the raw thread id, got: {system_log}"
     );
     assert!(
-        !system_log.contains("CODEX_SEARCH:"),
+        !system_log.contains("CODEX_SEARCH"),
         "system log must not contain the codex marker payload, got: {system_log}"
     );
     assert!(
