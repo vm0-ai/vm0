@@ -120,7 +120,16 @@ impl CliTerminationDiagnostic {
         signal_pgid: Option<i32>,
         signal_grace_ms: Option<u64>,
     ) -> Self {
-        if self.signal_sent.is_some() || matches!(signal_sent, CliTerminationSignal::Sigkill) {
+        if matches!(
+            (self.signal_sent, signal_sent),
+            (
+                Some(CliTerminationSignal::Sigkill),
+                CliTerminationSignal::Sigterm
+            )
+        ) {
+            return self;
+        }
+        if matches!(signal_sent, CliTerminationSignal::Sigkill) {
             self.escalated = true;
         }
         self.signal_sent = Some(signal_sent);
@@ -473,6 +482,31 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn cli_termination_repeated_sigterm_does_not_mark_escalated() {
+        let diagnostic = CliTerminationDiagnostic::new(CliTerminationReason::HeartbeatError)
+            .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
+            .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(2_000));
+
+        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigterm));
+        assert_eq!(diagnostic.signal_pgid, Some(42));
+        assert_eq!(diagnostic.signal_grace_ms, Some(2_000));
+        assert!(!diagnostic.escalated);
+    }
+
+    #[test]
+    fn cli_termination_sigkill_is_not_downgraded_by_late_sigterm() {
+        let diagnostic = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
+            .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(10_000))
+            .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
+            .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(10_000));
+
+        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigkill));
+        assert_eq!(diagnostic.signal_pgid, Some(42));
+        assert_eq!(diagnostic.signal_grace_ms, Some(1_000));
+        assert!(diagnostic.escalated);
     }
 
     #[test]
