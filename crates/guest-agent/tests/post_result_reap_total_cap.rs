@@ -19,7 +19,7 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
             2,
             1,
         )?;
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "1");
+        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "3");
     }
     let _run_files = common::RunFilesGuard::new();
 
@@ -46,6 +46,11 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
     assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigterm));
 
     let ops = std::fs::read_to_string(guest_common::telemetry::sandbox_ops_log())?;
-    assert!(ops.contains("trigger=total_cap"), "{ops}");
+    let cleanup_line = ops
+        .lines()
+        .find(|line| line.contains("post_result_cleanup_terminated"))
+        .expect("post-result cleanup telemetry should be recorded");
+    assert!(cleanup_line.contains("trigger=total_cap"), "{ops}");
+    assert!(!cleanup_line.contains("meaningful_events=0"), "{ops}");
     Ok(())
 }
