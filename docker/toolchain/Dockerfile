@@ -41,45 +41,50 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust toolchain with ARM64 cross-compilation support
-# Used for building runner and guest binaries for Firecracker VMs (ARM64 metal runners)
+# Install Rust toolchain with runner Linux musl targets.
+# Used for building runner and guest binaries for Firecracker VMs.
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
-    && rustup target add aarch64-unknown-linux-musl \
+    && rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl \
     && rustup component add rustfmt clippy \
     && rm -rf /usr/local/rustup/toolchains/*/share/doc \
     && rm -rf /usr/local/rustup/toolchains/*/share/man \
     && rustc --version && cargo --version
 
-# Install a musl cross-compiler for aarch64-unknown-linux-musl. Using a
-# glibc cross-gcc (gcc-aarch64-linux-gnu) here would make cc crate
-# compile C sources with glibc headers, which expand stdlib calls to
-# _FORTIFY_SOURCE-hardened __*_chk variants that don't exist in musl
-# libc — causing link failures when rustc statically links the musl
-# runtime.
+# Install musl compilers for runner Linux targets. Using a glibc
+# cross-gcc directly would make cc crate compile C sources with glibc
+# headers, which expand stdlib calls to _FORTIFY_SOURCE-hardened
+# __*_chk variants that don't exist in musl libc, causing link failures
+# when rustc statically links the musl runtime.
 #
-# amd64 host pulls the Bootlin stable toolchain (gcc 14.3.0, buildroot-
-# based). Bootlin's binary is named aarch64-buildroot-linux-musl-gcc, so
+# amd64 hosts use the existing Bootlin stable toolchain for aarch64
+# cross-compilation and Ubuntu's musl-dev wrapper for native x86_64 musl
+# builds. Bootlin's binary is named aarch64-buildroot-linux-musl-gcc, so
 # we symlink it to aarch64-linux-musl-gcc which is the name cc crate
 # probes for the aarch64-unknown-linux-musl target.
 #
-# arm64 host uses apt's musl-dev which ships /usr/bin/aarch64-linux-musl-gcc
-# as a wrapper around gnu gcc + a musl-gcc.specs file that switches
-# include paths to musl headers; the gnu gcc is pulled in transitively
-# via musl-dev's Depends. That wrapper unconditionally passes
-# `-dynamic-linker /lib/ld-musl-aarch64.so.1` to the linker even under
+# arm64 hosts use Ubuntu's musl-dev wrapper for native aarch64 musl
+# builds. They also install x86_64 GNU cross-gcc and extract the amd64
+# musl-dev package contents to provide x86_64 musl headers, libs, specs,
+# and wrapper without executing Bootlin's x86_64-host compiler binaries.
+# Ubuntu's musl wrappers can pass a `-dynamic-linker` argument even under
 # `-static`, so runner and guest targets pass `-Wl,--no-dynamic-linker`
-# via crates/.cargo/config.toml to keep the fully-static output working
-# on Ubuntu hosts that don't ship the musl loader.
+# via crates/.cargo/config.toml to keep fully static output independent
+# of host musl loader paths.
 ARG MUSL_CROSS_VERSION=2025.08-1
 ARG MUSL_CROSS_SHA256=defba831ffa1175236f137069333e21ed46d4d19feb5080a90cf248b6fc2cb08
+ARG MUSL_DEV_AMD64_URL=https://archive.ubuntu.com/ubuntu/pool/universe/m/musl/musl-dev_1.2.4-2_amd64.deb
+ARG MUSL_DEV_AMD64_SHA256=4b451ecb6a0f8469883058cf22a807f3bd9cc16d115cc08b7efc35fe8eb44db2
 ENV PATH="/opt/aarch64--musl--stable-${MUSL_CROSS_VERSION}/bin:${PATH}"
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
         amd64) \
-            curl -fsSL --retry 3 "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${MUSL_CROSS_VERSION}.tar.xz" -o /tmp/musl-cross.tar.xz \
+            apt-get update \
+            && apt-get install -y --no-install-recommends musl-dev \
+            && rm -rf /var/lib/apt/lists/* \
+            && curl -fsSL --retry 3 "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-${MUSL_CROSS_VERSION}.tar.xz" -o /tmp/musl-cross.tar.xz \
             && echo "${MUSL_CROSS_SHA256}  /tmp/musl-cross.tar.xz" | sha256sum -c - \
             && tar xJf /tmp/musl-cross.tar.xz -C /opt \
             && rm /tmp/musl-cross.tar.xz \
@@ -87,19 +92,27 @@ RUN ARCH=$(dpkg --print-architecture) \
             && for f in aarch64-buildroot-linux-musl-*; do ln -s "$f" "aarch64-linux-musl-${f#aarch64-buildroot-linux-musl-}"; done \
             ;; \
         arm64) \
-            apt-get update && apt-get install -y --no-install-recommends musl-dev \
+            apt-get update \
+            && apt-get install -y --no-install-recommends musl-dev gcc-x86-64-linux-gnu \
             && rm -rf /var/lib/apt/lists/* \
+            && curl -fsSL --retry 3 "${MUSL_DEV_AMD64_URL}" -o /tmp/musl-dev-amd64.deb \
+            && echo "${MUSL_DEV_AMD64_SHA256}  /tmp/musl-dev-amd64.deb" | sha256sum -c - \
+            && dpkg-deb -x /tmp/musl-dev-amd64.deb /tmp/musl-dev-amd64 \
+            && cp -a /tmp/musl-dev-amd64/usr/include/x86_64-linux-musl /usr/include/ \
+            && cp -a /tmp/musl-dev-amd64/usr/lib/x86_64-linux-musl /usr/lib/ \
+            && install -m 0755 /tmp/musl-dev-amd64/usr/bin/x86_64-linux-musl-gcc /usr/bin/x86_64-linux-musl-gcc \
+            && rm -rf /tmp/musl-dev-amd64 /tmp/musl-dev-amd64.deb \
             ;; \
         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac \
-    && aarch64-linux-musl-gcc --version
+    && aarch64-linux-musl-gcc --version \
+    && x86_64-linux-musl-gcc --version
 
 # Install mold linker for faster linking of the runner crate.
-# Used by CI via CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-arg=-fuse-ld=mold".
-# The aarch64-linux-musl-ld.mold symlink is required so aarch64-linux-musl-gcc
-# (the linker driver in crates/.cargo/config.toml) finds mold under its
-# triple-prefixed name. mold 2.x supports cross-linking aarch64 from any host,
-# so a single binary works for both the host and the cross-compile target.
+# The target-prefixed ld.mold symlinks are required so the musl gcc
+# wrappers in crates/.cargo/config.toml can find mold under the linker
+# names they probe for `-fuse-ld=mold`. mold 2.x supports cross-linking
+# from any host, so a single host-native binary works for both targets.
 ARG MOLD_VERSION=2.41.0
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
@@ -111,7 +124,21 @@ RUN ARCH=$(dpkg --print-architecture) \
        | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-${MOLD_ARCH}-linux/bin/mold" \
     && ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold \
     && ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-musl-ld.mold \
+    && ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold \
+    && ln -sf /usr/local/bin/mold /usr/local/bin/x86_64-linux-musl-ld.mold \
+    && ln -sf /usr/local/bin/mold /usr/local/bin/x86_64-linux-gnu-ld.mold \
     && mold --version
+
+RUN rustup target list --installed | grep -qx aarch64-unknown-linux-musl \
+    && rustup target list --installed | grep -qx x86_64-unknown-linux-musl \
+    && printf 'int main(void) { return 0; }\n' > /tmp/toolchain-smoke.c \
+    && for TARGET in aarch64-linux-musl x86_64-linux-musl; do \
+        command -v "${TARGET}-gcc"; \
+        command -v "${TARGET}-ld.mold"; \
+        "${TARGET}-gcc" -static -fuse-ld=mold -Wl,--no-dynamic-linker /tmp/toolchain-smoke.c -o "/tmp/${TARGET}-smoke"; \
+        test -x "/tmp/${TARGET}-smoke"; \
+    done \
+    && rm -f /tmp/toolchain-smoke.c /tmp/*-linux-musl-smoke
 
 # Install Python3 and Ansible for runner deployments via SSH.
 RUN apt-get update && apt-get install -y --no-install-recommends \
