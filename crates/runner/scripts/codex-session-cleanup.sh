@@ -24,9 +24,14 @@ check_restore_dir_component "$root"
 root_prefix="$root/"
 relative_dir="${restore_dir#$root_prefix}"
 current="$root"
-old_ifs="$IFS"
-IFS=/
-for component in $relative_dir; do
+remaining="$relative_dir"
+while [ -n "$remaining" ]; do
+  component="${remaining%%/*}"
+  if [ "$component" = "$remaining" ]; then
+    remaining=""
+  else
+    remaining="${remaining#*/}"
+  fi
   case "$component" in
     ""|"."|"..")
       echo "invalid codex restore path component: $component" >&2
@@ -36,7 +41,6 @@ for component in $relative_dir; do
   current="$current/$component"
   check_restore_dir_component "$current"
 done
-IFS="$old_ifs"
 id="$VM0_CODEX_RESTORE_SESSION_ID"
 id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
 case "$id_no_dashes" in
