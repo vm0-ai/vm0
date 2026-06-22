@@ -20,27 +20,285 @@ MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
 TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
+CRATES_DIR="${GITHUB_WORKSPACE:-$(pwd)}/crates"
+CARGO_TIMING_DIR="${CRATES_DIR}/target/cargo-timings"
+TIMING_DIR="${RUNNER_TEMP:-/tmp}/runner-image-build-timing"
+LINKER_TIMING_LOG="${TIMING_DIR}/linker.tsv"
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
+mkdir -p "$TIMING_DIR"
+
+line_count() {
+  local path=$1
+  if [ -s "$path" ]; then
+    wc -l < "$path"
+  else
+    echo 0
+  fi
+}
+
+mold_linker_for_target() {
+  case "$1" in
+    aarch64-unknown-linux-musl) echo "aarch64-linux-musl-ld.mold" ;;
+    x86_64-unknown-linux-musl) echo "x86_64-linux-musl-ld.mold" ;;
+    *) return 1 ;;
+  esac
+}
+
+configure_linker_timing() {
+  local target_mold
+  if ! target_mold=$(mold_linker_for_target "$TARGET_TRIPLE"); then
+    echo "Linker timing skipped: unknown mold linker for ${TARGET_TRIPLE}"
+    return
+  fi
+
+  local real_linker
+  real_linker=$(command -v "$target_mold" 2>/dev/null || command -v ld.mold 2>/dev/null || command -v mold 2>/dev/null || true)
+  if [ -z "$real_linker" ]; then
+    echo "Linker timing skipped: mold linker not found"
+    return
+  fi
+
+  local wrapper="${TIMING_DIR}/mold-wrapper"
+  : > "$LINKER_TIMING_LOG"
+  cat > "$wrapper" <<'LINKER_WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+status=0
+start_ns=$(date +%s%N)
+"$RUNNER_IMAGE_REAL_MOLD_LINKER" "$@" || status=$?
+end_ns=$(date +%s%N)
+duration_ms=$(((end_ns - start_ns) / 1000000))
+
+output="<unknown>"
+previous=""
+for arg in "$@"; do
+  if [ "$previous" = "-o" ]; then
+    output=$arg
+    break
+  fi
+  case "$arg" in
+    -o?*)
+      output=${arg#-o}
+      break
+      ;;
+  esac
+  previous=$arg
+done
+
+printf '%s\t%s\t%s\n' "$duration_ms" "$status" "$output" >> "$RUNNER_IMAGE_LINKER_TIMING_LOG"
+exit "$status"
+LINKER_WRAPPER
+  chmod +x "$wrapper"
+  ln -sf mold-wrapper "${TIMING_DIR}/${target_mold}"
+  ln -sf mold-wrapper "${TIMING_DIR}/ld.mold"
+  ln -sf mold-wrapper "${TIMING_DIR}/mold"
+
+  export RUNNER_IMAGE_REAL_MOLD_LINKER="$real_linker"
+  export RUNNER_IMAGE_LINKER_TIMING_LOG="$LINKER_TIMING_LOG"
+  export PATH="${TIMING_DIR}:$PATH"
+  echo "Linker timing enabled with ${real_linker} via PATH wrappers"
+}
+
+print_linker_timing_summary() {
+  local label=$1
+  local start_line=$2
+  local tmp
+  tmp=$(mktemp)
+  tail -n +"$((start_line + 1))" "$LINKER_TIMING_LOG" > "$tmp" 2>/dev/null || true
+
+  echo "=== Linker timing summary: ${label} ==="
+  if [ ! -s "$tmp" ]; then
+    echo "linker_invocations=0"
+    rm -f "$tmp"
+    return
+  fi
+
+  awk -F '\t' '
+    {
+      total += $1
+      count += 1
+      if ($2 != "0") {
+        failed += 1
+      }
+      if ($1 > max) {
+        max = $1
+        max_output = $3
+      }
+    }
+    END {
+      printf "linker_invocations=%d total_ms=%d max_ms=%d max_output=%s failed=%d\n", count, total, max, max_output, failed
+    }
+  ' "$tmp"
+
+  echo "Top linker invocations:"
+  sort -t $'\t' -k1,1nr "$tmp" | head -15 | awk -F '\t' '
+    {
+      printf "linker_ms=%s status=%s output=%s\n", $1, $2, $3
+    }
+  ' || true
+  rm -f "$tmp"
+}
+
+print_sccache_stats() {
+  local label=$1
+  local sccache_bin="${SCCACHE_PATH:-sccache}"
+  if ! command -v "$sccache_bin" >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "=== sccache stats: ${label} ==="
+  "$sccache_bin" --show-stats || true
+}
+
+reset_sccache_stats() {
+  local sccache_bin="${SCCACHE_PATH:-sccache}"
+  if ! command -v "$sccache_bin" >/dev/null 2>&1; then
+    return
+  fi
+
+  "$sccache_bin" --zero-stats >/dev/null 2>&1 || true
+}
+
+print_cargo_timing_reports() {
+  local label=$1
+  local marker=$2
+  local reports=()
+
+  echo "=== Cargo timing reports: ${label} ==="
+  while IFS= read -r report; do
+    reports+=("$report")
+  done < <(
+    find "$CARGO_TIMING_DIR" -maxdepth 1 -type f -name '*.html' -newer "$marker" -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | head -5 \
+      | sed 's/^[^ ]* //' \
+      || true
+  )
+
+  if [ "${#reports[@]}" -eq 0 ]; then
+    echo "cargo_timing_reports=0"
+    return
+  fi
+
+  printf '%s\n' "${reports[@]}"
+  print_cargo_timing_summary "$label" "${reports[0]}"
+}
+
+print_cargo_timing_summary() {
+  local label=$1
+  local report=$2
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "=== Cargo timing top units: ${label} ==="
+  python3 - "$report" <<'PY' || true
+import json
+import re
+import sys
+from pathlib import Path
+
+report = Path(sys.argv[1])
+try:
+    text = report.read_text()
+except OSError as exc:
+    print(f"cargo_timing_units=unavailable reason=read_failed detail={exc}")
+    raise SystemExit(0)
+
+duration_match = re.search(r"^DURATION = ([0-9.]+);", text, re.MULTILINE)
+unit_match = re.search(r"const UNIT_DATA = (\[.*?\]);", text, re.DOTALL)
+if not unit_match:
+    print("cargo_timing_units=unavailable reason=missing_unit_data")
+    raise SystemExit(0)
+
+try:
+    units = json.loads(unit_match.group(1))
+except json.JSONDecodeError as exc:
+    print(f"cargo_timing_units=unavailable reason=json_parse_failed detail={exc}")
+    raise SystemExit(0)
+
+def clean(value):
+    return str(value).replace("\n", " ").strip() or "<empty>"
+
+def format_sections(unit):
+    sections = unit.get("sections") or []
+    if not sections:
+        return "none"
+    formatted = []
+    for name, span in sections:
+        start = float(span.get("start", 0.0))
+        end = float(span.get("end", start))
+        formatted.append(f"{clean(name)}={max(end - start, 0.0):.2f}s")
+    return ",".join(formatted)
+
+wall_seconds = duration_match.group(1) if duration_match else "unknown"
+print(f"cargo_timing_units={len(units)} wall_seconds={wall_seconds}")
+for unit in sorted(units, key=lambda item: float(item.get("duration", 0.0)), reverse=True)[:15]:
+    duration = float(unit.get("duration", 0.0))
+    name = clean(unit.get("name", "<unknown>"))
+    version = clean(unit.get("version", ""))
+    mode = clean(unit.get("mode", "<unknown>"))
+    target = clean(unit.get("target", ""))
+    sections = format_sections(unit)
+    print(
+        "cargo_unit_duration_s="
+        f"{duration:.2f} name={name} version={version} mode={mode} "
+        f"target={target} sections={sections}"
+    )
+PY
+}
+
+run_timed_cargo() {
+  local label=$1
+  shift
+  local linker_start
+  local timing_marker
+  local status=0
+
+  linker_start=$(line_count "$LINKER_TIMING_LOG")
+  timing_marker=$(mktemp "${TIMING_DIR}/cargo-timing-marker.XXXXXX")
+  reset_sccache_stats
+
+  echo "=== ${label}: command ==="
+  printf '%q ' "$@"
+  printf '\n'
+
+  if [ -x /usr/bin/time ]; then
+    /usr/bin/time -v "$@" || status=$?
+  else
+    time "$@" || status=$?
+  fi
+
+  print_linker_timing_summary "$label" "$linker_start"
+  print_sccache_stats "$label"
+  print_cargo_timing_reports "$label" "$timing_marker"
+  rm -f "$timing_marker"
+  return "$status"
+}
+
+configure_linker_timing
 
 echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  cargo build --profile ci --target "$TARGET_TRIPLE" \
+  run_timed_cargo "guest binaries" cargo build --profile ci --timings --target "$TARGET_TRIPLE" \
     -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
 )
 
 echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
-  cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
+  export GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent"
+  export GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download"
+  export GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init"
+  export GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude"
+  export GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex"
+  export GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed"
+  export GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file"
+  run_timed_cargo "runner binary" cargo build --profile ci --timings --target "$TARGET_TRIPLE" -p runner
 )
 
 sha_file() {
