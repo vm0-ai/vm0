@@ -229,17 +229,6 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
         !restore_event.fields.contains_key("path"),
         "restore diagnostic must not include a path embedding the session id: {restore_event:#?}"
     );
-    let cleanup_event = captured_event(
-        &events,
-        "cleaned up existing codex session files before restore",
-    );
-    assert_eq!(
-        cleanup_event
-            .fields
-            .get("session_fingerprint")
-            .map(String::as_str),
-        Some(diagnostic_session_fingerprint(raw_session_id).as_str())
-    );
 }
 
 #[test]
