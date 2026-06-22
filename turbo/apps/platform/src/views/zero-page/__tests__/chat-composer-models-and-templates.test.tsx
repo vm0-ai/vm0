@@ -1616,13 +1616,15 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
-      const previewFrame = await screen.findByTestId(
-        `${template.title} card HTML preview`,
-      );
       const currentPreviewFrame = () => {
         return screen.getByTestId(`${template.title} card HTML preview`);
       };
-      const preview = previewFrame.parentElement;
+      expect(
+        screen.queryByTestId(`${template.title} card HTML preview`),
+      ).not.toBeInTheDocument();
+      const preview = screen.getByLabelText(
+        `Preview ${template.title} at current slide`,
+      ).parentElement;
       if (!preview) {
         throw new Error("Template preview not found");
       }
@@ -1646,6 +1648,7 @@ describe("chat composer templates", () => {
       expect(firstPreviewHtml).not.toContain("--fd:");
       expect(firstPreviewHtml).not.toContain("--fb:");
 
+      fireEvent.mouseEnter(preview);
       fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
 
       await waitFor(async () => {
@@ -1659,13 +1662,15 @@ describe("chat composer templates", () => {
         screen.getByLabelText("Search templates"),
         prismTemplate.title,
       );
-      const prismPreviewFrame = await screen.findByTestId(
-        `${prismTemplate.title} card HTML preview`,
-      );
       const currentPrismPreviewFrame = () => {
         return screen.getByTestId(`${prismTemplate.title} card HTML preview`);
       };
-      const prismPreview = prismPreviewFrame.parentElement;
+      expect(
+        screen.queryByTestId(`${prismTemplate.title} card HTML preview`),
+      ).not.toBeInTheDocument();
+      const prismPreview = screen.getByLabelText(
+        `Preview ${prismTemplate.title} at current slide`,
+      ).parentElement;
       if (!prismPreview) {
         throw new Error("Prism template preview not found");
       }
@@ -1873,10 +1878,9 @@ describe("chat composer templates", () => {
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
 
-    const previewFrame = await screen.findByTestId(
-      `${template.title} card HTML preview`,
-    );
-    const preview = previewFrame.parentElement;
+    const preview = screen.getByLabelText(
+      `Preview ${template.title} at current slide`,
+    ).parentElement;
     if (!preview) {
       throw new Error("Template preview not found");
     }

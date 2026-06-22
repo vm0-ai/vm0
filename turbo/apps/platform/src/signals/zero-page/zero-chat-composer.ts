@@ -257,6 +257,21 @@ export const setTemplateCardDefaultHtmlPreview$ = command(
   },
 );
 
+const internalTemplateCardLoadedHtmlFrameUrls$ = state<
+  Readonly<Record<string, string>>
+>({});
+export const templateCardLoadedHtmlFrameUrls$ = computed((get) => {
+  return get(internalTemplateCardLoadedHtmlFrameUrls$);
+});
+export const setTemplateCardLoadedHtmlFrameUrl$ = command(
+  ({ get, set }, key: string, frameUrl: string) => {
+    set(internalTemplateCardLoadedHtmlFrameUrls$, {
+      ...get(internalTemplateCardLoadedHtmlFrameUrls$),
+      [key]: frameUrl,
+    });
+  },
+);
+
 const internalTemplateCardThemeIdBySlug$ = state<
   Readonly<Record<string, string>>
 >({});
