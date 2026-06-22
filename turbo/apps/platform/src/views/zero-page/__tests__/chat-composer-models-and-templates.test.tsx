@@ -1438,6 +1438,42 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
+  it("opens the template picker without focusing the tabs on small screens", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    expect(tabByText("Presentation")).toBeInTheDocument();
+    expect(tabByText("Illustration")).toBeInTheDocument();
+    expect(tabByText("Video")).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(tabByText("Presentation"));
+
+    const tabScroller = document.querySelector(
+      "[data-template-picker-tabs-scroll]",
+    );
+    expect(tabScroller).toBeInstanceOf(HTMLElement);
+    expect(tabScroller).toHaveClass("overflow-x-auto");
+    expect(tabScroller).toHaveClass("sm:overflow-visible");
+    expect(tabScroller).toHaveClass("[scrollbar-width:thin]");
+  });
+
   it("selects a presentation template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
