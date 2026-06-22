@@ -42,6 +42,25 @@ impl TurnStatus {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ItemStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Declined,
+}
+
+impl ItemStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Declined => "declined",
+        }
+    }
+}
+
 /// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CodexAppServerEventError {
@@ -101,11 +120,21 @@ fn map_turn(
         .ok_or_else(|| invalid_field(notification, "params"))?;
     let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
     let turn = required_object_field(params, &notification.method, "turn")?;
+    let status = required_turn_status_field(turn, &notification.method, "turn.status")?;
+    if event_type == "turn.started" && status != TurnStatus::InProgress {
+        return Err(invalid_field_for_method(
+            &notification.method,
+            "turn.status",
+        ));
+    }
+    if status == TurnStatus::InProgress && non_null_field(turn, "error") {
+        return Err(invalid_field_for_method(&notification.method, "turn.error"));
+    }
 
     Ok(json!({
         "type": event_type,
         "thread_id": thread_id,
-        "turn": normalize_turn(turn, &notification.method)?,
+        "turn": normalize_turn_with_status(turn, &notification.method, status)?,
     }))
 }
 
@@ -124,6 +153,9 @@ fn map_turn_completed(
             &notification.method,
             "turn.status",
         ));
+    }
+    if status == TurnStatus::Completed && non_null_field(turn, "error") {
+        return Err(invalid_field_for_method(&notification.method, "turn.error"));
     }
     let normalized_turn = normalize_turn_with_status(turn, &notification.method, status)?;
 
@@ -219,14 +251,6 @@ fn map_warning(notification: &ServerNotification) -> Result<Value, CodexAppServe
     Ok(Value::Object(event))
 }
 
-fn normalize_turn(
-    turn: &Map<String, Value>,
-    method: &str,
-) -> Result<Value, CodexAppServerEventError> {
-    let status = required_turn_status_field(turn, method, "turn.status")?;
-    normalize_turn_with_status(turn, method, status)
-}
-
 fn normalize_turn_with_status(
     turn: &Map<String, Value>,
     method: &str,
@@ -294,8 +318,11 @@ fn normalize_command_execution(
     let mut normalized = base_item(item, method, "command_execution")?;
     let command = required_string_field(item, method, "item.command")?;
     normalized.insert("command".to_string(), Value::String(command.to_string()));
-    let status = required_item_status_field(item, method, "item.status")?;
-    normalized.insert("status".to_string(), status);
+    let status = required_lifecycle_item_status_field(item, method, "item.status")?;
+    normalized.insert(
+        "status".to_string(),
+        Value::String(status.normalized().to_string()),
+    );
     copy_optional_field(&mut normalized, "cwd", item, "cwd");
     copy_optional_field(
         &mut normalized,
@@ -313,8 +340,11 @@ fn normalize_file_change_item(
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = base_item(item, method, "file_change")?;
-    let status = required_item_status_field(item, method, "item.status")?;
-    normalized.insert("status".to_string(), status);
+    let status = required_lifecycle_item_status_field(item, method, "item.status")?;
+    normalized.insert(
+        "status".to_string(),
+        Value::String(status.normalized().to_string()),
+    );
 
     let changes = item
         .get("changes")
@@ -570,20 +600,27 @@ fn required_turn_status_field(
     }
 }
 
-fn required_item_status_field(
+fn required_lifecycle_item_status_field(
     object: &Map<String, Value>,
     method: &str,
     field: &'static str,
-) -> Result<Value, CodexAppServerEventError> {
+) -> Result<ItemStatus, CodexAppServerEventError> {
     let status = required_string_field(object, method, field)?;
-    let normalized = match status {
-        "inProgress" => "in_progress",
-        "completed" => "completed",
-        "failed" => "failed",
-        "declined" => "declined",
+    let status = match status {
+        "inProgress" => ItemStatus::InProgress,
+        "completed" => ItemStatus::Completed,
+        "failed" => ItemStatus::Failed,
+        "declined" => ItemStatus::Declined,
         _ => return Err(invalid_field_for_method(method, field)),
     };
-    Ok(Value::String(normalized.to_string()))
+    match (method, status) {
+        ("item/started", ItemStatus::InProgress) => Ok(status),
+        ("item/completed", ItemStatus::Completed | ItemStatus::Failed | ItemStatus::Declined) => {
+            Ok(status)
+        }
+        ("item/started" | "item/completed", _) => Err(invalid_field_for_method(method, field)),
+        _ => Ok(status),
+    }
 }
 
 fn string_array_field(
@@ -618,6 +655,10 @@ fn copy_optional_field(
     if let Some(value) = input.get(input_key) {
         output.insert(output_key.to_string(), value.clone());
     }
+}
+
+fn non_null_field(object: &Map<String, Value>, key: &'static str) -> bool {
+    object.get(key).is_some_and(|value| !value.is_null())
 }
 
 fn camel_to_snake(value: &str) -> String {
@@ -954,6 +995,101 @@ mod tests {
                     "duration_ms": 1000
                 }
             })
+        );
+    }
+
+    #[test]
+    fn turn_started_completed_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "completed",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            })),
+        })
+        .expect_err("started turn must be in progress");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/started".to_string(),
+                field: "turn.status"
+            }
+        );
+    }
+
+    #[test]
+    fn turn_started_with_error_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "inProgress",
+                    "error": {
+                        "message": "should not be present",
+                        "codexErrorInfo": "badRequest",
+                        "additionalDetails": null
+                    },
+                    "startedAt": 1,
+                    "completedAt": null,
+                    "durationMs": null
+                }
+            })),
+        })
+        .expect_err("in-progress turn cannot carry a failure error");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/started".to_string(),
+                field: "turn.error"
+            }
+        );
+    }
+
+    #[test]
+    fn completed_turn_with_error_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "completed",
+                    "error": {
+                        "message": "should not be present",
+                        "codexErrorInfo": "badRequest",
+                        "additionalDetails": null
+                    },
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            })),
+        })
+        .expect_err("completed turn cannot carry a failure error");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/completed".to_string(),
+                field: "turn.error"
+            }
         );
     }
 
@@ -1322,6 +1458,73 @@ mod tests {
             error,
             CodexAppServerEventError::InvalidField {
                 method: "item/completed".to_string(),
+                field: "item.status"
+            }
+        );
+    }
+
+    #[test]
+    fn item_completed_in_progress_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "commandExecution",
+                    "id": "cmd-1",
+                    "command": "echo hi",
+                    "cwd": "/workspaces/vm0",
+                    "processId": null,
+                    "source": "exec",
+                    "status": "inProgress",
+                    "commandActions": [],
+                    "aggregatedOutput": null,
+                    "exitCode": null,
+                    "durationMs": null
+                }
+            })),
+        })
+        .expect_err("completed item cannot remain in progress");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/completed".to_string(),
+                field: "item.status"
+            }
+        );
+    }
+
+    #[test]
+    fn item_started_completed_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "startedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "completed",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": {"type": "update", "move_path": null},
+                            "diff": "@@"
+                        }
+                    ]
+                }
+            })),
+        })
+        .expect_err("started item must be in progress");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/started".to_string(),
                 field: "item.status"
             }
         );
