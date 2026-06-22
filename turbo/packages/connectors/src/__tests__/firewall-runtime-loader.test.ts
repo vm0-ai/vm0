@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
@@ -16,60 +17,135 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function staticValueImportSpecifiers(source: string): string[] {
-  const specifiers: string[] = [];
-  for (const match of source.matchAll(
-    /^\s*import\s+(?!type\b)[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
-  )) {
-    specifiers.push(match[1]!);
-  }
-  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
-    specifiers.push(match[1]!);
-  }
-  return specifiers;
+function parseSource(source: string): ts.SourceFile {
+  return ts.createSourceFile(
+    "source.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
 }
 
-function staticValueExportSpecifiers(source: string): string[] {
-  const specifiers: string[] = [];
-  for (const match of source.matchAll(
-    /^\s*export(?:\s+\*(?:\s+as\s+\w+)?|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
-  )) {
-    specifiers.push(match[1]!);
+function stringLiteralText(node: ts.Node | undefined): string | null {
+  if (
+    node === undefined ||
+    (!ts.isStringLiteral(node) && !ts.isNoSubstitutionTemplateLiteral(node))
+  ) {
+    return null;
   }
-  return specifiers;
+
+  return node.text;
 }
 
-function staticModuleSpecifiers(source: string): string[] {
+function importDeclarationHasValue(statement: ts.ImportDeclaration): boolean {
+  const clause = statement.importClause;
+  if (clause === undefined) {
+    return true;
+  }
+  if (clause.isTypeOnly || clause.name !== undefined) {
+    return !clause.isTypeOnly;
+  }
+
+  const namedBindings = clause.namedBindings;
+  if (namedBindings === undefined || ts.isNamespaceImport(namedBindings)) {
+    return true;
+  }
+
+  return (
+    namedBindings.elements.length === 0 ||
+    namedBindings.elements.some((element) => {
+      return !element.isTypeOnly;
+    })
+  );
+}
+
+function exportDeclarationHasValue(statement: ts.ExportDeclaration): boolean {
+  if (statement.isTypeOnly) {
+    return false;
+  }
+
+  const exportClause = statement.exportClause;
+  if (exportClause === undefined || ts.isNamespaceExport(exportClause)) {
+    return true;
+  }
+
+  return (
+    exportClause.elements.length === 0 ||
+    exportClause.elements.some((element) => {
+      return !element.isTypeOnly;
+    })
+  );
+}
+
+function staticModuleSpecifiers(
+  source: string,
+  options: { includeTypeOnly: boolean },
+): string[] {
   const specifiers: string[] = [];
-  for (const match of source.matchAll(
-    /^\s*import\s+(?:type\s+)?[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
-  )) {
-    specifiers.push(match[1]!);
-  }
-  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
-    specifiers.push(match[1]!);
-  }
-  for (const match of source.matchAll(
-    /^\s*export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
-  )) {
-    specifiers.push(match[1]!);
+  for (const statement of parseSource(source).statements) {
+    if (ts.isImportDeclaration(statement)) {
+      if (!options.includeTypeOnly && !importDeclarationHasValue(statement)) {
+        continue;
+      }
+      const specifier = stringLiteralText(statement.moduleSpecifier);
+      if (specifier !== null) {
+        specifiers.push(specifier);
+      }
+    }
+    if (ts.isExportDeclaration(statement)) {
+      if (!options.includeTypeOnly && !exportDeclarationHasValue(statement)) {
+        continue;
+      }
+      const specifier = stringLiteralText(statement.moduleSpecifier);
+      if (specifier !== null) {
+        specifiers.push(specifier);
+      }
+    }
   }
   return specifiers;
 }
 
 function staticValueModuleSpecifiers(source: string): string[] {
-  return [
-    ...staticValueImportSpecifiers(source),
-    ...staticValueExportSpecifiers(source),
-  ];
+  return staticModuleSpecifiers(source, { includeTypeOnly: false });
+}
+
+function callModuleSpecifiers(
+  source: string,
+  predicate: (expression: ts.Expression) => boolean,
+): string[] {
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && predicate(node.expression)) {
+      const specifier = stringLiteralText(node.arguments[0]);
+      if (specifier !== null) {
+        specifiers.push(specifier);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parseSource(source));
+  return specifiers;
 }
 
 function dynamicImportSpecifiers(source: string): string[] {
-  const specifiers: string[] = [];
-  for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
-    specifiers.push(match[1]!);
-  }
-  return specifiers;
+  return callModuleSpecifiers(source, (expression) => {
+    return expression.kind === ts.SyntaxKind.ImportKeyword;
+  });
+}
+
+function requireSpecifiers(source: string): string[] {
+  return callModuleSpecifiers(source, (expression) => {
+    return ts.isIdentifier(expression) && expression.text === "require";
+  });
+}
+
+function moduleSpecifiers(source: string): string[] {
+  return [
+    ...staticModuleSpecifiers(source, { includeTypeOnly: true }),
+    ...dynamicImportSpecifiers(source),
+    ...requireSpecifiers(source),
+  ];
 }
 
 describe("firewall runtime loader", () => {
@@ -97,7 +173,7 @@ describe("firewall runtime loader", () => {
       path.resolve(import.meta.dirname, "../index.ts"),
       "utf-8",
     );
-    const rootSpecifiers = staticModuleSpecifiers(rootEntrypoint);
+    const rootSpecifiers = moduleSpecifiers(rootEntrypoint);
 
     for (const specifier of rootSpecifiers) {
       expect(specifier).not.toMatch(/^\.\/firewalls(?:\/|$)/);
