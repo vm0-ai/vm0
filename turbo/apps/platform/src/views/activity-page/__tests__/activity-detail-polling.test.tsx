@@ -805,7 +805,8 @@ function codexActivityEvents(): AgentEvent[] {
         item: {
           id: "cmd-1",
           type: "command_execution",
-          exit_code: 1,
+          status: "failed",
+          exit_code: 0,
           aggregated_output:
             "billing worker failed\nstack line 1\nstack line 2\nstack line 3\nstack line 4",
         },

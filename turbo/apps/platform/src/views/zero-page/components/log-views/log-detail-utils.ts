@@ -446,12 +446,21 @@ function normalizeCodexCommandEvent(
       event,
       item,
       content: item.aggregated_output ?? item.output ?? "",
-      isError:
-        typeof item.exit_code === "number" ? item.exit_code !== 0 : false,
+      isError: isCodexCommandExecutionError(item),
     });
   }
 
   return null;
+}
+
+function isCodexCommandExecutionError(item: CodexItem): boolean {
+  if (item.status === "failed" || item.status === "declined") {
+    return true;
+  }
+  if (item.status === "completed") {
+    return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
+  }
+  return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
 }
 
 function normalizeCodexFileMutationEvent(

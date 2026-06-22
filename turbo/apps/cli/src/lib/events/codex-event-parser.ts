@@ -222,7 +222,7 @@ export class CodexEventParser {
         data: {
           toolUseId: item.id,
           result: output,
-          isError: item.exit_code !== 0,
+          isError: isCommandExecutionError(item),
         },
       };
     }
@@ -328,4 +328,14 @@ export class CodexEventParser {
       },
     };
   }
+}
+
+function isCommandExecutionError(item: CodexItem): boolean {
+  if (item.status === "failed" || item.status === "declined") {
+    return true;
+  }
+  if (item.status === "completed") {
+    return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
+  }
+  return item.exit_code !== 0;
 }

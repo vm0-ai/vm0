@@ -888,6 +888,59 @@ describe("logs command", () => {
       expect(logCalls).toContain("ls: cannot access '/nonexistent'");
     });
 
+    it("should mark command_execution with failed status as error", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "apply_patch",
+                      status: "in_progress",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "apply_patch",
+                      status: "failed",
+                      exit_code: 0,
+                      output: "patch failed",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("apply_patch");
+      expect(logCalls).toContain("✗");
+      expect(logCalls).toContain("patch failed");
+    });
+
     it("should render file_edit, file_write, and file_read tools", async () => {
       server.use(
         http.get(
