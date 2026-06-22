@@ -40,8 +40,8 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@typescript-eslint/rule-tester": "^8.61.0",
-    "@typescript-eslint/utils": "^8.61.0",
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "@typescript-eslint/utils": "^8.61.1",
     "@vm0/connectors": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
@@ -52,6 +52,6 @@
     "oxlint-tsgolint": "0.23.0",
     "postcss": "^8.5.6",
     "typescript": "6.0.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }

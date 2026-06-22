@@ -69,7 +69,7 @@ jobs:
     outputs:
       turbo-ts-checks-needed: ${{ steps.detect.outputs.turbo-ts-checks-needed }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -127,7 +127,7 @@ jobs:
       turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -308,7 +308,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -348,7 +348,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Ensure only allowed connector firewall files are tracked
         run: ./scripts/ensure-connector-firewalls-index-only.sh
 
@@ -361,7 +361,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -388,7 +388,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       # The three heavy app type-checks (api, web, @vm0/app ≈ 57% of the
       # serial total) run in the separate lint-types-apps job below. Here we
@@ -407,7 +407,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       # Heaviest tsc projects, split off lint-types so they run on their own
       # runner. Kept serial (one tsc at a time) to stay within runner memory —
@@ -432,7 +432,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Prettier
         working-directory: turbo
@@ -446,7 +446,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Knip
         working-directory: turbo
@@ -472,7 +472,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -525,7 +525,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -571,7 +571,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -629,7 +629,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
@@ -661,7 +661,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
@@ -704,7 +704,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -742,7 +742,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
@@ -801,7 +801,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Fetch development Doppler OAuth config
@@ -1116,7 +1116,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Setup Vercel
@@ -1283,7 +1283,7 @@ jobs:
       pull-requests: write
       deployments: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Deploy App to Vercel
@@ -1351,7 +1351,7 @@ jobs:
       needs.deploy-web.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions/setup-node@v6
@@ -1399,7 +1399,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Ansible
         run: pip3 install ansible-core
@@ -1476,7 +1476,7 @@ jobs:
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions/setup-node@v6
@@ -1573,7 +1573,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -1663,7 +1663,7 @@ jobs:
       )
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions/setup-node@v6
@@ -1784,7 +1784,7 @@ jobs:
       rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
       snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Generate runner E2E test matrix
         id: runner-matrix
@@ -1861,7 +1861,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -2110,7 +2110,7 @@ jobs:
         include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions/setup-node@v6
@@ -2237,7 +2237,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.e2b-changed == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2266,7 +2266,7 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
