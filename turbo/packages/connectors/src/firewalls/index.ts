@@ -143,7 +143,13 @@ import {
   googleAnalyticsDefaultUnknownPolicy,
   googleAnalyticsFirewall,
 } from "./google-analytics.generated";
-import { googleCalendarFirewall } from "./google-calendar.generated";
+import {
+  googleCalendarCategories,
+  googleCalendarCategoryOrder,
+  googleCalendarDefaultAllowed,
+  googleCalendarDefaultUnknownPolicy,
+  googleCalendarFirewall,
+} from "./google-calendar.generated";
 import {
   googleCloudCategories,
   googleCloudCategoryOrder,
@@ -685,6 +691,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleAnalyticsCategories,
     displayOrder: googleAnalyticsCategoryOrder,
   },
+  "google-calendar": {
+    categories: googleCalendarCategories,
+    displayOrder: googleCalendarCategoryOrder,
+  },
   "google-drive": {
     categories: googleDriveCategories,
     displayOrder: googleDriveCategoryOrder,
@@ -842,6 +852,7 @@ const DEFAULT_ALLOWED: Partial<
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
   "google-analytics": googleAnalyticsDefaultAllowed,
+  "google-calendar": googleCalendarDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   gmail: gmailDefaultAllowed,
@@ -855,6 +866,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-analytics": googleAnalyticsDefaultUnknownPolicy,
+  "google-calendar": googleCalendarDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
