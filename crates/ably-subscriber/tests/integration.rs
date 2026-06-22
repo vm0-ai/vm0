@@ -469,7 +469,7 @@ async fn initial_attach_is_clean_without_resume_or_serial() {
 }
 
 #[tokio::test]
-async fn message_without_channel_is_ignored() {
+async fn non_target_channel_events_do_not_pollute_resume_serial() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
@@ -494,6 +494,40 @@ async fn message_without_channel_is_ignored() {
         ))
         .await
         .unwrap();
+
+        let other_channel_attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("other-channel".into()),
+            channel_serial: Some("other-serial".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&other_channel_attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let other_channel_detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("other-channel".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "other channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&other_channel_detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), conn.next())
+                .await
+                .is_err(),
+            "other-channel ATTACHED/DETACHED should not trigger ATTACH"
+        );
 
         let detached = ProtocolMessage {
             action: action::DETACHED,
