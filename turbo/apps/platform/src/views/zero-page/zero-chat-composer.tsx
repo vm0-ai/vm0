@@ -18,7 +18,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconCheck,
   IconChevronDown,
   IconDeviceDesktop,
   IconDownload,
@@ -179,14 +178,17 @@ import {
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
-  templateCardFailedImageUrls$,
-  setTemplateCardFailedImageUrl$,
   templateCardDefaultHtmlPreviews$,
   setTemplateCardDefaultHtmlPreview$,
   templateCardThemeIdBySlug$,
   setTemplateCardThemeId$,
+  templateCardThemePopoverPlacementBySlug$,
+  setTemplateCardThemePopoverPlacement$,
+  templateCardThemePopoverOpenSlug$,
+  setTemplateCardThemePopoverOpenSlug$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
+  type TemplateCardThemePopoverPlacement,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
   setTemplateDetailHtmlPreview$,
@@ -378,7 +380,6 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
-const PRESENTATION_EAGER_IMAGE_COUNT = 6;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -1529,146 +1530,6 @@ function prewarmIllustrationPreviewImagesNearScroll({
   );
 }
 
-interface PresentationCardPreviewImageCache {
-  readonly decoded: Set<string>;
-  readonly pendingDecodes: Map<string, Promise<void>>;
-  readonly preloads: Map<string, HTMLImageElement>;
-}
-
-function presentationCardPreviewImageCache(): PresentationCardPreviewImageCache {
-  const cacheKey = "vm0PresentationCardPreviewImageDecodeCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationCardPreviewImageCache
-    | undefined;
-  if (existingCache !== undefined) {
-    return existingCache;
-  }
-
-  const cache: PresentationCardPreviewImageCache = {
-    decoded: new Set<string>(),
-    pendingDecodes: new Map<string, Promise<void>>(),
-    preloads: new Map<string, HTMLImageElement>(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
-}
-
-function presentationCardPreviewImageDecoded(url: string): boolean {
-  return presentationCardPreviewImageCache().decoded.has(url);
-}
-
-function preloadPresentationCardPreviewImage(
-  url: string,
-): HTMLImageElement | undefined {
-  if (typeof Image === "undefined") {
-    return undefined;
-  }
-
-  const cache = presentationCardPreviewImageCache();
-  const cachedImage = cache.preloads.get(url);
-  if (cachedImage !== undefined) {
-    return cachedImage;
-  }
-
-  const image = new Image();
-  image.decoding = "async";
-  image.loading = "eager";
-  image.fetchPriority = "high";
-  image.src = url;
-  cache.preloads.set(url, image);
-  return image;
-}
-
-async function markPresentationCardPreviewImageDecoded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationCardPreviewImageCache();
-  await tapError(image.decode(), () => {});
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-  cache.pendingDecodes.delete(url);
-}
-
-async function decodePresentationCardPreviewImage(url: string): Promise<void> {
-  const cache = presentationCardPreviewImageCache();
-  if (cache.decoded.has(url)) {
-    return;
-  }
-
-  if (isHappyDomTestEnvironment()) {
-    cache.decoded.add(url);
-    return;
-  }
-
-  const pendingDecode = cache.pendingDecodes.get(url);
-  if (pendingDecode !== undefined) {
-    await pendingDecode;
-    return;
-  }
-
-  const image = preloadPresentationCardPreviewImage(url);
-  if (image === undefined) {
-    return;
-  }
-
-  if (image.decode === undefined) {
-    if (image.complete && image.naturalWidth > 0) {
-      cache.decoded.add(url);
-    }
-    return;
-  }
-
-  const decode = markPresentationCardPreviewImageDecoded(url, image);
-  cache.pendingDecodes.set(url, decode);
-  await decode;
-}
-
-async function markPresentationCardPreviewImageLoaded(
-  url: string,
-  image: HTMLImageElement,
-): Promise<void> {
-  const cache = presentationCardPreviewImageCache();
-  if (image.decode !== undefined) {
-    await tapError(image.decode(), () => {});
-  }
-  if (image.complete && image.naturalWidth > 0) {
-    cache.decoded.add(url);
-  }
-}
-
-function preloadPresentationTemplateCardSlideImages(
-  item: PresentationTemplateItem,
-): void {
-  const slideImages = presentationTemplateSlideImages(item);
-  for (const [index] of slideImages.entries()) {
-    preloadPresentationCardPreviewImage(
-      presentationTemplateCardSlideImage(item, index),
-    );
-  }
-}
-
-async function selectDecodedPresentationCardSlide({
-  imageUrl,
-  index,
-  preview,
-  onSlideChange,
-}: {
-  readonly imageUrl: string;
-  readonly index: number;
-  readonly preview: HTMLElement;
-  readonly onSlideChange: (index: number) => void;
-}): Promise<void> {
-  await decodePresentationCardPreviewImage(imageUrl);
-  if (
-    preview.dataset.targetSlideIndex === String(index) &&
-    presentationCardPreviewImageDecoded(imageUrl)
-  ) {
-    onSlideChange(index);
-  }
-}
-
 interface PresentationTemplateThemeOption {
   readonly id: string;
   readonly name: string;
@@ -2590,7 +2451,7 @@ function createPresentationTemplateHtmlPreviewState(params: {
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
-  readonly theme?: PresentationTemplateThemeOption;
+  readonly theme: PresentationTemplateThemeOption;
 }): TemplateCardHtmlPreviewState | null {
   const slide =
     params.draft.slides[Math.min(params.index, params.draft.slides.length - 1)];
@@ -2602,16 +2463,11 @@ function createPresentationTemplateHtmlPreviewState(params: {
   const frameUrl = URL.createObjectURL(
     new Blob(
       [
-        params.theme
-          ? themedPreviewPresentationHtml({
-              activeSlideId: slide.id,
-              draft: params.draft,
-              theme: params.theme,
-            })
-          : previewPresentationHtml({
-              activeSlideId: slide.id,
-              html: params.draft.html,
-            }),
+        themedPreviewPresentationHtml({
+          activeSlideId: slide.id,
+          draft: params.draft,
+          theme: params.theme,
+        }),
       ],
       { type: "text/html;charset=utf-8" },
     ),
@@ -2620,6 +2476,7 @@ function createPresentationTemplateHtmlPreviewState(params: {
   return {
     slug: params.item.slug,
     embedUrl: params.item.embedUrl,
+    themeId: params.theme.id,
     loading: false,
     failed: false,
     frameUrl,
@@ -2630,11 +2487,10 @@ function createPresentationTemplateHtmlPreviewState(params: {
 function TemplatePreview({
   item,
   onPreview,
-  priority = false,
   theme,
 }: {
   item: PresentationTemplateItem;
-  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
   theme?: PresentationTemplateThemeOption;
 }) {
@@ -2642,8 +2498,9 @@ function TemplatePreview({
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
-  const failedImageUrls = useGet(templateCardFailedImageUrls$);
-  const setFailedImageUrl = useSet(setTemplateCardFailedImageUrl$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
+  const setThemePopoverOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
   const slideImages = presentationTemplateSlideImages(item);
   const fallbackSlideCount = Math.max(slideImages.length, 1);
   const hoverSlideIndex = Math.max(
@@ -2653,23 +2510,19 @@ function TemplatePreview({
       fallbackSlideCount - 1,
     ),
   );
-  const activeHtmlPreview =
-    htmlPreview?.slug === item.slug && htmlPreview.embedUrl === item.embedUrl
-      ? htmlPreview
-      : null;
-  const visibleHtmlPreview = activeHtmlPreview;
   const previewTheme =
     theme ??
     findPresentationTemplateTheme(defaultPresentationTemplateThemeId(item));
+  const defaultHtmlPreviewKey = `card:${item.embedUrl}:${previewTheme.id}:0`;
+  const defaultHtmlPreview = defaultHtmlPreviews[defaultHtmlPreviewKey] ?? null;
+  const activeHtmlPreview =
+    htmlPreview?.slug === item.slug &&
+    htmlPreview.embedUrl === item.embedUrl &&
+    htmlPreview.themeId === previewTheme.id
+      ? htmlPreview
+      : null;
+  const visibleHtmlPreview = activeHtmlPreview ?? defaultHtmlPreview;
   const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
-  const preferredStaticPreviewImage = presentationTemplateCardSlideImage(
-    item,
-    hoverSlideIndex,
-  );
-  const staticPreviewImage =
-    failedImageUrls[preferredStaticPreviewImage] === true
-      ? presentationTemplateFallbackSlideImage(item, hoverSlideIndex)
-      : preferredStaticPreviewImage;
   const currentPreviewSlideIndex = () => {
     const index =
       presentationTemplateHtmlPreviewCache().activeIndexes.get(item.embedUrl) ??
@@ -2700,6 +2553,7 @@ function TemplatePreview({
       setHtmlPreview({
         slug: item.slug,
         embedUrl: item.embedUrl,
+        themeId: previewTheme.id,
         loading: false,
         failed: true,
         frameUrl: null,
@@ -2719,6 +2573,7 @@ function TemplatePreview({
     setHtmlPreview({
       slug: item.slug,
       embedUrl: item.embedUrl,
+      themeId: previewTheme.id,
       loading: true,
       failed: false,
       frameUrl: null,
@@ -2737,6 +2592,7 @@ function TemplatePreview({
             setHtmlPreview({
               slug: item.slug,
               embedUrl: item.embedUrl,
+              themeId: previewTheme.id,
               loading: false,
               failed: true,
               frameUrl: null,
@@ -2757,6 +2613,88 @@ function TemplatePreview({
               theme: previewTheme,
             }),
           );
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const loadDefaultHtmlPreview = () => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft: cachedDraft,
+        index: 0,
+        item,
+        previousFrameUrl: defaultHtmlPreview?.frameUrl ?? null,
+        theme: previewTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(defaultHtmlPreviewKey, previewState);
+      }
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      setDefaultHtmlPreview(defaultHtmlPreviewKey, {
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: previewTheme.id,
+        loading: false,
+        failed: true,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+
+    setDefaultHtmlPreview(defaultHtmlPreviewKey, {
+      slug: item.slug,
+      embedUrl: item.embedUrl,
+      themeId: previewTheme.id,
+      loading: true,
+      failed: false,
+      frameUrl: null,
+      slideCount: fallbackSlideCount,
+    });
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          setDefaultHtmlPreview(defaultHtmlPreviewKey, {
+            slug: item.slug,
+            embedUrl: item.embedUrl,
+            themeId: previewTheme.id,
+            loading: false,
+            failed: true,
+            frameUrl: null,
+            slideCount: fallbackSlideCount,
+          });
+          return;
+        }
+
+        cache.drafts.set(item.embedUrl, result.value);
+        const previewState = createPresentationTemplateHtmlPreviewState({
+          draft: result.value,
+          index: 0,
+          item,
+          previousFrameUrl: defaultHtmlPreview?.frameUrl ?? null,
+          theme: previewTheme,
+        });
+        if (previewState !== null) {
+          setDefaultHtmlPreview(defaultHtmlPreviewKey, previewState);
         }
       })(),
       Reason.DomCallback,
@@ -2806,24 +2744,19 @@ function TemplatePreview({
       return;
     }
 
-    const imageUrl = presentationTemplateCardSlideImage(item, nextIndex);
-    if (presentationCardPreviewImageDecoded(imageUrl)) {
-      applySlideIndex(nextIndex);
+    applySlideIndex(nextIndex);
+  };
+
+  const loadInitialHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    if (node === null || defaultHtmlPreview !== null) {
       return;
     }
-    detach(
-      selectDecodedPresentationCardSlide({
-        imageUrl,
-        index: nextIndex,
-        preview: event.currentTarget,
-        onSlideChange: applySlideIndex,
-      }),
-      Reason.DomCallback,
-    );
+    loadDefaultHtmlPreview();
   };
 
   return (
     <div
+      ref={loadInitialHtmlPreviewAfterMount}
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         presentationTemplateHtmlPreviewCache().activeIndexes.set(
@@ -2831,7 +2764,6 @@ function TemplatePreview({
           0,
         );
         setHover({ slug: item.slug, index: 0 });
-        preloadPresentationTemplateCardSlideImages(item);
         startHtmlPreviewLoad();
       }}
       onMouseMove={handleMouseMove}
@@ -2840,44 +2772,20 @@ function TemplatePreview({
         const cache = presentationTemplateHtmlPreviewCache();
         cache.activeIndexes.delete(item.embedUrl);
         cache.activeTokens.delete(item.embedUrl);
-        revokePresentationTemplateHtmlPreviewUrl(
-          activeHtmlPreview?.frameUrl ?? null,
-        );
-        setHtmlPreview(null);
         setHover(null);
+        const cachedDraft = cache.drafts.get(item.embedUrl);
+        if (cachedDraft !== undefined) {
+          const previewState = createPresentationTemplateHtmlPreviewState({
+            draft: cachedDraft,
+            index: 0,
+            item,
+            previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
+            theme: previewTheme,
+          });
+          setHtmlPreview(previewState);
+        }
       }}
     >
-      <img
-        key={staticPreviewImage}
-        data-testid={`${item.title} card preview slide ${String(
-          hoverSlideIndex + 1,
-        )}`}
-        src={staticPreviewImage}
-        alt={`${item.title} slide ${String(hoverSlideIndex + 1)} preview`}
-        className="absolute inset-0 h-full w-full object-cover"
-        loading={priority ? "eager" : "lazy"}
-        decoding="async"
-        fetchPriority={priority ? "high" : "low"}
-        onLoad={(event) => {
-          detach(
-            markPresentationCardPreviewImageLoaded(
-              staticPreviewImage,
-              event.currentTarget,
-            ),
-            Reason.DomCallback,
-          );
-        }}
-        onError={() => {
-          const fallbackImageUrl = presentationTemplateFallbackSlideImage(
-            item,
-            hoverSlideIndex,
-          );
-          if (staticPreviewImage === fallbackImageUrl) {
-            return;
-          }
-          setFailedImageUrl(staticPreviewImage);
-        }}
-      />
       <iframe
         key={visibleHtmlPreview?.frameUrl ?? "empty"}
         title={`${item.title} HTML preview`}
@@ -2908,6 +2816,7 @@ function TemplatePreview({
         className="absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
+          setThemePopoverOpenSlug(null);
           openPreview();
         }}
       >
@@ -3352,35 +3261,198 @@ function TemplatePreviewPage({
 }
 
 function presentationTemplateCardThemeSwatches(
+  item: PresentationTemplateItem,
   theme: PresentationTemplateThemeOption,
 ): readonly { readonly color: string; readonly id: string }[] {
-  return presentationTemplateThemePreviewSwatches(theme).slice(0, 3);
+  if (theme.group === "single-accent") {
+    return presentationTemplateThemeAccentSwatches(item, theme);
+  }
+  return presentationTemplateThemePreviewSwatches(theme);
+}
+
+const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP = 4;
+const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT = 228;
+const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH = 232;
+const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN = 12;
+const PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR =
+  "[data-presentation-template-grid-scroll]";
+
+function presentationTemplateGridScrollElement(
+  slug: string,
+): HTMLElement | undefined {
+  if (typeof document === "undefined") {
+    return undefined;
+  }
+  for (const candidate of document.querySelectorAll(
+    "[data-template-theme-trigger-slug]",
+  )) {
+    if (
+      candidate instanceof HTMLButtonElement &&
+      candidate.dataset.templateThemeTriggerSlug === slug
+    ) {
+      const scrollContainer = candidate.closest(
+        PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+      return scrollContainer instanceof HTMLElement
+        ? scrollContainer
+        : undefined;
+    }
+  }
+  return undefined;
+}
+
+function resolvePresentationTemplateCardThemePopoverPlacement(
+  trigger: HTMLButtonElement,
+): TemplateCardThemePopoverPlacement {
+  const triggerRect = trigger.getBoundingClientRect();
+  const scrollContainer = trigger.closest(
+    PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
+  );
+  const boundaryRect =
+    scrollContainer instanceof HTMLElement
+      ? scrollContainer.getBoundingClientRect()
+      : null;
+  const boundaryBottom = boundaryRect?.bottom ?? window.innerHeight;
+  const boundaryLeft = boundaryRect?.left ?? 0;
+  const boundaryRight = boundaryRect?.right ?? window.innerWidth;
+  const availableBottomSpace = boundaryBottom - triggerRect.bottom;
+  if (
+    availableBottomSpace >=
+    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT +
+      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
+      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
+  ) {
+    const startOverflowsRight =
+      triggerRect.left +
+        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
+        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN >
+      boundaryRight;
+    const endOverflowsLeft =
+      triggerRect.right -
+        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH -
+        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN <
+      boundaryLeft;
+    return {
+      align: startOverflowsRight && !endOverflowsLeft ? "end" : "start",
+      alignOffset: 0,
+      side: "bottom",
+    };
+  }
+  const availableRightSpace = boundaryRight - triggerRect.right;
+  if (
+    availableRightSpace >=
+    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
+      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
+      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
+  ) {
+    return { align: "end", alignOffset: 0, side: "right" };
+  }
+  return {
+    align: "start",
+    alignOffset:
+      triggerRect.height + PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP,
+    side: "left",
+  };
+}
+
+function shouldOpenPresentationTemplateThemePage(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 639px)").matches
+  );
 }
 
 function PresentationTemplateCardThemePicker({
   item,
+  onOpenThemePage,
   selectedTheme,
+  triggerClassName,
   onThemeChange,
 }: {
   item: PresentationTemplateItem;
+  onOpenThemePage: () => void;
   selectedTheme: PresentationTemplateThemeOption;
+  triggerClassName?: string;
   onThemeChange: (theme: PresentationTemplateThemeOption) => void;
 }) {
-  const selectedSwatches = presentationTemplateCardThemeSwatches(selectedTheme);
+  const selectedSwatches = presentationTemplateCardThemeSwatches(
+    item,
+    selectedTheme,
+  );
+  const openSlug = useGet(templateCardThemePopoverOpenSlug$);
+  const setOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
+  const placementBySlug = useGet(templateCardThemePopoverPlacementBySlug$);
+  const setPlacement = useSet(setTemplateCardThemePopoverPlacement$);
+  const open = openSlug === item.slug;
+  const placement = placementBySlug[item.slug] ?? {
+    align: "start",
+    alignOffset: 0,
+    side: "bottom",
+  };
+  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "multi-accent";
+    },
+  );
+  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
+    (theme) => {
+      return theme.group === "single-accent";
+    },
+  );
+
+  const updatePopoverPlacement = (trigger: HTMLButtonElement) => {
+    setPlacement(
+      item.slug,
+      resolvePresentationTemplateCardThemePopoverPlacement(trigger),
+    );
+  };
+  const openThemePageOnMobile = () => {
+    if (!shouldOpenPresentationTemplateThemePage()) {
+      return false;
+    }
+    setOpenSlug(null);
+    onOpenThemePage();
+    return true;
+  };
+
   return (
-    <Popover>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpenSlug(nextOpen ? item.slug : null);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={`Change theme for ${item.title}`}
-          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-template-theme-trigger-slug={item.slug}
+          onPointerDown={(event) => {
+            if (openThemePageOnMobile()) {
+              event.preventDefault();
+              return;
+            }
+            updatePopoverPlacement(event.currentTarget);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              if (openThemePageOnMobile()) {
+                event.preventDefault();
+                return;
+              }
+              updatePopoverPlacement(event.currentTarget);
+            }
+          }}
+          className={cn(
+            "inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            triggerClassName,
+          )}
         >
           <IconPalette
             size={13}
             stroke={1.8}
             className="shrink-0 text-muted-foreground"
           />
-          <span className="shrink-0">Theme</span>
           <span className="flex shrink-0 items-center gap-0.5">
             {selectedSwatches.map((swatch) => {
               return (
@@ -3399,17 +3471,22 @@ function PresentationTemplateCardThemePicker({
           />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-72 rounded-lg p-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold text-foreground">Theme</p>
-          <p className="min-w-0 truncate text-xs text-muted-foreground">
-            {selectedTheme.name}
-          </p>
-        </div>
-        <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1">
-          {PRESENTATION_TEMPLATE_THEME_OPTIONS.map((theme) => {
+      <PopoverContent
+        align={placement.align}
+        alignOffset={placement.alignOffset}
+        avoidCollisions={false}
+        className="z-[90] w-[232px] p-2"
+        portalContainer={presentationTemplateGridScrollElement(item.slug)}
+        side={placement.side}
+        sideOffset={PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP}
+      >
+        <p className="px-1 text-[11px] font-medium text-muted-foreground">
+          Multi-accent
+        </p>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {multiAccentThemes.map((theme) => {
             const active = theme.id === selectedTheme.id;
-            const swatches = presentationTemplateCardThemeSwatches(theme);
+            const swatches = presentationTemplateCardThemeSwatches(item, theme);
             return (
               <button
                 key={theme.id}
@@ -3420,18 +3497,13 @@ function PresentationTemplateCardThemePicker({
                   onThemeChange(theme);
                 }}
                 className={cn(
-                  "relative min-w-0 rounded-lg border bg-background p-1.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
                     ? "border-ring ring-1 ring-ring"
                     : "border-border hover:border-muted-foreground/60",
                 )}
               >
-                {active ? (
-                  <span className="absolute right-2 top-2 grid h-4 w-4 place-items-center rounded-full bg-foreground text-background">
-                    <IconCheck size={11} stroke={2.3} />
-                  </span>
-                ) : null}
-                <span className="flex h-7 overflow-hidden rounded-md border border-border/70">
+                <span className="flex h-full">
                   {swatches.map((swatch) => {
                     return (
                       <span
@@ -3442,8 +3514,43 @@ function PresentationTemplateCardThemePicker({
                     );
                   })}
                 </span>
-                <span className="mt-1 block truncate text-[11px] font-medium text-foreground">
-                  {theme.name}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 px-1 text-[11px] font-medium text-muted-foreground">
+          Single-accent
+        </p>
+        <div className="mt-1 grid grid-cols-4 gap-1.5">
+          {singleAccentThemes.map((theme) => {
+            const active = theme.id === selectedTheme.id;
+            const swatches = presentationTemplateCardThemeSwatches(item, theme);
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                aria-label={`Select card theme ${theme.name} for ${item.title}`}
+                aria-pressed={active}
+                onClick={() => {
+                  onThemeChange(theme);
+                }}
+                className={cn(
+                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active
+                    ? "border-ring ring-1 ring-ring"
+                    : "border-border hover:border-muted-foreground/60",
+                )}
+              >
+                <span className="flex h-full">
+                  {swatches.map((swatch) => {
+                    return (
+                      <span
+                        key={`${theme.id}-${swatch.id}`}
+                        className="flex-1"
+                        style={{ backgroundColor: swatch.color }}
+                      />
+                    );
+                  })}
                 </span>
               </button>
             );
@@ -3459,19 +3566,50 @@ function PptCard({
   selected,
   onSelect,
   onPreview,
-  priority = false,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
 }) {
   const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const setThemeId = useSet(setTemplateCardThemeId$);
+  const hover = useGet(templateCardHover$);
+  const htmlPreview = useGet(templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
+  const refreshCardHtmlPreviewTheme = (
+    theme: PresentationTemplateThemeOption,
+  ) => {
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft === undefined) {
+      return;
+    }
+    const index =
+      hover?.slug === item.slug
+        ? hover.index
+        : (presentationTemplateHtmlPreviewCache().activeIndexes.get(
+            item.embedUrl,
+          ) ?? 0);
+    setHtmlPreview(
+      createPresentationTemplateHtmlPreviewState({
+        draft: cachedDraft,
+        index,
+        item,
+        previousFrameUrl:
+          htmlPreview?.slug === item.slug &&
+          htmlPreview.embedUrl === item.embedUrl
+            ? htmlPreview.frameUrl
+            : null,
+        theme,
+      }),
+    );
+  };
 
   return (
     <div
@@ -3484,32 +3622,22 @@ function PptCard({
       <TemplatePreview
         item={item}
         onPreview={onPreview}
-        priority={priority}
         theme={selectedTheme}
       />
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
+      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
+        <div className="min-w-0 flex-1">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <p className="cursor-default truncate text-sm font-semibold text-foreground">
+                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
                   {item.title}
                 </p>
               </TooltipTrigger>
               <TooltipContent side="bottom">{item.title}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <div className="mt-2">
-            <PresentationTemplateCardThemePicker
-              item={item}
-              selectedTheme={selectedTheme}
-              onThemeChange={(theme) => {
-                setThemeId(item.slug, theme.id);
-              }}
-            />
-          </div>
         </div>
-        <div className="flex shrink-0 items-center">
+        <div className="inline-flex h-8 max-w-full shrink-0 overflow-hidden rounded-md border border-border bg-background text-foreground">
           <button
             type="button"
             aria-label={`Select template ${item.title}`}
@@ -3521,14 +3649,28 @@ function PptCard({
               );
             }}
             className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "h-full shrink-0 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
+                ? "bg-primary/10 text-primary"
+                : "bg-background text-foreground hover:bg-muted",
             )}
           >
             Use
           </button>
+          <div className="min-w-0 border-l border-border">
+            <PresentationTemplateCardThemePicker
+              item={item}
+              onOpenThemePage={() => {
+                onPreview(item);
+              }}
+              selectedTheme={selectedTheme}
+              triggerClassName="rounded-none border-0 shadow-none focus-visible:ring-inset"
+              onThemeChange={(theme) => {
+                setThemeId(item.slug, theme.id);
+                refreshCardHtmlPreviewTheme(theme);
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -4148,11 +4290,11 @@ function PptTemplateGrid({
   items: PresentationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item, index) => {
+      {items.map((item) => {
         return (
           <PptCard
             key={item.slug}
@@ -4160,7 +4302,6 @@ function PptTemplateGrid({
             selected={isSelectedPresentationTemplate(item, value)}
             onSelect={onSelect}
             onPreview={onPreview}
-            priority={index < PRESENTATION_EAGER_IMAGE_COUNT}
           />
         );
       })}
@@ -4193,6 +4334,7 @@ function TemplatePickerDialog({
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
   const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4295,7 +4437,10 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
-    setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
+    setDetailThemeId(
+      item.slug,
+      cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+    );
     setDetailSlideIndex(item.slug, Math.max(0, Math.floor(slideIndex)));
     setPreviewSlug(item.slug);
   };
@@ -4377,7 +4522,10 @@ function TemplatePickerDialog({
               </div>
             </div>
             {selectedCategory === "slides" && hasPptTab && (
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
+              <div
+                data-presentation-template-grid-scroll=""
+                className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+              >
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
                     items={filteredPptItems}
