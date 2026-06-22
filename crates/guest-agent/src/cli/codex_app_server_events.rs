@@ -1,0 +1,882 @@
+//! Compatibility mapping from Codex app-server notifications to Codex JSONL events.
+
+use serde_json::{Map, Value, json};
+
+use super::codex_app_server::ServerNotification;
+
+const DELTA_NOTIFICATION_METHODS: &[&str] = &[
+    "command/exec/outputDelta",
+    "process/outputDelta",
+    "item/agentMessage/delta",
+    "item/plan/delta",
+    "item/commandExecution/outputDelta",
+    "item/fileChange/outputDelta",
+    "item/fileChange/patchUpdated",
+    "item/reasoning/summaryTextDelta",
+    "item/reasoning/summaryPartAdded",
+    "item/reasoning/textDelta",
+    "thread/realtime/transcript/delta",
+    "thread/realtime/outputAudio/delta",
+];
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum CodexAppServerEventError {
+    #[error("codex app-server notification {method} missing params")]
+    MissingParams { method: String },
+    #[error("codex app-server notification {method} missing field {field}")]
+    MissingField { method: String, field: &'static str },
+    #[error("codex app-server notification {method} has invalid field {field}")]
+    InvalidField { method: String, field: &'static str },
+}
+
+pub fn notification_to_codex_event(
+    notification: &ServerNotification,
+) -> Result<Option<Value>, CodexAppServerEventError> {
+    match notification.method.as_str() {
+        "thread/started" => map_thread_started(notification).map(Some),
+        "turn/started" => map_turn(notification, "turn.started").map(Some),
+        "turn/completed" => map_turn(notification, "turn.completed").map(Some),
+        "item/started" => map_item(notification, "item.started", "started_at_ms", "startedAtMs"),
+        "item/completed" => map_item(
+            notification,
+            "item.completed",
+            "completed_at_ms",
+            "completedAtMs",
+        ),
+        "error" => map_error(notification).map(Some),
+        "warning" => map_warning(notification).map(Some),
+        method if DELTA_NOTIFICATION_METHODS.contains(&method) => Ok(None),
+        _ => Ok(None),
+    }
+}
+
+fn map_thread_started(
+    notification: &ServerNotification,
+) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let thread = required_object_field(params, &notification.method, "thread")?;
+    let thread_id = required_string_field(thread, &notification.method, "thread.id")?;
+
+    Ok(json!({
+        "type": "thread.started",
+        "thread_id": thread_id,
+    }))
+}
+
+fn map_turn(
+    notification: &ServerNotification,
+    event_type: &'static str,
+) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let turn = required_object_field(params, &notification.method, "turn")?;
+
+    Ok(json!({
+        "type": event_type,
+        "thread_id": thread_id,
+        "turn": normalize_turn(turn, &notification.method)?,
+    }))
+}
+
+fn map_item(
+    notification: &ServerNotification,
+    event_type: &'static str,
+    output_timestamp_field: &'static str,
+    input_timestamp_field: &'static str,
+) -> Result<Option<Value>, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let item = required_object_field(params, &notification.method, "item")?;
+    let Some(normalized_item) = normalize_item(item, &notification.method)? else {
+        return Ok(None);
+    };
+
+    let mut event = Map::new();
+    event.insert("type".to_string(), Value::String(event_type.to_string()));
+    event.insert(
+        "thread_id".to_string(),
+        Value::String(thread_id.to_string()),
+    );
+    event.insert("turn_id".to_string(), Value::String(turn_id.to_string()));
+    event.insert("item".to_string(), normalized_item);
+    copy_optional_field(
+        &mut event,
+        output_timestamp_field,
+        params_object,
+        input_timestamp_field,
+    );
+
+    Ok(Some(Value::Object(event)))
+}
+
+fn map_error(notification: &ServerNotification) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let error = required_object_field(params, &notification.method, "error")?;
+    let message = required_string_field(error, &notification.method, "error.message")?;
+    let normalized_error = normalize_error(error);
+
+    Ok(json!({
+        "type": "error",
+        "thread_id": thread_id,
+        "turn_id": turn_id,
+        "will_retry": params_object.get("willRetry").and_then(Value::as_bool).unwrap_or(false),
+        "message": message,
+        "error": normalized_error,
+    }))
+}
+
+fn map_warning(notification: &ServerNotification) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let message = required_string_field(params_object, &notification.method, "message")?;
+
+    let mut event = Map::new();
+    event.insert("type".to_string(), Value::String("warning".to_string()));
+    event.insert("message".to_string(), Value::String(message.to_string()));
+    if let Some(thread_id) = params_object.get("threadId") {
+        event.insert("thread_id".to_string(), thread_id.clone());
+    }
+
+    Ok(Value::Object(event))
+}
+
+fn normalize_turn(
+    turn: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = Map::new();
+    let id = required_string_field(turn, method, "turn.id")?;
+    normalized.insert("id".to_string(), Value::String(id.to_string()));
+
+    if let Some(status) = turn.get("status") {
+        normalized.insert(
+            "status".to_string(),
+            normalize_status_value(status, method, "turn.status")?,
+        );
+    }
+    if let Some(error) = turn.get("error") {
+        normalized.insert("error".to_string(), normalize_optional_error(error));
+    }
+    copy_optional_field(&mut normalized, "started_at", turn, "startedAt");
+    copy_optional_field(&mut normalized, "completed_at", turn, "completedAt");
+    copy_optional_field(&mut normalized, "duration_ms", turn, "durationMs");
+
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_item(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Option<Value>, CodexAppServerEventError> {
+    let item_type = required_string_field(item, method, "item.type")?;
+    match item_type {
+        "agentMessage" => normalize_agent_message(item, method).map(Some),
+        "reasoning" => normalize_reasoning(item, method).map(Some),
+        "commandExecution" => normalize_command_execution(item, method).map(Some),
+        "fileChange" => normalize_file_change_item(item, method).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn normalize_agent_message(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "agent_message")?;
+    let text = required_string_field(item, method, "item.text")?;
+    normalized.insert("text".to_string(), Value::String(text.to_string()));
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_reasoning(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "reasoning")?;
+    let mut text_parts = string_array_field(item, method, "summary", "item.summary")?;
+    text_parts.extend(string_array_field(item, method, "content", "item.content")?);
+    if !text_parts.is_empty() {
+        normalized.insert("text".to_string(), Value::String(text_parts.join("\n")));
+    }
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_command_execution(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "command_execution")?;
+    let command = required_string_field(item, method, "item.command")?;
+    normalized.insert("command".to_string(), Value::String(command.to_string()));
+    let status = required_status_field(item, method, "item.status")?;
+    normalized.insert("status".to_string(), status);
+    copy_optional_field(&mut normalized, "cwd", item, "cwd");
+    copy_optional_field(
+        &mut normalized,
+        "aggregated_output",
+        item,
+        "aggregatedOutput",
+    );
+    copy_optional_field(&mut normalized, "exit_code", item, "exitCode");
+    copy_optional_field(&mut normalized, "duration_ms", item, "durationMs");
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_file_change_item(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "file_change")?;
+    let status = required_status_field(item, method, "item.status")?;
+    normalized.insert("status".to_string(), status);
+
+    let changes = item
+        .get("changes")
+        .ok_or_else(|| missing_field(method, "item.changes"))?
+        .as_array()
+        .ok_or_else(|| invalid_field_for_method(method, "item.changes"))?;
+    let normalized_changes = changes
+        .iter()
+        .map(|change| normalize_file_update_change(change, method))
+        .collect::<Result<Vec<_>, _>>()?;
+    normalized.insert("changes".to_string(), Value::Array(normalized_changes));
+
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_file_update_change(
+    change: &Value,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let change = change
+        .as_object()
+        .ok_or_else(|| invalid_field_for_method(method, "item.changes[]"))?;
+    let path = required_string_field(change, method, "item.changes[].path")?;
+    let diff = required_string_field(change, method, "item.changes[].diff")?;
+    let kind = change
+        .get("kind")
+        .ok_or_else(|| missing_field(method, "item.changes[].kind"))?;
+
+    let mut normalized = Map::new();
+    normalized.insert("path".to_string(), Value::String(path.to_string()));
+    normalized.insert(
+        "kind".to_string(),
+        Value::String(normalize_patch_kind(kind, method)?),
+    );
+    normalized.insert("diff".to_string(), Value::String(diff.to_string()));
+    if let Some(move_path) = kind
+        .as_object()
+        .and_then(|kind| kind.get("move_path"))
+        .filter(|move_path| !move_path.is_null())
+    {
+        normalized.insert("move_path".to_string(), move_path.clone());
+    }
+
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_patch_kind(kind: &Value, method: &str) -> Result<String, CodexAppServerEventError> {
+    let kind = match kind {
+        Value::String(kind) => kind.as_str(),
+        Value::Object(kind) => required_string_field(kind, method, "item.changes[].kind.type")?,
+        _ => return Err(invalid_field_for_method(method, "item.changes[].kind")),
+    };
+
+    Ok(match kind {
+        "add" => "add".to_string(),
+        "delete" => "delete".to_string(),
+        "update" => "modify".to_string(),
+        other => camel_to_snake(other),
+    })
+}
+
+fn base_item(
+    item: &Map<String, Value>,
+    method: &str,
+    item_type: &'static str,
+) -> Result<Map<String, Value>, CodexAppServerEventError> {
+    let mut normalized = Map::new();
+    let id = required_string_field(item, method, "item.id")?;
+    normalized.insert("id".to_string(), Value::String(id.to_string()));
+    normalized.insert("type".to_string(), Value::String(item_type.to_string()));
+    Ok(normalized)
+}
+
+fn normalize_optional_error(error: &Value) -> Value {
+    match error {
+        Value::Object(error) => normalize_error(error),
+        Value::Null => Value::Null,
+        value => value.clone(),
+    }
+}
+
+fn normalize_error(error: &Map<String, Value>) -> Value {
+    let mut normalized = Map::new();
+    copy_optional_field(&mut normalized, "message", error, "message");
+    copy_optional_field(
+        &mut normalized,
+        "additional_details",
+        error,
+        "additionalDetails",
+    );
+    copy_optional_field(&mut normalized, "codex_error_info", error, "codexErrorInfo");
+    Value::Object(normalized)
+}
+
+fn required_params(notification: &ServerNotification) -> Result<&Value, CodexAppServerEventError> {
+    notification
+        .params
+        .as_ref()
+        .ok_or_else(|| CodexAppServerEventError::MissingParams {
+            method: notification.method.clone(),
+        })
+}
+
+fn required_object_field<'a>(
+    value: &'a Value,
+    method: &str,
+    field: &'static str,
+) -> Result<&'a Map<String, Value>, CodexAppServerEventError> {
+    value
+        .pointer(&format!("/{}", field.replace('.', "/")))
+        .ok_or_else(|| missing_field(method, field))?
+        .as_object()
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_string_field<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<&'a str, CodexAppServerEventError> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?
+        .as_str()
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_status_field(
+    object: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<Value, CodexAppServerEventError> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let status = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?;
+    normalize_status_value(status, method, field)
+}
+
+fn normalize_status_value(
+    status: &Value,
+    method: &str,
+    field: &'static str,
+) -> Result<Value, CodexAppServerEventError> {
+    let status = status
+        .as_str()
+        .ok_or_else(|| invalid_field_for_method(method, field))?;
+    Ok(Value::String(camel_to_snake(status)))
+}
+
+fn string_array_field(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &'static str,
+    field: &'static str,
+) -> Result<Vec<String>, CodexAppServerEventError> {
+    let values = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?
+        .as_array()
+        .ok_or_else(|| invalid_field_for_method(method, field))?;
+
+    values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| invalid_field_for_method(method, field))
+        })
+        .collect()
+}
+
+fn copy_optional_field(
+    output: &mut Map<String, Value>,
+    output_key: &'static str,
+    input: &Map<String, Value>,
+    input_key: &'static str,
+) {
+    if let Some(value) = input.get(input_key) {
+        output.insert(output_key.to_string(), value.clone());
+    }
+}
+
+fn camel_to_snake(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    for (index, character) in value.chars().enumerate() {
+        if character.is_ascii_uppercase() {
+            if index > 0 {
+                output.push('_');
+            }
+            output.push(character.to_ascii_lowercase());
+        } else {
+            output.push(character);
+        }
+    }
+    output
+}
+
+fn missing_field(method: &str, field: &'static str) -> CodexAppServerEventError {
+    CodexAppServerEventError::MissingField {
+        method: method.to_string(),
+        field,
+    }
+}
+
+fn invalid_field(
+    notification: &ServerNotification,
+    field: &'static str,
+) -> CodexAppServerEventError {
+    invalid_field_for_method(&notification.method, field)
+}
+
+fn invalid_field_for_method(method: &str, field: &'static str) -> CodexAppServerEventError {
+    CodexAppServerEventError::InvalidField {
+        method: method.to_string(),
+        field,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use crate::events;
+    use crate::masker::SecretMasker;
+
+    use super::*;
+
+    fn notification(method: &str, params: Value) -> ServerNotification {
+        ServerNotification {
+            method: method.to_string(),
+            params: Some(params),
+        }
+    }
+
+    fn mapped_event(method: &str, params: Value) -> Value {
+        notification_to_codex_event(&notification(method, params))
+            .expect("notification should map")
+            .expect("notification should produce an event")
+    }
+
+    #[test]
+    fn thread_started_maps_to_top_level_thread_id() {
+        let event = mapped_event(
+            "thread/started",
+            json!({
+                "thread": {
+                    "id": "thread-1",
+                    "name": "demo"
+                }
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "thread.started",
+                "thread_id": "thread-1"
+            })
+        );
+    }
+
+    #[test]
+    fn item_completed_agent_message_maps_to_existing_output_shape() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "agentMessage",
+                    "id": "item-1",
+                    "text": "hello",
+                    "phase": null,
+                    "memoryCitation": null
+                }
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "item.completed",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "completed_at_ms": 42,
+                "item": {
+                    "id": "item-1",
+                    "type": "agent_message",
+                    "text": "hello"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn blank_agent_message_text_preserves_agent_message_shape() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "agentMessage",
+                    "id": "item-1",
+                    "text": "",
+                    "phase": null,
+                    "memoryCitation": null
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/type").and_then(Value::as_str),
+            Some("agent_message")
+        );
+        assert_eq!(
+            event.pointer("/item/text").and_then(Value::as_str),
+            Some("")
+        );
+    }
+
+    #[test]
+    fn command_execution_started_and_completed_are_normalized() {
+        let started = mapped_event(
+            "item/started",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "startedAtMs": 12,
+                "item": {
+                    "type": "commandExecution",
+                    "id": "cmd-1",
+                    "command": "echo hi",
+                    "cwd": "/workspaces/vm0",
+                    "processId": null,
+                    "source": "exec",
+                    "status": "inProgress",
+                    "commandActions": [],
+                    "aggregatedOutput": null,
+                    "exitCode": null,
+                    "durationMs": null
+                }
+            }),
+        );
+        let completed = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 34,
+                "item": {
+                    "type": "commandExecution",
+                    "id": "cmd-1",
+                    "command": "echo hi",
+                    "cwd": "/workspaces/vm0",
+                    "processId": null,
+                    "source": "exec",
+                    "status": "completed",
+                    "commandActions": [],
+                    "aggregatedOutput": "hi\n",
+                    "exitCode": 0,
+                    "durationMs": 5
+                }
+            }),
+        );
+
+        assert_eq!(
+            started,
+            json!({
+                "type": "item.started",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "started_at_ms": 12,
+                "item": {
+                    "id": "cmd-1",
+                    "type": "command_execution",
+                    "command": "echo hi",
+                    "status": "in_progress",
+                    "cwd": "/workspaces/vm0",
+                    "aggregated_output": null,
+                    "exit_code": null,
+                    "duration_ms": null
+                }
+            })
+        );
+        assert_eq!(
+            completed,
+            json!({
+                "type": "item.completed",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "completed_at_ms": 34,
+                "item": {
+                    "id": "cmd-1",
+                    "type": "command_execution",
+                    "command": "echo hi",
+                    "status": "completed",
+                    "cwd": "/workspaces/vm0",
+                    "aggregated_output": "hi\n",
+                    "exit_code": 0,
+                    "duration_ms": 5
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn file_change_maps_changes_to_existing_shape() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "completed",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": {"type": "update", "move_path": null},
+                            "diff": "@@"
+                        },
+                        {
+                            "path": "src/new.rs",
+                            "kind": {"type": "add"},
+                            "diff": "+++"
+                        }
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/changes"),
+            Some(&json!([
+                {
+                    "path": "src/lib.rs",
+                    "kind": "modify",
+                    "diff": "@@"
+                },
+                {
+                    "path": "src/new.rs",
+                    "kind": "add",
+                    "diff": "+++"
+                }
+            ]))
+        );
+    }
+
+    #[test]
+    fn reasoning_joins_summary_and_content() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "summary": ["checked schema"],
+                    "content": ["mapped final item"]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/type").and_then(Value::as_str),
+            Some("reasoning")
+        );
+        assert_eq!(
+            event.pointer("/item/text").and_then(Value::as_str),
+            Some("checked schema\nmapped final item")
+        );
+    }
+
+    #[test]
+    fn failed_turn_completed_preserves_diagnostic_shape() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "failed",
+                    "error": {
+                        "message": "turn failed",
+                        "codexErrorInfo": "serverOverloaded",
+                        "additionalDetails": "capacity"
+                    },
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            }),
+        );
+        let diagnostic =
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+                .expect("failed turn should produce a diagnostic");
+
+        assert_eq!(diagnostic.event_type, "turn.completed");
+        assert_eq!(diagnostic.message, "turn failed (capacity)");
+    }
+
+    #[test]
+    fn error_maps_to_existing_error_diagnostic_shape() {
+        let event = mapped_event(
+            "error",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "willRetry": false,
+                "error": {
+                    "message": "server rejected request",
+                    "codexErrorInfo": "badRequest",
+                    "additionalDetails": "policy denied"
+                }
+            }),
+        );
+        let diagnostic =
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+                .expect("error event should produce a diagnostic");
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "error",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "will_retry": false,
+                "message": "server rejected request",
+                "error": {
+                    "message": "server rejected request",
+                    "codex_error_info": "badRequest",
+                    "additional_details": "policy denied"
+                }
+            })
+        );
+        assert_eq!(diagnostic.event_type, "error");
+        assert_eq!(diagnostic.message, "server rejected request");
+    }
+
+    #[test]
+    fn warning_maps_to_non_failure_event() {
+        let event = mapped_event(
+            "warning",
+            json!({
+                "threadId": "thread-1",
+                "message": "configuration warning"
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "warning",
+                "thread_id": "thread-1",
+                "message": "configuration warning"
+            })
+        );
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
+    }
+
+    #[test]
+    fn delta_notifications_do_not_produce_visible_events() {
+        for method in DELTA_NOTIFICATION_METHODS {
+            let result = notification_to_codex_event(&notification(
+                method,
+                json!({
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "item-1",
+                    "delta": "partial"
+                }),
+            ))
+            .expect("delta notification should be ignored without error");
+
+            assert_eq!(result, None, "method should not emit an event: {method}");
+        }
+    }
+
+    #[test]
+    fn unknown_notification_method_is_ignored() {
+        let result = notification_to_codex_event(&notification(
+            "thread/status/changed",
+            json!({"threadId": "thread-1"}),
+        ))
+        .expect("unknown notification should not fail");
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn malformed_supported_notification_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "thread/started".to_string(),
+            params: Some(json!({"thread": {}})),
+        })
+        .expect_err("missing thread id should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::MissingField {
+                method: "thread/started".to_string(),
+                field: "thread.id"
+            }
+        );
+    }
+
+    #[test]
+    fn supported_notification_missing_params_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "warning".to_string(),
+            params: None,
+        })
+        .expect_err("missing params should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::MissingParams {
+                method: "warning".to_string()
+            }
+        );
+    }
+}
