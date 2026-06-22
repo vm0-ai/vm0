@@ -120,13 +120,15 @@ impl CliTerminationDiagnostic {
         signal_pgid: Option<i32>,
         signal_grace_ms: Option<u64>,
     ) -> Self {
-        if matches!(
+        let should_update = matches!(
             (self.signal_sent, signal_sent),
-            (
-                Some(CliTerminationSignal::Sigkill),
-                CliTerminationSignal::Sigterm
-            )
-        ) {
+            (None, _)
+                | (
+                    Some(CliTerminationSignal::Sigterm),
+                    CliTerminationSignal::Sigkill
+                )
+        );
+        if !should_update {
             return self;
         }
         if matches!(signal_sent, CliTerminationSignal::Sigkill) {
@@ -485,14 +487,14 @@ mod tests {
     }
 
     #[test]
-    fn cli_termination_repeated_sigterm_does_not_mark_escalated() {
+    fn cli_termination_repeated_sigterm_does_not_overwrite_original_signal() {
         let diagnostic = CliTerminationDiagnostic::new(CliTerminationReason::HeartbeatError)
             .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
             .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(2_000));
 
         assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigterm));
         assert_eq!(diagnostic.signal_pgid, Some(42));
-        assert_eq!(diagnostic.signal_grace_ms, Some(2_000));
+        assert_eq!(diagnostic.signal_grace_ms, Some(1_000));
         assert!(!diagnostic.escalated);
     }
 
