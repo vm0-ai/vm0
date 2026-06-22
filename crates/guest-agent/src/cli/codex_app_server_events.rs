@@ -19,6 +19,7 @@ const DELTA_NOTIFICATION_METHODS: &[&str] = &[
     "thread/realtime/outputAudio/delta",
 ];
 
+/// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CodexAppServerEventError {
     #[error("codex app-server notification {method} missing params")]
@@ -29,6 +30,10 @@ pub enum CodexAppServerEventError {
     InvalidField { method: String, field: &'static str },
 }
 
+/// Convert a Codex app-server notification into the existing Codex JSONL event shape.
+///
+/// Unsupported notifications and app-server delta notifications return `Ok(None)`.
+/// Supported notifications with malformed required fields return an error.
 pub fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
