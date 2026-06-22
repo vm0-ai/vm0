@@ -132,6 +132,15 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Docs read permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-docs");
+
+    expect(policy.policies["documents.read"]).toBe("allow");
+    expect(policy.policies["documents.create"]).toBe("deny");
+    expect(policy.policies["documents.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -204,12 +213,14 @@ describe("resolveFirewallPolicies", () => {
       "google-analytics",
       "google-calendar",
       "google-cloud",
+      "google-docs",
       "gmail",
     ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-analytics"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-calendar"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-docs"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
 
