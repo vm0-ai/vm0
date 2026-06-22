@@ -3389,6 +3389,13 @@
       "when": 1782114978137,
       "tag": "0483_remap_google_sheets_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1782116607909,
+      "tag": "0484_remap_google_search_console_permission_grants",
+      "breakpoints": true
     }
   ]
 }

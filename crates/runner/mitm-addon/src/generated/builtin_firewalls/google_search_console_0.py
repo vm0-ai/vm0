@@ -14,31 +14,68 @@ JSON_PART = r"""{
       "base": "https://searchconsole.googleapis.com",
       "permissions": [
         {
-          "description": "View and manage Search Console data for your verified sites",
-          "name": "webmasters",
+          "description": "Run mobile-friendly tests for URLs.",
+          "name": "mobile-friendly-tests.run",
           "rules": [
-            "POST /v1/urlInspection/index:inspect",
-            "GET /webmasters/v3/sites",
-            "GET /webmasters/v3/sites/{siteUrl}",
-            "PUT /webmasters/v3/sites/{siteUrl}",
-            "DELETE /webmasters/v3/sites/{siteUrl}",
-            "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query",
-            "GET /webmasters/v3/sites/{siteUrl}/sitemaps",
-            "GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}",
-            "PUT /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}",
+            "POST /v1/urlTestingTools/mobileFriendlyTest:run"
+          ]
+        },
+        {
+          "description": "Query Search Console search analytics data.",
+          "name": "search-analytics.query",
+          "rules": [
+            "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query"
+          ]
+        },
+        {
+          "description": "Delete submitted sitemaps.",
+          "name": "sitemaps.delete",
+          "rules": [
             "DELETE /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
           ]
         },
         {
-          "description": "View Search Console data for your verified sites",
-          "name": "webmasters.readonly",
+          "description": "List and read submitted sitemaps.",
+          "name": "sitemaps.read",
           "rules": [
-            "POST /v1/urlInspection/index:inspect",
-            "GET /webmasters/v3/sites",
-            "GET /webmasters/v3/sites/{siteUrl}",
-            "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query",
             "GET /webmasters/v3/sites/{siteUrl}/sitemaps",
             "GET /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
+          ]
+        },
+        {
+          "description": "Submit sitemaps.",
+          "name": "sitemaps.write",
+          "rules": [
+            "PUT /webmasters/v3/sites/{siteUrl}/sitemaps/{feedpath}"
+          ]
+        },
+        {
+          "description": "Remove sites from Search Console.",
+          "name": "sites.delete",
+          "rules": [
+            "DELETE /webmasters/v3/sites/{siteUrl}"
+          ]
+        },
+        {
+          "description": "List and read Search Console sites.",
+          "name": "sites.read",
+          "rules": [
+            "GET /webmasters/v3/sites",
+            "GET /webmasters/v3/sites/{siteUrl}"
+          ]
+        },
+        {
+          "description": "Add sites to Search Console.",
+          "name": "sites.write",
+          "rules": [
+            "PUT /webmasters/v3/sites/{siteUrl}"
+          ]
+        },
+        {
+          "description": "Inspect URL indexing status.",
+          "name": "url-inspection.inspect",
+          "rules": [
+            "POST /v1/urlInspection/index:inspect"
           ]
         }
       ]

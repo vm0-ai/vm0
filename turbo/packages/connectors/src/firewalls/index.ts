@@ -177,7 +177,13 @@ import {
   googleMeetDefaultUnknownPolicy,
   googleMeetFirewall,
 } from "./google-meet.generated";
-import { googleSearchConsoleFirewall } from "./google-search-console.generated";
+import {
+  googleSearchConsoleCategories,
+  googleSearchConsoleCategoryOrder,
+  googleSearchConsoleDefaultAllowed,
+  googleSearchConsoleDefaultUnknownPolicy,
+  googleSearchConsoleFirewall,
+} from "./google-search-console.generated";
 import {
   googleSheetsCategories,
   googleSheetsCategoryOrder,
@@ -719,6 +725,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleMeetCategories,
     displayOrder: googleMeetCategoryOrder,
   },
+  "google-search-console": {
+    categories: googleSearchConsoleCategories,
+    displayOrder: googleSearchConsoleCategoryOrder,
+  },
   "google-sheets": {
     categories: googleSheetsCategories,
     displayOrder: googleSheetsCategoryOrder,
@@ -881,6 +891,7 @@ const DEFAULT_ALLOWED: Partial<
   "google-docs": googleDocsDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   "google-meet": googleMeetDefaultAllowed,
+  "google-search-console": googleSearchConsoleDefaultAllowed,
   "google-sheets": googleSheetsDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
@@ -898,6 +909,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   "google-docs": googleDocsDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   "google-meet": googleMeetDefaultUnknownPolicy,
+  "google-search-console": googleSearchConsoleDefaultUnknownPolicy,
   "google-sheets": googleSheetsDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,

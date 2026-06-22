@@ -392,6 +392,29 @@ describe("known endpoint-scoped firewall bases", () => {
     );
   });
 
+  it("keeps Google Search Console permission names resource-oriented instead of OAuth-scope based", () => {
+    const names = new Set(
+      getConnectorFirewall("google-search-console").apis.flatMap((api) => {
+        return (
+          api.permissions?.map((permission) => {
+            return permission.name;
+          }) ?? []
+        );
+      }),
+    );
+
+    expect(names).toContain("sites.read");
+    expect(names).toContain("sitemaps.write");
+    expect(names).toContain("url-inspection.inspect");
+    expect(names).not.toContain("webmasters");
+    expect(names).not.toContain("webmasters.readonly");
+    expect(
+      [...names].filter((name) => {
+        return name.startsWith("webmasters");
+      }),
+    ).toEqual([]);
+  });
+
   it("narrows Xero tenant discovery to the Connections endpoint", () => {
     const firewall = getConnectorFirewall("xero");
     const bases = apiBases(firewall);

@@ -175,6 +175,21 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default Google Search Console read and diagnostic permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-search-console");
+
+    expect(policy.policies["url-inspection.inspect"]).toBe("allow");
+    expect(policy.policies["mobile-friendly-tests.run"]).toBe("allow");
+    expect(policy.policies["search-analytics.query"]).toBe("allow");
+    expect(policy.policies["sites.read"]).toBe("allow");
+    expect(policy.policies["sitemaps.read"]).toBe("allow");
+    expect(policy.policies["sites.write"]).toBe("deny");
+    expect(policy.policies["sites.delete"]).toBe("deny");
+    expect(policy.policies["sitemaps.write"]).toBe("deny");
+    expect(policy.policies["sitemaps.delete"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
@@ -249,6 +264,7 @@ describe("resolveFirewallPolicies", () => {
       "google-cloud",
       "google-docs",
       "google-meet",
+      "google-search-console",
       "google-sheets",
       "gmail",
     ]);
@@ -258,6 +274,7 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-docs"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-meet"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-search-console"]!.unknownPolicy).toBe("deny");
     expect(resolved!["google-sheets"]!.unknownPolicy).toBe("deny");
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
