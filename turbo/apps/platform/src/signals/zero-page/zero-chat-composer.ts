@@ -254,6 +254,21 @@ export const setTemplateCardDefaultHtmlPreview$ = command(
   },
 );
 
+const internalTemplateCardThemeIdBySlug$ = state<
+  Readonly<Record<string, string>>
+>({});
+export const templateCardThemeIdBySlug$ = computed((get) => {
+  return get(internalTemplateCardThemeIdBySlug$);
+});
+export const setTemplateCardThemeId$ = command(
+  ({ get, set }, slug: string, themeId: string) => {
+    set(internalTemplateCardThemeIdBySlug$, {
+      ...get(internalTemplateCardThemeIdBySlug$),
+      [slug]: themeId,
+    });
+  },
+);
+
 interface TemplateDetailHtmlPreviewState {
   readonly slug: string;
   readonly embedUrl: string;

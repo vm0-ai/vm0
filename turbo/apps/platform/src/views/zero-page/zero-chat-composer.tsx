@@ -183,6 +183,8 @@ import {
   setTemplateCardFailedImageUrl$,
   templateCardDefaultHtmlPreviews$,
   setTemplateCardDefaultHtmlPreview$,
+  templateCardThemeIdBySlug$,
+  setTemplateCardThemeId$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
   type TemplateCardHtmlPreviewState,
@@ -3465,8 +3467,8 @@ function PptCard({
   onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
-  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const setThemeId = useSet(setTemplateDetailThemeId$);
+  const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const setThemeId = useSet(setTemplateCardThemeId$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );

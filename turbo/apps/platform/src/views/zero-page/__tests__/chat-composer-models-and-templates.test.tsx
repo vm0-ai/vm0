@@ -1700,6 +1700,35 @@ describe("chat composer templates", () => {
       screen.getByLabelText(`Select card theme Prism for ${template.title}`),
     ).toHaveAttribute("aria-pressed", "true");
 
+    await user.click(screen.getByLabelText(`View template ${template.title}`));
+    const templateDialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    await user.click(templateButton);
+
+    await user.click(
+      screen.getByLabelText(`Change theme for ${template.title}`),
+    );
+    expect(
+      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
+    ).toHaveAttribute("aria-pressed", "true");
+
     await user.click(
       screen.getByLabelText(`Select template ${template.title}`),
     );
