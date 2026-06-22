@@ -182,11 +182,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.ComputerUse]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable remote desktop host registration",
-    enabled: false,
-  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -50,7 +48,6 @@ import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -1260,23 +1257,6 @@ function hasComputerUseHostSelection(body: NormalSendBody): boolean {
   return Object.prototype.hasOwnProperty.call(body, "computerUseHostId");
 }
 
-async function computerUseFeatureEnabled(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<boolean> {
-  const context = await loadUserFeatureSwitchContext(
-    params.db,
-    params.orgId,
-    params.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: context.overrides,
-  });
-}
-
 async function updateThreadComputerUseHost(params: {
   readonly db: Db;
   readonly threadId: string;
@@ -1344,19 +1324,6 @@ async function resolveComputerUseHostGrant(params: {
         userId: params.userId,
         hostId: null,
       });
-    }
-    return null;
-  }
-
-  if (
-    !(await computerUseFeatureEnabled({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-    }))
-  ) {
-    if (explicitSelection) {
-      return forbidden("Computer use is not enabled");
     }
     return null;
   }

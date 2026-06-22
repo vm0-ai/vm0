@@ -4517,7 +4517,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4547,7 +4546,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4599,7 +4597,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4648,7 +4645,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await waitFor(() => {
@@ -4722,7 +4718,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4800,7 +4795,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4855,7 +4849,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
@@ -4884,7 +4877,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
     });
 
     await user.click(await screen.findByLabelText("Connectors"));

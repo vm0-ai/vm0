@@ -190,17 +190,12 @@ describe("auth tokens", () => {
   });
 
   it("gates computer-use capability on an explicit host grant", () => {
-    const defaultToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ComputerUse]: true },
-    );
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const scopedToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.ComputerUse]: true },
+      undefined,
       { computerUseHostId: "00000000-0000-4000-8000-000000000001" },
     );
 

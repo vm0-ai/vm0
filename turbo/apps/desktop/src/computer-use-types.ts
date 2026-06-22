@@ -1,5 +1,3 @@
-export const COMPUTER_USE_FEATURE_SWITCH_KEY = "computerUse";
-
 export const COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS = [
   "chrome",
   "safari",
@@ -119,7 +117,6 @@ export interface DesktopKeepAwakeState {
 }
 
 export interface DesktopComputerUseState {
-  readonly featureSwitchKey: typeof COMPUTER_USE_FEATURE_SWITCH_KEY;
   readonly platform: NodeJS.Platform;
   readonly supported: boolean;
   /**

@@ -24,7 +24,6 @@ const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 
 const CONDITIONAL_CAPABILITIES = [
-  ["computer-use:write", FeatureSwitchKey.ComputerUse],
   ["banking:read", FeatureSwitchKey.Banking],
   ["goal:read", FeatureSwitchKey.GoalWorkflows],
   ["goal:write", FeatureSwitchKey.GoalWorkflows],
