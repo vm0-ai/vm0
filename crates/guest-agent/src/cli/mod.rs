@@ -4,6 +4,7 @@
 //! private submodules own focused execution policies:
 //!
 //! - `codex_setup`: pre-exec Codex auth/bootstrap.
+//! - `codex_app_server_events`: Codex app-server notification compatibility mapping.
 //! - `command`: Claude Code and Codex command construction.
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
