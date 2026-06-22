@@ -3,6 +3,7 @@ use chrono::Utc;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
+use std::process::Command;
 use std::thread;
 use uuid::Uuid;
 
@@ -30,6 +31,7 @@ enum Scenario {
     NotificationOverflow,
     OversizedStdout,
     ServerRequestBeforeResponse,
+    StderrHolderOnStdinEof,
     UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
@@ -57,6 +59,7 @@ impl Scenario {
                 "notification-overflow" => Ok(Self::NotificationOverflow),
                 "oversized-stdout" => Ok(Self::OversizedStdout),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
+                "stderr-holder-on-stdin-eof" => Ok(Self::StderrHolderOnStdinEof),
                 "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
@@ -142,10 +145,14 @@ impl AppServerState {
                 return Ok(());
             }
         }
-        if self.scenario == Scenario::HangOnStdinEof {
-            loop {
+        match self.scenario {
+            Scenario::HangOnStdinEof => loop {
                 thread::park();
+            },
+            Scenario::StderrHolderOnStdinEof => {
+                spawn_stderr_holder()?;
             }
+            _ => {}
         }
         Ok(())
     }
@@ -592,6 +599,17 @@ fn server_request(id: Value) -> Value {
             "message": "guest-mock-codex server request"
         }
     })
+}
+
+fn spawn_stderr_holder() -> io::Result<()> {
+    let status = Command::new("sh").args(["-c", "sleep 30 &"]).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "failed to spawn stderr holder: {status}"
+        )))
+    }
 }
 
 fn thread(thread_id: &str) -> Value {

@@ -352,8 +352,9 @@ impl CodexAppServerClient {
             }
         }
 
-        self.closed = true;
         self.drain_stderr().await;
+        self.clear_child_process_handles();
+        self.closed = true;
         Ok(())
     }
 
@@ -377,10 +378,7 @@ impl CodexAppServerClient {
     ) -> Result<ExitStatus, CodexAppServerError> {
         self.wait_rx = None;
         match result {
-            Ok(Ok(status)) => {
-                self.clear_child_process_handles();
-                Ok(status)
-            }
+            Ok(Ok(status)) => Ok(status),
             Ok(Err(error)) => {
                 self.kill_and_clear_child_process_handles();
                 Err(CodexAppServerError::Io(error))
@@ -402,7 +400,6 @@ impl CodexAppServerClient {
         match wait_rx.try_recv() {
             Ok(Ok(status)) => {
                 self.wait_rx = None;
-                self.clear_child_process_handles();
                 Ok(Some(status))
             }
             Ok(Err(error)) => {
@@ -578,6 +575,9 @@ impl CodexAppServerClient {
         };
         self.mark_stream_unusable(message);
         self.signal_process_group(libc::SIGKILL);
+        if self.wait_rx.is_none() {
+            self.clear_child_process_handles();
+        }
         error
     }
 
@@ -585,6 +585,9 @@ impl CodexAppServerClient {
         let message = message.into();
         self.mark_stream_unusable(message.clone());
         self.signal_process_group(libc::SIGKILL);
+        if self.wait_rx.is_none() {
+            self.clear_child_process_handles();
+        }
         CodexAppServerError::Protocol(message)
     }
 
@@ -595,18 +598,30 @@ impl CodexAppServerClient {
     }
 
     async fn drain_stderr(&mut self) {
-        let Some(stderr_handle) = self.stderr_handle.take() else {
+        let Some(stderr_handle) = self.stderr_handle.as_ref() else {
             return;
         };
-        let mut stderr_handle = stderr_handle;
+        let stderr_open = !stderr_handle.is_finished();
+        if stderr_open {
+            self.signal_process_group(libc::SIGKILL);
+        }
 
-        match tokio::time::timeout(STDERR_DRAIN_GRACE, &mut stderr_handle).await {
+        let Some(stderr_handle) = self.stderr_handle.as_mut() else {
+            return;
+        };
+
+        match tokio::time::timeout(STDERR_DRAIN_GRACE, stderr_handle).await {
             Ok(Ok(lines)) => {
                 self.stderr_tail = lines;
+                self.stderr_handle = None;
             }
-            Ok(Err(_join_error)) => {}
+            Ok(Err(_join_error)) => {
+                self.stderr_handle = None;
+            }
             Err(_elapsed) => {
-                stderr_handle.abort();
+                if let Some(stderr_handle) = self.stderr_handle.take() {
+                    stderr_handle.abort();
+                }
             }
         }
     }

@@ -556,6 +556,21 @@ async fn codex_app_server_cancelled_shutdown_can_retry_and_reap_child() -> Resul
 }
 
 #[tokio::test]
+async fn codex_app_server_shutdown_kills_stderr_holder_without_drain_timeout() -> Result<(), String>
+{
+    let mut client = spawn_client(Some("stderr-holder-on-stdin-eof"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("shutdown failed: {error:?}")),
+        Err(_) => return Err("shutdown waited for stderr drain timeout".to_string()),
+    }
+    assert!(client.process_id().is_none());
+    Ok(())
+}
+
+#[tokio::test]
 async fn codex_app_server_drop_kills_open_child() -> Result<(), String> {
     let client = spawn_client(None)?;
     let pid = client
