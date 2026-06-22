@@ -644,6 +644,7 @@ fn build_env_json_preserves_guest_agent_tuning_env() {
     ctx.environment = Some(HashMap::from([
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
+        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), "4".into()),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(), "2".into()),
     ]));
 
@@ -651,6 +652,7 @@ fn build_env_json_preserves_guest_agent_tuning_env() {
 
     assert_eq!(env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(env.get("VM0_POST_RESULT_SIGTERM_GRACE_SECS").unwrap(), "1");
+    assert_eq!(env.get("VM0_POST_RESULT_TOTAL_CAP_SECS").unwrap(), "4");
     assert_eq!(env.get("VM0_POST_RESULT_SIGKILL_GRACE_SECS").unwrap(), "2");
 }
 
