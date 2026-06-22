@@ -190,6 +190,24 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
+  it("should default YouTube read permissions to allow and mutations to deny", () => {
+    const policy = getDefaultFirewallPolicies("youtube");
+
+    expect(policy.policies["videos.read"]).toBe("allow");
+    expect(policy.policies["videos.rating.read"]).toBe("allow");
+    expect(policy.policies["search.read"]).toBe("allow");
+    expect(policy.policies["playlist-items.read"]).toBe("allow");
+    expect(policy.policies["comments.read"]).toBe("allow");
+    expect(policy.policies["live-chat-messages.read"]).toBe("allow");
+    expect(policy.policies["videos.create"]).toBe("deny");
+    expect(policy.policies["videos.write"]).toBe("deny");
+    expect(policy.policies["videos.delete"]).toBe("deny");
+    expect(policy.policies["comments.moderate"]).toBe("deny");
+    expect(policy.policies["third-party-links.read"]).toBe("deny");
+    expect(policy.policies["tests.create"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
   it("should default maskdb read-only permissions to allow and everything else to deny", () => {
     const policy = getDefaultFirewallPolicies("maskdb");
 
