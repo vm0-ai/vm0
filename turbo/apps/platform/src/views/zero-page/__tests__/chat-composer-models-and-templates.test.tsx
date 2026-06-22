@@ -1655,6 +1655,71 @@ describe("chat composer templates", () => {
     }
   });
 
+  it("uses the presentation card theme picker for template selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
+    });
+    if (template === undefined) {
+      throw new Error("Second presentation template not found");
+    }
+    let selectedColorSystemId: string | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        if (body.generationTemplate?.type === "presentation") {
+          selectedColorSystemId =
+            body.generationTemplate.selection.colorSystemId;
+        }
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+    await user.click(
+      screen.getByLabelText(`Change theme for ${template.title}`),
+    );
+    await user.click(
+      await screen.findByLabelText(
+        `Select card theme Prism for ${template.title}`,
+      ),
+    );
+    expect(
+      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(
+      screen.getByLabelText(`Select template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Create a launch deck",
+    );
+    await waitFor(() => {
+      expect(selectedColorSystemId).toBe("color-system:prism");
+    });
+  });
+
   it("scrubs presentation template card slide images before HTML preview loads", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const lastSlideIndex = template.previewImages.length - 1;

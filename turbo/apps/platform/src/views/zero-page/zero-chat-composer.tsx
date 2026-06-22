@@ -18,6 +18,8 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconCheck,
+  IconChevronDown,
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
@@ -2627,10 +2629,12 @@ function TemplatePreview({
   item,
   onPreview,
   priority = false,
+  theme,
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
+  theme?: PresentationTemplateThemeOption;
 }) {
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
@@ -2652,9 +2656,9 @@ function TemplatePreview({
       ? htmlPreview
       : null;
   const visibleHtmlPreview = activeHtmlPreview;
-  const defaultTheme = findPresentationTemplateTheme(
-    defaultPresentationTemplateThemeId(item),
-  );
+  const previewTheme =
+    theme ??
+    findPresentationTemplateTheme(defaultPresentationTemplateThemeId(item));
   const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
   const preferredStaticPreviewImage = presentationTemplateCardSlideImage(
     item,
@@ -2684,7 +2688,7 @@ function TemplatePreview({
         index: activeIndex,
         item,
         previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
-        theme: defaultTheme,
+        theme: previewTheme,
       });
       setHtmlPreview(previewState);
       return;
@@ -2748,7 +2752,7 @@ function TemplatePreview({
               index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
-              theme: defaultTheme,
+              theme: previewTheme,
             }),
           );
         }
@@ -2769,7 +2773,7 @@ function TemplatePreview({
           index,
           item,
           previousFrameUrl: activeHtmlPreview?.frameUrl ?? null,
-          theme: defaultTheme,
+          theme: previewTheme,
         }),
       );
     }
@@ -3345,6 +3349,109 @@ function TemplatePreviewPage({
   );
 }
 
+function presentationTemplateCardThemeSwatches(
+  theme: PresentationTemplateThemeOption,
+): readonly { readonly color: string; readonly id: string }[] {
+  return presentationTemplateThemePreviewSwatches(theme).slice(0, 3);
+}
+
+function PresentationTemplateCardThemePicker({
+  item,
+  selectedTheme,
+  onThemeChange,
+}: {
+  item: PresentationTemplateItem;
+  selectedTheme: PresentationTemplateThemeOption;
+  onThemeChange: (theme: PresentationTemplateThemeOption) => void;
+}) {
+  const selectedSwatches = presentationTemplateCardThemeSwatches(selectedTheme);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Change theme for ${item.title}`}
+          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <IconPalette
+            size={13}
+            stroke={1.8}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="shrink-0">Theme</span>
+          <span className="flex shrink-0 items-center gap-0.5">
+            {selectedSwatches.map((swatch) => {
+              return (
+                <span
+                  key={`${selectedTheme.id}-${swatch.id}`}
+                  className="h-2.5 w-2.5 rounded-full border border-border"
+                  style={{ backgroundColor: swatch.color }}
+                />
+              );
+            })}
+          </span>
+          <IconChevronDown
+            size={12}
+            stroke={1.8}
+            className="shrink-0 text-muted-foreground"
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-72 rounded-lg p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold text-foreground">Theme</p>
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
+            {selectedTheme.name}
+          </p>
+        </div>
+        <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1">
+          {PRESENTATION_TEMPLATE_THEME_OPTIONS.map((theme) => {
+            const active = theme.id === selectedTheme.id;
+            const swatches = presentationTemplateCardThemeSwatches(theme);
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                aria-label={`Select card theme ${theme.name} for ${item.title}`}
+                aria-pressed={active}
+                onClick={() => {
+                  onThemeChange(theme);
+                }}
+                className={cn(
+                  "relative min-w-0 rounded-lg border bg-background p-1.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active
+                    ? "border-ring ring-1 ring-ring"
+                    : "border-border hover:border-muted-foreground/60",
+                )}
+              >
+                {active ? (
+                  <span className="absolute right-2 top-2 grid h-4 w-4 place-items-center rounded-full bg-foreground text-background">
+                    <IconCheck size={11} stroke={2.3} />
+                  </span>
+                ) : null}
+                <span className="flex h-7 overflow-hidden rounded-md border border-border/70">
+                  {swatches.map((swatch) => {
+                    return (
+                      <span
+                        key={`${theme.id}-${swatch.id}`}
+                        className="flex-1"
+                        style={{ backgroundColor: swatch.color }}
+                      />
+                    );
+                  })}
+                </span>
+                <span className="mt-1 block truncate text-[11px] font-medium text-foreground">
+                  {theme.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PptCard({
   item,
   selected,
@@ -3358,6 +3465,12 @@ function PptCard({
   onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
+  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const setThemeId = useSet(setTemplateDetailThemeId$);
+  const selectedTheme = findPresentationTemplateTheme(
+    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+  );
+
   return (
     <div
       className={cn(
@@ -3366,7 +3479,12 @@ function PptCard({
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <TemplatePreview item={item} onPreview={onPreview} priority={priority} />
+      <TemplatePreview
+        item={item}
+        onPreview={onPreview}
+        priority={priority}
+        theme={selectedTheme}
+      />
       <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <TooltipProvider delayDuration={300}>
@@ -3379,6 +3497,15 @@ function PptCard({
               <TooltipContent side="bottom">{item.title}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          <div className="mt-2">
+            <PresentationTemplateCardThemePicker
+              item={item}
+              selectedTheme={selectedTheme}
+              onThemeChange={(theme) => {
+                setThemeId(item.slug, theme.id);
+              }}
+            />
+          </div>
         </div>
         <div className="flex shrink-0 items-center">
           <button
@@ -3386,7 +3513,10 @@ function PptCard({
             aria-label={`Select template ${item.title}`}
             aria-pressed={selected}
             onClick={() => {
-              onSelect(item);
+              onSelect(
+                item,
+                presentationTemplateColorSystemId(selectedTheme.id),
+              );
             }}
             className={cn(
               "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
