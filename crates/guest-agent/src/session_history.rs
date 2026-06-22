@@ -28,6 +28,7 @@
 use crate::error::AgentError;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
+use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -97,23 +98,13 @@ fn read_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
+    let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
         return Ok(None);
     };
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
     read_codex_session_history_impl(sessions_dir, &id_norm)
-}
-
-pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
-    Some(canonical_codex_thread_id(thread_id)?.replace('-', ""))
-}
-
-pub(crate) fn canonical_codex_thread_id(thread_id: &str) -> Option<String> {
-    uuid::Uuid::parse_str(thread_id)
-        .ok()
-        .map(|uuid| uuid.to_string())
 }
 
 fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {

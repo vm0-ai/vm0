@@ -6,8 +6,8 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
 
-use super::super::session_id::canonical_codex_thread_id;
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use guest_contracts::codex_thread_id::CodexThreadId;
 
 const CODEX_HOME: &str = "/home/user/.codex";
 const CODEX_SESSION_CLEANUP_SCRIPT: &str =
@@ -89,18 +89,27 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let session_id = canonical_codex_thread_id(&session.cli_agent_session_id)
+    let thread_id = CodexThreadId::parse(&session.cli_agent_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
+    let session_id = thread_id.as_str();
+    let session_filename_key = thread_id.filename_key();
 
     let session_path =
-        codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
+        codex_restore_rollout_path(session_id, &session.session_history, chrono::Utc::now());
 
-    cleanup_existing_codex_session_files(sandbox, context, &session_id, &session_path).await?;
+    cleanup_existing_codex_session_files(
+        sandbox,
+        context,
+        session_id,
+        &session_filename_key,
+        &session_path,
+    )
+    .await?;
 
     write_session_history_file(
         sandbox,
         &session_path,
-        &[&session_id, &session.cli_agent_session_id],
+        &[session_id, &session.cli_agent_session_id],
         &session.session_history,
     )
     .await?;
@@ -119,11 +128,16 @@ async fn cleanup_existing_codex_session_files(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session_id: &str,
+    session_filename_key: &str,
     session_path: &str,
 ) -> RunnerResult<()> {
     let cleanup_cmd = codex_session_cleanup_command(CODEX_HOME);
     let env = [
         ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        (
+            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+            session_filename_key,
+        ),
         ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
     ];
     let result = sandbox
@@ -192,12 +206,17 @@ mod tests {
         restore_path: &Path,
         session_id: &str,
     ) -> Output {
+        let session_filename_key = session_id.replace('-', "");
         Command::new("sh")
             .arg("-c")
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
             .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
+            .env(
+                "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+                session_filename_key,
+            )
             .env(
                 "VM0_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),

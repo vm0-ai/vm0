@@ -319,6 +319,34 @@ fn read_session_history_codex_marker_rejects_short_thread_id() {
 }
 
 #[test]
+fn read_session_history_codex_marker_rejects_decorated_thread_id() {
+    for thread_id in [
+        "{0193abcd-ef01-7234-89ab-cdef01234567}",
+        "urn:uuid:0193abcd-ef01-7234-89ab-cdef01234567",
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let sessions_dir = tmp.path().join("sessions");
+        write_session_file(
+            &sessions_dir,
+            &["2026", "04", "28"],
+            &format!("{VALID_CODEX_THREAD_ID}.jsonl"),
+            b"history\n",
+        )
+        .unwrap();
+
+        let path_file = write_codex_marker_path_file(tmp.path(), &sessions_dir, thread_id).unwrap();
+
+        let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+            .expect_err("decorated codex thread id must not match canonical history files");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Codex session file not found"),
+            "expected decorated thread id to fail fast, got: {msg}"
+        );
+    }
+}
+
+#[test]
 fn read_session_history_read_error_omits_literal_session_path() {
     let tmp = tempfile::tempdir().unwrap();
     let session_id = "sess-secret-123";

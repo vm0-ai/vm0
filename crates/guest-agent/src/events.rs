@@ -497,7 +497,7 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     let thread_id = raw_codex_thread_id(event)?;
-    let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
+    let thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)?;
     let marker = session_metadata::codex_history_marker_payload(&thread_id);
 
     Some((thread_id, marker))

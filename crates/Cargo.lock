@@ -1298,6 +1298,7 @@ version = "0.2.2"
 dependencies = [
  "libc",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]

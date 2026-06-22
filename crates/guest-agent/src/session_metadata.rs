@@ -9,6 +9,7 @@ use crate::error::AgentError;
 use crate::paths;
 use crate::session_history;
 use guest_common::{log_error, log_info};
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use std::io;
 use std::path::{Component, Path};
 
@@ -18,7 +19,7 @@ pub(crate) fn history_marker_payload_for_session_id(session_id: &str) -> Option<
     match Framework::from_env() {
         Framework::ClaudeCode => claude_history_path_payload(session_id),
         Framework::Codex => {
-            let thread_id = session_history::canonical_codex_thread_id(session_id)?;
+            let thread_id = canonical_codex_thread_id(session_id)?;
             Some(codex_history_marker_payload(&thread_id))
         }
     }

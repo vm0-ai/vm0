@@ -339,6 +339,33 @@ async fn restore_session_rejects_short_codex_session_id_without_cleanup() {
 }
 
 #[tokio::test]
+async fn restore_session_rejects_decorated_codex_session_id_without_cleanup() {
+    for raw_session_id in [
+        "{019e9154-c304-70f0-adde-36efb1be1701}",
+        "urn:uuid:019e9154-c304-70f0-adde-36efb1be1701",
+    ] {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            cli_agent_session_id: raw_session_id.into(),
+            session_history: "{}".into(),
+        };
+
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+        let message = err.to_string();
+        assert!(message.contains("invalid session_id"), "got: {err}");
+        assert!(
+            !message.contains(raw_session_id),
+            "invalid codex error must not echo raw session id: {message}"
+        );
+        assert!(sandbox.exec_calls().is_empty());
+        assert!(sandbox.write_file_calls().is_empty());
+    }
+}
+
+#[tokio::test]
 async fn restore_session_fails_when_codex_cleanup_fails() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
@@ -732,6 +759,7 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
         exec_calls[0].env_keys,
         [
             "VM0_CODEX_RESTORE_SESSION_ID".to_string(),
+            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
             "VM0_CODEX_RESTORE_SESSION_PATH".to_string()
         ]
     );
@@ -761,6 +789,12 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(exec_calls[0].cmd.contains(".jsonl.zst"));
     assert!(exec_calls[0].cmd.contains(".jsonl.vm0tmp-*"));
     assert!(exec_calls[0].cmd.contains("id_no_dashes"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY")
+    );
+    assert!(!exec_calls[0].cmd.contains("tr -d"));
     assert!(exec_calls[0].cmd.contains("-delete"));
 }
 
