@@ -9,6 +9,7 @@ use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::paths::diagnostic_session_fingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
 
@@ -65,6 +66,13 @@ pub(crate) struct WorkspaceImagePromotionContext {
     terminal_status: WorkspaceCacheTerminalStatus,
     completed_at: String,
     storage_fingerprints: StorageFingerprints,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspaceImagePromotionOutcome {
+    Promoted,
+    PreservedExisting,
+    SkippedUnpublished,
 }
 
 struct WorkspaceImagePromotionInput<'a> {
@@ -630,7 +638,10 @@ impl SessionWorkspaceCache {
         }
     }
 
-    async fn promote_locked(&self, input: WorkspaceImagePromotionInput<'_>) -> RunnerResult<bool> {
+    async fn promote_locked(
+        &self,
+        input: WorkspaceImagePromotionInput<'_>,
+    ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
         if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
             info!(
@@ -659,7 +670,7 @@ impl SessionWorkspaceCache {
                     promotion_completed_at = %input.completed_at,
                     "workspace image cache promotion skipped because existing cache is newer"
                 );
-                return Ok(false);
+                return Ok(WorkspaceImagePromotionOutcome::PreservedExisting);
             }
             Ok(_) => {}
             Err(e) => warn!(
@@ -679,7 +690,7 @@ impl SessionWorkspaceCache {
                     cache_key = input.cache_key,
                     "workspace image cache promotion skipped: capacity lock busy"
                 );
-                return Ok(false);
+                return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
             }
             Err(e) => {
                 warn!(
@@ -688,7 +699,7 @@ impl SessionWorkspaceCache {
                     error = %e,
                     "workspace image cache promotion skipped: capacity lock unavailable"
                 );
-                return Ok(false);
+                return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
             }
         };
 
@@ -717,7 +728,7 @@ impl SessionWorkspaceCache {
                 min_free_bytes = budget.min_free_bytes,
                 "workspace image cache promotion skipped due to free-space pressure"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         let image_metadata = fs::symlink_metadata(input.active_image).await?;
         if !image_metadata.is_file() {
@@ -727,7 +738,7 @@ impl SessionWorkspaceCache {
                 active_image = %input.active_image.display(),
                 "workspace image cache promotion skipped because active image is not a file"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         let active_allocated = allocated_bytes(&image_metadata);
         if active_allocated > budget.max_entry_bytes {
@@ -738,7 +749,7 @@ impl SessionWorkspaceCache {
                 max_entry_bytes = budget.max_entry_bytes,
                 "workspace image cache promotion skipped because image is too large"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         if !has_copy_headroom(stats, budget, active_allocated) {
             match self.gc_locked(false).await {
@@ -764,7 +775,7 @@ impl SessionWorkspaceCache {
                 min_free_bytes = budget.min_free_bytes,
                 "workspace image cache promotion skipped due to copy free-space pressure"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
 
         ensure_workspace_cache_entry_dir(&cache_dir).await?;
@@ -798,7 +809,7 @@ impl SessionWorkspaceCache {
                 expected_image_size_bytes = input.image_size_bytes,
                 "workspace image cache promotion skipped because copied image size does not match cache key"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         let tmp_allocated = allocated_bytes(&tmp_metadata);
         if tmp_allocated > budget.max_entry_bytes {
@@ -810,7 +821,7 @@ impl SessionWorkspaceCache {
                 max_entry_bytes = budget.max_entry_bytes,
                 "workspace image cache promotion skipped because copied image is too large"
             );
-            return Ok(false);
+            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         let current = self.session_workspace_cache_current_image(input.cache_key);
         match fs::symlink_metadata(&current).await {
@@ -882,7 +893,7 @@ impl SessionWorkspaceCache {
                 "workspace image cache GC failed after promotion"
             );
         }
-        Ok(true)
+        Ok(WorkspaceImagePromotionOutcome::Promoted)
     }
 }
 impl WorkspaceImageLease {
@@ -1035,7 +1046,8 @@ impl WorkspaceImageLease {
             return Ok(false);
         };
 
-        self.cache
+        let outcome = self
+            .cache
             .promote_locked(WorkspaceImagePromotionInput {
                 run_id,
                 cache_key,
@@ -1048,7 +1060,8 @@ impl WorkspaceImageLease {
                 completed_at: &completed_at,
                 storage_fingerprints,
             })
-            .await
+            .await?;
+        Ok(matches!(outcome, WorkspaceImagePromotionOutcome::Promoted))
     }
 
     pub(crate) fn into_promotion_context(
@@ -1171,7 +1184,7 @@ impl WorkspaceImagePromotionContext {
         self.validate_expected_identity(&self.cache, request)
     }
 
-    pub(crate) async fn promote(&self) -> RunnerResult<bool> {
+    pub(crate) async fn promote(&self) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let tainted_storage_fingerprints;
         let promotion_storage_fingerprints = match self.terminal_status {
             WorkspaceCacheTerminalStatus::Success => &self.storage_fingerprints,
@@ -1193,7 +1206,7 @@ impl WorkspaceImagePromotionContext {
                             error = %e,
                             "workspace image cache promotion skipped: late entry lock unavailable"
                         );
-                        return Ok(false);
+                        return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
                     }
                 }
             }
@@ -1212,6 +1225,42 @@ impl WorkspaceImagePromotionContext {
                 completed_at: &self.completed_at,
                 storage_fingerprints: promotion_storage_fingerprints,
             })
+            .await
+    }
+
+    pub(crate) async fn abandon_unpublished(self, reason: &str) -> RunnerResult<bool> {
+        let Self {
+            cache,
+            cache_key,
+            entry_lock,
+            run_id,
+            sandbox_id,
+            profile_name,
+            cli_agent_session_id,
+            consumed_cache_hit,
+            ..
+        } = self;
+        let Some(_entry_lock) = entry_lock else {
+            let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+            info!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                profile_name,
+                session_fingerprint = %session_fingerprint,
+                cache_key,
+                reason,
+                "workspace image cache promotion context abandoned without entry lock"
+            );
+            return Ok(false);
+        };
+        if consumed_cache_hit {
+            return cache
+                .invalidate_cache_entry(run_id, &cache_key, reason)
+                .await;
+        }
+        let current = cache.session_workspace_cache_current_image(&cache_key);
+        cache
+            .invalidate_current_image(run_id, &cache_key, &current, reason)
             .await
     }
 

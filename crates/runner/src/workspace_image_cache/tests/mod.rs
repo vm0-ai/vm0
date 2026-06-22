@@ -1343,6 +1343,211 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
 }
 
 #[tokio::test]
+async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let session_id = "sess-abandon-hit";
+    let cache_run_id = RunId::new_v4();
+    let cache_key = write_current_cache_entry(
+        &cache,
+        cache_run_id,
+        session_id,
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let current = paths.session_workspace_cache_current_image(&cache_key);
+    let image_size_bytes = fs::metadata(&current).await.unwrap().len();
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+    assert!(lease.consumed_cache_hit);
+    assert!(
+        !fs::try_exists(paths.session_workspace_cache_metadata(&cache_key))
+            .await
+            .unwrap()
+    );
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: None,
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: "2026-05-02T00:00:00.000Z".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            promotable: true,
+        })
+        .unwrap();
+
+    assert!(
+        promotion
+            .abandon_unpublished("test abandoned cache hit")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !fs::try_exists(paths.session_workspace_cache_entry_dir(&cache_key))
+            .await
+            .unwrap()
+    );
+
+    let next = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(next.result(), WorkspaceCacheCheckoutResult::Miss);
+}
+
+#[tokio::test]
+async fn promotion_context_preserves_existing_newer_cache_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let session_id = "sess-preserve-existing";
+    let image_size_bytes = format!("image-{session_id}").len() as u64;
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+    let cache_key = write_current_cache_entry(
+        &cache,
+        RunId::new_v4(),
+        session_id,
+        "/workspace",
+        "2026-05-02T00:00:00.000Z",
+        "2026-05-02T00:00:00.000Z",
+    )
+    .await;
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: None,
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: "2026-05-01T00:00:00.000Z".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            promotable: true,
+        })
+        .unwrap();
+
+    let outcome = promotion.promote().await.unwrap();
+
+    assert_eq!(outcome, WorkspaceImagePromotionOutcome::PreservedExisting);
+    drop(promotion);
+    let metadata = cache
+        .read_metadata_file(&paths.session_workspace_cache_metadata(&cache_key))
+        .await
+        .unwrap();
+    assert_eq!(metadata.last_completed_at, "2026-05-02T00:00:00.000Z");
+    assert!(
+        fs::try_exists(paths.session_workspace_cache_current_image(&cache_key))
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let session_id = "sess-no-lock-abandon";
+    let cache_key = write_current_cache_entry(
+        &cache,
+        RunId::new_v4(),
+        session_id,
+        "/workspace",
+        "2026-05-02T00:00:00.000Z",
+        "2026-05-02T00:00:00.000Z",
+    )
+    .await;
+    let image_size_bytes = format!("image-{session_id}").len() as u64;
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: Some(session_id),
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: "2026-05-01T00:00:00.000Z".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            promotable: true,
+        })
+        .unwrap();
+
+    assert!(
+        !promotion
+            .abandon_unpublished("test no lock abandon")
+            .await
+            .unwrap()
+    );
+    assert!(
+        fs::try_exists(paths.session_workspace_cache_metadata(&cache_key))
+            .await
+            .unwrap()
+    );
+    assert!(
+        fs::try_exists(paths.session_workspace_cache_current_image(&cache_key))
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn metadata_missing_current_present_is_not_a_cache_hit() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -4074,12 +4279,12 @@ async fn late_session_promotion_skips_when_entry_lock_is_busy() {
         .await
         .unwrap();
 
-    let promoted = tokio::time::timeout(std::time::Duration::from_secs(1), promotion.promote())
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), promotion.promote())
         .await
         .expect("late-session promotion must not block behind another runner's lock")
         .unwrap();
 
-    assert!(!promoted);
+    assert_eq!(outcome, WorkspaceImagePromotionOutcome::SkippedUnpublished);
     assert!(
         !paths
             .session_workspace_cache_current_image(&cache_key)

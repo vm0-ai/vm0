@@ -13,6 +13,8 @@ use sandbox_mock::{ExecMatcher, MockSandboxFactory, MockSandboxOverrides};
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 
+use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
+
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
     overrides: Arc<MockSandboxOverrides>,
@@ -117,7 +119,7 @@ async fn parked_workspace_promotion_unparks_unmounts_and_promotes_cache_entry() 
 
     let promoted = promote_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
-        Some(&fixture.promotion),
+        Some(fixture.promotion),
         "test",
     )
     .await;
@@ -128,7 +130,6 @@ async fn parked_workspace_promotion_unparks_unmounts_and_promotes_cache_entry() 
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].sudo);
     assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
-    drop(fixture.promotion);
     let states = fixture.cache.held_session_states().await;
     assert_eq!(states.len(), 1);
     assert_eq!(states[0].session_id, fixture.session_id);
@@ -146,7 +147,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
 
     let promoted = promote_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
-        Some(&fixture.promotion),
+        Some(fixture.promotion),
         "test",
     )
     .await;
@@ -154,8 +155,34 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
     assert!(!promoted);
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    drop(fixture.promotion);
     assert!(fixture.cache.held_session_states().await.is_empty());
+}
+
+#[tokio::test]
+async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
+    let fixture = WorkspacePromotionFixture::new_from_cache_hit("sess-hit-unpark-error").await;
+    let cache = fixture.cache.clone();
+    let session_id = fixture.session_id.clone();
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated unpark failure".into(),
+    }));
+    let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
+
+    let promoted = promote_workspace_image_from_parked_sandbox(
+        sandbox.as_mut(),
+        Some(fixture.promotion),
+        "test",
+    )
+    .await;
+
+    assert!(!promoted);
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&cache, &session_id).await,
+        WorkspaceCacheCheckoutResult::Miss
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -171,7 +198,7 @@ async fn parked_workspace_promotion_warning_uses_session_fingerprint() {
 
     let (promoted, events) = capture_promotion_events(promote_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
-        Some(&fixture.promotion),
+        Some(fixture.promotion),
         "test",
     ))
     .await;
@@ -201,7 +228,7 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
 
     let promoted = promote_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
-        Some(&fixture.promotion),
+        Some(fixture.promotion),
         "test",
     )
     .await;
@@ -209,7 +236,6 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
     assert!(!promoted);
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    drop(fixture.promotion);
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
@@ -227,7 +253,7 @@ async fn parked_workspace_promotion_guest_unmount_failure_skips_cache() {
 
     let promoted = promote_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
-        Some(&fixture.promotion),
+        Some(fixture.promotion),
         "test",
     )
     .await;
@@ -235,7 +261,6 @@ async fn parked_workspace_promotion_guest_unmount_failure_skips_cache() {
     assert!(!promoted);
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
-    drop(fixture.promotion);
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
@@ -245,11 +270,10 @@ async fn parked_workspace_promotion_guest_exec_panic_skips_cache() {
     let mut sandbox = PanicExecSandbox::new("parked-exec-panic");
 
     let promoted =
-        promote_workspace_image_from_parked_sandbox(&mut sandbox, Some(&fixture.promotion), "test")
+        promote_workspace_image_from_parked_sandbox(&mut sandbox, Some(fixture.promotion), "test")
             .await;
 
     assert!(!promoted);
-    drop(fixture.promotion);
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 

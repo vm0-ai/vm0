@@ -44,7 +44,9 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use lifecycle::{WorkspaceImageLease, WorkspaceImagePromotionContext};
+pub(crate) use lifecycle::{
+    WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
+};
 pub(crate) use types::{
     CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
