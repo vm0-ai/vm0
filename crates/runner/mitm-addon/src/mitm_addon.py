@@ -95,6 +95,9 @@ _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
 _TCP_REQUEST_SIZE = "_tcp_request_size"
 _TCP_RESPONSE_SIZE = "_tcp_response_size"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+_CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
+_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
+_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE = "_connector_diagnostic_lookup_done"
 _CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
 _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
@@ -832,7 +835,7 @@ def _connector_diagnostic_candidate_from_flow(
     )
 
 
-def _maybe_record_allow_connector_diagnostic_candidate(
+def _maybe_record_allow_connector_diagnostic_context(
     flow: http.HTTPFlow,
     classification: _RequestClassification,
 ) -> None:
@@ -848,13 +851,42 @@ def _maybe_record_allow_connector_diagnostic_candidate(
     if vm_info is None or not isinstance(original_url, str):
         return
 
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_ELIGIBLE] = True
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = tuple(
+        sorted(_active_firewall_names(vm_info))
+    )
+
+
+def _resolve_connector_diagnostic_candidate(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is not None:
+        return candidate
+    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE):
+        return None
+    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_ELIGIBLE) is not True:
+        return None
+    if not original_url:
+        return None
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
+        return None
+
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE] = True
     candidate = builtin_connector_diagnostics.find_candidate(
         original_url,
         flow.request.method,
-        active_firewall_names=_active_firewall_names(vm_info),
+        active_firewall_names=set(
+            _metadata_str_tuple(flow.metadata.get(_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES))
+        ),
     )
     if candidate is not None:
         _record_connector_diagnostic_candidate(flow, candidate)
+    return candidate
 
 
 def _metadata_str_tuple(value: object) -> tuple[str, ...]:
@@ -1032,7 +1064,7 @@ def _maybe_replace_connector_diagnostic_response(
     ):
         return
 
-    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
     if candidate is None:
         return
     upstream_status = flow.response.status_code
@@ -1061,7 +1093,7 @@ def _maybe_make_connector_diagnostic_error_response(
         flow
     ):
         return
-    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
     if candidate is None:
         return
     if _request_has_connector_auth_material(flow, candidate, original_url):
@@ -1092,11 +1124,11 @@ def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
     ):
         return False
 
-    candidate = _connector_diagnostic_candidate_from_flow(flow)
-    if candidate is None:
-        return False
     original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
     if not isinstance(original_url, str):
+        return False
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
+    if candidate is None:
         return False
     return not _request_has_connector_auth_material(flow, candidate, original_url)
 
@@ -1368,7 +1400,7 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         return
 
     if _should_stream_capture_request(classification):
-        _maybe_record_allow_connector_diagnostic_candidate(flow, classification)
+        _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
@@ -1500,7 +1532,7 @@ async def request(flow: http.HTTPFlow) -> None:
         vm_info = classification.vm_info
         if vm_info is None:
             return
-        _maybe_record_allow_connector_diagnostic_candidate(flow, classification)
+        _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)

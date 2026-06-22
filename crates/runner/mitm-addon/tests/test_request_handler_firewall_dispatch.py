@@ -77,8 +77,8 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata["firewall_permission"] == "full-access"
 
 
-async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
-    tmp_path, real_flow, mitm_ctx
+async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
+    tmp_path, real_flow, mitm_ctx, monkeypatch
 ):
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
@@ -89,16 +89,25 @@ async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
         method="POST",
     )
 
+    def fail_find_candidate(*_args, **_kwargs):
+        raise AssertionError("request hook should not run connector diagnostic lookup")
+
+    monkeypatch.setattr(
+        mitm_addon.builtin_connector_diagnostics,
+        "find_candidate",
+        fail_find_candidate,
+    )
+
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
 
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == ("not_configured_for_run")
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
 
 
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(
