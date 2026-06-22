@@ -1373,28 +1373,28 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(defaults.unknownPolicy).toBe("allow");
 
     // Grants across every expiry arm; the list API shows the stored expiry.
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "chat:write",
       action: "allow",
       expiresIn: "1h",
     });
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "files:read",
       action: "allow",
       expiresIn: "24h",
     });
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "search:read",
       action: "allow",
       expiresIn: "7d",
     });
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "groups:read",
@@ -1419,7 +1419,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     // A same-org member's own grant never leaks into the owner's runs.
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-    await api.upsertUserPermissionGrant(member, {
+    await api.applyUserPermissionGrant(member, {
       agentId,
       connectorRef: "slack",
       permission: "files:write",
@@ -1439,7 +1439,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(expired.allow).toContain("files:read");
 
     // Unknown-permission grants flip only the unknown policy.
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: UNKNOWN_PERMISSION_GRANT,
@@ -1452,7 +1452,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     // The grant snapshot is baked into the queued run: flipping the grant
     // after creation does not change the already-created run's policy.
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "chat:write",
@@ -1463,7 +1463,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "snapshot the grant state",
       modelProvider: "anthropic-api-key",
     });
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "chat:write",
@@ -1522,7 +1522,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(defaults.deny).toContain("dns-firewall.write");
     expect(defaults.unknownPolicy).toBe("deny");
 
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "cloudflare",
       permission: UNKNOWN_PERMISSION_GRANT,

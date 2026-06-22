@@ -8,7 +8,6 @@ import type { RouteEntry } from "../route";
 import {
   applyUserPermissionGrants$,
   listUserPermissionGrants$,
-  upsertUserPermissionGrant$,
 } from "../services/zero-user-permission-grants.service";
 
 const userPermissionGrantAuthOptions = {
@@ -17,7 +16,6 @@ const userPermissionGrantAuthOptions = {
 } as const;
 
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
-const upsertBody$ = bodyResultOf(zeroUserPermissionGrantsContract.upsert);
 const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
 
 const listUserPermissionGrantsInner$ = command(
@@ -37,33 +35,6 @@ const listUserPermissionGrantsInner$ = command(
 
     if ("kind" in result) {
       return { status: 200 as const, body: [...result.grants] };
-    }
-    return result;
-  },
-);
-
-const upsertUserPermissionGrantInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const bodyResult = await get(upsertBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const result = await set(
-      upsertUserPermissionGrant$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        grant: bodyResult.data,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if ("kind" in result) {
-      return { status: 200 as const, body: result.grant };
     }
     return result;
   },
@@ -102,13 +73,6 @@ export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       userPermissionGrantAuthOptions,
       listUserPermissionGrantsInner$,
-    ),
-  },
-  {
-    route: zeroUserPermissionGrantsContract.upsert,
-    handler: authRoute(
-      userPermissionGrantAuthOptions,
-      upsertUserPermissionGrantInner$,
     ),
   },
   {

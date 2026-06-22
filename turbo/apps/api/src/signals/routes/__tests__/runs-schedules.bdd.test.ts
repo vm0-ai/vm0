@@ -784,7 +784,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       accessToken: "xoxb-schedule-grant",
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
-    await api.upsertUserPermissionGrant(actor, {
+    await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
       permission: "chat:write",

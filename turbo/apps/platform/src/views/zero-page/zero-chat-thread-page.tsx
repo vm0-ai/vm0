@@ -249,9 +249,9 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
+  applyUserPermissionGrant$,
   findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
-  upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
@@ -4454,7 +4454,7 @@ interface LoadableLike<T> {
   data?: T;
 }
 
-type UpsertUserPermissionGrantFn = (
+type ApplyUserPermissionGrantFn = (
   params: {
     agentId: string;
     connectorRef: string;
@@ -4773,7 +4773,7 @@ function createPermissionActionHandler(params: {
   finished: boolean;
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
-  upsertGrant: UpsertUserPermissionGrantFn;
+  applyGrant: ApplyUserPermissionGrantFn;
 }): () => void {
   return () => {
     const permissionName =
@@ -4785,7 +4785,7 @@ function createPermissionActionHandler(params: {
       finished: params.finished,
       runUserGrant: () => {
         detach(
-          params.upsertGrant(
+          params.applyGrant(
             {
               agentId: params.block.agentId,
               connectorRef: params.block.connectorRef,
@@ -4891,9 +4891,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       connectorType: block.connectorRef,
     }),
   );
-  const [grantLoadable, upsertGrant] = useLoadableSet(
-    upsertUserPermissionGrant$,
-  );
+  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const userGrantsLoadable = useLoadable(
     userPermissionGrantsByAgent({
       agentId: block.agentId,
@@ -4939,7 +4937,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         finished: actionState.finished,
         expirationAvailable,
         expiresIn,
-        upsertGrant,
+        applyGrant,
       })}
     />
   );
