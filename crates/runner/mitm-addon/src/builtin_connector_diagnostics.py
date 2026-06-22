@@ -1,17 +1,17 @@
 """Diagnostic-only matching for unavailable built-in connector URLs."""
 
-import re
 from dataclasses import dataclass
 from typing import Final
 
 import matching
-from generated.builtin_firewalls import BUILTIN_FIREWALLS
+from generated.builtin_firewalls.diagnostics import (
+    CONNECTOR_DIAGNOSTIC_FIREWALLS,
+    MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS,
+)
 
 _DYNAMIC_BASE_MARKERS: Final = ("{", "}")
-_MODEL_PROVIDER_PREFIX: Final = "model-provider:"
 _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
-_REFERENCE_NAME_PATTERN: Final = re.compile(r"\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)")
 
 
 @dataclass(frozen=True)
@@ -95,16 +95,16 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
         return _catalog
 
     connector_firewalls: list[dict] = []
-    model_provider_exclusions: list[dict] = []
-    for firewall in BUILTIN_FIREWALLS.values():
-        model_provider_exclusion = _model_provider_exclusion_firewall(firewall)
-        if model_provider_exclusion is not None:
-            model_provider_exclusions.append(model_provider_exclusion)
-            continue
-
-        diagnostic_firewall = _diagnostic_firewall(firewall)
+    for firewall in CONNECTOR_DIAGNOSTIC_FIREWALLS:
+        diagnostic_firewall = _diagnostic_firewall_from_manifest(firewall)
         if diagnostic_firewall is not None:
             connector_firewalls.append(diagnostic_firewall)
+
+    model_provider_exclusions: list[dict] = []
+    for firewall in MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS:
+        model_provider_exclusion = _model_provider_exclusion_firewall_from_manifest(firewall)
+        if model_provider_exclusion is not None:
+            model_provider_exclusions.append(model_provider_exclusion)
 
     _catalog = _DiagnosticCatalog(
         compiled_connector_firewalls=matching.compile_firewalls(connector_firewalls),
@@ -133,13 +133,22 @@ def _matches_model_provider_exclusion(
     return isinstance(match, matching.FirewallAllow)
 
 
-def _diagnostic_firewall(firewall: object) -> dict | None:
+def _manifest_str_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return ()
+        result.append(item)
+    return tuple(result)
+
+
+def _diagnostic_firewall_from_manifest(firewall: object) -> dict | None:
     if not isinstance(firewall, dict):
         return None
     raw_name = firewall.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
-        return None
-    if raw_name.startswith(_MODEL_PROVIDER_PREFIX):
         return None
     raw_apis = firewall.get("apis")
     if not isinstance(raw_apis, list):
@@ -147,7 +156,7 @@ def _diagnostic_firewall(firewall: object) -> dict | None:
 
     apis: list[dict] = []
     for api in raw_apis:
-        diagnostic_api = _diagnostic_api(api)
+        diagnostic_api = _diagnostic_api_from_manifest(api)
         if diagnostic_api is not None:
             apis.append(diagnostic_api)
 
@@ -156,11 +165,11 @@ def _diagnostic_firewall(firewall: object) -> dict | None:
     return {"name": raw_name, "apis": apis}
 
 
-def _model_provider_exclusion_firewall(firewall: object) -> dict | None:
+def _model_provider_exclusion_firewall_from_manifest(firewall: object) -> dict | None:
     if not isinstance(firewall, dict):
         return None
     raw_name = firewall.get("name")
-    if not isinstance(raw_name, str) or not raw_name.startswith(_MODEL_PROVIDER_PREFIX):
+    if not isinstance(raw_name, str) or raw_name == "":
         return None
     raw_apis = firewall.get("apis")
     if not isinstance(raw_apis, list):
@@ -168,7 +177,7 @@ def _model_provider_exclusion_firewall(firewall: object) -> dict | None:
 
     apis: list[dict] = []
     for api in raw_apis:
-        exclusion_api = _model_provider_exclusion_api(api)
+        exclusion_api = _model_provider_exclusion_api_from_manifest(api)
         if exclusion_api is not None:
             apis.append(exclusion_api)
 
@@ -177,7 +186,7 @@ def _model_provider_exclusion_firewall(firewall: object) -> dict | None:
     return {"name": raw_name, "apis": apis}
 
 
-def _diagnostic_api(api: object) -> dict | None:
+def _diagnostic_api_from_manifest(api: object) -> dict | None:
     if not isinstance(api, dict):
         return None
     raw_base = api.get("base")
@@ -186,8 +195,7 @@ def _diagnostic_api(api: object) -> dict | None:
     if not matching.firewall_base_config_is_valid(raw_base):
         return None
 
-    auth = api.get("auth")
-    env_names = tuple(_extract_reference_names(auth))
+    env_names = _manifest_str_tuple(api.get("envNames"))
     if not env_names:
         return None
 
@@ -196,12 +204,12 @@ def _diagnostic_api(api: object) -> dict | None:
         "auth": {},
         "permissions": _base_match_permissions(),
         "_diagnostic_env_names": env_names,
-        "_diagnostic_auth_header_names": tuple(_extract_auth_header_names(auth)),
-        "_diagnostic_auth_query_param_names": tuple(_extract_auth_query_param_names(auth)),
+        "_diagnostic_auth_header_names": _manifest_str_tuple(api.get("authHeaderNames")),
+        "_diagnostic_auth_query_param_names": _manifest_str_tuple(api.get("authQueryParamNames")),
     }
 
 
-def _model_provider_exclusion_api(api: object) -> dict | None:
+def _model_provider_exclusion_api_from_manifest(api: object) -> dict | None:
     if not isinstance(api, dict):
         return None
     raw_base = api.get("base")
@@ -218,11 +226,14 @@ def _model_provider_exclusion_api(api: object) -> dict | None:
 
 
 def _diagnostic_permissions(raw_permissions: object) -> list[dict]:
-    if isinstance(raw_permissions, list) and raw_permissions:
+    if isinstance(raw_permissions, (list, tuple)) and raw_permissions:
         permissions: list[dict] = []
         for permission in raw_permissions:
             if isinstance(permission, dict):
-                permissions.append(permission)
+                name = permission.get("name")
+                rules = permission.get("rules")
+                if isinstance(name, str) and isinstance(rules, list):
+                    permissions.append({"name": name, "rules": rules})
         if permissions:
             return permissions
     return _base_match_permissions()
@@ -267,45 +278,3 @@ def _matching_network_policies(firewalls: list[dict]) -> dict[str, dict]:
             "unknownPolicy": "deny",
         }
     return policies
-
-
-def _extract_reference_names(value: object) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-
-    def visit(nested: object) -> None:
-        if isinstance(nested, str):
-            for match in _REFERENCE_NAME_PATTERN.finditer(nested):
-                name = match.group(1)
-                if name not in seen:
-                    seen.add(name)
-                    result.append(name)
-            return
-        if isinstance(nested, list):
-            for item in nested:
-                visit(item)
-            return
-        if isinstance(nested, dict):
-            for key in sorted(nested):
-                visit(nested[key])
-
-    visit(value)
-    return result
-
-
-def _extract_auth_header_names(auth: object) -> list[str]:
-    if not isinstance(auth, dict):
-        return []
-    headers = auth.get("headers")
-    if not isinstance(headers, dict):
-        return []
-    return [key for key in headers if isinstance(key, str) and key]
-
-
-def _extract_auth_query_param_names(auth: object) -> list[str]:
-    if not isinstance(auth, dict):
-        return []
-    query = auth.get("query")
-    if not isinstance(query, dict):
-        return []
-    return [key for key in query if isinstance(key, str) and key]

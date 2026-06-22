@@ -1,6 +1,7 @@
 """Tests for built-in connector diagnostic URL classification."""
 
 import builtin_connector_diagnostics
+import generated.builtin_firewalls
 
 
 def test_classifies_static_builtin_connector_url():
@@ -17,6 +18,23 @@ def test_classifies_static_builtin_connector_url():
     assert candidate.env_names == ("FAL_TOKEN",)
     assert candidate.auth_header_names == ("Authorization",)
     assert candidate.auth_query_param_names == ()
+
+
+def test_classification_does_not_load_full_builtin_catalog(monkeypatch):
+    def fail_load_json_parts(_name):
+        raise AssertionError("connector diagnostics should not load full firewall JSON")
+
+    monkeypatch.setattr(generated.builtin_firewalls, "load_json_parts", fail_load_json_parts)
+    builtin_connector_diagnostics.reset_cache_for_tests()
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://fal.run/fal-ai/nano-banana-pro",
+        "POST",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "fal"
 
 
 def test_skips_active_connector_name():

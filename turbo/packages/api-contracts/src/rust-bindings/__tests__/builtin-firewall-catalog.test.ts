@@ -74,6 +74,27 @@ function jsonPartFromModule(file: PythonBuiltinFirewallCatalogFile): string {
   return value;
 }
 
+function jsonAssignmentFromModule(
+  file: PythonBuiltinFirewallCatalogFile,
+  name: string,
+): unknown {
+  const prefix = `${name} = `;
+  const start = file.content.indexOf(prefix);
+  if (start === -1) {
+    throw new Error(`missing ${name} assignment in ${file.path}`);
+  }
+
+  const valueStart = start + prefix.length;
+  const nextAssignment = file.content.indexOf("\n\n", valueStart);
+  const literal = file.content
+    .slice(
+      valueStart,
+      nextAssignment === -1 ? file.content.length : nextAssignment,
+    )
+    .trim();
+  return JSON.parse(literal);
+}
+
 describe("builtin firewall catalog", () => {
   it("includes connector and model-provider firewalls", () => {
     const catalog = buildBuiltinFirewallCatalog();
@@ -118,6 +139,7 @@ describe("builtin firewall catalog", () => {
     expect(paths).toContain("__init__.py");
     expect(paths).toContain("loader.py");
     expect(paths).toContain("manifest.py");
+    expect(paths).toContain("diagnostics.py");
     expect(paths).toContain("github_0.py");
     expect(paths).toContain("model_provider_openai_api_key_0.py");
     expect(findGeneratedFile(firstRender, "__init__.py").content).toContain(
@@ -143,6 +165,125 @@ describe("builtin firewall catalog", () => {
         );
       }
     }
+  });
+
+  it("renders a diagnostic-only Python manifest", () => {
+    const files = renderPythonBuiltinFirewallCatalogFiles({
+      catalog: testCatalog([
+        {
+          name: "fal",
+          apis: [
+            {
+              base: "https://fal.run",
+              auth: {
+                headers: {
+                  Authorization: "Bearer ${{ secrets.FAL_TOKEN }}",
+                  "X-Team": "${{ vars.FAL_TEAM }}",
+                },
+              },
+            },
+          ],
+        },
+        {
+          name: "serpapi",
+          apis: [
+            {
+              base: "https://serpapi.com/search",
+              auth: {
+                query: {
+                  api_key: "${{ secrets.SERPAPI_TOKEN }}",
+                },
+              },
+            },
+          ],
+        },
+        {
+          name: "dynamic",
+          apis: [
+            {
+              base: "https://{workspace}.example.com",
+              auth: {
+                headers: {
+                  Authorization: "Bearer ${{ secrets.DYNAMIC_TOKEN }}",
+                },
+              },
+            },
+          ],
+        },
+        {
+          name: "model-provider:openai-api-key",
+          apis: [
+            {
+              base: "https://api.openai.com/v1/responses",
+              auth: {
+                headers: {
+                  Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+                },
+              },
+              permissions: [
+                {
+                  name: "responses",
+                  description: "OpenAI Responses API",
+                  rules: ["POST /"],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    });
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "fal",
+        apis: [
+          {
+            base: "https://fal.run",
+            envNames: ["FAL_TOKEN", "FAL_TEAM"],
+            authHeaderNames: ["Authorization", "X-Team"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "serpapi",
+        apis: [
+          {
+            base: "https://serpapi.com/search",
+            envNames: ["SERPAPI_TOKEN"],
+            authHeaderNames: [],
+            authQueryParamNames: ["api_key"],
+          },
+        ],
+      },
+    ]);
+    expect(
+      jsonAssignmentFromModule(
+        diagnostics,
+        "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS",
+      ),
+    ).toStrictEqual([
+      {
+        name: "model-provider:openai-api-key",
+        apis: [
+          {
+            base: "https://api.openai.com/v1/responses",
+            permissions: [
+              {
+                name: "responses",
+                rules: ["POST /"],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(diagnostics.content).not.toContain("DYNAMIC_TOKEN");
+    expect(diagnostics.content).not.toContain("JSON_PART");
+    expect(diagnostics.content).not.toContain("OpenAI Responses API");
   });
 
   it("renders manifest entries in sorted firewall-name order", () => {
