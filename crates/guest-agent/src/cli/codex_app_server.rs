@@ -21,8 +21,6 @@ use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-pub use super::codex_app_server_events::CodexAppServerEventError;
-
 use super::{child_env, diagnostics};
 
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -74,12 +72,6 @@ pub struct JsonRpcError {
 pub struct ServerNotification {
     pub method: String,
     pub params: Option<Value>,
-}
-
-impl ServerNotification {
-    pub fn to_codex_event(&self) -> Result<Option<Value>, CodexAppServerEventError> {
-        super::codex_app_server_events::notification_to_codex_event(self)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

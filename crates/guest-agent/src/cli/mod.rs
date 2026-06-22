@@ -25,6 +25,7 @@ mod event_delivery;
 mod framework;
 mod termination;
 
+pub use codex_app_server_events::{CodexAppServerEventError, notification_to_codex_event};
 pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::ClaudeResultSummary;

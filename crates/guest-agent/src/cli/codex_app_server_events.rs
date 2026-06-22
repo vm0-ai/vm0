@@ -29,7 +29,7 @@ pub enum CodexAppServerEventError {
     InvalidField { method: String, field: &'static str },
 }
 
-pub(super) fn notification_to_codex_event(
+pub fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
     match notification.method.as_str() {
@@ -94,11 +94,11 @@ fn map_item(
     let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
     let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
     let item = required_object_field(params, &notification.method, "item")?;
+    let timestamp =
+        required_number_field(params_object, &notification.method, input_timestamp_field)?;
     let Some(normalized_item) = normalize_item(item, &notification.method)? else {
         return Ok(None);
     };
-    let timestamp =
-        required_number_field(params_object, &notification.method, input_timestamp_field)?;
 
     let mut event = Map::new();
     event.insert("type".to_string(), Value::String(event_type.to_string()));
@@ -528,8 +528,7 @@ mod tests {
     }
 
     fn mapped_event(method: &str, params: Value) -> Value {
-        notification(method, params)
-            .to_codex_event()
+        notification_to_codex_event(&notification(method, params))
             .expect("notification should map")
             .expect("notification should produce an event")
     }
@@ -910,6 +909,27 @@ mod tests {
             json!({"threadId": "thread-1"}),
         ))
         .expect("unknown notification should not fail");
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn unsupported_item_variant_is_ignored_after_payload_validation() {
+        let result = notification_to_codex_event(&notification(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "webSearch",
+                    "id": "search-1",
+                    "query": "codex app-server",
+                    "action": null
+                }
+            }),
+        ))
+        .expect("unsupported item variant should not fail");
 
         assert_eq!(result, None);
     }
