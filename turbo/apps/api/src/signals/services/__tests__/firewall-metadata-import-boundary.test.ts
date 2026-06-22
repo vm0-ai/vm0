@@ -51,6 +51,7 @@ describe("firewall metadata import boundary", () => {
     for (const source of [
       `import { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `import type { FirewallConnectorType } from "@vm0/connectors/firewalls";`,
+      `import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";`,
       `export { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `await import("@vm0/connectors/firewalls/github.generated");`,
       `import "@vm0/connectors/firewalls";`,

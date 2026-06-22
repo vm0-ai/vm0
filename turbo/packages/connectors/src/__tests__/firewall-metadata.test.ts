@@ -38,13 +38,13 @@ import {
 import {
   BILLABLE_CONNECTORS,
   getAllBuiltinConnectorHosts,
-  getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
   getPermissionCategories,
   groupPermissionsByCategory,
   resolveFirewallPolicies,
   type FirewallConnectorType,
 } from "../firewalls";
+import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
 
 const FORBIDDEN_METADATA_KEYS = new Set([
   "auth",
