@@ -26,8 +26,9 @@
  *      `extractInstructionFromSkillMd`, and persist the body.
  *
  *   3. Preserve legacy name-keyed volumes by default. A later explicit
- *      `--cleanup-legacy` run deletes leftover `custom-skill@{name}` volumes
- *      after the id-keyed copies have been verified.
+ *      `--cleanup-legacy` run is deletion-only: it verifies each current
+ *      workflow has an id-keyed volume, preserves legacy volumes for any
+ *      workflow that does not, and deletes the remaining legacy volumes.
  *
  * The script is idempotent and defaults to dry-run. It only mutates when
  * `--migrate` is passed. Legacy name-keyed volumes are preserved by default;
@@ -92,6 +93,11 @@ const DRY_RUN = !args.migrate;
 const SINGLE_ORG_ID = args.org;
 const PRESEED = args.preseed === true;
 const CLEANUP_LEGACY = args["cleanup-legacy"] === true;
+const PHASE = PRESEED
+  ? "preseed (volume sync only, pre-0480 compatible)"
+  : CLEANUP_LEGACY
+    ? "cleanup (delete legacy volumes only)"
+    : "post-0480 backfill";
 
 if (PRESEED && CLEANUP_LEGACY) {
   throw new Error("--preseed cannot be combined with --cleanup-legacy");
@@ -148,6 +154,7 @@ interface Stats {
   volumesSynced: number;
   volumesAlreadyKeyed: number;
   legacyMissing: number;
+  cleanupIdVolumesMissing: number;
   instructionsBackfilled: number;
   instructionsSkipped: number;
   legacyVolumesDeleted: number;
@@ -731,8 +738,8 @@ async function deleteLegacyVolumes(
     if (currentIdNames.has(volume.name)) {
       continue;
     }
-    // Keep legacy name-keyed volumes only when a workflow failed before it could
-    // be safely re-keyed in this run.
+    // Keep legacy name-keyed volumes when a current workflow does not yet have
+    // its id-keyed volume. Cleanup must not delete the only available copy.
     if (preserveLegacyNames.has(volume.name)) {
       continue;
     }
@@ -811,8 +818,51 @@ async function processOrg(
   stats.workflows += workflows.length;
 
   // Legacy names to keep during an explicit cleanup run because their workflow
-  // could not be safely re-keyed in this run.
+  // does not have an id-keyed volume yet.
   const preserveLegacyNames = new Set<string>();
+
+  if (CLEANUP_LEGACY) {
+    for (const workflow of workflows) {
+      console.log(`    workflow ${workflow.id} ("${workflow.name}")`);
+      const idStorageName = getCustomSkillStorageName(workflow.id);
+      const legacyStorageName = getCustomSkillStorageName(workflow.name);
+      try {
+        const existing = await lookupVolume(db, workflow.orgId, idStorageName);
+        if (existing) {
+          stats.volumesAlreadyKeyed++;
+          console.log(
+            `      id-keyed volume "${idStorageName}" present — legacy eligible for cleanup`,
+          );
+        } else {
+          stats.cleanupIdVolumesMissing++;
+          preserveLegacyNames.add(legacyStorageName);
+          console.log(
+            `      id-keyed volume "${idStorageName}" not found — preserving legacy "${legacyStorageName}"`,
+          );
+        }
+      } catch (err) {
+        stats.errors++;
+        preserveLegacyNames.add(legacyStorageName);
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`      ✗ cleanup check for ${workflow.id}: ${message}`);
+      }
+    }
+
+    try {
+      stats.legacyVolumesDeleted += await deleteLegacyVolumes(
+        db,
+        client,
+        bucket,
+        orgId,
+        preserveLegacyNames,
+      );
+    } catch (err) {
+      stats.errors++;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`    ✗ legacy volume cleanup for ${orgId}: ${message}`);
+    }
+    return;
+  }
 
   for (const workflow of workflows) {
     console.log(`    workflow ${workflow.id} ("${workflow.name}")`);
@@ -855,25 +905,7 @@ async function processOrg(
     }
   }
 
-  if (!CLEANUP_LEGACY) {
-    console.log("    legacy cleanup disabled — preserving name-keyed volumes");
-    return;
-  }
-
-  // Step 3: delete legacy name-keyed volumes for this org when explicitly asked.
-  try {
-    stats.legacyVolumesDeleted += await deleteLegacyVolumes(
-      db,
-      client,
-      bucket,
-      orgId,
-      preserveLegacyNames,
-    );
-  } catch (err) {
-    stats.errors++;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`    ✗ legacy volume cleanup for ${orgId}: ${message}`);
-  }
+  console.log("    legacy cleanup disabled — preserving name-keyed volumes");
 }
 
 // ---------------------------------------------------------------------------
@@ -888,9 +920,7 @@ async function main(): Promise<void> {
   console.log(
     `Mode: ${DRY_RUN ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
   );
-  console.log(
-    `Phase: ${PRESEED ? "preseed (volume sync only, pre-0480 compatible)" : "post-0480 backfill"}`,
-  );
+  console.log(`Phase: ${PHASE}`);
   console.log(
     `Legacy cleanup: ${CLEANUP_LEGACY ? "enabled" : "disabled (preserve legacy volumes)"}`,
   );
@@ -909,6 +939,7 @@ async function main(): Promise<void> {
     volumesSynced: 0,
     volumesAlreadyKeyed: 0,
     legacyMissing: 0,
+    cleanupIdVolumesMissing: 0,
     instructionsBackfilled: 0,
     instructionsSkipped: 0,
     legacyVolumesDeleted: 0,
@@ -941,6 +972,7 @@ async function main(): Promise<void> {
     console.log(`Volumes synced:             ${stats.volumesSynced}`);
     console.log(`Volumes already id-keyed:   ${stats.volumesAlreadyKeyed}`);
     console.log(`Legacy volume missing:      ${stats.legacyMissing}`);
+    console.log(`Cleanup id volumes missing: ${stats.cleanupIdVolumesMissing}`);
     console.log(`Instructions backfilled:    ${stats.instructionsBackfilled}`);
     console.log(`Instructions skipped:       ${stats.instructionsSkipped}`);
     console.log(`Legacy volumes deleted:     ${stats.legacyVolumesDeleted}`);

@@ -48,13 +48,17 @@ For each org that owns workflows (or a single `--org`), in order:
    `null`.
 
 3. **Preserve legacy name-keyed volumes by default.** Cleanup is a separate,
-   explicit `--cleanup-legacy` run. This lets rollout keep the old
-   `custom-skill@{name}` volumes available until the new id-keyed volumes have
-   been verified in production.
+   explicit `--cleanup-legacy` run. Cleanup is deletion-only: it verifies each
+   current workflow already has an id-keyed volume, preserves the legacy volume
+   for any workflow that does not, and deletes only the remaining legacy
+   `custom-skill@{name}` volumes. It never syncs legacy content back into an
+   existing id-keyed volume, so it is safe to run after the new code has started
+   writing id-keyed volumes.
 
 The script is **idempotent** and **defaults to dry-run**. It only mutates when
 `--migrate` is passed. Re-running detects already-id-keyed volumes, syncs them
-when the legacy head changed, and skips already-backfilled instructions.
+when the legacy head changed during the preseed/backfill phases, and skips
+already-backfilled instructions.
 
 ## Prerequisites
 
@@ -96,6 +100,7 @@ pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts -
 pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --org=org_xxx
 
 # 3. After production verification: delete leftover legacy name-keyed volumes.
+#    This is deletion-only and does not sync legacy content into id-keyed volumes.
 pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --cleanup-legacy
 pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --cleanup-legacy
 ```
@@ -156,7 +161,8 @@ After a `--migrate` run:
 ## Notes
 
 - **Idempotent**: safe to re-run; existing id-keyed volumes are synced forward
-  when the legacy head changed, and already-backfilled instructions are skipped.
+  during preseed/backfill when the legacy head changed, cleanup only deletes
+  legacy volumes, and already-backfilled instructions are skipped.
 - **Pre-seed is partial by design**: it can only create id-keyed volumes for
   workflow rows that exist before `0480`. Run the post-`0480` backfill again so
   duplicated workflow rows receive their own id-keyed copies.
