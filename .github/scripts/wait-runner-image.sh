@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/runner-image-target.sh"
+
 require_env() {
   local name=$1
   if [ -z "${!name:-}" ]; then
@@ -23,12 +26,15 @@ require_env METAL_HOSTS
 require_env TARGET
 require_env PROFILE
 
+runner_image_validate_target "$TARGET"
+
 REPO="${GITHUB_REPOSITORY:-${REPO:-}}"
 WORKFLOW="${WORKFLOW:-runner-image.yml}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-1800}"
 POLL_SECONDS="${POLL_SECONDS:-10}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/runner-image-manifest}"
-ARTIFACT_NAME="${ARTIFACT_NAME:-runner-image-manifest-${HEAD_SHA}-${JOB_REF}}"
+DEFAULT_ARTIFACT_NAME=$(runner_image_artifact_name "$TARGET" "$HEAD_SHA" "$JOB_REF")
+ARTIFACT_NAME="${ARTIFACT_NAME:-$DEFAULT_ARTIFACT_NAME}"
 LOOKUP_SHA="${LOOKUP_SHA:-$HEAD_SHA}"
 
 if [ -z "$REPO" ]; then

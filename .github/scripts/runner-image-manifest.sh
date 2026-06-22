@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/runner-image-target.sh"
+
 usage() {
   cat <<'USAGE'
 Usage: runner-image-manifest.sh validate
@@ -40,6 +43,8 @@ validate() {
   require_env TARGET
   require_env PROFILE
   require_env METAL_HOSTS
+
+  runner_image_validate_target "$TARGET"
 
   if [ ! -f "$MANIFEST_PATH" ]; then
     echo "manifest not found: ${MANIFEST_PATH}" >&2

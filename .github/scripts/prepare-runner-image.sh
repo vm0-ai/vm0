@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/runner-image-target.sh"
+
 require_env() {
   local name=$1
   if [ -z "${!name:-}" ]; then
@@ -14,12 +17,13 @@ require_env HEAD_SHA
 require_env METAL_HOSTS
 require_env METAL_USER
 
-TARGET_TRIPLE="${TARGET_TRIPLE:-aarch64-unknown-linux-musl}"
+TARGET_TRIPLE="${TARGET_TRIPLE-aarch64-unknown-linux-musl}"
 PROFILE="${PROFILE:-vm0/default}"
 MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
 TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
+EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
@@ -78,6 +82,16 @@ prepare_host() {
   local runner_name="${JOB_REF}-${host_index}"
   local remote="${METAL_USER}@${host}"
   echo "=== Preparing ${host} (runner: ${runner_name}) ==="
+
+  local remote_arch
+  if ! remote_arch=$(ssh "$remote" uname -m); then
+    return 1
+  fi
+  remote_arch=$(printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r')
+  if [ "$remote_arch" != "$EXPECTED_REMOTE_ARCH" ]; then
+    echo "runner target ${TARGET_TRIPLE} expects remote architecture ${EXPECTED_REMOTE_ARCH}, but ${host} reported ${remote_arch}" >&2
+    return 1
+  fi
 
   if ! ssh "$remote" bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" "${runner_name}" <<'REMOTE_SCRIPT'
 set -euo pipefail

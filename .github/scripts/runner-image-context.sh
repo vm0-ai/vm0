@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/runner-image-target.sh"
+
 usage() {
   cat <<'USAGE'
 Usage: runner-image-context.sh <resolve|turbo-consumer|crates-consumer|image-inputs|needed|artifact-name>
@@ -294,10 +297,14 @@ image_inputs() {
 artifact_name() {
   require_env HEAD_SHA
   require_env JOB_REF
-  local head_sha job_ref
+  require_env TARGET
+  local head_sha job_ref target
   head_sha=$(env_value HEAD_SHA)
   job_ref=$(env_value JOB_REF)
-  emit "artifact-name" "runner-image-manifest-${head_sha}-${job_ref}"
+  target=$(env_value TARGET)
+  local artifact_name
+  artifact_name=$(runner_image_artifact_name "$target" "$head_sha" "$job_ref")
+  emit "artifact-name" "$artifact_name"
 }
 
 cmd="${1:-}"

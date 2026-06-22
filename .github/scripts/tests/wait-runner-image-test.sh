@@ -40,6 +40,7 @@ cat > "${TMPDIR}/manifest.json" <<'JSON'
   }
 }
 JSON
+sed 's/aarch64-unknown-linux-musl/x86_64-unknown-linux-musl/' "${TMPDIR}/manifest.json" > "${TMPDIR}/manifest-x86.json"
 
 cat > "${TMPDIR}/bin/gh" <<'BASH'
 #!/usr/bin/env bash
@@ -52,7 +53,7 @@ if [ "$1" = "api" ]; then
     printf '{"artifacts":[]}\n'
     exit 0
   fi
-  printf '{"artifacts":[{"id":123,"name":"runner-image-manifest-build-sha-pr-123","expired":false,"created_at":"2026-05-11T00:00:00Z","workflow_run":{"id":42,"head_sha":"head-sha"}}]}\n'
+  printf '{"artifacts":[{"id":123,"name":"%s","expired":false,"created_at":"2026-05-11T00:00:00Z","workflow_run":{"id":42,"head_sha":"head-sha"}}]}\n' "${EXPECTED_ARTIFACT_NAME}"
   exit 0
 fi
 
@@ -83,7 +84,7 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
         ;;
     esac
   done
-  [ "$artifact" = "runner-image-manifest-build-sha-pr-123" ] || exit 1
+  [ "$artifact" = "${EXPECTED_ARTIFACT_NAME}" ] || exit 1
   mkdir -p "$output_dir"
   cp "${FAKE_MANIFEST}" "${output_dir}/manifest.json"
   exit 0
@@ -97,6 +98,7 @@ chmod +x "${TMPDIR}/bin/gh"
 out=$(PATH="${TMPDIR}/bin:${PATH}" \
   GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
   FAKE_MANIFEST="${TMPDIR}/manifest.json" \
+  EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
   REPO=vm0-ai/vm0 \
   HEAD_SHA=build-sha \
   LOOKUP_SHA=head-sha \
@@ -108,18 +110,57 @@ out=$(PATH="${TMPDIR}/bin:${PATH}" \
   POLL_SECONDS=0 \
   "$WAIT")
 
-grep -q -- 'api repos/vm0-ai/vm0/actions/artifacts?name=runner-image-manifest-build-sha-pr-123&per_page=100 --jq .' "${TMPDIR}/gh-args.log" || fail "expected artifact lookup by exact name"
+grep -q -- 'api repos/vm0-ai/vm0/actions/artifacts?name=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123&per_page=100 --jq .' "${TMPDIR}/gh-args.log" || fail "expected artifact lookup by exact name"
 if grep -q -- 'run list' "${TMPDIR}/gh-args.log"; then
   fail "expected artifact-first path to skip run list after artifact is found"
 fi
-grep -q -- 'run download 42 -n runner-image-manifest-build-sha-pr-123' "${TMPDIR}/gh-args.log" || fail "expected artifact name to use HEAD_SHA"
+grep -q -- 'run download 42 -n runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123' "${TMPDIR}/gh-args.log" || fail "expected artifact name to include target and HEAD_SHA"
 grep -qxF 'producer-run-id=42' <<<"$out" || fail "expected producer-run-id output"
 grep -qxF 'bin-dir=/var/lib/vm0-runner/bin/pr-123' <<<"$out" || fail "expected manifest outputs"
+
+: > "${TMPDIR}/gh-args.log"
+out=$(PATH="${TMPDIR}/bin:${PATH}" \
+  GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
+  FAKE_MANIFEST="${TMPDIR}/manifest-x86.json" \
+  EXPECTED_ARTIFACT_NAME=runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123 \
+  REPO=vm0-ai/vm0 \
+  HEAD_SHA=build-sha \
+  LOOKUP_SHA=head-sha \
+  JOB_REF=pr-123 \
+  METAL_HOSTS=dev-1 \
+  TARGET=x86_64-unknown-linux-musl \
+  PROFILE=vm0/default \
+  OUTPUT_DIR="${TMPDIR}/out-x86" \
+  POLL_SECONDS=0 \
+  "$WAIT")
+grep -q -- 'api repos/vm0-ai/vm0/actions/artifacts?name=runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123&per_page=100 --jq .' "${TMPDIR}/gh-args.log" || fail "expected x86 artifact lookup by exact name"
+grep -q -- 'run download 42 -n runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123' "${TMPDIR}/gh-args.log" || fail "expected x86 artifact download by exact name"
+grep -qxF 'producer-run-id=42' <<<"$out" || fail "expected x86 producer-run-id output"
+
+: > "${TMPDIR}/gh-args.log"
+if PATH="${TMPDIR}/bin:${PATH}" \
+  GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
+  FAKE_MANIFEST="${TMPDIR}/manifest.json" \
+  REPO=vm0-ai/vm0 \
+  HEAD_SHA=build-sha \
+  LOOKUP_SHA=head-sha \
+  JOB_REF=pr-123 \
+  METAL_HOSTS=dev-1 \
+  TARGET=powerpc-unknown-linux-musl \
+  PROFILE=vm0/default \
+  OUTPUT_DIR="${TMPDIR}/unsupported-out" \
+  POLL_SECONDS=0 \
+  "$WAIT" >"${TMPDIR}/unsupported.out" 2>"${TMPDIR}/unsupported.err"; then
+  fail "expected unsupported target to fail"
+fi
+[ ! -s "${TMPDIR}/gh-args.log" ] || fail "expected unsupported target to fail before gh calls"
+grep -q -- 'unsupported runner image target: powerpc-unknown-linux-musl' "${TMPDIR}/unsupported.err" || fail "expected unsupported target message"
 
 : > "${TMPDIR}/gh-args.log"
 if PATH="${TMPDIR}/bin:${PATH}" \
   GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
   FAKE_MODE=failed-run \
+  EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
   REPO=vm0-ai/vm0 \
   HEAD_SHA=build-sha \
   LOOKUP_SHA=head-sha \
