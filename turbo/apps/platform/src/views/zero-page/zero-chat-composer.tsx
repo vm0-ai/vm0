@@ -7,7 +7,6 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
-import { useMemo } from "react";
 import {
   useGet,
   useSet,
@@ -2322,10 +2321,78 @@ function presentationTemplateThemeVariables(
   };
 }
 
-const presentationTemplateThumbnailHtmlByHost = new WeakMap<
-  HTMLDivElement,
-  string
->();
+interface PresentationTemplateThumbnailCache {
+  readonly htmlByHost: WeakMap<HTMLDivElement, string>;
+  readonly previewHtmlsByDraft: WeakMap<
+    PresentationEditDraft,
+    readonly string[]
+  >;
+  readonly themeVariablesByTheme: WeakMap<
+    PresentationTemplateThemeOption,
+    PresentationTemplateThemeVariables
+  >;
+}
+
+function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCache {
+  const cacheKey = "vm0PresentationTemplateThumbnailCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationTemplateThumbnailCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: PresentationTemplateThumbnailCache = {
+    htmlByHost: new WeakMap<HTMLDivElement, string>(),
+    previewHtmlsByDraft: new WeakMap<
+      PresentationEditDraft,
+      readonly string[]
+    >(),
+    themeVariablesByTheme: new WeakMap<
+      PresentationTemplateThemeOption,
+      PresentationTemplateThemeVariables
+    >(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function getPresentationTemplateThumbnailThemeVariables(
+  theme: PresentationTemplateThemeOption,
+): PresentationTemplateThemeVariables {
+  const cache = presentationTemplateThumbnailCache();
+  const cachedVariables = cache.themeVariablesByTheme.get(theme);
+  if (cachedVariables !== undefined) {
+    return cachedVariables;
+  }
+
+  const variables = presentationTemplateThemeVariables(theme);
+  cache.themeVariablesByTheme.set(theme, variables);
+  return variables;
+}
+
+function getPresentationTemplateThumbnailPreviewHtmls(
+  draft: PresentationEditDraft | undefined,
+): readonly string[] {
+  if (draft === undefined) {
+    return [];
+  }
+
+  const cache = presentationTemplateThumbnailCache();
+  const cachedHtmls = cache.previewHtmlsByDraft.get(draft);
+  if (cachedHtmls !== undefined) {
+    return cachedHtmls;
+  }
+
+  const htmls = draft.slides.slice(0, 15).map((slide) => {
+    return previewPresentationHtml({
+      activeSlideId: slide.id,
+      html: draft.html,
+    });
+  });
+  cache.previewHtmlsByDraft.set(draft, htmls);
+  return htmls;
+}
 
 function applyPresentationTemplateThumbnailTheme(
   host: HTMLDivElement,
@@ -2350,11 +2417,12 @@ function renderPresentationTemplateShadowThumbnail(
   html: string,
   themeVariables: PresentationTemplateThemeVariables,
 ): void {
-  if (presentationTemplateThumbnailHtmlByHost.get(host) === html) {
+  const cache = presentationTemplateThumbnailCache();
+  if (cache.htmlByHost.get(host) === html) {
     applyPresentationTemplateThumbnailTheme(host, themeVariables);
     return;
   }
-  presentationTemplateThumbnailHtmlByHost.set(host, html);
+  cache.htmlByHost.set(host, html);
 
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -2801,20 +2869,10 @@ function TemplatePreviewPage({
   const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
     item.embedUrl,
   );
-  const thumbnailThemeVariables = useMemo(() => {
-    return presentationTemplateThemeVariables(selectedTheme);
-  }, [selectedTheme]);
-  const thumbnailPreviewHtmls = useMemo(() => {
-    if (cachedDetailDraft === undefined) {
-      return [];
-    }
-    return cachedDetailDraft.slides.slice(0, 15).map((slide) => {
-      return previewPresentationHtml({
-        activeSlideId: slide.id,
-        html: cachedDetailDraft.html,
-      });
-    });
-  }, [cachedDetailDraft]);
+  const thumbnailThemeVariables =
+    getPresentationTemplateThumbnailThemeVariables(selectedTheme);
+  const thumbnailPreviewHtmls =
+    getPresentationTemplateThumbnailPreviewHtmls(cachedDetailDraft);
 
   const setLoadedDetailPreview = (params: {
     readonly draft: PresentationEditDraft;
