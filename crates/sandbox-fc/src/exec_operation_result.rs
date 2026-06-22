@@ -1,8 +1,6 @@
 use std::io;
 
-use sandbox::SandboxExecTermination;
 use vsock_host::{ExecOperationResult, ExecOwnedCapturedOutput};
-use vsock_proto::ExecTermination;
 
 pub(crate) fn validate_exec_capture_timeout(timeout_ms: u32) -> io::Result<()> {
     if timeout_ms == 0 {
@@ -39,12 +37,16 @@ pub(crate) fn captured_exec_output_bytes(
     }
 }
 
-pub(crate) fn sandbox_exec_termination(termination: ExecTermination) -> SandboxExecTermination {
+pub(crate) fn exec_termination_from_vsock_termination(
+    termination: vsock_proto::ExecTermination,
+) -> sandbox::ExecTermination {
     match termination {
-        ExecTermination::Exited { exit_code } => SandboxExecTermination::Exited { exit_code },
-        ExecTermination::TimedOut => SandboxExecTermination::TimedOut,
-        ExecTermination::Cancelled => SandboxExecTermination::Cancelled,
-        ExecTermination::StartFailed => SandboxExecTermination::StartFailed,
-        ExecTermination::WaitFailed => SandboxExecTermination::WaitFailed,
+        vsock_proto::ExecTermination::Exited { exit_code } => {
+            sandbox::ExecTermination::Exited { exit_code }
+        }
+        vsock_proto::ExecTermination::TimedOut => sandbox::ExecTermination::TimedOut,
+        vsock_proto::ExecTermination::Cancelled => sandbox::ExecTermination::Cancelled,
+        vsock_proto::ExecTermination::StartFailed => sandbox::ExecTermination::StartFailed,
+        vsock_proto::ExecTermination::WaitFailed => sandbox::ExecTermination::WaitFailed,
     }
 }

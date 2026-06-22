@@ -1,6 +1,6 @@
 //! Guest state repair helpers used before agent execution.
 
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox, SandboxExecTermination};
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use crate::helper_exec::{
@@ -9,13 +9,13 @@ use crate::helper_exec::{
 };
 use crate::types::ExecutionContext;
 
-fn helper_exec_exit_code(result: &sandbox::SandboxExecResult) -> Option<i32> {
+fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
     match result.termination {
-        SandboxExecTermination::Exited { exit_code } => Some(exit_code),
-        SandboxExecTermination::TimedOut
-        | SandboxExecTermination::Cancelled
-        | SandboxExecTermination::StartFailed
-        | SandboxExecTermination::WaitFailed => None,
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
     }
 }
 

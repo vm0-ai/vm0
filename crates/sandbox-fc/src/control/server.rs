@@ -19,7 +19,7 @@ use super::protocol::{
     TerminateStatus, read_frame, write_frame,
 };
 use crate::exec_operation_result::{
-    captured_exec_output_bytes, reject_stream_overflow, sandbox_exec_termination,
+    captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
     validate_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
@@ -482,7 +482,7 @@ fn exec_response_from_operation_result(
     let (stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
 
     Ok(ExecResponse::Success {
-        termination: sandbox_exec_termination(termination),
+        termination: exec_termination_from_vsock_termination(termination),
         stdout: BASE64.encode(stdout),
         stderr: BASE64.encode(stderr),
         stdout_truncated,

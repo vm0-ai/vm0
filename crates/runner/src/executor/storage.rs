@@ -174,6 +174,6 @@ pub(super) async fn download_storages(
     Ok(())
 }
 
-pub(super) fn format_guest_download_failure(result: &sandbox::SandboxExecResult) -> String {
+pub(super) fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {
     format_helper_exec_failure("storage download", result)
 }

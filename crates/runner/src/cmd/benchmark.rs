@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, RuntimeProvider, SandboxConfig, SandboxExecResult,
-    SandboxExecTermination, SandboxFactory, SandboxId, SandboxRuntime,
+    EXEC_OUTPUT_LIMIT_7_MIB, ExecRequest, ExecResult, ExecTermination, RuntimeProvider,
+    SandboxConfig, SandboxFactory, SandboxId, SandboxRuntime,
 };
 use tracing::{info, warn};
 
@@ -253,26 +253,26 @@ pub async fn run_benchmark(
     Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
 }
 
-fn benchmark_exit_code(exec_result: &SandboxExecResult) -> u8 {
+fn benchmark_exit_code(exec_result: &ExecResult) -> u8 {
     match exec_result.termination {
-        SandboxExecTermination::Exited { exit_code } => match u8::try_from(exit_code) {
+        ExecTermination::Exited { exit_code } => match u8::try_from(exit_code) {
             Ok(code) => code,
             Err(_) => {
                 warn!(exit_code, "exit code out of u8 range, using 1");
                 1
             }
         },
-        SandboxExecTermination::TimedOut => 124,
-        SandboxExecTermination::Cancelled
-        | SandboxExecTermination::StartFailed
-        | SandboxExecTermination::WaitFailed => 1,
+        ExecTermination::TimedOut => 124,
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            1
+        }
     }
 }
 
 fn write_benchmark_exec_output(
     stdout: &mut impl Write,
     stderr: &mut impl Write,
-    result: &SandboxExecResult,
+    result: &ExecResult,
 ) {
     let _ = stdout.write_all(&result.stdout);
     let _ = stderr.write_all(&result.stderr);
@@ -282,14 +282,14 @@ fn write_benchmark_exec_output(
 
 fn write_benchmark_terminal_diagnostic(
     stderr: &mut impl Write,
-    result: &SandboxExecResult,
+    result: &ExecResult,
     line_open: &mut bool,
 ) {
     let (fallback, include_diagnostic) = match result.termination {
-        SandboxExecTermination::Exited { .. } => (None, false),
-        SandboxExecTermination::TimedOut => (Some("Timeout"), false),
-        SandboxExecTermination::Cancelled => (Some("Cancelled"), true),
-        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => (None, true),
+        ExecTermination::Exited { .. } => (None, false),
+        ExecTermination::TimedOut => (Some("Timeout"), false),
+        ExecTermination::Cancelled => (Some("Cancelled"), true),
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
     };
 
     if result.stderr.is_empty() {
@@ -345,7 +345,7 @@ async fn run_sandbox(
     factory: &dyn SandboxFactory,
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
-) -> (RunnerResult<SandboxExecResult>, Timing) {
+) -> (RunnerResult<ExecResult>, Timing) {
     let mut sandbox = match factory.create(sandbox_config).await {
         Ok(s) => s,
         Err(e) => return (Err(e.into()), Timing::default()),
@@ -400,7 +400,7 @@ async fn run_in_sandbox(
     args: &BenchmarkArgs,
     env_pairs: &[(String, String)],
     sandbox: &mut dyn sandbox::Sandbox,
-) -> (RunnerResult<SandboxExecResult>, Timing) {
+) -> (RunnerResult<ExecResult>, Timing) {
     let mut timing = Timing::default();
 
     let t_boot = Instant::now();
@@ -532,12 +532,12 @@ mod tests {
     }
 
     fn exec_result(
-        termination: SandboxExecTermination,
+        termination: ExecTermination,
         stdout: &[u8],
         stderr: &[u8],
         diagnostic: &str,
-    ) -> SandboxExecResult {
-        SandboxExecResult {
+    ) -> ExecResult {
+        ExecResult {
             termination,
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
@@ -549,12 +549,7 @@ mod tests {
 
     #[test]
     fn benchmark_output_preserves_timeout_stderr_fallback() {
-        let result = exec_result(
-            SandboxExecTermination::TimedOut,
-            b"partial stdout\n",
-            b"",
-            "",
-        );
+        let result = exec_result(ExecTermination::TimedOut, b"partial stdout\n", b"", "");
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
 
@@ -567,7 +562,7 @@ mod tests {
     #[test]
     fn benchmark_output_starts_terminal_diagnostic_on_new_line() {
         let result = exec_result(
-            SandboxExecTermination::WaitFailed,
+            ExecTermination::WaitFailed,
             b"",
             b"stderr clue",
             "wait failed",

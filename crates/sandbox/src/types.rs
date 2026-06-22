@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExecOutputLimits {
-    /// Maximum stdout bytes to retain in [`SandboxExecResult::stdout`].
+    /// Maximum stdout bytes to retain in [`ExecResult::stdout`].
     pub stdout_limit_bytes: u32,
-    /// Maximum stderr bytes to retain in [`SandboxExecResult::stderr`].
+    /// Maximum stderr bytes to retain in [`ExecResult::stderr`].
     pub stderr_limit_bytes: u32,
 }
 
@@ -108,7 +108,7 @@ fn duration_ms(timeout: Duration) -> u32 {
 /// Terminal state for a sandbox exec command.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SandboxExecTermination {
+pub enum ExecTermination {
     /// The process exited with an ordinary exit code.
     Exited {
         /// Signed process exit code reported by the sandbox provider.
@@ -124,7 +124,7 @@ pub enum SandboxExecTermination {
     WaitFailed,
 }
 
-impl<'de> Deserialize<'de> for SandboxExecTermination {
+impl<'de> Deserialize<'de> for ExecTermination {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -184,7 +184,7 @@ impl<'de> Deserialize<'de> for SandboxExecTermination {
         struct TerminationVisitor;
 
         impl<'de> Visitor<'de> for TerminationVisitor {
-            type Value = SandboxExecTermination;
+            type Value = ExecTermination;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a sandbox exec termination object")
@@ -217,20 +217,20 @@ impl<'de> Deserialize<'de> for SandboxExecTermination {
                 let kind = kind.ok_or_else(|| de::Error::missing_field("kind"))?;
                 match kind {
                     TerminationKind::Exited => match exit_code {
-                        Some(Some(exit_code)) => Ok(SandboxExecTermination::Exited { exit_code }),
+                        Some(Some(exit_code)) => Ok(ExecTermination::Exited { exit_code }),
                         Some(None) | None => Err(de::Error::missing_field("exit_code")),
                     },
                     TerminationKind::TimedOut => {
-                        non_exited_termination(exit_code, SandboxExecTermination::TimedOut)
+                        non_exited_termination(exit_code, ExecTermination::TimedOut)
                     }
                     TerminationKind::Cancelled => {
-                        non_exited_termination(exit_code, SandboxExecTermination::Cancelled)
+                        non_exited_termination(exit_code, ExecTermination::Cancelled)
                     }
                     TerminationKind::StartFailed => {
-                        non_exited_termination(exit_code, SandboxExecTermination::StartFailed)
+                        non_exited_termination(exit_code, ExecTermination::StartFailed)
                     }
                     TerminationKind::WaitFailed => {
-                        non_exited_termination(exit_code, SandboxExecTermination::WaitFailed)
+                        non_exited_termination(exit_code, ExecTermination::WaitFailed)
                     }
                 }
             }
@@ -242,8 +242,8 @@ impl<'de> Deserialize<'de> for SandboxExecTermination {
 
 fn non_exited_termination<E>(
     exit_code: Option<Option<i32>>,
-    termination: SandboxExecTermination,
-) -> std::result::Result<SandboxExecTermination, E>
+    termination: ExecTermination,
+) -> std::result::Result<ExecTermination, E>
 where
     E: de::Error,
 {
@@ -255,9 +255,9 @@ where
 }
 
 /// Result of a bounded command execution.
-pub struct SandboxExecResult {
+pub struct ExecResult {
     /// Structured terminal state reported by the provider.
-    pub termination: SandboxExecTermination,
+    pub termination: ExecTermination,
     /// Captured stdout bytes, capped by the requested output limit.
     pub stdout: Vec<u8>,
     /// Captured stderr bytes, capped by the requested output limit.
@@ -270,11 +270,11 @@ pub struct SandboxExecResult {
     pub stderr_truncated: bool,
 }
 
-impl SandboxExecResult {
+impl ExecResult {
     /// Construct an ordinary exited-process result.
     pub fn new(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
-            termination: SandboxExecTermination::Exited { exit_code },
+            termination: ExecTermination::Exited { exit_code },
             stdout,
             stderr,
             diagnostic: String::new(),
@@ -636,7 +636,7 @@ pub struct ProcessExit {
     /// Guest process id reported by the provider.
     pub pid: u32,
     /// Structured terminal state reported by the provider.
-    pub termination: SandboxExecTermination,
+    pub termination: ExecTermination,
     /// Guest-reported wall-clock duration in milliseconds, when the provider has
     /// terminal duration metadata.
     pub guest_duration_ms: Option<u32>,
@@ -667,13 +667,13 @@ impl ProcessExit {
     /// Construct a process exit result with no truncation or stream metadata.
     ///
     /// The returned value sets `termination` to
-    /// [`SandboxExecTermination::Exited`], `guest_duration_ms` to `None`,
+    /// [`ExecTermination::Exited`], `guest_duration_ms` to `None`,
     /// `stdout_truncated` and `stderr_truncated` to `false`, `diagnostic` to an
     /// empty string, and `stream_overflowed` to `false`.
     pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             pid,
-            termination: SandboxExecTermination::Exited { exit_code },
+            termination: ExecTermination::Exited { exit_code },
             guest_duration_ms: None,
             stdout,
             stderr,
@@ -792,12 +792,9 @@ mod tests {
 
     #[test]
     fn exec_result_new_defaults_to_exited() {
-        let result = SandboxExecResult::new(7, b"out".to_vec(), b"err".to_vec());
+        let result = ExecResult::new(7, b"out".to_vec(), b"err".to_vec());
 
-        assert_eq!(
-            result.termination,
-            SandboxExecTermination::Exited { exit_code: 7 }
-        );
+        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 7 });
         assert_eq!(result.stdout, b"out");
         assert_eq!(result.stderr, b"err");
         assert!(result.diagnostic.is_empty());
@@ -810,10 +807,7 @@ mod tests {
         let exit = ProcessExit::new(42, 7, b"out".to_vec(), b"err".to_vec());
 
         assert_eq!(exit.pid, 42);
-        assert_eq!(
-            exit.termination,
-            SandboxExecTermination::Exited { exit_code: 7 }
-        );
+        assert_eq!(exit.termination, ExecTermination::Exited { exit_code: 7 });
         assert_eq!(exit.guest_duration_ms, None);
         assert_eq!(exit.stdout, b"out");
         assert_eq!(exit.stderr, b"err");

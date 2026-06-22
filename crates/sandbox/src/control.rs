@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::types::SandboxExecTermination;
+use crate::types::ExecTermination;
 
 /// Result of executing a command inside a running sandbox.
 #[derive(Debug)]
 pub struct RemoteExecResult {
     /// Structured terminal state reported by the provider.
-    pub termination: SandboxExecTermination,
+    pub termination: ExecTermination,
     /// Raw stdout bytes.
     pub stdout: Vec<u8>,
     /// Raw stderr bytes.

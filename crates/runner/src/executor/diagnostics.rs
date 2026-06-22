@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
 use sandbox::{
-    CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ProcessOutputReceiver, Sandbox,
-    SandboxExecTermination,
+    CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessOutputReceiver,
+    Sandbox,
 };
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
@@ -139,19 +139,16 @@ pub(super) fn should_collect_agent_abnormal_exit_diagnostics(
 }
 
 fn process_failed(exit: &sandbox::ProcessExit) -> bool {
-    !matches!(
-        exit.termination,
-        SandboxExecTermination::Exited { exit_code: 0 }
-    )
+    !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
 }
 
 fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
     match exit.termination {
-        SandboxExecTermination::Exited { exit_code } => Some(exit_code),
-        SandboxExecTermination::TimedOut
-        | SandboxExecTermination::Cancelled
-        | SandboxExecTermination::StartFailed
-        | SandboxExecTermination::WaitFailed => None,
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
     }
 }
 

@@ -7,7 +7,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | Crate | Description |
 |-------|-------------|
 | **runner** | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
-| **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `SandboxExecResult` |
+| **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult` |
 | **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore |
 | **nbd-cow** | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices |
 | **vsock-proto** | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages |

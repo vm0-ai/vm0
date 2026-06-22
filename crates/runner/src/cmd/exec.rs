@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError, SandboxExecTermination};
+use sandbox::{ExecTermination, RemoteExecResult, SandboxControl, SandboxControlError};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -143,13 +143,13 @@ const REMOTE_EXEC_TIMEOUT_EXIT_CODE: u8 = 124;
 const REMOTE_EXEC_STDOUT_TRUNCATED_WARNING: &str = "warning: remote stdout was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest";
 const REMOTE_EXEC_STDERR_TRUNCATED_WARNING: &str = "warning: remote stderr was truncated by the sandbox capture limit; use a narrower command or redirect output inside the guest";
 
-fn remote_exec_exit_code(termination: SandboxExecTermination) -> ExitCode {
+fn remote_exec_exit_code(termination: ExecTermination) -> ExitCode {
     match termination {
-        SandboxExecTermination::Exited { exit_code } => ExitCode::from(exit_code as u8),
-        SandboxExecTermination::TimedOut => ExitCode::from(REMOTE_EXEC_TIMEOUT_EXIT_CODE),
-        SandboxExecTermination::Cancelled
-        | SandboxExecTermination::StartFailed
-        | SandboxExecTermination::WaitFailed => ExitCode::FAILURE,
+        ExecTermination::Exited { exit_code } => ExitCode::from(exit_code as u8),
+        ExecTermination::TimedOut => ExitCode::from(REMOTE_EXEC_TIMEOUT_EXIT_CODE),
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -172,10 +172,10 @@ fn write_remote_exec_terminal_diagnostic(
     line_open: &mut bool,
 ) {
     let (fallback, include_diagnostic) = match result.termination {
-        SandboxExecTermination::Exited { .. } => (None, false),
-        SandboxExecTermination::TimedOut => (Some("Timeout"), false),
-        SandboxExecTermination::Cancelled => (Some("Cancelled"), true),
-        SandboxExecTermination::StartFailed | SandboxExecTermination::WaitFailed => (None, true),
+        ExecTermination::Exited { .. } => (None, false),
+        ExecTermination::TimedOut => (Some("Timeout"), false),
+        ExecTermination::Cancelled => (Some("Cancelled"), true),
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
     };
 
     if result.stderr.is_empty() {
@@ -234,7 +234,7 @@ mod tests {
     async fn success_propagates_exit_code() {
         let control = MockSandboxControl::new("/tmp");
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            termination: SandboxExecTermination::Exited { exit_code: 42 },
+            termination: ExecTermination::Exited { exit_code: 42 },
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: String::new(),
@@ -292,7 +292,7 @@ mod tests {
         let control = MockSandboxControl::new("/tmp");
         // 256 truncates to 0 via `as u8`
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            termination: SandboxExecTermination::Exited { exit_code: 256 },
+            termination: ExecTermination::Exited { exit_code: 256 },
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: String::new(),
@@ -301,7 +301,7 @@ mod tests {
         }));
         // -1 (0xFFFFFFFF) truncates to 255 via `as u8`
         control.push_exec_remote_result(Ok(RemoteExecResult {
-            termination: SandboxExecTermination::Exited { exit_code: -1 },
+            termination: ExecTermination::Exited { exit_code: -1 },
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: String::new(),
@@ -319,19 +319,19 @@ mod tests {
     #[test]
     fn non_exited_terminations_map_to_cli_exit_codes() {
         assert_eq!(
-            remote_exec_exit_code(SandboxExecTermination::TimedOut),
+            remote_exec_exit_code(ExecTermination::TimedOut),
             ExitCode::from(REMOTE_EXEC_TIMEOUT_EXIT_CODE)
         );
         assert_eq!(
-            remote_exec_exit_code(SandboxExecTermination::Cancelled),
+            remote_exec_exit_code(ExecTermination::Cancelled),
             ExitCode::FAILURE
         );
         assert_eq!(
-            remote_exec_exit_code(SandboxExecTermination::StartFailed),
+            remote_exec_exit_code(ExecTermination::StartFailed),
             ExitCode::FAILURE
         );
         assert_eq!(
-            remote_exec_exit_code(SandboxExecTermination::WaitFailed),
+            remote_exec_exit_code(ExecTermination::WaitFailed),
             ExitCode::FAILURE
         );
     }
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn terminal_diagnostic_starts_on_new_line_after_stderr() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::WaitFailed,
+            termination: ExecTermination::WaitFailed,
             stdout: Vec::new(),
             stderr: b"stderr clue".to_vec(),
             diagnostic: "wait failed".into(),
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn terminal_fallback_is_not_added_when_stderr_has_content() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::TimedOut,
+            termination: ExecTermination::TimedOut,
             stdout: Vec::new(),
             stderr: b"stderr clue".to_vec(),
             diagnostic: String::new(),
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn terminal_fallback_is_added_when_stderr_is_empty() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::Cancelled,
+            termination: ExecTermination::Cancelled,
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: String::new(),
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn terminal_diagnostic_keeps_fallback_when_stderr_is_empty() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::Cancelled,
+            termination: ExecTermination::Cancelled,
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: "cancel diagnostic".into(),
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn terminal_timeout_diagnostic_preserves_legacy_timeout_display() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::TimedOut,
+            termination: ExecTermination::TimedOut,
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: "timeout diagnostic".into(),
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn terminal_warning_starts_on_new_line_after_stderr() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            termination: ExecTermination::Exited { exit_code: 0 },
             stdout: Vec::new(),
             stderr: b"stderr clue".to_vec(),
             diagnostic: String::new(),
@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn terminal_warning_follows_diagnostic_without_extra_blank_line() {
         let result = RemoteExecResult {
-            termination: SandboxExecTermination::WaitFailed,
+            termination: ExecTermination::WaitFailed,
             stdout: Vec::new(),
             stderr: b"stderr clue".to_vec(),
             diagnostic: "wait failed".into(),

@@ -44,8 +44,8 @@ pub use snapshot::{
 };
 pub use types::{
     CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
-    ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, ProcessOutputReceiver,
-    SandboxExecResult, SandboxExecTermination, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, ExecTermination,
+    GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
+    ProcessControlAck, ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
+    ProcessOutputReceiver, StartProcessRequest,
 };

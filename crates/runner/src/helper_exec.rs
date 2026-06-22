@@ -1,33 +1,30 @@
-use sandbox::{SandboxExecResult, SandboxExecTermination};
+use sandbox::{ExecResult, ExecTermination};
 
 pub(crate) const HELPER_EXEC_OUTPUT_EXCERPT_BYTES: usize = 8 * 1024;
 
-pub(crate) fn helper_exec_succeeded(result: &SandboxExecResult) -> bool {
-    matches!(
-        result.termination,
-        SandboxExecTermination::Exited { exit_code: 0 }
-    )
+pub(crate) fn helper_exec_succeeded(result: &ExecResult) -> bool {
+    matches!(result.termination, ExecTermination::Exited { exit_code: 0 })
 }
 
-pub(crate) fn helper_exec_termination_label(result: &SandboxExecResult) -> &'static str {
+pub(crate) fn helper_exec_termination_label(result: &ExecResult) -> &'static str {
     match result.termination {
-        SandboxExecTermination::Exited { .. } => "exited",
-        SandboxExecTermination::TimedOut => "timed_out",
-        SandboxExecTermination::Cancelled => "cancelled",
-        SandboxExecTermination::StartFailed => "start_failed",
-        SandboxExecTermination::WaitFailed => "wait_failed",
+        ExecTermination::Exited { .. } => "exited",
+        ExecTermination::TimedOut => "timed_out",
+        ExecTermination::Cancelled => "cancelled",
+        ExecTermination::StartFailed => "start_failed",
+        ExecTermination::WaitFailed => "wait_failed",
     }
 }
 
-pub(crate) fn format_helper_exec_failure(operation: &str, result: &SandboxExecResult) -> String {
+pub(crate) fn format_helper_exec_failure(operation: &str, result: &ExecResult) -> String {
     let mut message = match result.termination {
-        SandboxExecTermination::Exited { exit_code } => {
+        ExecTermination::Exited { exit_code } => {
             format!("{operation} failed (exit code {exit_code})")
         }
-        SandboxExecTermination::TimedOut => format!("{operation} failed (timed out)"),
-        SandboxExecTermination::Cancelled => format!("{operation} failed (cancelled)"),
-        SandboxExecTermination::StartFailed => format!("{operation} failed (start failed)"),
-        SandboxExecTermination::WaitFailed => format!("{operation} failed (wait failed)"),
+        ExecTermination::TimedOut => format!("{operation} failed (timed out)"),
+        ExecTermination::Cancelled => format!("{operation} failed (cancelled)"),
+        ExecTermination::StartFailed => format!("{operation} failed (start failed)"),
+        ExecTermination::WaitFailed => format!("{operation} failed (wait failed)"),
     };
 
     if let Some(diagnostic) =
@@ -153,8 +150,8 @@ fn find_url_token_end(input: &str, start: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn exec_result(termination: SandboxExecTermination) -> SandboxExecResult {
-        SandboxExecResult {
+    fn exec_result(termination: ExecTermination) -> ExecResult {
+        ExecResult {
             termination,
             stdout: Vec::new(),
             stderr: Vec::new(),
@@ -167,28 +164,28 @@ mod tests {
     #[test]
     fn helper_exec_success_requires_exited_zero() {
         assert!(helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::Exited { exit_code: 0 },
+            ExecTermination::Exited { exit_code: 0 },
         )));
         assert!(!helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::Exited { exit_code: 1 },
+            ExecTermination::Exited { exit_code: 1 },
         )));
         assert!(!helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::TimedOut,
+            ExecTermination::TimedOut,
         )));
         assert!(!helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::Cancelled,
+            ExecTermination::Cancelled,
         )));
         assert!(!helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::StartFailed,
+            ExecTermination::StartFailed,
         )));
         assert!(!helper_exec_succeeded(&exec_result(
-            SandboxExecTermination::WaitFailed,
+            ExecTermination::WaitFailed,
         )));
     }
 
     #[test]
     fn exited_failure_keeps_exit_code_wording() {
-        let result = exec_result(SandboxExecTermination::Exited { exit_code: 2 });
+        let result = exec_result(ExecTermination::Exited { exit_code: 2 });
 
         let message = format_helper_exec_failure("guest clock sync", &result);
 
@@ -199,19 +196,19 @@ mod tests {
     fn terminal_state_failures_include_structured_terminal_state() {
         for (termination, expected) in [
             (
-                SandboxExecTermination::TimedOut,
+                ExecTermination::TimedOut,
                 "storage download failed (timed out)",
             ),
             (
-                SandboxExecTermination::Cancelled,
+                ExecTermination::Cancelled,
                 "storage download failed (cancelled)",
             ),
             (
-                SandboxExecTermination::StartFailed,
+                ExecTermination::StartFailed,
                 "storage download failed (start failed)",
             ),
             (
-                SandboxExecTermination::WaitFailed,
+                ExecTermination::WaitFailed,
                 "storage download failed (wait failed)",
             ),
         ] {
@@ -226,7 +223,7 @@ mod tests {
 
     #[test]
     fn failure_formatting_preserves_excerpts_and_truncation_markers() {
-        let mut result = exec_result(SandboxExecTermination::TimedOut);
+        let mut result = exec_result(ExecTermination::TimedOut);
         result.stdout = b"stdout clue".to_vec();
         result.stderr = b"stderr clue".to_vec();
         result.stderr_truncated = true;
@@ -240,7 +237,7 @@ mod tests {
 
     #[test]
     fn failure_formatting_includes_structured_diagnostic() {
-        let mut result = exec_result(SandboxExecTermination::WaitFailed);
+        let mut result = exec_result(ExecTermination::WaitFailed);
         result.diagnostic = "wait failed inside provider".to_string();
 
         let message = format_helper_exec_failure("storage download", &result);
@@ -267,25 +264,23 @@ mod tests {
     #[test]
     fn termination_label_is_stable_for_logs() {
         assert_eq!(
-            helper_exec_termination_label(&exec_result(SandboxExecTermination::Exited {
-                exit_code: 0,
-            })),
+            helper_exec_termination_label(&exec_result(ExecTermination::Exited { exit_code: 0 })),
             "exited"
         );
         assert_eq!(
-            helper_exec_termination_label(&exec_result(SandboxExecTermination::TimedOut)),
+            helper_exec_termination_label(&exec_result(ExecTermination::TimedOut)),
             "timed_out"
         );
         assert_eq!(
-            helper_exec_termination_label(&exec_result(SandboxExecTermination::Cancelled)),
+            helper_exec_termination_label(&exec_result(ExecTermination::Cancelled)),
             "cancelled"
         );
         assert_eq!(
-            helper_exec_termination_label(&exec_result(SandboxExecTermination::StartFailed)),
+            helper_exec_termination_label(&exec_result(ExecTermination::StartFailed)),
             "start_failed"
         );
         assert_eq!(
-            helper_exec_termination_label(&exec_result(SandboxExecTermination::WaitFailed)),
+            helper_exec_termination_label(&exec_result(ExecTermination::WaitFailed)),
             "wait_failed"
         );
     }

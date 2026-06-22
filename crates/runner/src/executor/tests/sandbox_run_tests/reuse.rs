@@ -228,7 +228,7 @@ async fn execute_job_reuse_clock_fix_failure_returns_sandbox() {
 
     // First exec mounts the workspace drive, second exec fixes the clock.
     let sandbox = MockSandbox::new("reuse-clock-fail");
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -264,8 +264,8 @@ async fn execute_job_reuse_reseed_failure_returns_sandbox() {
 
     // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
     let sandbox = MockSandbox::new("reuse-reseed-fail");
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -294,7 +294,7 @@ async fn execute_job_reuse_workspace_mount_failure_returns_sandbox() {
     let config = test_executor_config(dir.path()).await;
 
     let sandbox = MockSandbox::new("reuse-mount-fail");
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(
+    sandbox.push_exec_result(Ok(ExecResult::new(
         64,
         Vec::new(),
         b"mount denied".to_vec(),

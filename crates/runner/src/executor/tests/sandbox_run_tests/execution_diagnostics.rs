@@ -107,8 +107,8 @@ async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
     overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
     overrides.add_exec_result_matcher(
         "dmesg",
-        SandboxExecResult {
-            termination: SandboxExecTermination::TimedOut,
+        ExecResult {
+            termination: ExecTermination::TimedOut,
             stdout: b"Out of memory: Killed process 1234".to_vec(),
             stderr: b"Timeout".to_vec(),
             diagnostic: String::new(),
@@ -451,7 +451,7 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
-    exit.termination = SandboxExecTermination::WaitFailed;
+    exit.termination = ExecTermination::WaitFailed;
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
@@ -492,7 +492,7 @@ async fn execute_inner_non_exited_diagnostic_is_user_visible() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
-    exit.termination = SandboxExecTermination::WaitFailed;
+    exit.termination = ExecTermination::WaitFailed;
     exit.diagnostic = "wait failed inside provider".to_string();
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -532,7 +532,7 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec());
-    exit.termination = SandboxExecTermination::TimedOut;
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
@@ -576,7 +576,7 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec());
-    exit.termination = SandboxExecTermination::TimedOut;
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -641,7 +641,7 @@ async fn execute_inner_timeout_without_stderr_uses_timeout_message() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
-    exit.termination = SandboxExecTermination::TimedOut;
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -813,8 +813,8 @@ async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
     overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
     overrides.add_exec_result_matcher(
         "guest-agent-binary",
-        SandboxExecResult {
-            termination: SandboxExecTermination::WaitFailed,
+        ExecResult {
+            termination: ExecTermination::WaitFailed,
             stdout: b"/dev/root       7.8G  7.4G   20K 100% /\n/dev/vdb         16G   24K   15G   1% /home/user/workspace\nMem:            3934        3310         255           0         552         624\n".to_vec(),
             stderr: b"wait failed".to_vec(),
             diagnostic: String::new(),

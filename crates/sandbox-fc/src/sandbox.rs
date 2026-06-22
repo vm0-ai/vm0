@@ -10,13 +10,13 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 #[cfg(test)]
-use sandbox::SandboxExecTermination;
+use sandbox::ExecTermination;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, GuestProcessCancelHandle,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
-    SandboxError, SandboxExecResult, SandboxIdleTransition, SandboxInvalidStateContext,
-    SandboxOperation, SandboxOperationReason, StartProcessRequest,
+    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason, StartProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -26,8 +26,6 @@ use vsock_host::{
     ExecOutputEvent, ExecOwnedCapturedOutput, NormalOperationFence, NormalOperationFenceRejection,
     SupervisedExecControl, SupervisedExecRequest, VsockHost,
 };
-#[cfg(test)]
-use vsock_proto::ExecTermination;
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
 use crate::api::{ApiError, BalloonStatistics};
@@ -38,7 +36,7 @@ use crate::balloon;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
 use crate::exec_operation_result::{
-    captured_exec_output_bytes, reject_stream_overflow, sandbox_exec_termination,
+    captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
@@ -1618,16 +1616,16 @@ fn captured_output_bytes(output: ExecOwnedCapturedOutput) -> (Vec<u8>, bool) {
     }
 }
 
-fn bounded_exec_result_to_sandbox_exec_result(
+fn exec_result_from_operation_result(
     result: vsock_host::ExecOperationResult,
-) -> io::Result<SandboxExecResult> {
+) -> io::Result<ExecResult> {
     reject_stream_overflow(&result)?;
 
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", result.stdout)?;
     let (stderr, stderr_truncated) = captured_exec_output_bytes("stderr", result.stderr)?;
 
-    Ok(SandboxExecResult {
-        termination: sandbox_exec_termination(result.termination),
+    Ok(ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
         stdout,
         stderr,
         diagnostic: result.diagnostic,
@@ -1645,7 +1643,7 @@ fn supervised_exec_result_to_process_exit(
 
     ProcessExit {
         pid,
-        termination: sandbox_exec_termination(result.termination),
+        termination: exec_termination_from_vsock_termination(result.termination),
         guest_duration_ms: Some(result.duration_ms),
         stdout,
         stderr,
@@ -2066,7 +2064,7 @@ impl Sandbox for FirecrackerSandbox {
     // does not depend on catching a one-shot notification while select! is
     // already polling.
 
-    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<SandboxExecResult> {
+    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::Exec;
         let limits = request.output_limits;
         let timeout_ms = request.timeout_ms();
@@ -2090,7 +2088,7 @@ impl Sandbox for FirecrackerSandbox {
                         wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
                     })
                     .await
-                    .and_then(bounded_exec_result_to_sandbox_exec_result)
+                    .and_then(exec_result_from_operation_result)
             },
         )
         .await
@@ -3614,7 +3612,7 @@ mod tests {
 
     async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
         let payload = vsock_proto::encode_exec_result(
-            ExecTermination::Exited { exit_code: 0 },
+            vsock_proto::ExecTermination::Exited { exit_code: 0 },
             1,
             vsock_proto::ExecCapturedOutput::Discarded,
             vsock_proto::ExecCapturedOutput::Discarded,
@@ -5201,9 +5199,9 @@ mod tests {
     }
 
     #[test]
-    fn bounded_exec_result_to_sandbox_exec_result_preserves_terminal_metadata() {
-        let result = bounded_exec_result_to_sandbox_exec_result(vsock_host::ExecOperationResult {
-            termination: ExecTermination::Exited { exit_code: 7 },
+    fn exec_result_from_operation_result_preserves_terminal_metadata() {
+        let result = exec_result_from_operation_result(vsock_host::ExecOperationResult {
+            termination: vsock_proto::ExecTermination::Exited { exit_code: 7 },
             duration_ms: 10,
             stdout: ExecOwnedCapturedOutput::Captured {
                 bytes: b"out".to_vec(),
@@ -5218,10 +5216,7 @@ mod tests {
         })
         .expect("bounded exec result should convert");
 
-        assert_eq!(
-            result.termination,
-            SandboxExecTermination::Exited { exit_code: 7 }
-        );
+        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 7 });
         assert_eq!(result.stdout, b"out");
         assert_eq!(result.stderr, b"err");
         assert_eq!(result.diagnostic, "ignored on ordinary exit");
@@ -5230,49 +5225,48 @@ mod tests {
     }
 
     #[test]
-    fn bounded_exec_result_to_sandbox_exec_result_maps_terminal_edge_states() {
+    fn exec_result_from_operation_result_maps_terminal_edge_states() {
         for (termination, diagnostic, input_stderr, expected_termination) in [
             (
-                ExecTermination::TimedOut,
+                vsock_proto::ExecTermination::TimedOut,
                 "",
                 Vec::new(),
-                SandboxExecTermination::TimedOut,
+                ExecTermination::TimedOut,
             ),
             (
-                ExecTermination::Cancelled,
+                vsock_proto::ExecTermination::Cancelled,
                 "cancel diagnostic",
                 Vec::new(),
-                SandboxExecTermination::Cancelled,
+                ExecTermination::Cancelled,
             ),
             (
-                ExecTermination::StartFailed,
+                vsock_proto::ExecTermination::StartFailed,
                 "spawn failed",
                 Vec::new(),
-                SandboxExecTermination::StartFailed,
+                ExecTermination::StartFailed,
             ),
             (
-                ExecTermination::WaitFailed,
+                vsock_proto::ExecTermination::WaitFailed,
                 "wait failed",
                 b"stderr clue".to_vec(),
-                SandboxExecTermination::WaitFailed,
+                ExecTermination::WaitFailed,
             ),
         ] {
-            let result =
-                bounded_exec_result_to_sandbox_exec_result(vsock_host::ExecOperationResult {
-                    termination,
-                    duration_ms: 10,
-                    stdout: ExecOwnedCapturedOutput::Captured {
-                        bytes: Vec::new(),
-                        truncated: false,
-                    },
-                    stderr: ExecOwnedCapturedOutput::Captured {
-                        bytes: input_stderr.clone(),
-                        truncated: false,
-                    },
-                    diagnostic: diagnostic.to_string(),
-                    stream_overflowed: false,
-                })
-                .expect("bounded exec result should convert");
+            let result = exec_result_from_operation_result(vsock_host::ExecOperationResult {
+                termination,
+                duration_ms: 10,
+                stdout: ExecOwnedCapturedOutput::Captured {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: ExecOwnedCapturedOutput::Captured {
+                    bytes: input_stderr.clone(),
+                    truncated: false,
+                },
+                diagnostic: diagnostic.to_string(),
+                stream_overflowed: false,
+            })
+            .expect("bounded exec result should convert");
 
             assert_eq!(result.termination, expected_termination);
             assert_eq!(result.stderr, input_stderr);
@@ -5281,31 +5275,30 @@ mod tests {
     }
 
     #[test]
-    fn bounded_exec_result_to_sandbox_exec_result_rejects_invalid_capture_state() {
-        let overflow =
-            match bounded_exec_result_to_sandbox_exec_result(vsock_host::ExecOperationResult {
-                termination: ExecTermination::Exited { exit_code: 0 },
-                duration_ms: 10,
-                stdout: ExecOwnedCapturedOutput::Captured {
-                    bytes: Vec::new(),
-                    truncated: false,
-                },
-                stderr: ExecOwnedCapturedOutput::Captured {
-                    bytes: Vec::new(),
-                    truncated: false,
-                },
-                diagnostic: String::new(),
-                stream_overflowed: true,
-            }) {
-                Ok(_) => panic!("bounded capture should reject stream overflow"),
-                Err(error) => error,
-            };
+    fn exec_result_from_operation_result_rejects_invalid_capture_state() {
+        let overflow = match exec_result_from_operation_result(vsock_host::ExecOperationResult {
+            termination: vsock_proto::ExecTermination::Exited { exit_code: 0 },
+            duration_ms: 10,
+            stdout: ExecOwnedCapturedOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            },
+            stderr: ExecOwnedCapturedOutput::Captured {
+                bytes: Vec::new(),
+                truncated: false,
+            },
+            diagnostic: String::new(),
+            stream_overflowed: true,
+        }) {
+            Ok(_) => panic!("bounded capture should reject stream overflow"),
+            Err(error) => error,
+        };
         assert_eq!(overflow.kind(), io::ErrorKind::InvalidData);
         assert!(overflow.to_string().contains("overflowed a stream queue"));
 
         let stdout_discarded =
-            match bounded_exec_result_to_sandbox_exec_result(vsock_host::ExecOperationResult {
-                termination: ExecTermination::Exited { exit_code: 0 },
+            match exec_result_from_operation_result(vsock_host::ExecOperationResult {
+                termination: vsock_proto::ExecTermination::Exited { exit_code: 0 },
                 duration_ms: 10,
                 stdout: ExecOwnedCapturedOutput::Discarded,
                 stderr: ExecOwnedCapturedOutput::Captured {
@@ -5322,8 +5315,8 @@ mod tests {
         assert!(stdout_discarded.to_string().contains("discarded stdout"));
 
         let stderr_discarded =
-            match bounded_exec_result_to_sandbox_exec_result(vsock_host::ExecOperationResult {
-                termination: ExecTermination::Exited { exit_code: 0 },
+            match exec_result_from_operation_result(vsock_host::ExecOperationResult {
+                termination: vsock_proto::ExecTermination::Exited { exit_code: 0 },
                 duration_ms: 10,
                 stdout: ExecOwnedCapturedOutput::Captured {
                     bytes: Vec::new(),
@@ -5345,7 +5338,7 @@ mod tests {
         let exit = supervised_exec_result_to_process_exit(
             42,
             vsock_host::ExecOperationResult {
-                termination: ExecTermination::WaitFailed,
+                termination: vsock_proto::ExecTermination::WaitFailed,
                 duration_ms: 10,
                 stdout: ExecOwnedCapturedOutput::Captured {
                     bytes: b"out".to_vec(),
@@ -5361,7 +5354,7 @@ mod tests {
         );
 
         assert_eq!(exit.pid, 42);
-        assert_eq!(exit.termination, SandboxExecTermination::WaitFailed);
+        assert_eq!(exit.termination, ExecTermination::WaitFailed);
         assert_eq!(exit.stdout, b"out");
         assert_eq!(exit.stderr, b"err");
         assert!(exit.stdout_truncated);
@@ -5374,24 +5367,24 @@ mod tests {
     fn supervised_exec_result_to_process_exit_maps_terminal_edge_states() {
         for (termination, diagnostic, expected_termination) in [
             (
-                ExecTermination::TimedOut,
+                vsock_proto::ExecTermination::TimedOut,
                 "",
-                SandboxExecTermination::TimedOut,
+                ExecTermination::TimedOut,
             ),
             (
-                ExecTermination::Cancelled,
+                vsock_proto::ExecTermination::Cancelled,
                 "cancel diagnostic",
-                SandboxExecTermination::Cancelled,
+                ExecTermination::Cancelled,
             ),
             (
-                ExecTermination::StartFailed,
+                vsock_proto::ExecTermination::StartFailed,
                 "spawn failed",
-                SandboxExecTermination::StartFailed,
+                ExecTermination::StartFailed,
             ),
             (
-                ExecTermination::WaitFailed,
+                vsock_proto::ExecTermination::WaitFailed,
                 "wait failed",
-                SandboxExecTermination::WaitFailed,
+                ExecTermination::WaitFailed,
             ),
         ] {
             let exit = supervised_exec_result_to_process_exit(

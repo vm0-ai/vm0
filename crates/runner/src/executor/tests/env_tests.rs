@@ -4,7 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
-use sandbox::{SandboxExecResult, SandboxExecTermination, SandboxId};
+use sandbox::{ExecResult, ExecTermination, SandboxId};
 use sandbox_mock::MockSandbox;
 
 use super::super::env::{
@@ -833,8 +833,8 @@ fn build_env_json_user_vars_cannot_override_system() {
 #[tokio::test]
 async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(SandboxExecResult {
-        termination: SandboxExecTermination::Cancelled,
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::Cancelled,
         stdout: Vec::new(),
         stderr: b"cancelled".to_vec(),
         diagnostic: String::new(),

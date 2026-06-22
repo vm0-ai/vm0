@@ -1,4 +1,4 @@
-use sandbox::{Sandbox, SandboxExecResult, SandboxExecTermination};
+use sandbox::{ExecResult, ExecTermination, Sandbox};
 use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
@@ -26,7 +26,7 @@ async fn fix_guest_clock_propagates_exec_error() {
 #[tokio::test]
 async fn fix_guest_clock_fails_on_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(
+    sandbox.push_exec_result(Ok(ExecResult::new(
         2,
         b"date stdout".to_vec(),
         b"date stderr".to_vec(),
@@ -52,8 +52,8 @@ async fn fix_guest_clock_fails_on_nonzero_exit() {
 #[tokio::test]
 async fn fix_guest_clock_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(SandboxExecResult {
-        termination: SandboxExecTermination::WaitFailed,
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::WaitFailed,
         stdout: b"date stdout".to_vec(),
         stderr: b"wait failed".to_vec(),
         diagnostic: String::new(),
@@ -104,7 +104,7 @@ async fn reseed_guest_entropy_propagates_exec_error() {
 async fn reseed_guest_entropy_fails_on_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
     // guest-reseed exits with code 1 (e.g., ioctl failed).
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(
+    sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
         b"RNDRESEEDCRNG failed: Operation not permitted".to_vec(),
@@ -215,7 +215,7 @@ async fn capture_sync_guest_timezone_events(
 #[tokio::test(flavor = "current_thread")]
 async fn sync_guest_timezone_logs_nonzero_exit() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(SandboxExecResult::new(
+    sandbox.push_exec_result(Ok(ExecResult::new(
         2,
         b"timezone stdout".to_vec(),
         b"timezone stderr".to_vec(),
@@ -265,8 +265,8 @@ async fn sync_guest_timezone_logs_nonzero_exit() {
 #[tokio::test(flavor = "current_thread")]
 async fn sync_guest_timezone_logs_non_exited_result() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(SandboxExecResult {
-        termination: SandboxExecTermination::StartFailed,
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::StartFailed,
         stdout: b"timezone stdout".to_vec(),
         stderr: b"start failed".to_vec(),
         diagnostic: String::new(),

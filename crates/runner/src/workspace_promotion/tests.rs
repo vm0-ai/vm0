@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, GuestProcessHandle, ProcessExit, Sandbox,
-    SandboxExecResult, SandboxFactory, SandboxId, StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
+    Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandboxFactory, MockSandboxOverrides};
 use tracing_subscriber::prelude::*;
@@ -72,7 +72,7 @@ impl Sandbox for PanicExecSandbox {
         Ok(())
     }
 
-    async fn exec(&self, _request: &ExecRequest<'_>) -> sandbox::Result<SandboxExecResult> {
+    async fn exec(&self, _request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         panic!("simulated exec panic");
     }
 
