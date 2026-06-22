@@ -141,7 +141,7 @@ function buildGoalContinuationPrompt(preference: ZeroGoalPreference): string {
   lines.push(
     "## How to operate",
     "",
-    "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors). The sandbox filesystem is fresh every turn; only the conversation session carries over.",
+    "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors).",
     "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state (not your assumptions); only then run `zero goal complete`.",
     "- If the same blocker stops you for 3 consecutive turns, run `zero goal block` and explain why.",
     "- Inspect goal state anytime with `zero goal get`.",
