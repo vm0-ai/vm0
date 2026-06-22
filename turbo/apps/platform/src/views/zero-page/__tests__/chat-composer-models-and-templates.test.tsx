@@ -1910,6 +1910,113 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("resumes presentation template detail preview loading after reopening the same slide", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    let previewFetchCount = 0;
+    const blobHtml: Promise<string>[] = [];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn((blob: Blob) => {
+        blobHtml.push(blob.text());
+        return `blob:template-detail-${String(blobHtml.length)}`;
+      }),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Reflect.set(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      previewFetchCount += 1;
+      return previewFetch.promise;
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: true,
+        },
+      });
+
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await fill(screen.getByLabelText("Search templates"), template.title);
+      click(screen.getByLabelText(`View template ${template.title}`));
+
+      await waitFor(() => {
+        expect(previewFetchCount).toBe(1);
+        expect(
+          screen.getByTestId(`${template.title} detail HTML preview`),
+        ).not.toHaveAttribute("src");
+      });
+
+      const templateButton = queryAllByRoleFast("button").find((candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      });
+      if (!templateButton) {
+        throw new Error("Template button not found");
+      }
+      click(templateButton);
+      click(screen.getByLabelText(`View template ${template.title}`));
+
+      previewFetch.resolve(
+        new Response(
+          `
+            <!doctype html>
+            <html>
+              <body>
+                <section data-vm0-slide data-slide-id="slide-one">
+                  <h1>Slide one</h1>
+                </section>
+              </body>
+            </html>
+          `,
+          { headers: { "Content-Type": "text/html" } },
+        ),
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId(`${template.title} detail HTML preview`),
+        ).toHaveAttribute("src", "blob:template-detail-1");
+      });
+      await expect(blobHtml[0]).resolves.toContain("Slide one");
+      expect(previewFetchCount).toBe(1);
+    } finally {
+      Reflect.deleteProperty(
+        globalThis,
+        "vm0LoadTemplateDetailHtmlPreviewInHappyDom",
+      );
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {

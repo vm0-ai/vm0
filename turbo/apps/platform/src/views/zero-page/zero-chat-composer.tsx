@@ -225,6 +225,13 @@ function isHappyDomTestEnvironment(): boolean {
   );
 }
 
+function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
+  return (
+    Reflect.get(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom") ===
+    true
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -2921,10 +2928,14 @@ function TemplatePreviewPage({
   };
 
   const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
+    const hasVisibleDetailPreviewResult =
+      visibleDetailPreview !== null &&
+      (visibleDetailPreview.frameUrl !== null || visibleDetailPreview.failed);
     if (
       node === null ||
-      isHappyDomTestEnvironment() ||
-      visibleDetailPreview !== null
+      hasVisibleDetailPreviewResult ||
+      (isHappyDomTestEnvironment() &&
+        !shouldLoadTemplateDetailHtmlPreviewInHappyDom())
     ) {
       return;
     }
@@ -2973,16 +2984,18 @@ function TemplatePreviewPage({
       pendingLoad = loadPresentationTemplateHtmlPreview({ item });
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
-    setDetailPreview({
-      slug: item.slug,
-      embedUrl: item.embedUrl,
-      themeId: selectedTheme.id,
-      index: activeSlideIndex,
-      loading: true,
-      failed: false,
-      frameUrl: null,
-      slideCount: fallbackSlideCount,
-    });
+    if (visibleDetailPreview?.loading !== true) {
+      setDetailPreview({
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: selectedTheme.id,
+        index: activeSlideIndex,
+        loading: true,
+        failed: false,
+        frameUrl: null,
+        slideCount: fallbackSlideCount,
+      });
+    }
     detach(
       (async () => {
         const result = await settle(pendingLoad);
