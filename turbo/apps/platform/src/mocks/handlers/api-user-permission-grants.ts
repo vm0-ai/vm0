@@ -69,6 +69,19 @@ export const apiUserPermissionGrantsHandlers = [
 
   mockApi(zeroUserPermissionGrantsContract.apply, ({ body, respond }) => {
     const now = nowDate();
+    const seenPermissions = new Set<string>();
+    for (const grant of body.grants) {
+      if (seenPermissions.has(grant.permission)) {
+        return respond(400, {
+          error: {
+            message: `Duplicate permission grant: ${grant.permission}`,
+            code: "VALIDATION_ERROR",
+          },
+        });
+      }
+      seenPermissions.add(grant.permission);
+    }
+
     const existingGrants =
       body.mode === "replace"
         ? []
