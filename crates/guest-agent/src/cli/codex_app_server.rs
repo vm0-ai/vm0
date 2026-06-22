@@ -592,7 +592,9 @@ impl CodexAppServerClient {
         };
         self.mark_stream_unusable(message);
         self.close_io_handles();
-        self.signal_process_group(libc::SIGKILL);
+        if self.process_group_signal_needed() {
+            self.signal_process_group(libc::SIGKILL);
+        }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
         }
@@ -603,7 +605,9 @@ impl CodexAppServerClient {
         let message = message.into();
         self.mark_stream_unusable(message.clone());
         self.close_io_handles();
-        self.signal_process_group(libc::SIGKILL);
+        if self.process_group_signal_needed() {
+            self.signal_process_group(libc::SIGKILL);
+        }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
         }
@@ -679,7 +683,7 @@ impl CodexAppServerClient {
         self.clear_child_process_handles();
     }
 
-    fn drop_needs_process_group_signal(&self) -> bool {
+    fn process_group_signal_needed(&self) -> bool {
         self.wait_rx.is_some()
             || self
                 .stderr_handle
@@ -693,7 +697,7 @@ impl Drop for CodexAppServerClient {
         if !self.closed {
             self.close_io_handles();
             let _ = self.try_finish_child_wait();
-            if self.drop_needs_process_group_signal() {
+            if self.process_group_signal_needed() {
                 self.signal_process_group(libc::SIGKILL);
             }
         }
