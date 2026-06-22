@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+import * as defaultFirewallEntrypoint from "../firewalls";
 import { getConnectorFirewall } from "../firewalls";
 import {
   isRuntimeFirewallConnectorType,
@@ -80,10 +81,6 @@ describe("firewall runtime loader", () => {
         "utf-8",
       ),
     ) as { exports: Record<string, unknown> };
-    const defaultFirewallEntrypoint = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../firewalls/index.ts"),
-      "utf-8",
-    );
     const rootEntrypoint = fs.readFileSync(
       path.resolve(import.meta.dirname, "../index.ts"),
       "utf-8",
@@ -93,8 +90,15 @@ describe("firewall runtime loader", () => {
       import: "./src/firewall-runtime-all.ts",
       types: "./src/firewall-runtime-all.ts",
     });
-    expect(defaultFirewallEntrypoint).not.toContain("getAllConnectorFirewalls");
-    expect(rootEntrypoint).not.toContain("firewalls/all");
+    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+      "getAllConnectorFirewalls",
+    );
+    expect(staticValueModuleSpecifiers(rootEntrypoint)).not.toContain(
+      "./firewall-runtime-all",
+    );
+    expect(staticValueModuleSpecifiers(rootEntrypoint)).not.toContain(
+      "./firewalls/all",
+    );
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {
