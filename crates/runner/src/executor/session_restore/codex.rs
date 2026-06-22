@@ -184,12 +184,20 @@ mod tests {
     }
 
     fn run_cleanup(codex_home: &Path, restore_path: &Path) -> Output {
+        run_cleanup_with_session_id(codex_home, restore_path, SESSION_ID)
+    }
+
+    fn run_cleanup_with_session_id(
+        codex_home: &Path,
+        restore_path: &Path,
+        session_id: &str,
+    ) -> Output {
         Command::new("sh")
             .arg("-c")
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
-            .env("VM0_CODEX_RESTORE_SESSION_ID", SESSION_ID)
+            .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
             .env(
                 "VM0_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
@@ -333,5 +341,37 @@ mod tests {
         let output = run_cleanup(&codex_home, &shallow_restore_path);
 
         assert_failure_contains(&output, "invalid codex restore directory");
+    }
+
+    #[test]
+    fn cleanup_script_rejects_empty_session_id_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let existing_session = restore_dir.join("rollout-existing-session.jsonl");
+        create_file(&existing_session);
+
+        let output = run_cleanup_with_session_id(&codex_home, &restore_path, "");
+
+        assert_failure_contains(&output, "invalid codex restore session id");
+        assert!(existing_session.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_glob_session_id_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let existing_session = restore_dir.join("rollout-existing-session.jsonl");
+        create_file(&existing_session);
+
+        let output = run_cleanup_with_session_id(&codex_home, &restore_path, "*");
+
+        assert_failure_contains(&output, "invalid codex restore session id");
+        assert!(existing_session.exists());
     }
 }
