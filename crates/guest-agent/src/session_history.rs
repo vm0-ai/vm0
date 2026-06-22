@@ -1,5 +1,5 @@
 //! Session-history reader — abstracts over Claude (literal jsonl path) and
-//! codex (`CODEX_SEARCH_V2:{dir_len}:{dir}:{id}` marker → recursive scan +
+//! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → recursive scan +
 //! optional zstd decode).
 //!
 //! The event metadata capture path writes one of two payloads to
@@ -7,7 +7,7 @@
 //!
 //! - Claude: a literal filesystem path to the `.jsonl` history file.
 //! - Codex:  a length-prefixed
-//!   `CODEX_SEARCH_V2:{dir_len}:{sessions_dir}:{thread_id}` marker. The codex
+//!   `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}` marker. The codex
 //!   CLI only writes the session file out at turn-completion time, so we defer
 //!   resolution until checkpoint time when the file is on disk.
 //!
@@ -38,20 +38,20 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::{fs::File, io::Read};
 
-const CODEX_MARKER_V2_PREFIX: &str = "CODEX_SEARCH_V2:";
+const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 
 /// Build the persisted Codex session-history marker payload.
 pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
     let sessions_dir = sessions_dir.display().to_string();
     format!(
-        "{CODEX_MARKER_V2_PREFIX}{}:{sessions_dir}:{thread_id}",
+        "{CODEX_MARKER_PREFIX}{}:{sessions_dir}:{thread_id}",
         sessions_dir.len()
     )
 }
 
 /// Return whether a persisted session-history payload is a Codex marker.
 pub(crate) fn is_codex_marker(payload: &str) -> bool {
-    payload.starts_with(CODEX_MARKER_V2_PREFIX)
+    payload.starts_with(CODEX_MARKER_PREFIX)
 }
 
 /// Read the session history bytes pointed to by `path_file`.
@@ -92,7 +92,7 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
 /// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
 /// paths containing `:` cannot be confused with decorated thread IDs.
 fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
-    if let Some(rest) = content.strip_prefix(CODEX_MARKER_V2_PREFIX) {
+    if let Some(rest) = content.strip_prefix(CODEX_MARKER_PREFIX) {
         return decode_len_prefixed_marker(rest);
     }
 

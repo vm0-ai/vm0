@@ -37,7 +37,7 @@ fn write_codex_marker_path_file(
     let path_file = root.join("path.txt");
     let sessions_dir = sessions_dir.to_string_lossy();
     let marker = format!(
-        "CODEX_SEARCH_V2:{}:{sessions_dir}:{thread_id}",
+        "CODEX_SEARCH:{}:{sessions_dir}:{thread_id}",
         sessions_dir.len()
     );
     std::fs::write(&path_file, marker.as_bytes())
@@ -106,12 +106,12 @@ fn read_session_history_resolves_codex_marker_with_colon_in_sessions_dir() {
 #[test]
 fn read_session_history_rejects_malformed_codex_markers_without_literal_read() {
     for marker in [
-        format!("CODEX_SEARCH_V2:not-a-length:/tmp:{VALID_CODEX_THREAD_ID}"),
-        format!("CODEX_SEARCH_V2:999:/tmp:{VALID_CODEX_THREAD_ID}"),
-        "CODEX_SEARCH_V2:0::0193abcd-ef01-7234-89ab-cdef01234567".to_string(),
-        "CODEX_SEARCH_V2:4:/tmp".to_string(),
-        "CODEX_SEARCH_V2:4:/tmp:".to_string(),
-        format!("CODEX_SEARCH_V2:1:π:{VALID_CODEX_THREAD_ID}"),
+        format!("CODEX_SEARCH:not-a-length:/tmp:{VALID_CODEX_THREAD_ID}"),
+        format!("CODEX_SEARCH:999:/tmp:{VALID_CODEX_THREAD_ID}"),
+        "CODEX_SEARCH:0::0193abcd-ef01-7234-89ab-cdef01234567".to_string(),
+        "CODEX_SEARCH:4:/tmp".to_string(),
+        "CODEX_SEARCH:4:/tmp:".to_string(),
+        format!("CODEX_SEARCH:1:π:{VALID_CODEX_THREAD_ID}"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         let path_file = tmp.path().join("path.txt");
