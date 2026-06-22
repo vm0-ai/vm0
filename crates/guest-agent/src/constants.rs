@@ -50,7 +50,7 @@ pub const POST_RESULT_SIGTERM_GRACE_SECS: u64 = 10;
 
 /// Absolute cap after observing a `type=result` event before SIGTERM-ing the
 /// CLI process group, even if meaningful post-result events keep arriving.
-pub const POST_RESULT_TOTAL_CAP_SECS: u64 = 60;
+pub const POST_RESULT_TOTAL_CAP_SECS: u64 = 120;
 
 /// Follow-up window after SIGTERM before escalating to SIGKILL when the CLI
 /// process group ignores the graceful signal.
