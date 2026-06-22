@@ -348,8 +348,7 @@ impl CodexAppServerClient {
         result: Result<std::io::Result<ExitStatus>, oneshot::error::RecvError>,
     ) -> Result<ExitStatus, CodexAppServerError> {
         self.wait_rx = None;
-        self.process_id = None;
-        self.process_group_id = None;
+        self.clear_child_process_handles();
         match result {
             Ok(Ok(status)) => Ok(status),
             Ok(Err(error)) => Err(CodexAppServerError::Io(error)),
@@ -367,15 +366,18 @@ impl CodexAppServerClient {
         match wait_rx.try_recv() {
             Ok(Ok(status)) => {
                 self.wait_rx = None;
+                self.clear_child_process_handles();
                 Ok(Some(status))
             }
             Ok(Err(error)) => {
                 self.wait_rx = None;
+                self.clear_child_process_handles();
                 Err(CodexAppServerError::Io(error))
             }
             Err(oneshot::error::TryRecvError::Empty) => Ok(None),
             Err(oneshot::error::TryRecvError::Closed) => {
                 self.wait_rx = None;
+                self.clear_child_process_handles();
                 Err(CodexAppServerError::Protocol(
                     "app-server wait task ended without status".to_string(),
                 ))
@@ -515,12 +517,18 @@ impl CodexAppServerClient {
             }
         }
     }
+
+    fn clear_child_process_handles(&mut self) {
+        self.process_id = None;
+        self.process_group_id = None;
+    }
 }
 
 impl Drop for CodexAppServerClient {
     fn drop(&mut self) {
         if !self.closed {
             self.stdin.take();
+            let _ = self.try_finish_child_wait();
             self.signal_process_group(libc::SIGKILL);
         }
         if let Some(stderr_handle) = self.stderr_handle.take() {
