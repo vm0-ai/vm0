@@ -1,11 +1,18 @@
 [target.aarch64-unknown-linux-musl]
 linker = "aarch64-linux-musl-gcc"
 # --no-dynamic-linker strips the PT_INTERP header from the fully-static
-# (`+crt-static`) binary. Without it, arm64-host builds via apt's
-# `musl-dev` gcc wrapper hard-code `-dynamic-linker /lib/ld-musl-aarch64.so.1`
-# in its specs file, so the binary fails to exec on Ubuntu hosts that
-# only ship the glibc loader. The binary has no `.dynamic` section, so
-# the interpreter was never needed at runtime anyway.
+# (`+crt-static`) binary. Ubuntu `musl-dev` gcc wrappers can hard-code a
+# musl loader path in their specs files, so the binary fails to exec on
+# Ubuntu hosts that only ship the glibc loader. The interpreter is not
+# needed at runtime for these static musl outputs.
+rustflags = [
+  "-C", "target-feature=+crt-static",
+  "-C", "link-arg=-Wl,--no-dynamic-linker",
+  "-C", "link-arg=-fuse-ld=mold",
+]
+
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
 rustflags = [
   "-C", "target-feature=+crt-static",
   "-C", "link-arg=-Wl,--no-dynamic-linker",
