@@ -2858,8 +2858,17 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
             }
         }
 
-        let (tcp, _) = ws.listener.accept().await.unwrap();
-        let mut conn2 = tokio_tungstenite::accept_async(tcp).await.unwrap();
+        let mut conn2 = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let (tcp, _) = ws.listener.accept().await.unwrap();
+                match tokio_tungstenite::accept_async(tcp).await {
+                    Ok(conn) => break conn,
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for post-suspended reconnect");
         let connected = ProtocolMessage {
             action: action::CONNECTED,
             connection_id: Some("conn-2".into()),
