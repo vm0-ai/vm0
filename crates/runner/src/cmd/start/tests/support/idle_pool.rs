@@ -2,7 +2,15 @@ use super::super::super::*;
 use super::TEST_SESSION_LAST_COMPLETED_AT;
 
 use crate::idle_pool::{ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts};
+use crate::ids::RunId;
+use crate::paths::RunnerPaths;
 use crate::resource_budget::BudgetLease;
+use crate::storage_fingerprints::StorageFingerprints;
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
+};
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::{SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
@@ -98,6 +106,77 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         })
         .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string()),
     );
+    assert!(matches!(result, ParkResult::Parked));
+    sandbox_id
+}
+
+pub(in super::super) struct WorkspacePromotionSeedSpec<'a> {
+    pub(in super::super) session_id: &'a str,
+    pub(in super::super) profile_name: &'a str,
+    pub(in super::super) vcpu: u32,
+    pub(in super::super) memory_mb: u32,
+    pub(in super::super) image_size_bytes: u64,
+}
+
+pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
+    pool: &SharedIdlePool,
+    budget: &Arc<ResourceBudget>,
+    cache: &SessionWorkspaceCache,
+    paths: &RunnerPaths,
+    spec: WorkspacePromotionSeedSpec<'_>,
+) -> SandboxId {
+    let run_id = RunId::new_v4();
+    let sandbox_id = SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: spec.profile_name,
+                cli_agent_session_id: Some(spec.session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: spec.image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(spec.image_size_bytes).await.unwrap();
+    drop(file);
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: Some(spec.session_id),
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: TEST_SESSION_LAST_COMPLETED_AT.into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            promotable: true,
+        })
+        .expect("workspace image should be promotable");
+    let budget_lease = ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb)
+        .expect("reserve budget");
+    let candidate = ParkedIdleCandidate::synthetic_for_test_with_workspace_promotion(
+        SyntheticParkedIdleCandidateParts {
+            sandbox: Box::new(MockSandbox::new("idle-workspace-promotion-test")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            cli_agent_session_id: spec.session_id.into(),
+            sandbox_id,
+            profile_name: spec.profile_name.into(),
+            device_rate_limits: None,
+            budget_lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+        },
+        promotion,
+    )
+    .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string());
+    let mut guard = pool.lock().await;
+    let result = guard.park(candidate);
     assert!(matches!(result, ParkResult::Parked));
     sandbox_id
 }

@@ -1,16 +1,18 @@
 use super::super::*;
 use super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
-    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
-    wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_len,
-    wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
-    wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
-    wait_status_idle_sessions_and_active_runs,
+    WorkspacePromotionSeedSpec, assert_run_exits_within, context_with_session, minimal_context,
+    mock_run_config, mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
+    seed_idle_pool_with_overrides, seed_idle_pool_with_workspace_promotion, shutdown,
+    status_idle_sessions, test_profiles, two_profiles, wait_budget_count, wait_cancel_token,
+    wait_discover_entered, wait_idle_pool_len, wait_idle_pool_session_states,
+    wait_idle_pool_sessions, wait_parking_state, wait_sandbox_lifecycle_counts,
+    wait_status_idle_empty_with_active_run, wait_status_idle_sessions_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
+use crate::paths::RunnerPaths;
 use crate::types::SandboxReuseResult;
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
 // -----------------------------------------------------------------------
 // Test 9: idle pool park/take is gated on session ID availability
@@ -369,6 +371,67 @@ async fn session_affinity_reuses_idle_vm() {
         budget.allocated().2,
         1,
         "budget should remain at 1 (reused, not additive)"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    let session_id = "sess-workspace-promotion-mismatch";
+    let stale_sandbox_id = seed_idle_pool_with_workspace_promotion(
+        &idle_pool,
+        &budget,
+        &workspace_cache,
+        &runner_paths,
+        WorkspacePromotionSeedSpec {
+            session_id,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            image_size_bytes: 16 * 1024 * 1024,
+        },
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, session_id)),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_ne!(
+        completion.sandbox_id,
+        Some(stale_sandbox_id),
+        "workspace promotion mismatch should force a fresh sandbox"
+    );
+    wait_idle_pool_sessions(&idle_pool, &[session_id], Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    assert!(
+        workspace_cache.held_session_states().await.is_empty(),
+        "mismatched stale idle VM must be destroyed without publishing its workspace image"
     );
 
     shutdown(&env, run_handle).await;

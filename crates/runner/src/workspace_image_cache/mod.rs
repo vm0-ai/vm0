@@ -1,9 +1,11 @@
 //! Local session workspace image cache.
 //!
 //! This cache stores reusable workspace drive images for session-backed runs.
-//! Each cache entry is keyed by cache scope, profile, session id, normalized
-//! working directory, and logical workspace image size. A cache entry contains a
-//! `metadata.json` file and a `current.ext4` image file.
+//! Each cache entry is keyed by cache scope, profile, session id, and logical
+//! workspace image size. The normalized working directory is still stored in
+//! metadata and validated at promotion/reuse boundaries; the hash key itself
+//! follows the canonical-workspace semantics in `paths.rs`. A cache entry
+//! contains a `metadata.json` file and a `current.ext4` image file.
 //!
 //! ## Invariants
 //!
@@ -48,7 +50,8 @@ pub(crate) use types::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
     WorkspaceImageCacheInspectionEntry, WorkspaceImageCacheInspectionStatus,
     WorkspaceImageCacheInspectionSummary, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
 };
 
 const CACHE_FORMAT_VERSION: u32 = 1;

@@ -27,7 +27,8 @@ use super::path_safety::{
 use super::types::{
     CacheBudget, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionRequest,
+    WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
 };
 use super::{
     CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
@@ -181,6 +182,31 @@ impl WorkspaceImageLease {
 }
 
 impl SessionWorkspaceCache {
+    pub(crate) fn expected_promotion_identity(
+        &self,
+        request: WorkspaceImagePromotionIdentityRequest<'_>,
+    ) -> Result<WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch> {
+        let Some(working_dir) = normalize_safe_guest_working_dir(request.working_dir) else {
+            return Err(WorkspaceImagePromotionIdentityMismatch::UnsafeWorkingDir);
+        };
+        let cache_key = self.scoped_cache_key(
+            request.profile_name,
+            request.cli_agent_session_id,
+            &working_dir,
+            request.image_size_bytes,
+        );
+
+        Ok(WorkspaceImagePromotionIdentity {
+            sandbox_id: request.sandbox_id,
+            profile_name: request.profile_name.to_owned(),
+            cli_agent_session_id: request.cli_agent_session_id.to_owned(),
+            working_dir,
+            image_size_bytes: request.image_size_bytes,
+            active_image: self.paths().active_workspace_image(&request.sandbox_id),
+            cache_key,
+        })
+    }
+
     pub(crate) async fn lease_active(
         &self,
         request: WorkspaceImageActiveLeaseRequest<'_>,
@@ -1101,6 +1127,50 @@ impl WorkspaceImagePromotionContext {
         &self.cli_agent_session_id
     }
 
+    pub(crate) fn validate_identity(
+        &self,
+        expected: &WorkspaceImagePromotionIdentity,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        if self.sandbox_id != expected.sandbox_id {
+            return Err(WorkspaceImagePromotionIdentityMismatch::SandboxId);
+        }
+        if self.profile_name != expected.profile_name {
+            return Err(WorkspaceImagePromotionIdentityMismatch::ProfileName);
+        }
+        if self.cli_agent_session_id != expected.cli_agent_session_id {
+            return Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId);
+        }
+        if self.working_dir != expected.working_dir {
+            return Err(WorkspaceImagePromotionIdentityMismatch::WorkingDir);
+        }
+        if self.image_size_bytes != expected.image_size_bytes {
+            return Err(WorkspaceImagePromotionIdentityMismatch::ImageSizeBytes);
+        }
+        if self.active_image != expected.active_image {
+            return Err(WorkspaceImagePromotionIdentityMismatch::ActiveImage);
+        }
+        if self.cache_key != expected.cache_key {
+            return Err(WorkspaceImagePromotionIdentityMismatch::CacheKey);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_expected_identity(
+        &self,
+        cache: &SessionWorkspaceCache,
+        request: WorkspaceImagePromotionIdentityRequest<'_>,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        let expected = cache.expected_promotion_identity(request)?;
+        self.validate_identity(&expected)
+    }
+
+    pub(crate) fn validate_stored_cache_identity(
+        &self,
+        request: WorkspaceImagePromotionIdentityRequest<'_>,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        self.validate_expected_identity(&self.cache, request)
+    }
+
     pub(crate) async fn promote(&self) -> RunnerResult<bool> {
         let tainted_storage_fingerprints;
         let promotion_storage_fingerprints = match self.terminal_status {
@@ -1183,7 +1253,16 @@ impl WorkspaceImagePromotionContext {
             .await
     }
 
-    pub(crate) fn into_active_lease(self, workspace_drive_available: bool) -> WorkspaceImageLease {
+    pub(crate) fn try_into_active_lease(
+        self,
+        expected: &WorkspaceImagePromotionIdentity,
+        workspace_drive_available: bool,
+    ) -> Result<WorkspaceImageLease, WorkspaceImagePromotionIdentityMismatch> {
+        self.validate_identity(expected)?;
+        Ok(self.into_active_lease_unchecked(workspace_drive_available))
+    }
+
+    fn into_active_lease_unchecked(self, workspace_drive_available: bool) -> WorkspaceImageLease {
         let Self {
             cache,
             cache_key,

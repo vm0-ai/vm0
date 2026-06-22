@@ -2753,7 +2753,16 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
         WorkspaceCacheCheckoutResult::LockBusy
     );
 
-    let active_lease = promotion.into_active_lease(true);
+    let expected = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace",
+            image_size_bytes,
+        })
+        .unwrap();
+    let active_lease = promotion.try_into_active_lease(&expected, true).unwrap();
 
     let blocked_by_active_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -2788,6 +2797,127 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
         })
         .await;
     assert_eq!(after_drop.result(), WorkspaceCacheCheckoutResult::Miss);
+}
+
+#[tokio::test]
+async fn promotion_context_validates_expected_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let session_id = "sess-identity";
+    let image_size_bytes = 16 * 1024 * 1024;
+
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace//repo/",
+                image_size_bytes,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: Some(session_id),
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: local_timestamp(),
+            storage_fingerprints: StorageFingerprints::default(),
+            promotable: true,
+        })
+        .unwrap();
+
+    let expected = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace/repo",
+            image_size_bytes,
+        })
+        .unwrap();
+    assert_eq!(promotion.validate_identity(&expected), Ok(()));
+
+    let wrong_sandbox = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id: sandbox::SandboxId::new_v4(),
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace/repo",
+            image_size_bytes,
+        })
+        .unwrap();
+    assert_eq!(
+        promotion.validate_identity(&wrong_sandbox),
+        Err(WorkspaceImagePromotionIdentityMismatch::SandboxId),
+    );
+
+    let wrong_session = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: "sess-other",
+            working_dir: "/workspace/repo",
+            image_size_bytes,
+        })
+        .unwrap();
+    assert_eq!(
+        promotion.validate_identity(&wrong_session),
+        Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId),
+    );
+
+    let wrong_size = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace/repo",
+            image_size_bytes: image_size_bytes + 1,
+        })
+        .unwrap();
+    assert_eq!(
+        promotion.validate_identity(&wrong_size),
+        Err(WorkspaceImagePromotionIdentityMismatch::ImageSizeBytes),
+    );
+
+    let scoped_cache = SessionWorkspaceCache::with_cache_dirs(
+        paths.clone(),
+        paths.workspace_image_cache_dir(),
+        paths.base_dir().join("locks"),
+        "other-scope",
+    );
+    let wrong_cache_key = scoped_cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace/repo",
+            image_size_bytes,
+        })
+        .unwrap();
+    assert_eq!(
+        promotion.validate_identity(&wrong_cache_key),
+        Err(WorkspaceImagePromotionIdentityMismatch::CacheKey),
+    );
+
+    assert_eq!(
+        cache.expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/",
+            image_size_bytes,
+        }),
+        Err(WorkspaceImagePromotionIdentityMismatch::UnsafeWorkingDir),
+    );
 }
 
 #[tokio::test]
@@ -3991,7 +4121,16 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
         })
         .unwrap();
 
-    let active_lease = promotion.into_active_lease(true);
+    let expected = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            cli_agent_session_id: session_id,
+            working_dir: "/workspace//repo/",
+            image_size_bytes: 5,
+        })
+        .unwrap();
+    let active_lease = promotion.try_into_active_lease(&expected, true).unwrap();
 
     assert_eq!(active_lease.working_dir(), "/workspace/repo");
     assert!(active_lease.can_attempt_promotion(Some(session_id)));
