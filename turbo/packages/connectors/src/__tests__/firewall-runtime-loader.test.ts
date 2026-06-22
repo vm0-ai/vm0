@@ -74,6 +74,18 @@ describe("firewall runtime loader", () => {
     expect(rootEntrypoint).not.toContain("firewalls/runtime");
   });
 
+  it("keeps runtime firewalls out of the package root entrypoint", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const rootSpecifiers = staticValueModuleSpecifiers(rootEntrypoint);
+
+    expect(rootSpecifiers).not.toContain("./firewalls");
+    expect(rootSpecifiers).not.toContain("./firewalls/all");
+    expect(rootSpecifiers).not.toContain("./firewalls/runtime");
+  });
+
   it("keeps all-catalog access behind an explicit package subpath", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(

@@ -15,10 +15,6 @@
     "./contracts": {
       "import": "./src/contracts/index.ts",
       "types": "./src/contracts/index.ts"
-    },
-    "./firewalls": {
-      "import": "./src/firewalls/index.ts",
-      "types": "./src/firewalls/index.ts"
     }
   },
   "scripts": {
