@@ -576,6 +576,7 @@ function renderPythonDiagnosticManifest(
   return [
     ...pythonGeneratedHeader,
     "",
+    "# fmt: off",
     `CONNECTOR_DIAGNOSTIC_FIREWALLS = ${stablePrettyJson(
       manifest.connectorFirewalls,
     )}`,
@@ -583,6 +584,8 @@ function renderPythonDiagnosticManifest(
     `MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = ${stablePrettyJson(
       manifest.modelProviderExclusions,
     )}`,
+    "",
+    "# fmt: on",
     "",
   ].join("\n");
 }
