@@ -1,6 +1,6 @@
 const EXPLICIT_OFFSET_RE = /(?:[zZ]|[+-]\d{2}:?\d{2})$/u;
 
-export function hasExplicitAtTimeOffset(atTime: string): boolean {
+function hasExplicitAtTimeOffset(atTime: string): boolean {
   return EXPLICIT_OFFSET_RE.test(atTime.trim());
 }
 
