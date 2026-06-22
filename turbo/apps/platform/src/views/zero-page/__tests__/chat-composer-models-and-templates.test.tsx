@@ -2313,10 +2313,7 @@ describe("chat composer templates", () => {
         ).toHaveAttribute("src", posterUrl);
         expect(
           previewVideo.querySelector('source[type="video/webm; codecs=vp9"]'),
-        ).toHaveAttribute(
-          "src",
-          `/video-template-previews/${videoStyle.slug}.webm`,
-        );
+        ).toHaveAttribute("src", videoStyle.previewWebm);
         expect(previewVideo).toHaveAttribute("poster", posterUrl);
         expect(previewVideo).toHaveAttribute("preload", "none");
         expect(

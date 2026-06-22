@@ -43,6 +43,7 @@ describe("video template items", () => {
       );
       expect(item.cardPreviewImage).not.toContain("/cdn-cgi/image/");
       expect(item.previewVideo).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.mp4$/u);
+      expect(item.previewWebm).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.webm$/u);
       expect(template).not.toHaveProperty("previewImage");
       expect(template).not.toHaveProperty("previewVideo");
     }

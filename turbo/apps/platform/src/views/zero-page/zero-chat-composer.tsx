@@ -1009,10 +1009,6 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
   return r2ImageTransformUrl(item.previewImage, TEMPLATE_CARD_PREVIEW_SIZE);
 }
 
-function videoTemplatePreviewWebm(item: VideoTemplateItem): string {
-  return `/video-template-previews/${item.slug}.webm`;
-}
-
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
   const posterImage = videoTemplatePosterImage(item);
   return (
@@ -1046,10 +1042,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
           markVideoTemplatePreviewPlaying(event.currentTarget, false);
         }}
       >
-        <source
-          src={videoTemplatePreviewWebm(item)}
-          type="video/webm; codecs=vp9"
-        />
+        <source src={item.previewWebm} type="video/webm; codecs=vp9" />
         <source src={item.previewVideo} type="video/mp4" />
       </video>
       <img

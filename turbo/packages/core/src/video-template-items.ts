@@ -12,6 +12,7 @@ export interface VideoTemplateItem {
   readonly previewImage: string;
   readonly cardPreviewImage?: string;
   readonly previewVideo: string;
+  readonly previewWebm: string;
   readonly sourcePath: string;
 }
 
@@ -84,6 +85,29 @@ const VIDEO_TEMPLATE_PREVIEW_VIDEOS: Readonly<Record<string, string>> = {
     "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
 };
 
+const VIDEO_TEMPLATE_PREVIEW_WEBMS: Readonly<Record<string, string>> = {
+  "chinese-ink-art":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b18f8d3e-22c9-468f-817e-2046d134fcf6/chinese-ink-art.webm",
+  "cyberpunk-anime":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cf8ab683-7c7e-4cfd-b9f2-44eec893407e/cyberpunk-anime.webm",
+  "epic-grandeur":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e8b67299-f944-4942-a727-931026dea2a0/epic-grandeur.webm",
+  "fashion-editorial":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51e93c96-03be-4d5a-a66c-b90ec6c52111/fashion-editorial.webm",
+  "gourmet-documentary":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3b39aeed-30be-4e79-8a6a-23ffd76fca86/gourmet-documentary.webm",
+  "hand-drawn-fantasy-anime":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/42f6fb38-6544-4e42-ba4d-5dd352da9051/hand-drawn-fantasy-anime.webm",
+  "japanese-wabi-sabi":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22d6c8cb-b7f0-40f7-9c5f-022e578a060b/japanese-wabi-sabi.webm",
+  "luxury-product":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ad1c730-d146-4bf5-9936-dea198c593ec/luxury-product.webm",
+  "shortform-viral":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0b1dbbb8-782e-451d-87e9-6652f60116bf/shortform-viral.webm",
+  "sports-performance-ad":
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a6dab950-dddc-4116-9bc3-624265b35c12/sports-performance-ad.webm",
+};
+
 function videoTemplateSlug(entry: VideoTemplateRegistryEntry): string {
   return entry.id.replace(/^video-template:/u, "");
 }
@@ -104,6 +128,10 @@ function toVideoTemplateItem(
   if (!previewVideo) {
     throw new Error(`Missing video template preview video: ${entry.id}`);
   }
+  const previewWebm = VIDEO_TEMPLATE_PREVIEW_WEBMS[slug];
+  if (!previewWebm) {
+    throw new Error(`Missing video template preview webm: ${entry.id}`);
+  }
   return {
     id: entry.id,
     slug,
@@ -112,6 +140,7 @@ function toVideoTemplateItem(
     previewImage,
     cardPreviewImage,
     previewVideo,
+    previewWebm,
     sourcePath: entry.source.path,
   };
 }
