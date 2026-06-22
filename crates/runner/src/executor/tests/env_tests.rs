@@ -4,7 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
-use sandbox::{ExecResult, ProcessTerminationKind, SandboxId};
+use sandbox::{ExecResult, ExecTermination, SandboxId};
 use sandbox_mock::MockSandbox;
 
 use super::super::env::{
@@ -834,10 +834,10 @@ fn build_env_json_user_vars_cannot_override_system() {
 async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
-        termination: ProcessTerminationKind::Cancelled,
-        exit_code: 0,
+        termination: ExecTermination::Cancelled,
         stdout: Vec::new(),
         stderr: b"cancelled".to_vec(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -850,8 +850,7 @@ async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
     let message = err.to_string();
 
     assert!(
-        message
-            .contains("user env directory creation failed (cancelled; compatibility exit code 0)"),
+        message.contains("user env directory creation failed (cancelled)"),
         "got: {message}"
     );
     assert!(sandbox.write_file_calls().is_empty());

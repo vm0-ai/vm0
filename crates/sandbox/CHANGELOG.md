@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.10](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.9...sandbox-v0.19.10) (2026-06-22)
+
+
+### Refactoring
+
+* remove legacy exec result projections ([#18429](https://github.com/vm0-ai/vm0/issues/18429)) ([19b22fb](https://github.com/vm0-ai/vm0/commit/19b22fbde865689860394e2e9e9f699347f633b3))
+
 ## [0.19.9](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.8...sandbox-v0.19.9) (2026-06-21)
 
 

@@ -44,17 +44,34 @@ export const zeroWorkflows = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
+    // Hard 1:N ownership: every workflow (and goal) belongs to exactly one
+    // agent. Deleting the agent cascades to its workflows (and their volumes).
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroAgents.id;
+        },
+        { onDelete: "cascade" },
+      ),
     name: varchar("name", { length: 64 }).notNull(),
     visibility: varchar("visibility", { length: 16 })
       .$type<ZeroWorkflowVisibility>()
       .notNull()
       .default("private"),
+    // Pending promotion request. Only meaningful while `visibility = 'private'`;
+    // cleared back to false when the workflow becomes public.
+    requestToPublish: boolean("request_to_publish").notNull().default(false),
     type: varchar("type", { length: 16 })
       .$type<ZeroWorkflowType>()
       .notNull()
       .default("workflow"),
     active: boolean("active").default(true).notNull(),
     preference: jsonb("preference").$type<ZeroWorkflowPreference>(),
+    // Instruction body (the SKILL.md content below the frontmatter). DB is the
+    // single source of truth; the SKILL.md written to the volume is synthesized
+    // from (name, description, instruction). Null for goals.
+    instruction: text("instruction"),
     ownerUserId: text("owner_user_id").notNull(),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
@@ -64,61 +81,13 @@ export const zeroWorkflows = pgTable(
   },
   (table) => {
     return {
-      orgNameIdx: uniqueIndex("idx_zero_workflows_org_name").on(
-        table.orgId,
-        table.name,
-      ),
+      // slug (name) is intentionally NOT unique: duplicates are allowed across
+      // and within an agent; run-time picks a winner by a fixed priority rule.
+      agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
       orgIdx: index("idx_zero_workflows_org").on(table.orgId),
       ownerIdx: index("idx_zero_workflows_org_owner").on(
         table.orgId,
         table.ownerUserId,
-      ),
-    };
-  },
-);
-
-/**
- * Workflow-agent attachments.
- *
- * Sparse model: presence of a row means the workflow is attached to the agent.
- * Runtime loading still filters these rows by current-user workflow visibility.
- */
-export const zeroWorkflowAgents = pgTable(
-  "zero_workflow_agents",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    orgId: text("org_id").notNull(),
-    workflowId: uuid("workflow_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflows.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    createdBy: text("created_by").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => {
-    return {
-      workflowAgentIdx: uniqueIndex(
-        "idx_zero_workflow_agents_workflow_agent",
-      ).on(table.workflowId, table.agentId),
-      agentIdx: index("idx_zero_workflow_agents_agent").on(
-        table.orgId,
-        table.agentId,
-      ),
-      workflowIdx: index("idx_zero_workflow_agents_workflow").on(
-        table.orgId,
-        table.workflowId,
       ),
     };
   },
@@ -161,14 +130,6 @@ export const zeroWorkflowTriggers = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // Nullable: cleared to NULL (and the trigger disabled) when the agent is
-    // deleted, since a trigger lives as long as its workflow.
-    agentId: uuid("agent_id").references(
-      () => {
-        return zeroAgents.id;
-      },
-      { onDelete: "set null" },
-    ),
     // Execution identity: runs fire as (org_id, owner_user_id), resolving the
     // owner's secrets / connectors / credits.
     ownerUserId: text("owner_user_id").notNull(),

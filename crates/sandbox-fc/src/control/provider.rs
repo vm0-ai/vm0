@@ -143,14 +143,14 @@ fn control_timeout(timeout_secs: u32) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use sandbox::SandboxExecTermination;
+    use sandbox::ExecTermination;
 
     use super::*;
 
     #[test]
     fn remote_exec_response_success_decodes_structured_result() {
         let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: SandboxExecTermination::Exited { exit_code: 7 },
+            termination: ExecTermination::Exited { exit_code: 7 },
             stdout: BASE64.encode(b"out"),
             stderr: BASE64.encode(b"err"),
             stdout_truncated: true,
@@ -159,10 +159,7 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(
-            result.termination,
-            SandboxExecTermination::Exited { exit_code: 7 }
-        );
+        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 7 });
         assert_eq!(result.stdout, b"out");
         assert_eq!(result.stderr, b"err");
         assert!(result.stdout_truncated);
@@ -173,7 +170,7 @@ mod tests {
     #[test]
     fn remote_exec_response_invalid_base64_is_connection_error() {
         let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            termination: ExecTermination::Exited { exit_code: 0 },
             stdout: "not base64".into(),
             stderr: BASE64.encode(b""),
             stdout_truncated: false,
@@ -190,7 +187,7 @@ mod tests {
     #[test]
     fn remote_exec_response_invalid_stderr_base64_is_connection_error() {
         let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: SandboxExecTermination::Exited { exit_code: 0 },
+            termination: ExecTermination::Exited { exit_code: 0 },
             stdout: BASE64.encode(b""),
             stderr: "not base64".into(),
             stdout_truncated: false,

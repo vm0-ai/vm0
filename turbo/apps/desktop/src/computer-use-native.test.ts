@@ -95,17 +95,27 @@ const requestLogPath = ${JSON.stringify(requestLogPath)};
 let buffer = "";
 
 function responseFor(request) {
-  if (
-    request.kind === "permissions.state" ||
-    request.kind === "permissions.request_accessibility" ||
-    request.kind === "permissions.request_screen_recording"
-  ) {
+	  if (
+	    request.kind === "permissions.state" ||
+	    request.kind === "permissions.request_accessibility" ||
+	    request.kind === "permissions.request_screen_recording"
+	  ) {
     return {
       id: request.id,
       status: "succeeded",
-      result: { accessibility: true, screenRecording: true }
-    };
-  }
+	      result: { accessibility: true, screenRecording: true }
+	    };
+	  }
+	  if (request.kind === "permissions.probe_automation") {
+	    return {
+	      id: request.id,
+	      status: "succeeded",
+	      result: {
+	        status: "denied",
+	        reason: "Not authorized to send Apple events. (-1743)"
+	      }
+	    };
+	  }
   if (request.kind === "apps.list") {
     return {
       id: request.id,
@@ -400,6 +410,38 @@ describe("computer use native backend", () => {
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({
         kind: "permissions.request_screen_recording",
+      });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("probes browser automation permission through the native helper", async () => {
+    const helper = await createSessionHelper();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      await expect(
+        backend.probeAutomationPermission("chrome"),
+      ).resolves.toEqual({
+        status: "denied",
+        updatedAt: null,
+        reason: "Not authorized to send Apple events. (-1743)",
+      });
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as Record<string, unknown>;
+        });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        kind: "permissions.probe_automation",
+        payload: { target: "chrome" },
       });
     } finally {
       backend.dispose();

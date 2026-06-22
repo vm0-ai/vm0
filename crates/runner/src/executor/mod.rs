@@ -118,7 +118,8 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
-    WorkspaceImageLeaseIdentity,
+    WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
+    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
 };
 
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
@@ -509,7 +510,39 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
 
     if let Err(error) = validate_resume_session_id(&context) {
         let workspace_image = match config.workspace_cache.as_ref() {
-            Some(_) => workspace_promotion.map(|promotion| promotion.into_active_lease(true)),
+            Some(cache) => match workspace_promotion {
+                Some(promotion) => match reused_promotion_into_active_lease(
+                    cache,
+                    promotion,
+                    run_id,
+                    sandbox_id,
+                    params,
+                    &idle_cli_agent_session_id,
+                ) {
+                    Ok(lease) => Some(lease),
+                    Err(mismatch) => {
+                        let failure = workspace_promotion_identity_failure(
+                            run_id,
+                            sandbox_id,
+                            &params.profile_name,
+                            mismatch,
+                        );
+                        return (
+                            ExecuteOutcome {
+                                failure: Some(failure),
+                                sandbox: Some(sandbox),
+                                source_ip,
+                                network_log_session: None,
+                                workspace_image: None,
+                                workspace_promotable: false,
+                                discovered_cli_agent_session_id: None,
+                            },
+                            telemetry,
+                        );
+                    }
+                },
+                None => None,
+            },
             None => {
                 if let Some(promotion) = workspace_promotion
                     && let Err(error) = promotion
@@ -554,7 +587,41 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
 
     let workspace_image = match config.workspace_cache.as_ref() {
         Some(cache) => Some(match workspace_promotion {
-            Some(promotion) => promotion.into_active_lease(true),
+            Some(promotion) => {
+                let expected_session_id = context
+                    .cli_agent_session_id()
+                    .unwrap_or(idle_cli_agent_session_id.as_str());
+                match reused_promotion_into_active_lease(
+                    cache,
+                    promotion,
+                    run_id,
+                    sandbox_id,
+                    params,
+                    expected_session_id,
+                ) {
+                    Ok(lease) => lease,
+                    Err(mismatch) => {
+                        let failure = workspace_promotion_identity_failure(
+                            run_id,
+                            sandbox_id,
+                            &params.profile_name,
+                            mismatch,
+                        );
+                        return (
+                            ExecuteOutcome {
+                                failure: Some(failure),
+                                sandbox: Some(sandbox),
+                                source_ip,
+                                network_log_session: None,
+                                workspace_image: None,
+                                workspace_promotable: false,
+                                discovered_cli_agent_session_id: None,
+                            },
+                            telemetry,
+                        );
+                    }
+                }
+            }
             None => {
                 cache
                     .lease_active(WorkspaceImageActiveLeaseRequest {
@@ -640,6 +707,52 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
     };
 
     (outcome, telemetry)
+}
+
+fn reused_promotion_into_active_lease(
+    cache: &SessionWorkspaceCache,
+    promotion: WorkspaceImagePromotionContext,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    params: &JobParams,
+    cli_agent_session_id: &str,
+) -> Result<WorkspaceImageLease, WorkspaceImagePromotionIdentityMismatch> {
+    let expected = cache
+        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+            sandbox_id,
+            profile_name: &params.profile_name,
+            cli_agent_session_id,
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+        })
+        .inspect_err(|mismatch| {
+            tracing::warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                profile_name = %params.profile_name,
+                mismatch = mismatch.as_str(),
+                "workspace promotion expected identity could not be constructed"
+            );
+        })?;
+    promotion.try_into_active_lease(&expected, true)
+}
+
+fn workspace_promotion_identity_failure(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile_name: &str,
+    mismatch: WorkspaceImagePromotionIdentityMismatch,
+) -> ExecutionFailure {
+    tracing::warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        profile_name,
+        mismatch = mismatch.as_str(),
+        "workspace promotion identity mismatch during reused sandbox execution"
+    );
+    ExecutionFailure::from_error(format!(
+        "workspace promotion identity mismatch during reused sandbox execution: {mismatch}"
+    ))
 }
 
 /// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM

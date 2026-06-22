@@ -792,12 +792,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     failIfChatCallbackRouteIsFetched();
 
     const workflowName = "bdd-codex-kit";
-    await misc.createWorkflow(
-      actor,
-      workflowName,
-      "# BDD codex kit\nUse this workflow for codex runs.",
-      [201],
-    );
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -835,7 +829,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       displayName: "BDD codex skills agent",
       visibility: "private",
     });
-    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      "# BDD codex kit\nUse this workflow for codex runs.",
+      [201],
+    );
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
     const sent = await chat.requestSendMessage(
       actor,
@@ -922,6 +923,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         return firewallEntryName(firewall);
       }),
     ).toContain("x");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
 
@@ -1202,6 +1207,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
     expect(claim.secretValues).toContain("user-shared-secret");
+    expect(claim.firewalls ?? []).toStrictEqual([]);
+    expect(claim.networkPolicies ?? {}).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -1319,6 +1326,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         return firewallEntryName(firewall);
       }),
     ).toContain("zendesk");
+    expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
+    });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -1759,17 +1771,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const { actor, runnerGroup } = await entitledRunActor();
 
     const workflowName = "bdd-claude-kit";
-    await misc.createWorkflow(
-      actor,
-      workflowName,
-      "# BDD claude kit\nUse this workflow in claude runs.",
-      [201],
-    );
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD claude workflows agent",
       visibility: "private",
     });
-    await misc.attachWorkflowToAgent(actor, workflowName, agent.agentId, [200]);
+    // Workflows are created directly under the owning agent (agent-scoped 1:N).
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      "# BDD claude kit\nUse this workflow in claude runs.",
+      [201],
+    );
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,

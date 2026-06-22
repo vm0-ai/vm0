@@ -418,10 +418,10 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
         ),
     };
     sandbox.push_exec_result(Ok(ExecResult {
-        termination: sandbox::ProcessTerminationKind::WaitFailed,
-        exit_code: 0,
+        termination: sandbox::ExecTermination::WaitFailed,
         stdout: format!("stdout includes {session_id_no_dashes}").into_bytes(),
         stderr: format!("find: {session_path}: Permission denied").into_bytes(),
+        diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
@@ -429,9 +429,7 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
     let message = err.to_string();
-    assert!(
-        message.contains("codex session cleanup failed (wait failed; compatibility exit code 0)")
-    );
+    assert!(message.contains("codex session cleanup failed (wait failed)"));
     assert!(message.contains("[redacted-session-path]"));
     assert!(message.contains("[redacted-session-id]"));
     assert!(!message.contains(session_id));

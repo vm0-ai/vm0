@@ -7,30 +7,29 @@ import { withErrorHandler } from "../../../lib/command";
 export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
-  .description("Delete a workflow from the organization")
-  .argument("<name>", "Workflow name")
+  .description("Delete a workflow")
+  .argument("<workflowId>", "Workflow ID")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText(
     "after",
     `
 Examples:
-  zero workflow delete my-workflow
-  zero workflow delete my-workflow -y
+  zero workflow delete <workflow-id>
+  zero workflow delete <workflow-id> -y
 
 Notes:
-  - This removes the workflow from the organization and detaches it from all agents
   - Use -y to skip confirmation in non-interactive mode`,
   )
   .action(
-    withErrorHandler(async (name: string, options: { yes?: boolean }) => {
-      await getWorkflow(name);
+    withErrorHandler(async (workflowId: string, options: { yes?: boolean }) => {
+      const workflow = await getWorkflow(workflowId);
 
       if (!options.yes) {
         if (!isInteractive()) {
           throw new Error("--yes flag is required in non-interactive mode");
         }
         const confirmed = await promptConfirm(
-          `Delete workflow '${name}'? This will detach it from all agents.`,
+          `Delete workflow '${workflow.name}'?`,
           false,
         );
         if (!confirmed) {
@@ -39,7 +38,7 @@ Notes:
         }
       }
 
-      await deleteWorkflow(name);
-      console.log(chalk.green(`✓ Workflow "${name}" deleted`));
+      await deleteWorkflow(workflowId);
+      console.log(chalk.green(`✓ Workflow "${workflow.name}" deleted`));
     }),
   );

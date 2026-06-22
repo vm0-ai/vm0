@@ -9,6 +9,7 @@ const CATEGORIZED_CONNECTORS = [
   "clerk",
   "cloudflare",
   "google-analytics",
+  "google-calendar",
   "google-cloud",
   "google-drive",
   "slack",

@@ -20,8 +20,17 @@ import type {
 } from "../firewall-metadata";
 import {
   UNKNOWN_PERMISSION_GRANT,
+  extractBaseUrlVarNames,
+  extractSecretNamesFromApis,
+  firewallAuthInjectsCredentials,
+  hasBaseUrlVars,
   type FirewallConfig,
 } from "../firewall-types";
+import {
+  getFirewallExecutionMetadataSummary,
+  isFirewallExecutionMetadataConnectorType,
+  loadFirewallExecutionMetadata,
+} from "../firewall-execution-metadata/server";
 import {
   getBuiltinConnectorHostOwner,
   getFirewallServerMetadataSummary,
@@ -30,6 +39,7 @@ import {
   resolveFirewallServerMetadataPolicies,
 } from "../firewall-metadata/server";
 import {
+  BILLABLE_CONNECTORS,
   getAllBuiltinConnectorHosts,
   getAllConnectorFirewalls,
   getDefaultFirewallPolicies,
@@ -45,6 +55,14 @@ const FORBIDDEN_METADATA_KEYS = new Set([
   "placeholders",
   "rules",
 ]);
+const FORBIDDEN_EXECUTION_METADATA_KEYS = new Set([
+  "apis",
+  "auth",
+  "permissions",
+  "rules",
+]);
+const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -82,6 +100,47 @@ function collectRuntimePermissions(
   return [...permissions.values()].sort((a, b) => {
     return compareStrings(a.name, b.name);
   });
+}
+
+function collectRuntimeBaseUrlTemplates(
+  firewall: FirewallConfig,
+): readonly { readonly base: string; readonly credentialed: boolean }[] {
+  const templates = new Map<string, boolean>();
+  for (const api of firewall.apis) {
+    if (!hasBaseUrlVars(api.base)) {
+      continue;
+    }
+    templates.set(
+      api.base,
+      (templates.get(api.base) ?? false) ||
+        firewallAuthInjectsCredentials(api.auth),
+    );
+  }
+  return [...templates.entries()]
+    .sort(([a], [b]) => {
+      return compareStrings(a, b);
+    })
+    .map(([base, credentialed]) => {
+      return { base, credentialed };
+    });
+}
+
+function collectRuntimePlaceholderValues(
+  firewall: FirewallConfig,
+): Record<string, string> {
+  const placeholders: Record<string, string> = {};
+  for (const name of extractSecretNamesFromApis(firewall.apis)) {
+    placeholders[name] =
+      firewall.placeholders?.[name] ?? DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
+  }
+  for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
+    placeholders[name] = value;
+  }
+  return Object.fromEntries(
+    Object.entries(placeholders).sort(([a], [b]) => {
+      return compareStrings(a, b);
+    }),
+  );
 }
 
 function listTsFiles(dir: string): string[] {
@@ -158,6 +217,30 @@ function assertNoForbiddenMetadataKeys(value: unknown, location: string): void {
   }
 }
 
+function assertNoForbiddenExecutionMetadataKeys(
+  value: unknown,
+  location: string,
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      assertNoForbiddenExecutionMetadataKeys(item, `${location}[${index}]`);
+    });
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (FORBIDDEN_EXECUTION_METADATA_KEYS.has(key)) {
+      throw new Error(
+        `execution metadata contains runtime key "${key}" at ${location}`,
+      );
+    }
+    assertNoForbiddenExecutionMetadataKeys(nested, `${location}.${key}`);
+  }
+}
+
 function runtimeEntries(): [FirewallConnectorType, FirewallConfig][] {
   return Object.entries(getAllConnectorFirewalls()).sort(([a], [b]) => {
     return compareStrings(a, b);
@@ -221,6 +304,24 @@ describe("firewall metadata", () => {
 
     expect(rootEntrypoint).not.toContain("firewall-metadata/server");
     expect(packageJson.exports).toHaveProperty("./firewall-metadata/server");
+  });
+
+  it("keeps execution metadata behind an explicit package subpath", () => {
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+
+    expect(rootEntrypoint).not.toContain("firewall-execution-metadata/server");
+    expect(packageJson.exports).toHaveProperty(
+      "./firewall-execution-metadata/server",
+    );
   });
 
   it("resolves metadata permission defaults and overrides", () => {
@@ -315,6 +416,22 @@ describe("firewall metadata", () => {
     const metadataRoot = path.resolve(
       import.meta.dirname,
       "../firewall-metadata",
+    );
+    for (const file of listTsFiles(metadataRoot)) {
+      const source = fs.readFileSync(file, "utf-8");
+      const specs = importSpecifiers(source);
+      for (const spec of specs) {
+        expect(spec).not.toBe("@vm0/connectors/firewalls");
+        expect(spec).not.toMatch(/^(\.\.\/)+firewalls(?:\/|$)/);
+        expect(spec).not.toMatch(/\/firewalls(?:\/|$)/);
+      }
+    }
+  });
+
+  it("keeps execution metadata modules independent from runtime firewall modules", () => {
+    const metadataRoot = path.resolve(
+      import.meta.dirname,
+      "../firewall-execution-metadata",
     );
     for (const file of listTsFiles(metadataRoot)) {
       const source = fs.readFileSync(file, "utf-8");
@@ -493,6 +610,45 @@ describe("firewall metadata", () => {
     expect(isFirewallMetadataConnectorType("cloudinary")).toBe(false);
     await expect(
       loadFirewallPermissionMetadata("cloudinary"),
+    ).resolves.toBeNull();
+  });
+
+  it("keeps execution metadata synchronized with runtime construction data", async () => {
+    const billableConnectors = new Set<string>(BILLABLE_CONNECTORS);
+
+    for (const [type, firewall] of runtimeEntries()) {
+      expect(isFirewallExecutionMetadataConnectorType(type)).toBe(true);
+      const detail = await loadFirewallExecutionMetadata(type);
+      expect(detail).not.toBeNull();
+      const baseUrlTemplates = collectRuntimeBaseUrlTemplates(firewall);
+      const baseUrlVarNames = [
+        ...new Set(
+          baseUrlTemplates.flatMap((template) => {
+            return extractBaseUrlVarNames(template.base);
+          }),
+        ),
+      ].sort(compareStrings);
+      const placeholderValues = collectRuntimePlaceholderValues(firewall);
+
+      expect(getFirewallExecutionMetadataSummary(type)).toStrictEqual({
+        type,
+        billable: billableConnectors.has(type),
+      });
+      expect(detail!.type).toBe(type);
+      expect(detail!.billable).toBe(billableConnectors.has(type));
+      expect(detail!.baseUrlVarNames).toStrictEqual(baseUrlVarNames);
+      expect(detail!.baseUrlTemplates).toStrictEqual(baseUrlTemplates);
+      expect(detail!.placeholderValues).toStrictEqual(placeholderValues);
+      expect(detail!.secretPlaceholderNames).toStrictEqual(
+        Object.keys(placeholderValues),
+      );
+      assertNoForbiddenExecutionMetadataKeys(detail, type);
+    }
+
+    expect(isFirewallExecutionMetadataConnectorType("cloudinary")).toBe(false);
+    expect(getFirewallExecutionMetadataSummary("cloudinary")).toBeNull();
+    await expect(
+      loadFirewallExecutionMetadata("cloudinary"),
     ).resolves.toBeNull();
   });
 

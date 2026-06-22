@@ -3528,76 +3528,85 @@ function TemplatePickerTabs({
   onChange: (value: string) => void;
 }) {
   return (
-    <Tabs value={selectedCategory} onValueChange={onChange} className="-mb-px">
-      <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
-        {hasPptTab && (
-          <TabsTrigger
-            value="slides"
-            className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-              selectedCategory === "slides"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <IconPresentation
+    <div
+      data-template-picker-tabs-scroll=""
+      className="-mx-5 w-[calc(100%+2.5rem)] overflow-x-auto px-5 pb-1 [scrollbar-color:hsl(var(--muted-foreground)/0.24)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent sm:mx-0 sm:w-auto sm:overflow-visible sm:px-0 sm:pb-0 sm:[scrollbar-color:auto] sm:[scrollbar-width:auto] sm:[&::-webkit-scrollbar]:hidden"
+    >
+      <Tabs
+        value={selectedCategory}
+        onValueChange={onChange}
+        className="-mb-px min-w-max"
+      >
+        <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+          {hasPptTab && (
+            <TabsTrigger
+              value="slides"
               className={cn(
-                "h-5 w-5",
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
                 selectedCategory === "slides"
-                  ? "text-blue-500"
-                  : "text-muted-foreground",
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
-              stroke={1.8}
-            />
-            Presentation
-          </TabsTrigger>
-        )}
-        {hasIllustrationTab && (
-          <TabsTrigger
-            value="illustration"
-            className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-              selectedCategory === "illustration"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <IconPhoto
+            >
+              <IconPresentation
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "slides"
+                    ? "text-blue-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Presentation
+            </TabsTrigger>
+          )}
+          {hasIllustrationTab && (
+            <TabsTrigger
+              value="illustration"
               className={cn(
-                "h-5 w-5",
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
                 selectedCategory === "illustration"
-                  ? "text-emerald-500"
-                  : "text-muted-foreground",
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
-              stroke={1.8}
-            />
-            Illustration
-          </TabsTrigger>
-        )}
-        {hasVideoTab && (
-          <TabsTrigger
-            value="video"
-            className={cn(
-              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-              selectedCategory === "video"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <IconVideo
+            >
+              <IconPhoto
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "illustration"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Illustration
+            </TabsTrigger>
+          )}
+          {hasVideoTab && (
+            <TabsTrigger
+              value="video"
               className={cn(
-                "h-5 w-5",
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
                 selectedCategory === "video"
-                  ? "text-purple-500"
-                  : "text-muted-foreground",
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
-              stroke={1.8}
-            />
-            Video
-          </TabsTrigger>
-        )}
-      </TabsList>
-    </Tabs>
+            >
+              <IconVideo
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "video"
+                    ? "text-purple-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Video
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </Tabs>
+    </div>
   );
 }
 
@@ -3825,7 +3834,8 @@ function TemplatePickerDialog({
       <DialogContent
         className={dialogContentClassName}
         aria-describedby={undefined}
-        onOpenAutoFocus={() => {
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
           if (!isPreviewing) {
             prewarmTemplatePreviewsForCategory(selectedCategory);
           }

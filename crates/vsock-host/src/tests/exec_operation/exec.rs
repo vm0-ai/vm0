@@ -5,8 +5,9 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
 use super::super::support::{
-    MockGuest, await_mock_guest, host_from_stream, make_pair, normal_operation_readiness,
-    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    MockGuest, await_mock_guest, captured_output_bytes, exec_capture_default, host_from_stream,
+    make_pair, normal_operation_readiness, read_guest_message, send_exec_result,
+    setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::operation_tracker::NormalOperationReadiness;
@@ -44,10 +45,12 @@ async fn test_exec() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let result = host.exec("echo hello", 5000, &[], false).await.unwrap();
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"hello\n");
-    assert!(result.stderr.is_empty());
+    let result = exec_capture_default(&host, "echo hello", 5000, &[], false)
+        .await
+        .unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(captured_output_bytes(&result.stdout), b"hello\n");
+    assert!(captured_output_bytes(&result.stderr).is_empty());
     await_mock_guest(guest_task).await;
 }
 
@@ -57,7 +60,9 @@ async fn exec_operation_tracks_until_terminal_result() {
     let host = Arc::new(host);
     let exec_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("echo tracked", 5000, &[], false).await })
+        tokio::spawn(
+            async move { exec_capture_default(&host, "echo tracked", 5000, &[], false).await },
+        )
     };
 
     let msg = read_guest_message(&mut guest).await;
@@ -77,7 +82,7 @@ async fn exec_operation_tracks_until_terminal_result() {
     .await;
 
     let result = exec_task.await.unwrap().unwrap();
-    assert_eq!(result.stdout, b"tracked\n");
+    assert_eq!(captured_output_bytes(&result.stdout), b"tracked\n");
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
@@ -91,7 +96,9 @@ async fn exec_operation_tracks_until_terminal_result() {
 async fn test_exec_rejects_zero_timeout() {
     let (host, _guest) = setup_host_and_guest().await;
 
-    let err = host.exec("echo hi", 0, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "echo hi", 0, &[], false)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -114,7 +121,9 @@ async fn test_exec_error_response() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let err = host.exec("badcmd", 5000, &[], false).await.unwrap_err();
+    let err = exec_capture_default(&host, "badcmd", 5000, &[], false)
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("command not found"));
     await_mock_guest(guest_task).await;
 }
@@ -125,7 +134,7 @@ async fn exec_operation_error_response_releases_tracker() {
     let host = Arc::new(host);
     let exec_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("badcmd", 5000, &[], false).await })
+        tokio::spawn(async move { exec_capture_default(&host, "badcmd", 5000, &[], false).await })
     };
 
     let msg = read_guest_message(&mut guest).await;
@@ -167,7 +176,14 @@ async fn dropping_exec_handle_after_start_marks_tracker_not_parkable() {
         NormalOperationReadiness::NotParkable
     );
     let err = host
-        .exec("blocked-after-drop", 5000, &[], false)
+        .exec_operation_capture_default(
+            "blocked-after-drop",
+            5000,
+            &[],
+            false,
+            "exec",
+            std::time::Duration::from_secs(10),
+        )
         .await
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);

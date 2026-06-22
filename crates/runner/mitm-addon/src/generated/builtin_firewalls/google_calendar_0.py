@@ -14,264 +14,141 @@ JSON_PART = r"""{
       "base": "https://www.googleapis.com/calendar",
       "permissions": [
         {
-          "description": "See, edit, share, and permanently delete all the calendars you can access using Google Calendar",
-          "name": "calendar",
+          "description": "Delete Google Calendar sharing ACL rules.",
+          "name": "acl.delete",
           "rules": [
-            "POST /v3/calendars",
-            "GET /v3/calendars/{calendarId}",
-            "PUT /v3/calendars/{calendarId}",
-            "PATCH /v3/calendars/{calendarId}",
-            "DELETE /v3/calendars/{calendarId}",
+            "DELETE /v3/calendars/{calendarId}/acl/{ruleId}"
+          ]
+        },
+        {
+          "description": "Read Google Calendar sharing ACL rules.",
+          "name": "acl.read",
+          "rules": [
             "GET /v3/calendars/{calendarId}/acl",
+            "GET /v3/calendars/{calendarId}/acl/{ruleId}"
+          ]
+        },
+        {
+          "description": "Create and update Google Calendar sharing ACL rules.",
+          "name": "acl.write",
+          "rules": [
             "POST /v3/calendars/{calendarId}/acl",
-            "POST /v3/calendars/{calendarId}/acl/watch",
-            "GET /v3/calendars/{calendarId}/acl/{ruleId}",
             "PUT /v3/calendars/{calendarId}/acl/{ruleId}",
-            "PATCH /v3/calendars/{calendarId}/acl/{ruleId}",
-            "DELETE /v3/calendars/{calendarId}/acl/{ruleId}",
-            "POST /v3/calendars/{calendarId}/clear",
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/import",
-            "POST /v3/calendars/{calendarId}/events/quickAdd",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "PUT /v3/calendars/{calendarId}/events/{eventId}",
-            "PATCH /v3/calendars/{calendarId}/events/{eventId}",
-            "DELETE /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/calendars/{calendarId}/events/{eventId}/move",
-            "POST /v3/channels/stop",
-            "GET /v3/colors",
-            "POST /v3/freeBusy",
-            "GET /v3/users/me/calendarList",
-            "POST /v3/users/me/calendarList",
-            "POST /v3/users/me/calendarList/watch",
-            "GET /v3/users/me/calendarList/{calendarId}",
-            "PUT /v3/users/me/calendarList/{calendarId}",
-            "PATCH /v3/users/me/calendarList/{calendarId}",
-            "DELETE /v3/users/me/calendarList/{calendarId}",
-            "GET /v3/users/me/settings",
-            "POST /v3/users/me/settings/watch",
-            "GET /v3/users/me/settings/{setting}"
+            "PATCH /v3/calendars/{calendarId}/acl/{ruleId}"
           ]
         },
         {
-          "description": "See and change the sharing permissions of Google calendars you own",
-          "name": "calendar.acls",
+          "description": "Remove calendars from the user's calendar list.",
+          "name": "calendar-list.delete",
           "rules": [
-            "GET /v3/calendars/{calendarId}/acl",
-            "POST /v3/calendars/{calendarId}/acl",
-            "POST /v3/calendars/{calendarId}/acl/watch",
-            "GET /v3/calendars/{calendarId}/acl/{ruleId}",
-            "PUT /v3/calendars/{calendarId}/acl/{ruleId}",
-            "PATCH /v3/calendars/{calendarId}/acl/{ruleId}",
-            "DELETE /v3/calendars/{calendarId}/acl/{ruleId}",
-            "POST /v3/channels/stop"
-          ]
-        },
-        {
-          "description": "See the sharing permissions of Google calendars you own",
-          "name": "calendar.acls.readonly",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/acl",
-            "POST /v3/calendars/{calendarId}/acl/watch",
-            "GET /v3/calendars/{calendarId}/acl/{ruleId}",
-            "POST /v3/channels/stop"
-          ]
-        },
-        {
-          "description": "Make secondary Google calendars, and see, create, change, and delete events on them",
-          "name": "calendar.app.created",
-          "rules": [
-            "POST /v3/calendars",
-            "GET /v3/calendars/{calendarId}",
-            "PUT /v3/calendars/{calendarId}",
-            "PATCH /v3/calendars/{calendarId}",
-            "DELETE /v3/calendars/{calendarId}",
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/import",
-            "POST /v3/calendars/{calendarId}/events/quickAdd",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "PUT /v3/calendars/{calendarId}/events/{eventId}",
-            "PATCH /v3/calendars/{calendarId}/events/{eventId}",
-            "DELETE /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/channels/stop",
-            "GET /v3/colors",
-            "GET /v3/users/me/calendarList/{calendarId}",
-            "PUT /v3/users/me/calendarList/{calendarId}",
-            "PATCH /v3/users/me/calendarList/{calendarId}",
             "DELETE /v3/users/me/calendarList/{calendarId}"
           ]
         },
         {
-          "description": "See, add, and remove Google calendars you\u2019re subscribed to",
-          "name": "calendar.calendarlist",
+          "description": "Read the user's subscribed calendar list.",
+          "name": "calendar-list.read",
           "rules": [
-            "POST /v3/channels/stop",
-            "GET /v3/colors",
             "GET /v3/users/me/calendarList",
-            "POST /v3/users/me/calendarList",
-            "POST /v3/users/me/calendarList/watch",
-            "GET /v3/users/me/calendarList/{calendarId}",
-            "PUT /v3/users/me/calendarList/{calendarId}",
-            "PATCH /v3/users/me/calendarList/{calendarId}",
-            "DELETE /v3/users/me/calendarList/{calendarId}"
-          ]
-        },
-        {
-          "description": "See the list of Google calendars you\u2019re subscribed to",
-          "name": "calendar.calendarlist.readonly",
-          "rules": [
-            "POST /v3/channels/stop",
-            "GET /v3/colors",
-            "GET /v3/users/me/calendarList",
-            "POST /v3/users/me/calendarList/watch",
             "GET /v3/users/me/calendarList/{calendarId}"
           ]
         },
         {
-          "description": "See and change the properties of Google calendars you have access to, and create secondary calendars",
-          "name": "calendar.calendars",
+          "description": "Add and update calendars in the user's calendar list.",
+          "name": "calendar-list.write",
           "rules": [
-            "POST /v3/calendars",
-            "GET /v3/calendars/{calendarId}",
-            "PUT /v3/calendars/{calendarId}",
-            "PATCH /v3/calendars/{calendarId}",
-            "DELETE /v3/calendars/{calendarId}",
+            "POST /v3/users/me/calendarList",
+            "PUT /v3/users/me/calendarList/{calendarId}",
+            "PATCH /v3/users/me/calendarList/{calendarId}"
+          ]
+        },
+        {
+          "description": "Clear all events from a Google calendar.",
+          "name": "calendars.clear",
+          "rules": [
             "POST /v3/calendars/{calendarId}/clear"
           ]
         },
         {
-          "description": "See the title, description, default time zone, and other properties of Google calendars you have access to",
-          "name": "calendar.calendars.readonly",
+          "description": "Delete Google calendars.",
+          "name": "calendars.delete",
+          "rules": [
+            "DELETE /v3/calendars/{calendarId}"
+          ]
+        },
+        {
+          "description": "Read Google Calendar metadata.",
+          "name": "calendars.read",
           "rules": [
             "GET /v3/calendars/{calendarId}"
           ]
         },
         {
-          "description": "View and edit events on all your calendars",
-          "name": "calendar.events",
+          "description": "Create and update secondary Google calendars.",
+          "name": "calendars.write",
+          "rules": [
+            "POST /v3/calendars",
+            "PUT /v3/calendars/{calendarId}",
+            "PATCH /v3/calendars/{calendarId}"
+          ]
+        },
+        {
+          "description": "Read Google Calendar color definitions.",
+          "name": "colors.read",
+          "rules": [
+            "GET /v3/colors"
+          ]
+        },
+        {
+          "description": "Delete Google Calendar events.",
+          "name": "events.delete",
+          "rules": [
+            "DELETE /v3/calendars/{calendarId}/events/{eventId}"
+          ]
+        },
+        {
+          "description": "Read Google Calendar events and recurring instances.",
+          "name": "events.read",
           "rules": [
             "GET /v3/calendars/{calendarId}/events",
+            "GET /v3/calendars/{calendarId}/events/{eventId}",
+            "GET /v3/calendars/{calendarId}/events/{eventId}/instances"
+          ]
+        },
+        {
+          "description": "Create, update, import, quick-add, and move events.",
+          "name": "events.write",
+          "rules": [
             "POST /v3/calendars/{calendarId}/events",
             "POST /v3/calendars/{calendarId}/events/import",
             "POST /v3/calendars/{calendarId}/events/quickAdd",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
             "PUT /v3/calendars/{calendarId}/events/{eventId}",
             "PATCH /v3/calendars/{calendarId}/events/{eventId}",
-            "DELETE /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/calendars/{calendarId}/events/{eventId}/move",
-            "POST /v3/channels/stop"
+            "POST /v3/calendars/{calendarId}/events/{eventId}/move"
           ]
         },
         {
-          "description": "See the availability on Google calendars you have access to",
-          "name": "calendar.events.freebusy",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/channels/stop",
-            "GET /v3/colors",
-            "POST /v3/freeBusy"
-          ]
-        },
-        {
-          "description": "See, create, change, and delete events on Google calendars you own",
-          "name": "calendar.events.owned",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/import",
-            "POST /v3/calendars/{calendarId}/events/quickAdd",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "PUT /v3/calendars/{calendarId}/events/{eventId}",
-            "PATCH /v3/calendars/{calendarId}/events/{eventId}",
-            "DELETE /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/calendars/{calendarId}/events/{eventId}/move",
-            "POST /v3/channels/stop",
-            "GET /v3/colors"
-          ]
-        },
-        {
-          "description": "See the events on Google calendars you own",
-          "name": "calendar.events.owned.readonly",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/channels/stop",
-            "GET /v3/colors"
-          ]
-        },
-        {
-          "description": "See the events on public calendars",
-          "name": "calendar.events.public.readonly",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/channels/stop",
-            "GET /v3/colors"
-          ]
-        },
-        {
-          "description": "View events on all your calendars",
-          "name": "calendar.events.readonly",
-          "rules": [
-            "GET /v3/calendars/{calendarId}/events",
-            "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
-            "POST /v3/channels/stop"
-          ]
-        },
-        {
-          "description": "View your availability in your calendars",
-          "name": "calendar.freebusy",
+          "description": "Query free/busy availability for calendars.",
+          "name": "freebusy.query",
           "rules": [
             "POST /v3/freeBusy"
           ]
         },
         {
-          "description": "See and download any calendar you can access using your Google Calendar",
-          "name": "calendar.readonly",
+          "description": "Create and stop Google Calendar notification channels.",
+          "name": "notifications.write",
           "rules": [
-            "GET /v3/calendars/{calendarId}",
-            "GET /v3/calendars/{calendarId}/acl/{ruleId}",
-            "GET /v3/calendars/{calendarId}/events",
+            "POST /v3/calendars/{calendarId}/acl/watch",
             "POST /v3/calendars/{calendarId}/events/watch",
-            "GET /v3/calendars/{calendarId}/events/{eventId}",
-            "GET /v3/calendars/{calendarId}/events/{eventId}/instances",
             "POST /v3/channels/stop",
-            "GET /v3/colors",
-            "POST /v3/freeBusy",
-            "GET /v3/users/me/calendarList",
             "POST /v3/users/me/calendarList/watch",
-            "GET /v3/users/me/calendarList/{calendarId}",
-            "GET /v3/users/me/settings",
-            "POST /v3/users/me/settings/watch",
-            "GET /v3/users/me/settings/{setting}"
+            "POST /v3/users/me/settings/watch"
           ]
         },
         {
-          "description": "View your Calendar settings",
-          "name": "calendar.settings.readonly",
+          "description": "Read the user's Google Calendar settings.",
+          "name": "settings.read",
           "rules": [
-            "POST /v3/channels/stop",
             "GET /v3/users/me/settings",
-            "POST /v3/users/me/settings/watch",
             "GET /v3/users/me/settings/{setting}"
           ]
         }

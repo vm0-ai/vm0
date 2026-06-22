@@ -267,6 +267,7 @@ export async function createGoalForCurrentThread(
       .insert(zeroWorkflows)
       .values({
         orgId: args.orgId,
+        agentId: context.agentId,
         name: generatedGoalName(),
         visibility: "private",
         type: "goal",
@@ -293,7 +294,6 @@ export async function createGoalForCurrentThread(
       .values({
         orgId: args.orgId,
         workflowId: workflow.id,
-        agentId: context.agentId,
         ownerUserId: args.userId,
         kind: "event",
         eventType: "thread-idle",

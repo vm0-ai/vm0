@@ -143,7 +143,13 @@ import {
   googleAnalyticsDefaultUnknownPolicy,
   googleAnalyticsFirewall,
 } from "./google-analytics.generated";
-import { googleCalendarFirewall } from "./google-calendar.generated";
+import {
+  googleCalendarCategories,
+  googleCalendarCategoryOrder,
+  googleCalendarDefaultAllowed,
+  googleCalendarDefaultUnknownPolicy,
+  googleCalendarFirewall,
+} from "./google-calendar.generated";
 import {
   googleCloudCategories,
   googleCloudCategoryOrder,
@@ -152,7 +158,11 @@ import {
   googleCloudFirewall,
 } from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
-import { googleDocsFirewall } from "./google-docs.generated";
+import {
+  googleDocsDefaultAllowed,
+  googleDocsDefaultUnknownPolicy,
+  googleDocsFirewall,
+} from "./google-docs.generated";
 import {
   googleDriveCategories,
   googleDriveCategoryOrder,
@@ -685,6 +695,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleAnalyticsCategories,
     displayOrder: googleAnalyticsCategoryOrder,
   },
+  "google-calendar": {
+    categories: googleCalendarCategories,
+    displayOrder: googleCalendarCategoryOrder,
+  },
   "google-drive": {
     categories: googleDriveCategories,
     displayOrder: googleDriveCategoryOrder,
@@ -842,7 +856,9 @@ const DEFAULT_ALLOWED: Partial<
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
   "google-analytics": googleAnalyticsDefaultAllowed,
+  "google-calendar": googleCalendarDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
+  "google-docs": googleDocsDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
@@ -855,7 +871,9 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
 > = {
   cloudflare: cloudflareDefaultUnknownPolicy,
   "google-analytics": googleAnalyticsDefaultUnknownPolicy,
+  "google-calendar": googleCalendarDefaultUnknownPolicy,
   "google-cloud": googleCloudDefaultUnknownPolicy,
+  "google-docs": googleDocsDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,

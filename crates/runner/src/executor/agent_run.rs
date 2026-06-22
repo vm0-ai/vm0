@@ -2,8 +2,8 @@ use std::time::{Duration, Instant};
 
 use agent_diagnostics::FailureDiagnostic;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ProcessControlMode, ProcessOutputMode,
-    ProcessTerminationKind, Sandbox, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
+    Sandbox, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -25,7 +25,6 @@ use super::{
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
     ResourceFailureKind, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
     agent_exit_failure_message, job_terminal_wait_timeout, normalize_failure_exit_code,
-    normalize_timeout_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -93,7 +92,7 @@ pub(super) fn cancelled_agent_process_exit(
     stream_overflowed: bool,
 ) -> sandbox::ProcessExit {
     let mut exit = sandbox::ProcessExit::new(pid, EXIT_SIGKILL, Vec::new(), Vec::new());
-    exit.termination = ProcessTerminationKind::Cancelled;
+    exit.termination = ExecTermination::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
 }
@@ -110,6 +109,72 @@ fn wait_process_timed_out(error: &sandbox::SandboxError) -> bool {
         error,
         sandbox::SandboxError::Io(error) if error.kind() == std::io::ErrorKind::TimedOut
     )
+}
+
+fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
+    match exit.termination {
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
+    }
+}
+
+fn process_failed(exit: &sandbox::ProcessExit) -> bool {
+    !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
+    matches!(
+        exit.termination,
+        ExecTermination::Exited {
+            exit_code: EXIT_SIGKILL | EXIT_SIGNAL_KILL
+        }
+    )
+}
+
+fn process_failure_exit_code(exit: &sandbox::ProcessExit) -> i32 {
+    match exit.termination {
+        ExecTermination::Exited { exit_code } => normalize_failure_exit_code(exit_code),
+        ExecTermination::TimedOut => JOB_TIMEOUT_EXIT_CODE,
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            1
+        }
+    }
+}
+
+fn process_failure_stderr(exit: &sandbox::ProcessExit) -> String {
+    let mut stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+    match exit.termination {
+        ExecTermination::TimedOut => {
+            if stderr.is_empty() {
+                return "Timeout".to_string();
+            }
+        }
+        ExecTermination::Cancelled => {
+            if stderr.is_empty() {
+                stderr.push_str("Cancelled");
+            }
+            append_process_diagnostic(&mut stderr, &exit.diagnostic);
+        }
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            append_process_diagnostic(&mut stderr, &exit.diagnostic);
+        }
+        ExecTermination::Exited { .. } => {}
+    }
+
+    stderr
+}
+
+fn append_process_diagnostic(stderr: &mut String, diagnostic: &str) {
+    if diagnostic.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() && !stderr.ends_with('\n') {
+        stderr.push('\n');
+    }
+    stderr.push_str(diagnostic);
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
@@ -264,7 +329,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
     // little longer for terminal proof so the guest timeout path can kill,
-    // drain stdout/stderr, and report ProcessTerminationKind::TimedOut.
+    // drain stdout/stderr, and report ExecTermination::TimedOut.
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -466,7 +531,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     info!(
         run_id = %context.run_id,
-        exit_code = exit.exit_code,
+        termination = ?exit.termination,
+        exit_code = ?process_exit_code(&exit),
         "agent exited"
     );
     log_agent_process_exit_summary(
@@ -480,7 +546,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Check for OOM kill when process was terminated by SIGKILL.
     // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
     // would run against a sandbox that hasn't been stopped yet.
-    if !wait_cancelled && (exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL) {
+    if !wait_cancelled && process_exit_oom_candidate(&exit) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -510,7 +576,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 warn!(
                     run_id = %context.run_id,
                     termination = helper_exec_termination_label(&dmesg),
-                    exit_code = dmesg.exit_code,
                     "dmesg OOM check helper failed"
                 );
             }
@@ -518,17 +583,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    let process_failed = exit.exit_code != 0 || exit.termination != ProcessTerminationKind::Exited;
     let failure = if wait_cancelled {
         // Skip guest file reads — sandbox hasn't been stopped yet.
         Some(ExecutionFailure::cancelled())
-    } else if process_failed {
-        let failure_exit_code = if exit.termination == ProcessTerminationKind::TimedOut {
-            normalize_timeout_failure_exit_code(exit.exit_code)
-        } else {
-            normalize_failure_exit_code(exit.exit_code)
-        };
-        let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+    } else if process_failed(&exit) {
+        let failure_exit_code = process_failure_exit_code(&exit);
+        let stderr = process_failure_stderr(&exit);
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let guest_error = if stderr.is_empty() {
             read_guest_error_file(sandbox, context.run_id).await
@@ -569,7 +629,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // handoff.
             guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
         };
-        Some(if exit.termination == ProcessTerminationKind::TimedOut {
+        Some(if matches!(exit.termination, ExecTermination::TimedOut) {
             ExecutionFailure::runner_job_timeout(
                 failure_exit_code,
                 error,

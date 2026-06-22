@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use crate::support::{Harness, shell_quote_path, wait_for_path};
+use crate::support::{
+    Harness, captured_output_bytes, exec_exit_code, run_exec, shell_quote_path, wait_for_path,
+};
 use vsock_host::{SupervisedExecControl, SupervisedExecRequest};
 use vsock_proto::{ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy};
 
@@ -10,15 +12,13 @@ use vsock_proto::{ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy};
 async fn test_exec() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("echo hello", 5000, &[], false)
+    let result = run_exec(h.host(), "echo hello", 5000, &[], false)
         .await
         .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"hello\n");
-    assert!(result.stderr.is_empty());
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"hello\n");
+    assert!(captured_output_bytes(&result.stderr).is_empty());
     h.finish();
 }
 
@@ -26,14 +26,12 @@ async fn test_exec() {
 async fn test_exec_stderr() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("echo error >&2 && exit 1", 5000, &[], false)
+    let result = run_exec(h.host(), "echo error >&2 && exit 1", 5000, &[], false)
         .await
         .expect("exec failed");
 
-    assert_eq!(result.exit_code, 1);
-    assert_eq!(result.stderr, b"error\n");
+    assert_eq!(exec_exit_code(&result), Some(1));
+    assert_eq!(captured_output_bytes(&result.stderr), b"error\n");
     h.finish();
 }
 
@@ -41,14 +39,21 @@ async fn test_exec_stderr() {
 async fn test_exec_multiline() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("printf 'line1\\nline2\\nline3\\n'", 5000, &[], false)
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "printf 'line1\\nline2\\nline3\\n'",
+        5000,
+        &[],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"line1\nline2\nline3\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(
+        captured_output_bytes(&result.stdout),
+        b"line1\nline2\nline3\n"
+    );
     h.finish();
 }
 
@@ -56,14 +61,18 @@ async fn test_exec_multiline() {
 async fn test_exec_pipe_chain() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000, &[], false)
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "echo 'hello world' | tr 'a-z' 'A-Z'",
+        5000,
+        &[],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"HELLO WORLD\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"HELLO WORLD\n");
     h.finish();
 }
 
@@ -71,14 +80,18 @@ async fn test_exec_pipe_chain() {
 async fn test_exec_env_vars() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000, &[], false)
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "export TEST_VAR=hello; echo $TEST_VAR",
+        5000,
+        &[],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"hello\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"hello\n");
     h.finish();
 }
 
@@ -86,14 +99,11 @@ async fn test_exec_env_vars() {
 async fn test_exec_timeout() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("sleep 10", 100, &[], false)
+    let result = run_exec(h.host(), "sleep 10", 100, &[], false)
         .await
         .expect("exec failed");
 
-    assert_eq!(result.exit_code, 124);
-    assert!(result.stderr.starts_with(b"Timeout"));
+    assert_eq!(result.termination, ExecTermination::TimedOut);
     h.finish();
 }
 
@@ -102,13 +112,14 @@ async fn test_exec_sequential() {
     let h = Harness::new().await;
 
     for i in 0..5 {
-        let result = h
-            .host()
-            .exec(&format!("echo {i}"), 5000, &[], false)
+        let result = run_exec(h.host(), &format!("echo {i}"), 5000, &[], false)
             .await
             .expect("exec failed");
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, format!("{i}\n").as_bytes());
+        assert_eq!(exec_exit_code(&result), Some(0));
+        assert_eq!(
+            captured_output_bytes(&result.stdout),
+            format!("{i}\n").as_bytes()
+        );
     }
     h.finish();
 }
@@ -122,9 +133,7 @@ async fn test_exec_sudo() {
     // protocol and the guest attempts the right code path (non-panic, returns
     // a result). In release/production the process runs as root so sudo=true
     // just uses `sh -c` directly.
-    let result = h
-        .host()
-        .exec("whoami", 5000, &[], true)
+    let result = run_exec(h.host(), "whoami", 5000, &[], true)
         .await
         .expect("exec sudo failed");
     // Don't assert exit_code — depends on whether sudo is available
@@ -170,24 +179,24 @@ async fn test_exec_while_waiting_for_exit() {
         // This exec must NOT block on the pending supervised wait.
         let result = tokio::time::timeout(
             Duration::from_secs(5),
-            h.host().exec("echo alive", 5000, &[], false),
+            run_exec(h.host(), "echo alive", 5000, &[], false),
         )
         .await
         .expect("exec timed out — supervised wait is blocking")
         .expect("exec failed");
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(result.stdout, b"alive\n");
+        assert_eq!(exec_exit_code(&result), Some(0));
+        assert_eq!(captured_output_bytes(&result.stdout), b"alive\n");
 
         // Kill the process group so supervised wait resolves.
-        h.host()
-            .exec(
-                &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
-                5000,
-                &[],
-                false,
-            )
-            .await
-            .expect("kill failed");
+        run_exec(
+            h.host(),
+            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+            5000,
+            &[],
+            false,
+        )
+        .await
+        .expect("kill failed");
     });
 
     let event = wait_result.expect("supervised wait failed");
@@ -211,13 +220,13 @@ async fn test_concurrent_exec_not_blocked() {
 
     // Launch a slow exec and wait until its guest-side shell has started
     // before submitting the fast exec.
-    let slow = h.host().exec(&slow_command, 10000, &[], false);
+    let slow = run_exec(h.host(), &slow_command, 10000, &[], false);
     let (fast_done_tx, fast_done_rx) = tokio::sync::oneshot::channel();
     let fast = async {
         wait_for_path(&ready_marker, Duration::from_secs(3)).await;
         let result = tokio::time::timeout(
             Duration::from_secs(3),
-            h.host().exec("echo ok", 5000, &[], false),
+            run_exec(h.host(), "echo ok", 5000, &[], false),
         )
         .await
         .expect("fast exec timed out — slow exec is blocking the event loop")
@@ -238,8 +247,8 @@ async fn test_concurrent_exec_not_blocked() {
         fast
     );
 
-    assert_eq!(fast_result.exit_code, 0);
-    assert_eq!(fast_result.stdout, b"ok\n");
+    assert_eq!(exec_exit_code(&fast_result), Some(0));
+    assert_eq!(captured_output_bytes(&fast_result.stdout), b"ok\n");
 
     h.finish_ignore_guest();
 }
@@ -250,14 +259,18 @@ async fn test_concurrent_exec_not_blocked() {
 async fn test_exec_with_env() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("echo $MY_VAR", 5000, &[("MY_VAR", "hello_env")], false)
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "echo $MY_VAR",
+        5000,
+        &[("MY_VAR", "hello_env")],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"hello_env\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"hello_env\n");
     h.finish();
 }
 
@@ -265,19 +278,18 @@ async fn test_exec_with_env() {
 async fn test_exec_with_multiple_env() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec(
-            "echo $A $B",
-            5000,
-            &[("A", "first"), ("B", "second")],
-            false,
-        )
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "echo $A $B",
+        5000,
+        &[("A", "first"), ("B", "second")],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"first second\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"first second\n");
     h.finish();
 }
 
@@ -285,13 +297,17 @@ async fn test_exec_with_multiple_env() {
 async fn test_exec_with_env_special_chars() {
     let h = Harness::new().await;
 
-    let result = h
-        .host()
-        .exec("echo $VAL", 5000, &[("VAL", "it's a \"test\"")], false)
-        .await
-        .expect("exec failed");
+    let result = run_exec(
+        h.host(),
+        "echo $VAL",
+        5000,
+        &[("VAL", "it's a \"test\"")],
+        false,
+    )
+    .await
+    .expect("exec failed");
 
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.stdout, b"it's a \"test\"\n");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"it's a \"test\"\n");
     h.finish();
 }

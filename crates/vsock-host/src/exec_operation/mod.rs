@@ -22,8 +22,7 @@ pub(crate) use diagnostics::log_operations_closed;
 pub(crate) use dispatch::dispatch_incoming_frame;
 pub(crate) use handle::ExecOperationCancelOnDropGuard;
 pub(crate) use start::{
-    append_diagnostic, exec_capture_on_shared, exec_capture_on_shared_with_write_observer,
-    exec_on_shared, exec_operation_capture_on_shared,
+    append_diagnostic, exec_operation_capture_on_shared,
     exec_operation_capture_on_shared_with_write_observer,
     exec_operation_capture_with_composite_on_shared_and_observer,
     exec_operation_cleanup_untracked_on_shared_with_write_observer,
@@ -35,7 +34,6 @@ pub(crate) use state::Operations;
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
 pub(crate) const SMALL_EXEC_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
-const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
 const DEFAULT_EXEC_STREAM_CAPACITY: usize = 32;
 // Large enough for the current 64 MiB guest-log copy cap even when the guest
 // emits stream events at the exec-operation drainer's 8 KiB read granularity.

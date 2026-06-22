@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.480.2](https://github.com/vm0-ai/vm0/compare/app-v0.480.1...app-v0.480.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* add resource-based Gmail firewall permissions ([#18425](https://github.com/vm0-ai/vm0/issues/18425)) ([66c2735](https://github.com/vm0-ai/vm0/commit/66c273569d7b5f6086dd56848c403aa7d4ae282b))
+* align presentation editor theme preview ([#18452](https://github.com/vm0-ai/vm0/issues/18452)) ([8e95ac2](https://github.com/vm0-ai/vm0/commit/8e95ac2f77b9273ce8819d6f9af4c9f2a3fd4a60))
+* improve mobile presentation editor layout ([#18440](https://github.com/vm0-ai/vm0/issues/18440)) ([72d7e8f](https://github.com/vm0-ai/vm0/commit/72d7e8fb7814809519c3b77f12e984bb539ecdb1))
+* prevent template tab autofocus on mobile ([#18430](https://github.com/vm0-ai/vm0/issues/18430)) ([c7b5844](https://github.com/vm0-ai/vm0/commit/c7b584409aa76da5428cd691d8e69b447c1776f4))
+
+
+### Refactoring
+
+* agent-scoped workflow ownership and management (1:N redesign) ([#18436](https://github.com/vm0-ai/vm0/issues/18436)) ([9275df5](https://github.com/vm0-ai/vm0/commit/9275df501a6908443d913284da05703768e778d6))
+* remove delivered connector feature switches ([#18453](https://github.com/vm0-ai/vm0/issues/18453)) ([d970411](https://github.com/vm0-ai/vm0/commit/d97041194d7e53981248ca24abd1037785f2524c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.0
+    * @vm0/connectors bumped to 1.99.0
+    * @vm0/core bumped to 8.362.2
+
 ## [0.480.1](https://github.com/vm0-ai/vm0/compare/app-v0.480.0...app-v0.480.1) (2026-06-21)
 
 

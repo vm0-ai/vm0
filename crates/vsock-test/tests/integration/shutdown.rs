@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::support::Harness;
+use crate::support::{Harness, exec_exit_code, run_exec};
 
 // ── shutdown ─────────────────────────────────────────────────────────
 
@@ -19,12 +19,10 @@ async fn test_shutdown_after_exec() {
     let h = Harness::new().await;
 
     // Run a command first, then shutdown
-    let result = h
-        .host()
-        .exec("echo before", 5000, &[], false)
+    let result = run_exec(h.host(), "echo before", 5000, &[], false)
         .await
         .expect("exec failed");
-    assert_eq!(result.exit_code, 0);
+    assert_eq!(exec_exit_code(&result), Some(0));
 
     let acked = h.host().shutdown(Duration::from_secs(5)).await;
     assert!(acked);

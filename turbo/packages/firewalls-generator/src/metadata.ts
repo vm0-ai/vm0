@@ -10,6 +10,10 @@ import type {
   FirewallPolicyValue,
 } from "../../connectors/src/firewall-types";
 import type {
+  FirewallExecutionMetadataDetail,
+  FirewallExecutionMetadataSummary,
+} from "../../connectors/src/firewall-execution-metadata/types";
+import type {
   FirewallPermissionDefaultPolicyMetadata,
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
@@ -19,10 +23,25 @@ import type { FirewallConnectorType } from "../../connectors/src/firewalls";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const GENERATED_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
+const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
+const AUTH_SECRET_REFERENCE_PATTERN = /\bsecrets\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
 
 interface ConnectorCategories {
   readonly categories: Record<string, string>;
   readonly displayOrder: readonly string[];
+}
+
+interface ConnectorEnvBindingEntry {
+  readonly envName: string;
+  readonly valueRef: string;
+}
+
+interface ConnectorMetadata {
+  readonly label: string;
+  readonly envBindingEntries: readonly ConnectorEnvBindingEntry[];
 }
 
 interface GeneratedFirewallSource {
@@ -30,6 +49,7 @@ interface GeneratedFirewallSource {
   readonly firewallExportName: string;
   readonly firewall: FirewallConfig;
   readonly label: string;
+  readonly envBindingEntries: readonly ConnectorEnvBindingEntry[];
   readonly categories: ConnectorCategories | null;
   readonly defaultAllowed: readonly string[] | null;
   readonly defaultUnknownPolicy: FirewallPolicyValue;
@@ -184,6 +204,22 @@ function unwrapObjectLiteral(
   return null;
 }
 
+function unwrapArrayLiteral(
+  expression: ts.Expression,
+): ts.ArrayLiteralExpression | null {
+  if (ts.isArrayLiteralExpression(expression)) {
+    return expression;
+  }
+  if (
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression) ||
+    ts.isParenthesizedExpression(expression)
+  ) {
+    return unwrapArrayLiteral(expression.expression);
+  }
+  return null;
+}
+
 function findObjectProperty(
   object: ts.ObjectLiteralExpression,
   propertyName: string,
@@ -214,10 +250,78 @@ function stringLiteralText(expression: ts.Expression): string | null {
   return null;
 }
 
-function loadConnectorLabel(
+function connectorEnvBindingValueRef(expression: ts.Expression): string | null {
+  const direct = stringLiteralText(expression);
+  if (direct !== null) {
+    return direct;
+  }
+  const object = unwrapObjectLiteral(expression);
+  if (!object) {
+    return null;
+  }
+  const valueRef = findObjectProperty(object, "valueRef");
+  return valueRef ? stringLiteralText(valueRef) : null;
+}
+
+function connectorEnvBindingEntries(
+  expression: ts.Expression,
+): ConnectorEnvBindingEntry[] {
+  const envBindings = unwrapObjectLiteral(expression);
+  if (!envBindings) {
+    return [];
+  }
+
+  const entries: ConnectorEnvBindingEntry[] = [];
+  for (const property of envBindings.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const envName = propertyNameText(property.name);
+    const valueRef = connectorEnvBindingValueRef(property.initializer);
+    if (envName && valueRef) {
+      entries.push({ envName, valueRef });
+    }
+  }
+  return entries;
+}
+
+function connectorAuthMethodEnvBindingEntries(
+  connectorObject: ts.ObjectLiteralExpression,
+): ConnectorEnvBindingEntry[] {
+  const authMethods = findObjectProperty(connectorObject, "authMethods");
+  const authMethodsObject = authMethods
+    ? unwrapObjectLiteral(authMethods)
+    : null;
+  if (!authMethodsObject) {
+    return [];
+  }
+
+  const entries: ConnectorEnvBindingEntry[] = [];
+  for (const property of authMethodsObject.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const authMethod = unwrapObjectLiteral(property.initializer);
+    if (!authMethod) {
+      continue;
+    }
+    const access = findObjectProperty(authMethod, "access");
+    const accessObject = access ? unwrapObjectLiteral(access) : null;
+    if (!accessObject) {
+      continue;
+    }
+    const envBindings = findObjectProperty(accessObject, "envBindings");
+    if (envBindings) {
+      entries.push(...connectorEnvBindingEntries(envBindings));
+    }
+  }
+  return entries;
+}
+
+function loadConnectorMetadata(
   connectorsDir: string,
   type: FirewallConnectorType,
-): string {
+): ConnectorMetadata {
   const connectorFile = path.join(connectorsDir, `${type}.ts`);
   if (!fs.existsSync(connectorFile)) {
     throw new Error(
@@ -252,13 +356,15 @@ function loadConnectorLabel(
         continue;
       }
       const label = findObjectProperty(connectorObject, "label");
-      if (!label) {
+      const labelText = label ? stringLiteralText(label) : null;
+      if (labelText === null) {
         continue;
       }
-      const labelText = stringLiteralText(label);
-      if (labelText !== null) {
-        return labelText;
-      }
+      return {
+        label: labelText,
+        envBindingEntries:
+          connectorAuthMethodEnvBindingEntries(connectorObject),
+      };
     }
   }
 
@@ -287,6 +393,7 @@ async function loadGeneratedFirewallSource(
   registration: RegisteredFirewallSource,
 ): Promise<GeneratedFirewallSource> {
   const { type, firewallExportName } = registration;
+  const connectorMetadata = loadConnectorMetadata(connectorsDir, type);
   const moduleExports = await importModule(
     path.join(firewallsDir, generatedDetailFileName(type)),
   );
@@ -318,7 +425,8 @@ async function loadGeneratedFirewallSource(
     type,
     firewallExportName,
     firewall,
-    label: loadConnectorLabel(connectorsDir, type),
+    label: connectorMetadata.label,
+    envBindingEntries: connectorMetadata.envBindingEntries,
     categories:
       categories && displayOrder ? { categories, displayOrder } : null,
     defaultAllowed: getOptionalGeneratedExport(
@@ -362,6 +470,32 @@ function findConnectorFirewallsRegistry(
   return registry;
 }
 
+function findVariableInitializer(
+  sourceFile: ts.SourceFile,
+  variableName: string,
+): ts.Expression | null {
+  let initializer: ts.Expression | null = null;
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === variableName &&
+      node.initializer
+    ) {
+      if (initializer) {
+        throw new Error(`Duplicate variable declaration: ${variableName}`);
+      }
+      initializer = node.initializer;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return initializer;
+}
+
 function extractRegisteredFirewallSources(
   firewallsIndexFile: string,
 ): RegisteredFirewallSource[] {
@@ -397,6 +531,37 @@ function extractRegisteredFirewallSources(
       firewallExportName: property.initializer.text,
     };
   });
+}
+
+function extractBillableConnectorTypes(
+  firewallsIndexFile: string,
+): ReadonlySet<FirewallConnectorType> {
+  const source = fs.readFileSync(firewallsIndexFile, "utf-8");
+  const sourceFile = ts.createSourceFile(
+    firewallsIndexFile,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const initializer = findVariableInitializer(
+    sourceFile,
+    "BILLABLE_CONNECTORS",
+  );
+  const entries = initializer ? unwrapArrayLiteral(initializer) : null;
+  if (!entries) {
+    throw new Error("Unable to find BILLABLE_CONNECTORS registry");
+  }
+
+  const billable = new Set<FirewallConnectorType>();
+  for (const element of entries.elements) {
+    const type = stringLiteralText(element);
+    if (type === null) {
+      throw new Error("BILLABLE_CONNECTORS must only contain string entries");
+    }
+    billable.add(type as FirewallConnectorType);
+  }
+  return billable;
 }
 
 function compareStrings(a: string, b: string): number {
@@ -524,6 +689,10 @@ function sortedRecord(
   return Object.fromEntries(
     [...entries].sort(([a], [b]) => compareStrings(a, b)),
   );
+}
+
+function sortedStrings(values: Iterable<string>): string[] {
+  return [...values].sort(compareStrings);
 }
 
 function fixedFirewallApiBaseHost(base: string): string | null {
@@ -657,10 +826,199 @@ function buildSummaryMetadata(
   };
 }
 
+function hasBaseUrlVars(base: string): boolean {
+  return BASE_URL_VARS_PATTERN.test(base);
+}
+
+function extractBaseUrlVarNames(base: string): string[] {
+  const names = new Set<string>();
+  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+    names.add(match[1]!);
+  }
+  return [...names];
+}
+
+function firewallAuthInjectsCredentials(
+  auth: FirewallConfig["apis"][number]["auth"],
+): boolean {
+  return (
+    Object.keys(auth.headers ?? {}).length > 0 ||
+    Object.keys(auth.query ?? {}).length > 0 ||
+    Object.keys(auth.awsSigv4 ?? {}).length > 0 ||
+    (typeof auth.base === "string" && auth.base.length > 0)
+  );
+}
+
+function extractSecretNamesFromTemplate(template: string): string[] {
+  const names = new Set<string>();
+  for (const match of template.matchAll(AUTH_SECRET_REFERENCE_PATTERN)) {
+    names.add(match[1]!);
+  }
+  return [...names];
+}
+
+function extractSecretNamesFromApis(apis: FirewallConfig["apis"]): string[] {
+  const names = new Set<string>();
+  for (const entry of apis) {
+    for (const value of Object.values(entry.auth.headers ?? {})) {
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+    if (entry.auth.base) {
+      for (const name of extractSecretNamesFromTemplate(entry.auth.base)) {
+        names.add(name);
+      }
+    }
+    for (const value of Object.values(entry.auth.query ?? {})) {
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+    for (const value of Object.values(entry.auth.awsSigv4 ?? {})) {
+      if (!value) {
+        continue;
+      }
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
+
+function expandFirewallPlaceholders(
+  firewall: FirewallConfig,
+  envBindingEntries: readonly ConnectorEnvBindingEntry[],
+): FirewallConfig {
+  if (!firewall.placeholders || envBindingEntries.length === 0) {
+    return firewall;
+  }
+
+  const expanded: Record<string, string> = { ...firewall.placeholders };
+
+  for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
+    const valueRefs = envBindingEntries
+      .filter(({ envName }) => {
+        return envName === key;
+      })
+      .map(({ valueRef }) => {
+        return valueRef;
+      });
+    for (const valueRef of valueRefs) {
+      if (!valueRef.startsWith("$secrets.")) {
+        continue;
+      }
+      const rawName = valueRef.slice("$secrets.".length);
+      if (!expanded[rawName]) {
+        expanded[rawName] = placeholderValue;
+      }
+      for (const entry of envBindingEntries) {
+        if (entry.valueRef === valueRef && !expanded[entry.envName]) {
+          expanded[entry.envName] = placeholderValue;
+        }
+      }
+    }
+
+    const rawRef = `$secrets.${key}`;
+    for (const entry of envBindingEntries) {
+      if (entry.valueRef === rawRef && !expanded[entry.envName]) {
+        expanded[entry.envName] = placeholderValue;
+      }
+    }
+  }
+
+  return { ...firewall, placeholders: expanded };
+}
+
+function buildExecutionBaseUrlTemplates(
+  firewall: FirewallConfig,
+): FirewallExecutionMetadataDetail["baseUrlTemplates"] {
+  const templates = new Map<string, boolean>();
+  for (const api of firewall.apis) {
+    if (!hasBaseUrlVars(api.base)) {
+      continue;
+    }
+    templates.set(
+      api.base,
+      (templates.get(api.base) ?? false) ||
+        firewallAuthInjectsCredentials(api.auth),
+    );
+  }
+  return [...templates.entries()]
+    .sort(([a], [b]) => {
+      return compareStrings(a, b);
+    })
+    .map(([base, credentialed]) => {
+      return { base, credentialed };
+    });
+}
+
+function buildExecutionPlaceholderValues(
+  firewall: FirewallConfig,
+): Record<string, string> {
+  const placeholders: Record<string, string> = {};
+  const secretNames = extractSecretNamesFromApis(firewall.apis);
+  for (const name of secretNames) {
+    placeholders[name] =
+      firewall.placeholders?.[name] ?? DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
+  }
+  for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
+    placeholders[name] = value;
+  }
+  return sortedRecord(Object.entries(placeholders));
+}
+
+function buildExecutionMetadata(
+  source: GeneratedFirewallSource,
+  billableTypes: ReadonlySet<FirewallConnectorType>,
+): FirewallExecutionMetadataDetail {
+  const firewall = expandFirewallPlaceholders(
+    source.firewall,
+    source.envBindingEntries,
+  );
+  const baseUrlTemplates = buildExecutionBaseUrlTemplates(firewall);
+  const baseUrlVarNames = sortedStrings(
+    new Set(
+      baseUrlTemplates.flatMap((template) => {
+        return extractBaseUrlVarNames(template.base);
+      }),
+    ),
+  );
+  const placeholderValues = buildExecutionPlaceholderValues(firewall);
+
+  return {
+    type: source.type,
+    billable: billableTypes.has(source.type),
+    baseUrlVarNames,
+    baseUrlTemplates,
+    secretPlaceholderNames: Object.keys(placeholderValues),
+    placeholderValues,
+  };
+}
+
+function buildExecutionSummaryMetadata(
+  detail: FirewallExecutionMetadataDetail,
+): FirewallExecutionMetadataSummary {
+  return {
+    type: detail.type,
+    billable: detail.billable,
+  };
+}
+
 function renderDetailFile(metadata: FirewallPermissionDetailMetadata): string {
   return `${generatedHeader()}import type { FirewallPermissionDetailMetadata } from "../types";
 
 export const firewallPermissionMetadata = ${stableJson(metadata)} as const satisfies FirewallPermissionDetailMetadata;
+`;
+}
+
+function renderExecutionDetailFile(
+  metadata: FirewallExecutionMetadataDetail,
+): string {
+  return `${generatedHeader()}import type { FirewallExecutionMetadataDetail } from "../types";
+
+export const firewallExecutionMetadata = ${stableJson(metadata)} as const satisfies FirewallExecutionMetadataDetail;
 `;
 }
 
@@ -673,10 +1031,52 @@ export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} a
 `;
 }
 
+function renderExecutionSummaryFile(
+  summaries: Record<string, FirewallExecutionMetadataSummary>,
+): string {
+  return `${generatedHeader()}import type { FirewallExecutionMetadataSummary } from "./types";
+
+export const FIREWALL_EXECUTION_METADATA_SUMMARIES = ${stableJson(summaries)} as const satisfies Readonly<Record<string, FirewallExecutionMetadataSummary>>;
+`;
+}
+
 function renderServerFile(fixedHostOwners: Record<string, string>): string {
   return `${generatedHeader()}import type { FirewallPermissionSummaryMetadata } from "./types";
 
 export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS = ${stableJson(fixedHostOwners)} as const satisfies Readonly<Record<string, FirewallPermissionSummaryMetadata["type"]>>;
+`;
+}
+
+function renderExecutionLoaderFile(
+  types: readonly FirewallConnectorType[],
+): string {
+  const loaders = types
+    .map((type) => {
+      const key = JSON.stringify(type);
+      const specifier = JSON.stringify(generatedDetailModuleSpecifier(type));
+      return `  ${key}: async () => {
+    return (await import(${specifier})).firewallExecutionMetadata;
+  },`;
+    })
+    .join("\n");
+
+  return `${generatedHeader()}import type { FirewallExecutionMetadataDetail } from "./types";
+
+const FIREWALL_EXECUTION_METADATA_LOADERS: Readonly<
+  Record<string, () => Promise<FirewallExecutionMetadataDetail>>
+> = {
+${loaders}
+};
+
+export async function loadGeneratedFirewallExecutionMetadata(
+  type: string,
+): Promise<FirewallExecutionMetadataDetail | null> {
+  const load = FIREWALL_EXECUTION_METADATA_LOADERS[type];
+  if (!load) {
+    return null;
+  }
+  return await load();
+}
 `;
 }
 
@@ -779,10 +1179,23 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
   );
+  const executionOutputDir = path.resolve(
+    import.meta.dirname,
+    "../../connectors/src/firewall-execution-metadata",
+  );
   const summaryFile = path.join(outputDir, "summary.generated.ts");
   const loaderFile = path.join(outputDir, "loader.generated.ts");
   const serverFile = path.join(outputDir, "server.generated.ts");
   const detailsDir = path.join(outputDir, "details");
+  const executionSummaryFile = path.join(
+    executionOutputDir,
+    "summary.generated.ts",
+  );
+  const executionLoaderFile = path.join(
+    executionOutputDir,
+    "loader.generated.ts",
+  );
+  const executionDetailsDir = path.join(executionOutputDir, "details");
   const runtimeLoaderFile = path.join(
     firewallsDir,
     "runtime-loader.generated.ts",
@@ -790,6 +1203,7 @@ export async function generateFirewallMetadata(): Promise<void> {
 
   const registeredSources =
     extractRegisteredFirewallSources(firewallsIndexFile);
+  const billableTypes = extractBillableConnectorTypes(firewallsIndexFile);
   const sources = await Promise.all(
     [...registeredSources]
       .sort((a, b) => {
@@ -816,26 +1230,50 @@ export async function generateFirewallMetadata(): Promise<void> {
     return source;
   });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
-  const details: {
+  const executionSummaries: Record<string, FirewallExecutionMetadataSummary> =
+    {};
+  const permissionDetails: {
+    readonly type: FirewallConnectorType;
+    readonly content: string;
+  }[] = [];
+  const executionDetails: {
     readonly type: FirewallConnectorType;
     readonly content: string;
   }[] = [];
 
   for (const source of sources) {
     const detail = buildDetailMetadata(source);
+    const executionDetail = buildExecutionMetadata(source, billableTypes);
     summaries[source.type] = buildSummaryMetadata(detail);
-    details.push({
+    executionSummaries[source.type] =
+      buildExecutionSummaryMetadata(executionDetail);
+    permissionDetails.push({
       type: source.type,
       content: renderDetailFile(detail),
     });
+    executionDetails.push({
+      type: source.type,
+      content: renderExecutionDetailFile(executionDetail),
+    });
   }
 
+  fs.mkdirSync(executionOutputDir, { recursive: true });
   const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
   const nextDetailsDir = path.join(nextOutputDir, "details");
+  const nextExecutionOutputDir = fs.mkdtempSync(
+    path.join(executionOutputDir, ".metadata-"),
+  );
+  const nextExecutionDetailsDir = path.join(nextExecutionOutputDir, "details");
 
-  for (const detail of details) {
+  for (const detail of permissionDetails) {
     writeGeneratedFile(
       path.join(nextDetailsDir, generatedDetailFileName(detail.type)),
+      detail.content,
+    );
+  }
+  for (const detail of executionDetails) {
+    writeGeneratedFile(
+      path.join(nextExecutionDetailsDir, generatedDetailFileName(detail.type)),
       detail.content,
     );
   }
@@ -844,12 +1282,24 @@ export async function generateFirewallMetadata(): Promise<void> {
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
+    path.join(nextExecutionOutputDir, "summary.generated.ts"),
+    renderExecutionSummaryFile(executionSummaries),
+  );
+  writeGeneratedFile(
     path.join(nextOutputDir, "server.generated.ts"),
     renderServerFile(buildFixedHostOwners(registryOrderedSources)),
   );
   writeGeneratedFile(
     path.join(nextOutputDir, "loader.generated.ts"),
     renderLoaderFile(
+      sources.map((source) => {
+        return source.type;
+      }),
+    ),
+  );
+  writeGeneratedFile(
+    path.join(nextExecutionOutputDir, "loader.generated.ts"),
+    renderExecutionLoaderFile(
       sources.map((source) => {
         return source.type;
       }),
@@ -882,6 +1332,21 @@ export async function generateFirewallMetadata(): Promise<void> {
       ),
     );
     replacements.push(
+      replaceGeneratedPath(executionDetailsDir, nextExecutionDetailsDir),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        executionSummaryFile,
+        path.join(nextExecutionOutputDir, "summary.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        executionLoaderFile,
+        path.join(nextExecutionOutputDir, "loader.generated.ts"),
+      ),
+    );
+    replacements.push(
       replaceGeneratedPath(
         runtimeLoaderFile,
         path.join(nextOutputDir, "runtime-loader.generated.ts"),
@@ -892,6 +1357,7 @@ export async function generateFirewallMetadata(): Promise<void> {
     throw error;
   } finally {
     fs.rmSync(nextOutputDir, { recursive: true, force: true });
+    fs.rmSync(nextExecutionOutputDir, { recursive: true, force: true });
   }
 
   for (const replacement of replacements) {

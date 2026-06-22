@@ -27,7 +27,8 @@ use std::time::Duration;
 
 use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
 use sandbox::{
-    CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ProcessOutputReceiver, Sandbox,
+    CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessOutputReceiver,
+    Sandbox,
 };
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
@@ -152,11 +153,25 @@ pub(super) fn should_collect_agent_abnormal_exit_diagnostics(
     guest_error: Option<&str>,
 ) -> bool {
     !wait_cancelled
-        && (exit.exit_code != 0 || exit.termination != sandbox::ProcessTerminationKind::Exited)
+        && process_failed(exit)
         && exit.diagnostic.is_empty()
         && stderr.is_empty()
         && failure_diagnostic.is_none()
         && guest_error.is_none()
+}
+
+fn process_failed(exit: &sandbox::ProcessExit) -> bool {
+    !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
+    match exit.termination {
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
+    }
 }
 
 const ROOTFS_FULL_AVAILABLE_KB_THRESHOLD: u64 = 1024;
@@ -279,7 +294,8 @@ pub(super) fn log_agent_process_exit_summary(
         run_id = %run_id,
         sandbox_id = %sandbox_id,
         sandbox_reuse_result = reuse_result.as_wire(),
-        exit_code = exit.exit_code,
+        termination = ?exit.termination,
+        exit_code = ?process_exit_code(exit),
         stdout_len = exit.stdout.len(),
         stderr_len = exit.stderr.len(),
         stdout_truncated = exit.stdout_truncated,
@@ -304,7 +320,8 @@ pub(super) fn log_agent_abnormal_exit_env_diagnostics(
         run_id = %run_id,
         sandbox_id = %sandbox_id,
         sandbox_reuse_result = reuse_result.as_wire(),
-        exit_code = exit.exit_code,
+        termination = ?exit.termination,
+        exit_code = ?process_exit_code(exit),
         env_count = env_diagnostics.env_count,
         runner_owned_env_count = env_diagnostics.runner_owned_count,
         external_env_count = env_diagnostics.external_count,
@@ -359,7 +376,6 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
                 exit_code,
                 diagnostic_termination = helper_exec_termination_label(&result),
                 diagnostic_succeeded,
-                diagnostic_exit_code = result.exit_code,
                 diagnostic_stdout_len = result.stdout.len(),
                 diagnostic_stderr_len = result.stderr.len(),
                 diagnostic_stdout_truncated = result.stdout_truncated,

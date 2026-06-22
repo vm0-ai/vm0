@@ -2480,9 +2480,12 @@ export function ZeroChatThreadPage() {
     );
   const presentationEditor = activePresentationEditorUrl ? (
     <div
+      data-testid="presentation-editor-container"
       className={cn(
-        "flex min-w-0 bg-background",
-        artifactFullscreen ? "fixed inset-0 z-[100] min-h-0" : "w-full flex-1",
+        "flex min-w-0 overflow-hidden bg-background",
+        artifactFullscreen
+          ? "fixed inset-0 z-[100] min-h-0 flex-col pt-[var(--sat)] pb-[var(--sab)]"
+          : "h-full w-full flex-1",
       )}
     >
       <PresentationHtmlEditor

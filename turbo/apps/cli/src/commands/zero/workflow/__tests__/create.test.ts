@@ -16,14 +16,19 @@ import { server } from "../../../../mocks/server";
 import { createCommand } from "../create";
 import chalk from "chalk";
 
+const AGENT_ID = "11111111-1111-1111-1111-111111111111";
+
 const mockWorkflow = {
+  id: "22222222-2222-2222-2222-222222222222",
+  agentId: AGENT_ID,
+  agentName: "my-agent",
+  agentDisplayName: "My Agent",
   name: "my-workflow",
   displayName: "My Workflow",
   description: "A test workflow",
   visibility: "private",
+  requestToPublish: false,
   ownerUserId: "user-123",
-  attachedAgentCount: 0,
-  attachedAgents: [],
   canManage: true,
 };
 
@@ -42,10 +47,10 @@ describe("zero workflow create command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_AGENT_ID", "");
 
     workflowDir = join(tmpdir(), `test-workflow-${Date.now()}`);
     mkdirSync(workflowDir, { recursive: true });
-    writeFileSync(join(workflowDir, "SKILL.md"), "# Test Workflow\nDo things.");
   });
 
   afterEach(() => {
@@ -56,8 +61,7 @@ describe("zero workflow create command", () => {
   });
 
   describe("successful create", () => {
-    it("should send all files from directory", async () => {
-      // Add a supporting file
+    it("should send instruction and supplementary files from --dir", async () => {
       mkdirSync(join(workflowDir, "templates"), { recursive: true });
       writeFileSync(
         join(workflowDir, "templates", "prompt.md"),
@@ -79,6 +83,10 @@ describe("zero workflow create command", () => {
         "node",
         "cli",
         "my-workflow",
+        "--agent",
+        AGENT_ID,
+        "--instruction",
+        "Summarize the inbox",
         "--dir",
         workflowDir,
         "--display-name",
@@ -87,35 +95,27 @@ describe("zero workflow create command", () => {
         "A test workflow",
       ]);
 
+      expect(capturedBody?.agentId).toBe(AGENT_ID);
       expect(capturedBody?.name).toBe("my-workflow");
+      expect(capturedBody?.instruction).toBe("Summarize the inbox");
       expect(capturedBody?.displayName).toBe("My Workflow");
 
       const files = capturedBody?.files as Array<{
         path: string;
         content: string;
       }>;
-      expect(files).toHaveLength(2);
-      expect(
-        files.find((f) => {
-          return f.path === "SKILL.md";
-        })?.content,
-      ).toBe("# Test Workflow\nDo things.");
-      expect(
-        files.find((f) => {
-          return f.path === "templates/prompt.md";
-        })?.content,
-      ).toBe("You are a helpful assistant.");
+      expect(files).toHaveLength(1);
+      expect(files[0]?.path).toBe("templates/prompt.md");
+      expect(files[0]?.content).toBe("You are a helpful assistant.");
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("created");
-      expect(logCalls).toContain("2 file(s)");
+      expect(logCalls).toContain("1 file(s)");
     });
 
-    it("should exclude hidden files and node_modules", async () => {
-      writeFileSync(join(workflowDir, ".hidden"), "secret");
-      mkdirSync(join(workflowDir, "node_modules"), { recursive: true });
-      writeFileSync(join(workflowDir, "node_modules", "pkg.js"), "module");
+    it("should resolve agent from ZERO_AGENT_ID env var", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
 
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
@@ -132,39 +132,51 @@ describe("zero workflow create command", () => {
         "node",
         "cli",
         "my-workflow",
-        "--dir",
-        workflowDir,
+        "--instruction",
+        "Do things",
       ]);
 
-      const files = capturedBody?.files as
-        | Array<{ path: string; content: string }>
-        | undefined;
-      expect(files).toBeDefined();
-      expect(files).toHaveLength(1);
-      expect(files?.[0]?.path).toBe("SKILL.md");
+      expect(capturedBody?.agentId).toBe(AGENT_ID);
     });
   });
 
   describe("error handling", () => {
-    it("should fail when SKILL.md not found in directory", async () => {
-      const emptyDir = join(tmpdir(), `empty-workflow-${Date.now()}`);
-      mkdirSync(emptyDir, { recursive: true });
+    it("should fail when no agent is provided", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "my-workflow",
+          "--instruction",
+          "Do things",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--agent is required"),
+      );
+    });
+
+    it("should reject SKILL.md in supplementary directory", async () => {
+      writeFileSync(join(workflowDir, "SKILL.md"), "# nope");
 
       await expect(async () => {
         await createCommand.parseAsync([
           "node",
           "cli",
           "my-workflow",
+          "--agent",
+          AGENT_ID,
+          "--instruction",
+          "Do things",
           "--dir",
-          emptyDir,
+          workflowDir,
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("SKILL.md not found"),
+        expect.stringContaining("SKILL.md is reserved"),
       );
-
-      rmSync(emptyDir, { recursive: true, force: true });
     });
 
     it("should handle authentication error", async () => {
@@ -182,8 +194,10 @@ describe("zero workflow create command", () => {
           "node",
           "cli",
           "my-workflow",
-          "--dir",
-          workflowDir,
+          "--agent",
+          AGENT_ID,
+          "--instruction",
+          "Do things",
         ]);
       }).rejects.toThrow("process.exit called");
 

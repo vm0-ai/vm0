@@ -121,9 +121,8 @@ export {
   getWorkflow,
   updateWorkflow,
   deleteWorkflow,
-  attachWorkflowToAgent,
-  detachWorkflowFromAgent,
-  setWorkflowAgents,
+  copyWorkflow,
+  runWorkflow,
 } from "./domains/zero-workflows";
 
 // Domain modules - Zero Goals

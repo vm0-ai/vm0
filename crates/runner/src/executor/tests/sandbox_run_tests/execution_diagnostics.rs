@@ -108,10 +108,10 @@ async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
     overrides.add_exec_result_matcher(
         "dmesg",
         ExecResult {
-            termination: ProcessTerminationKind::TimedOut,
-            exit_code: 0,
+            termination: ExecTermination::TimedOut,
             stdout: b"Out of memory: Killed process 1234".to_vec(),
             stderr: b"Timeout".to_vec(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         },
@@ -451,7 +451,7 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
-    exit.termination = ProcessTerminationKind::WaitFailed;
+    exit.termination = ExecTermination::WaitFailed;
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
@@ -487,12 +487,52 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
 }
 
 #[tokio::test]
+async fn execute_inner_non_exited_diagnostic_is_user_visible() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+    exit.termination = ExecTermination::WaitFailed;
+    exit.diagnostic = "wait failed inside provider".to_string();
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(outcome.exit_code(), 1);
+    assert_eq!(failure.exit_code, 1);
+    assert_eq!(failure.error, "wait failed inside provider");
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec());
-    exit.termination = ProcessTerminationKind::TimedOut;
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
@@ -536,7 +576,7 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut exit = ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec());
-    exit.termination = ProcessTerminationKind::TimedOut;
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -596,15 +636,15 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
 }
 
 #[tokio::test]
-async fn execute_inner_timeout_zero_code_is_failure() {
+async fn execute_inner_timeout_without_stderr_uses_timeout_message() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let mut exit = ProcessExit::new(1, 0, Vec::new(), b"Timeout".to_vec());
-    exit.termination = ProcessTerminationKind::TimedOut;
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+    exit.termination = ExecTermination::TimedOut;
     exit.guest_duration_ms = Some(7_200_084);
     overrides.push_wait_process_exit(exit);
-    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -638,6 +678,12 @@ async fn execute_inner_timeout_zero_code_is_failure() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
 }
 
 #[tokio::test]
@@ -768,10 +814,10 @@ async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
     overrides.add_exec_result_matcher(
         "guest-agent-binary",
         ExecResult {
-            termination: ProcessTerminationKind::WaitFailed,
-            exit_code: 0,
+            termination: ExecTermination::WaitFailed,
             stdout: b"/dev/root       7.8G  7.4G   20K 100% /\n/dev/vdb         16G   24K   15G   1% /home/user/workspace\nMem:            3934        3310         255           0         552         624\n".to_vec(),
             stderr: b"wait failed".to_vec(),
+            diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         },

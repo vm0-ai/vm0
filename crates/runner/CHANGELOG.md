@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.125.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.4...runner-rs-v0.125.5) (2026-06-22)
+
+
+### Bug Fixes
+
+* add resource-based Gmail firewall permissions ([#18425](https://github.com/vm0-ai/vm0/issues/18425)) ([66c2735](https://github.com/vm0-ai/vm0/commit/66c273569d7b5f6086dd56848c403aa7d4ae282b))
+* add resource-based google analytics firewall permissions ([#18435](https://github.com/vm0-ai/vm0/issues/18435)) ([9046498](https://github.com/vm0-ai/vm0/commit/90464980fd89298a46934a19cd1efa6addc5c5d4))
+* add resource-based google calendar firewall permissions ([#18437](https://github.com/vm0-ai/vm0/issues/18437)) ([67525c7](https://github.com/vm0-ai/vm0/commit/67525c72a12e72857ef2701a173d0a39832195ae))
+
+
+### Refactoring
+
+* remove legacy exec result projections ([#18429](https://github.com/vm0-ai/vm0/issues/18429)) ([19b22fb](https://github.com/vm0-ai/vm0/commit/19b22fbde865689860394e2e9e9f699347f633b3))
+
 ## [0.125.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.3...runner-rs-v0.125.4) (2026-06-21)
 
 
