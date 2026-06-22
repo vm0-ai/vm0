@@ -401,6 +401,7 @@ describe("Desktop renderer bridge integration", () => {
       });
     });
     expect(await screen.findByText("Online")).toBeTruthy();
+    expect(screen.queryByText("Browser Automation")).toBeNull();
     // The online hero labels this Mac by its friendly device name.
     expect(await screen.findByText("lisa")).toBeTruthy();
     expect(auth.getState).toHaveBeenCalled();
@@ -408,25 +409,61 @@ describe("Desktop renderer bridge integration", () => {
   });
 
   it("probes browser automation from an explicit user action", async () => {
-    const { computerUse } = installDesktopBridges();
+    const { computerUse } = installDesktopBridges({
+      computerUseState: createComputerUseState({
+        permissions: { accessibility: false, screenRecording: true },
+      }),
+    });
     renderDesktopApp();
 
     expect(await screen.findByText("Browser Automation")).toBeTruthy();
-    expect(await screen.findByText("Google Chrome")).toBeTruthy();
-    expect(screen.getAllByText("Not tested")).toHaveLength(2);
+    expect(
+      await screen.findByText(
+        "Optional for browser control. Test only the browser you use.",
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByText("Not tested")).toBeTruthy();
     expect(computerUse.probeAutomationPermission).not.toHaveBeenCalled();
 
-    const chromeTestButton = screen.getAllByText("Test")[0]?.closest("button");
-    if (!(chromeTestButton instanceof HTMLButtonElement)) {
-      throw new Error("Could not find Chrome Automation test button");
-    }
-    fireEvent.click(chromeTestButton);
+    fireEvent.click(buttonForText("Test Chrome"));
 
     await waitFor(() => {
       expect(computerUse.probeAutomationPermission).toHaveBeenCalledWith(
         "chrome",
       );
     });
+  });
+
+  it("treats browser automation as ready when one browser is approved", async () => {
+    installDesktopBridges({
+      computerUseState: createComputerUseState({
+        permissions: {
+          accessibility: false,
+          screenRecording: true,
+          automation: {
+            chrome: {
+              status: "granted",
+              updatedAt: "2026-06-22T00:00:00.000Z",
+              reason: null,
+            },
+            safari: {
+              status: "denied",
+              updatedAt: "2026-06-22T00:00:00.000Z",
+              reason: "Automation denied",
+            },
+          },
+        },
+      }),
+    });
+    renderDesktopApp();
+
+    expect(
+      await screen.findByText(
+        "Google Chrome ready. Other browsers can be approved later.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Needs approval")).toBeNull();
+    expect(screen.queryByText("Test Safari")).toBeNull();
   });
 
   it("keeps offline account actions in the overflow menu until it is opened", async () => {
