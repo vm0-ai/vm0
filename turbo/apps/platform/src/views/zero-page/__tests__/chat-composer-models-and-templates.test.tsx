@@ -339,6 +339,10 @@ function resetPresentationCardPreviewImageDecodeCache(): void {
   );
 }
 
+function resetPresentationTemplateThumbnailCache(): void {
+  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateThumbnailCache");
+}
+
 async function expectComposerModel(label: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
@@ -541,6 +545,7 @@ beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   resetPresentationTemplateHtmlPreviewCache();
   resetPresentationCardPreviewImageDecodeCache();
+  resetPresentationTemplateThumbnailCache();
 });
 
 describe("chat composer models", () => {
@@ -2078,17 +2083,26 @@ describe("chat composer templates", () => {
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
-    expect(firstSlidePreviewButton.querySelector("img")).toBeNull();
+    expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
+      "src",
+      r2ImageTransformUrl(template.previewImages[0]!, {
+        width: 480,
+        height: 270,
+      }),
+    );
     expect(
       firstSlidePreviewButton.querySelector(
         `[aria-label="${template.title} slide 1 preview"]`,
       ),
     ).toBeInTheDocument();
-    expect(
-      firstSlidePreviewButton.querySelector(
-        `[aria-label="${template.title} slide 1 preview"]`,
-      )?.shadowRoot,
-    ).not.toBeNull();
+
+    await waitFor(() => {
+      expect(
+        firstSlidePreviewButton.querySelector(
+          `[aria-label="${template.title} slide 1 preview"]`,
+        )?.shadowRoot,
+      ).not.toBeNull();
+    });
     const carnivalShadowRoot = firstSlidePreviewButton.querySelector(
       `[aria-label="${template.title} slide 1 preview"]`,
     )?.shadowRoot;
