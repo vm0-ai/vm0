@@ -207,6 +207,20 @@ mod tests {
         session_id: &str,
     ) -> Output {
         let session_filename_key = session_id.replace('-', "");
+        run_cleanup_with_session_identity(
+            codex_home,
+            restore_path,
+            session_id,
+            &session_filename_key,
+        )
+    }
+
+    fn run_cleanup_with_session_identity(
+        codex_home: &Path,
+        restore_path: &Path,
+        session_id: &str,
+        session_filename_key: &str,
+    ) -> Output {
         Command::new("sh")
             .arg("-c")
             .arg(codex_session_cleanup_command(
@@ -396,6 +410,30 @@ mod tests {
 
         assert_failure_contains(&output, "invalid codex restore session id");
         assert!(existing_session.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_invalid_session_id_with_valid_filename_key_without_deleting_sessions()
+    {
+        for invalid_session_id in ["", "*"] {
+            let temp = tempfile::tempdir().unwrap();
+            let codex_home = temp.path().join(".codex");
+            let restore_path = restore_path(&codex_home);
+            let restore_dir = restore_path.parent().unwrap();
+            fs::create_dir_all(restore_dir).unwrap();
+            let existing_session = restore_dir.join("rollout-existing-session.jsonl");
+            create_file(&existing_session);
+
+            let output = run_cleanup_with_session_identity(
+                &codex_home,
+                &restore_path,
+                invalid_session_id,
+                SESSION_ID_NO_DASHES,
+            );
+
+            assert_failure_contains(&output, "invalid codex restore session id");
+            assert!(existing_session.exists());
+        }
     }
 
     #[test]
