@@ -1897,7 +1897,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
     <div
       className={cn(
         fullscreen
-          ? "fixed inset-0 z-[100] flex flex-col bg-background"
+          ? "fixed inset-0 z-[100] flex flex-col bg-background zero-safe-area-fullscreen"
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}
@@ -2484,7 +2484,7 @@ export function ZeroChatThreadPage() {
       className={cn(
         "flex min-w-0 overflow-hidden bg-background",
         artifactFullscreen
-          ? "fixed inset-0 z-[100] min-h-0 flex-col pt-[var(--sat)] pb-[var(--sab)]"
+          ? "fixed inset-0 z-[100] min-h-0 flex-col zero-safe-area-fullscreen"
           : "h-full w-full flex-1",
       )}
     >

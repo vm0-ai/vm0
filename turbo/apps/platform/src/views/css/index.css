@@ -47,11 +47,14 @@
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
    styles across WebKit versions, including iOS 26+ standalone PWA mode.
-   Use var(--sat) / var(--sab) in components instead of env() directly. */
+   Use var(--sat) / var(--sar) / var(--sab) / var(--sal) in components
+   instead of env() directly. */
 :root {
   --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
   --sab-raw: env(safe-area-inset-bottom, 0px);
   --sab: var(--sab-raw);
+  --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
 }
@@ -116,6 +119,10 @@ body {
   min-height: var(--zero-viewport-height);
   max-height: var(--zero-viewport-height);
   overflow: hidden;
+}
+
+.zero-safe-area-fullscreen {
+  padding: var(--sat) var(--sar) var(--sab) var(--sal);
 }
 
 @media (display-mode: standalone) {

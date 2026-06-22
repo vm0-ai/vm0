@@ -50,6 +50,8 @@ describe("platform entrypoint safe area behavior", () => {
     expect(globalCss).toMatch(
       /--sab-raw:\s*env\(safe-area-inset-bottom,\s*0px\);/,
     );
+    expect(globalCss).toMatch(/--sar:\s*env\(safe-area-inset-right,\s*0px\);/);
+    expect(globalCss).toMatch(/--sal:\s*env\(safe-area-inset-left,\s*0px\);/);
     expect(globalCss).toMatch(/--sab:\s*var\(--sab-raw\);/);
     expect(globalCss).toMatch(
       /:root:has\([\s\S]*:focus-visible[\s\S]*\)\s*{\s*--sab:\s*0px;\s*}/,
@@ -73,6 +75,14 @@ describe("platform entrypoint safe area behavior", () => {
     );
     expect(globalCss).toMatch(
       /\.zero-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*max-height:\s*var\(--zero-viewport-height\);[\s\S]*overflow:\s*hidden;/,
+    );
+  });
+
+  it("exposes a reusable fullscreen safe-area class", () => {
+    const globalCss = readGlobalCss();
+
+    expect(globalCss).toMatch(
+      /\.zero-safe-area-fullscreen\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);[\s\S]*}/,
     );
   });
 });

@@ -699,6 +699,39 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("keeps fullscreen artifact surfaces inside the safe area", async () => {
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [artifactFile(markdownUrl)],
+      content: "Artifacts are ready.",
+      path: `${THREAD_PATH}?artifacts=${THREAD_ID}&artifact=${encodeURIComponent(markdownUrl)}&artifact-fullscreen=1`,
+    });
+
+    await waitFor(() => {
+      const sidebar = screen.getByTestId("artifact-sidebar");
+      expect(sidebar).toHaveClass("fixed", "inset-0");
+      expect(sidebar).toHaveClass("zero-safe-area-fullscreen");
+    });
+
+    click(screen.getByLabelText("Back to all artifacts"));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Enter fullscreen"));
+    await waitFor(() => {
+      const inbox = screen.getByTestId("artifact-inbox");
+      expect(inbox).toHaveClass("fixed", "inset-0");
+      expect(inbox).toHaveClass("zero-safe-area-fullscreen");
+    });
+  });
+
   it("shares an artifact and exposes download destinations from the sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =

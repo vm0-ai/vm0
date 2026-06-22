@@ -185,7 +185,7 @@ function ArtifactSidebarContent({
       <div
         className={cn(
           fullscreen
-            ? "fixed inset-0 z-[100] flex flex-col bg-background pt-[env(safe-area-inset-top)]"
+            ? "fixed inset-0 z-[100] flex flex-col bg-background zero-safe-area-fullscreen"
             : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
           "animate-in fade-in duration-[180ms] ease",
         )}
@@ -233,7 +233,7 @@ function ArtifactSidebarContent({
     <div
       className={cn(
         fullscreen
-          ? "fixed inset-0 z-[100] flex flex-col bg-background pt-[env(safe-area-inset-top)]"
+          ? "fixed inset-0 z-[100] flex flex-col bg-background zero-safe-area-fullscreen"
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}
