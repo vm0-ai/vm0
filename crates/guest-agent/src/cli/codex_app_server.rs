@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
+use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
@@ -146,6 +147,11 @@ pub struct CodexAppServerClient {
 
 impl CodexAppServerClient {
     pub fn spawn(config: CodexAppServerConfig) -> Result<Self, CodexAppServerError> {
+        let runtime = Handle::try_current().map_err(|_error| {
+            CodexAppServerError::Protocol(
+                "codex app-server client requires a Tokio runtime".to_string(),
+            )
+        })?;
         std::fs::create_dir_all(&config.codex_home)?;
 
         let mut cmd = tokio::process::Command::new(&config.binary);
@@ -175,9 +181,9 @@ impl CodexAppServerClient {
             CodexAppServerError::Protocol("app-server stderr was not piped".to_string())
         })?;
         let stderr_handle =
-            tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
+            runtime.spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
         let (wait_tx, wait_rx) = oneshot::channel();
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             let _ = wait_tx.send(child.wait().await);
         });
 

@@ -432,6 +432,23 @@ async fn codex_app_server_drop_kills_open_child() -> Result<(), String> {
     wait_for_process_exit(pid).await
 }
 
+#[test]
+fn codex_app_server_spawn_without_tokio_runtime_returns_error() -> Result<(), String> {
+    let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
+    let config = CodexAppServerConfig::new("/definitely/missing/codex", codex_home.path());
+
+    match CodexAppServerClient::spawn(config) {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("requires a Tokio runtime"));
+            Ok(())
+        }
+        Err(error) => Err(format!(
+            "expected Tokio runtime protocol error, got {error:?}"
+        )),
+        Ok(_) => Err("expected Tokio runtime protocol error, got client".to_string()),
+    }
+}
+
 fn spawn_client(scenario: Option<&str>) -> Result<ClientFixture, String> {
     let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
     let mut config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path());
