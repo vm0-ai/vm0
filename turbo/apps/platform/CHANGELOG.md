@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.481.0](https://github.com/vm0-ai/vm0/compare/app-v0.480.3...app-v0.481.0) (2026-06-22)
+
+
+### Features
+
+* open presentation template preview at hovered slide ([#18447](https://github.com/vm0-ai/vm0/issues/18447)) ([8e55bf5](https://github.com/vm0-ai/vm0/commit/8e55bf570eb95c66034879f727d1db93d89825fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.2
+    * @vm0/connectors bumped to 1.101.0
+    * @vm0/core bumped to 8.362.4
+
 ## [0.480.3](https://github.com/vm0-ai/vm0/compare/app-v0.480.2...app-v0.480.3) (2026-06-22)
 
 

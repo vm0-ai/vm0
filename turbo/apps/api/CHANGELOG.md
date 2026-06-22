@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.168.2](https://github.com/vm0-ai/vm0/compare/api-v1.168.1...api-v1.168.2) (2026-06-22)
+
+
+### Refactoring
+
+* isolate all-catalog firewall entrypoint ([#18497](https://github.com/vm0-ai/vm0/issues/18497)) ([8052c51](https://github.com/vm0-ai/vm0/commit/8052c5108e52e9451c64df54e789b49f5121411b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.2
+    * @vm0/connectors bumped to 1.101.0
+    * @vm0/core bumped to 8.362.4
+    * @vm0/db bumped to 1.63.0
+
 ## [1.168.1](https://github.com/vm0-ai/vm0/compare/api-v1.168.0...api-v1.168.1) (2026-06-22)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.5...guest-mock-codex-v0.3.0) (2026-06-22)
+
+
+### Features
+
+* add Codex app-server JSON-RPC client ([#18428](https://github.com/vm0-ai/vm0/issues/18428)) ([8c49a61](https://github.com/vm0-ai/vm0/commit/8c49a6119ad8a6fe483d518ea7f4436114b18082))
+
 ## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.4...guest-mock-codex-v0.2.5) (2026-06-11)
 
 
