@@ -15,10 +15,6 @@
     "./contracts": {
       "import": "./src/contracts/index.ts",
       "types": "./src/contracts/index.ts"
-    },
-    "./firewalls": {
-      "import": "./src/firewalls/index.ts",
-      "types": "./src/firewalls/index.ts"
     }
   },
   "scripts": {
@@ -28,6 +24,7 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",

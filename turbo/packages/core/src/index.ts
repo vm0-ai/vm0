@@ -842,24 +842,6 @@ export {
   type SkillFrontmatter,
 } from "./skill-frontmatter";
 export { stripMetadataFrontmatter } from "./instructions-frontmatter";
-export {
-  getPermissionCategories,
-  groupPermissionsByCategory,
-  isFirewallConnectorType,
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  resolveFirewallPolicies,
-  getAllBuiltinConnectorHosts,
-  getBuiltinConnectorDisplayName,
-  BILLABLE_CONNECTORS,
-  type ConnectorCategories,
-  type PermissionGroup,
-  type FirewallConnectorType,
-  type BillableConnector,
-  type PermissionNamesOf,
-  type NonFirewallConnectorType,
-  type ConnectorTypeCoverage,
-} from "./firewalls";
 export { getGmtOffset } from "./timezone";
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
