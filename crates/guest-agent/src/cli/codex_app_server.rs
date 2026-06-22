@@ -601,8 +601,14 @@ impl CodexAppServerClient {
         let Some(stderr_handle) = self.stderr_handle.as_ref() else {
             return;
         };
-        let stderr_open = !stderr_handle.is_finished();
-        if stderr_open {
+        if !stderr_handle.is_finished() {
+            tokio::task::yield_now().await;
+        }
+
+        let Some(stderr_handle) = self.stderr_handle.as_ref() else {
+            return;
+        };
+        if !stderr_handle.is_finished() {
             self.signal_process_group(libc::SIGKILL);
         }
 
@@ -621,6 +627,7 @@ impl CodexAppServerClient {
             Err(_elapsed) => {
                 if let Some(stderr_handle) = self.stderr_handle.take() {
                     stderr_handle.abort();
+                    let _ = stderr_handle.await;
                 }
             }
         }
