@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.0...guest-mock-claude-v0.21.1) (2026-06-22)
+
+
+### Performance Improvements
+
+* bound guest mock claude stream output ([#18424](https://github.com/vm0-ai/vm0/issues/18424)) ([ce71407](https://github.com/vm0-ai/vm0/commit/ce714074ad7d58ae58da341cc897305210232cd6))
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.20.0...guest-mock-claude-v0.21.0) (2026-06-18)
 
 

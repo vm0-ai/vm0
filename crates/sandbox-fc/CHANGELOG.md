@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.53](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.52...sandbox-fc-v0.37.53) (2026-06-22)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** harden runtime socket namespace ([#18422](https://github.com/vm0-ai/vm0/issues/18422)) ([f3dda84](https://github.com/vm0-ai/vm0/commit/f3dda84fc1c2d1758cc29ee2aefb2c72ed351972))
+
+
+### Refactoring
+
+* remove legacy exec result projections ([#18429](https://github.com/vm0-ai/vm0/issues/18429)) ([19b22fb](https://github.com/vm0-ai/vm0/commit/19b22fbde865689860394e2e9e9f699347f633b3))
+
 ## [0.37.52](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.51...sandbox-fc-v0.37.52) (2026-06-21)
 
 
