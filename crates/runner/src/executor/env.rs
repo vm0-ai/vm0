@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
-use super::session_restore::{canonical_codex_thread_id, is_valid_session_id};
+use super::cli_framework::{
+    EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
+};
+use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
     RunnerResult, guest_runtime_dir, guest_runtime_path,
@@ -506,22 +509,6 @@ impl HostEnv {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum EffectiveCliFramework {
-    ClaudeCode,
-    Codex,
-}
-
-pub(super) fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFramework {
-    if normalized_cli_agent_type(cli_agent_type) == "codex" {
-        EffectiveCliFramework::Codex
-    } else {
-        // Guest-agent currently falls back unknown CLI_AGENT_TYPE values to
-        // Claude Code. Keep runner env gating aligned with that behavior.
-        EffectiveCliFramework::ClaudeCode
-    }
-}
-
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     // The entire VM0_ namespace is runner-owned, including retired keys such
     // as VM0_WORKING_DIR. Non-VM0 keys must stay explicit.
@@ -623,13 +610,5 @@ pub(super) fn insert_codex_env(
         && !context.debug_no_mock_codex.unwrap_or(false)
     {
         env.insert(guest_contracts::env::USE_MOCK_CODEX_ENV.into(), val.clone());
-    }
-}
-
-pub(super) fn normalized_cli_agent_type(cli_agent_type: &str) -> &str {
-    if cli_agent_type.is_empty() {
-        "claude-code"
-    } else {
-        cli_agent_type
     }
 }
