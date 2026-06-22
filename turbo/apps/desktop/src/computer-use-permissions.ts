@@ -2,12 +2,18 @@ import {
   createComputerUseNativeBackend,
   type ComputerUseNativeBackend,
 } from "./computer-use-native";
-import type { ComputerUsePermissionState } from "./computer-use-types";
+import {
+  defaultComputerUseAutomationPermissionState,
+  normalizeComputerUsePermissionState,
+  type ComputerUseAutomationPermissionTarget,
+  type ComputerUsePermissionState,
+} from "./computer-use-types";
 
 const DEFAULT_COMPUTER_USE_PERMISSION_STATE: ComputerUsePermissionState =
   Object.freeze({
     accessibility: false,
     screenRecording: false,
+    automation: defaultComputerUseAutomationPermissionState(),
   });
 
 let nativeBackend: ComputerUseNativeBackend | null = null;
@@ -29,18 +35,67 @@ export function getComputerUsePermissionState(): ComputerUsePermissionState {
 }
 
 export async function refreshComputerUsePermissionState(): Promise<ComputerUsePermissionState> {
-  currentPermissionState = await getNativeBackend().getPermissions();
+  const permissions = await getNativeBackend().getPermissions();
+  currentPermissionState = normalizeComputerUsePermissionState({
+    ...permissions,
+    automation: currentPermissionState.automation,
+  });
   return currentPermissionState;
 }
 
 export async function requestComputerUseAccessibilityPermission(): Promise<ComputerUsePermissionState> {
-  currentPermissionState =
-    await getNativeBackend().requestAccessibilityPermission();
+  const permissions = await getNativeBackend().requestAccessibilityPermission();
+  currentPermissionState = normalizeComputerUsePermissionState({
+    ...permissions,
+    automation: currentPermissionState.automation,
+  });
   return currentPermissionState;
 }
 
 export async function requestComputerUseScreenRecordingPermission(): Promise<ComputerUsePermissionState> {
-  currentPermissionState =
+  const automation = currentPermissionState.automation;
+  const permissions =
     await getNativeBackend().requestScreenRecordingPermission();
+  currentPermissionState = normalizeComputerUsePermissionState({
+    ...permissions,
+    automation,
+  });
+  return currentPermissionState;
+}
+
+export async function probeComputerUseAutomationPermission(
+  target: ComputerUseAutomationPermissionTarget,
+): Promise<ComputerUsePermissionState> {
+  const result = await getNativeBackend().probeAutomationPermission(target);
+  currentPermissionState = normalizeComputerUsePermissionState({
+    ...currentPermissionState,
+    automation: {
+      ...defaultComputerUseAutomationPermissionState(),
+      ...currentPermissionState.automation,
+      [target]: {
+        ...result,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return currentPermissionState;
+}
+
+export function recordComputerUseAutomationPermissionDenied(
+  target: ComputerUseAutomationPermissionTarget,
+  reason: string,
+): ComputerUsePermissionState {
+  currentPermissionState = normalizeComputerUsePermissionState({
+    ...currentPermissionState,
+    automation: {
+      ...defaultComputerUseAutomationPermissionState(),
+      ...currentPermissionState.automation,
+      [target]: {
+        status: "denied",
+        updatedAt: new Date().toISOString(),
+        reason,
+      },
+    },
+  });
   return currentPermissionState;
 }

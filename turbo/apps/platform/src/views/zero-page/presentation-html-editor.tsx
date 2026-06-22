@@ -232,7 +232,7 @@ function PresentationEditorHeader({
   title: string;
 }) {
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background px-4 py-2">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 py-2 sm:gap-3 sm:px-4">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
         <IconPresentation size={17} stroke={1.5} />
       </div>
@@ -256,12 +256,13 @@ function PresentationEditorHeader({
         type="button"
         data-presentation-editor-action="true"
         aria-label="Download edited PPTX"
+        title="Download edited PPTX"
         disabled={!onDownloadPptx}
         onClick={onDownloadPptx}
-        className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-2"
       >
         <IconDownload size={16} stroke={1.5} />
-        PPTX
+        <span className="hidden sm:inline">PPTX</span>
       </button>
       <button
         type="button"
@@ -270,10 +271,10 @@ function PresentationEditorHeader({
         title="Generate PPT script"
         disabled={!onGenerateSpeakerNotes}
         onClick={onGenerateSpeakerNotes}
-        className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-2"
       >
         <IconSparkles size={16} stroke={1.5} />
-        Script
+        <span className="hidden sm:inline">Script</span>
       </button>
       <button
         type="button"
@@ -298,7 +299,7 @@ function PresentationEditorShell({
   title: string;
 }) {
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <PresentationEditorHeader
         onClose={onClose}
         onDownloadPptx={undefined}
@@ -385,7 +386,7 @@ function SlideList({
             observerRef.current?.unobserve(entry.target);
           }
         },
-        { root: rootRef.current, rootMargin: "480px 0px" },
+        { root: rootRef.current, rootMargin: "480px" },
       );
     }
     return observerRef.current;
@@ -417,13 +418,17 @@ function SlideList({
       ref={(node) => {
         rootRef.current = node;
       }}
-      className="min-h-0 overflow-auto border-r border-border/60 bg-[#eeeeee] px-5 py-6"
+      data-testid="presentation-editor-slide-list"
+      className="min-h-0 overflow-x-auto overflow-y-hidden border-b border-border/60 bg-[#eeeeee] px-3 py-3 md:overflow-auto md:border-b-0 md:border-r md:px-5 md:py-6"
     >
-      <div className="space-y-6">
+      <div className="flex gap-3 md:block md:space-y-6">
         {slides.map((slide, index) => {
           const active = slide.id === activeSlideId;
           return (
-            <div key={slide.id} className="flex flex-col items-center gap-2">
+            <div
+              key={slide.id}
+              className="flex w-[216px] shrink-0 flex-col items-center gap-2 md:w-auto"
+            >
               <button
                 type="button"
                 data-slide-id={slide.id}
@@ -566,7 +571,10 @@ function PreviewPane({
     observerRef.current = observer;
   };
   return (
-    <main className="flex min-h-0 items-center justify-center overflow-hidden bg-white p-4">
+    <main
+      data-testid="presentation-editor-preview-pane"
+      className="flex min-h-0 items-center justify-center overflow-hidden bg-white p-3 sm:p-4"
+    >
       <div
         ref={setStageRef}
         className="flex h-full w-full items-center justify-center overflow-hidden bg-white"
@@ -831,14 +839,20 @@ function PresentationEditorWorkspace({
   };
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
+    <div
+      data-testid="presentation-editor-workspace"
+      className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[260px_minmax(0,1fr)] md:grid-rows-1"
+    >
       <SlideList
         activeSlideId={activeSlideId}
         getSlideHtml={slidePreviewHtml}
         setActiveSlideId={showSlide}
         slides={slides}
       />
-      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_180px] overflow-hidden">
+      <div
+        data-testid="presentation-editor-main-pane"
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)_136px] overflow-hidden md:grid-rows-[minmax(0,1fr)_180px]"
+      >
         <PreviewPane
           html={previewHtml}
           iframeRef={previewFrameRef}

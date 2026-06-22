@@ -6,7 +6,10 @@ import type {
   DesktopDeveloperToolsApi,
   DesktopDeveloperToolsState,
 } from "../desktop-bridge";
-import type { DesktopComputerUseState } from "../computer-use-types";
+import type {
+  ComputerUseAutomationPermissionTarget,
+  DesktopComputerUseState,
+} from "../computer-use-types";
 
 const DEFAULT_DEVELOPER_TOOLS_STATE: DesktopDeveloperToolsState = {
   available: false,
@@ -143,6 +146,13 @@ export const requestScreenRecordingPermission$ = command(async ({ set }) => {
   set(reloadComputerUse$);
 });
 
+export const probeAutomationPermission$ = command(
+  async ({ set }, target: ComputerUseAutomationPermissionTarget) => {
+    await desktopComputerUseApi().probeAutomationPermission(target);
+    set(reloadComputerUse$);
+  },
+);
+
 export const setKeepAwakeEnabled$ = command(
   async ({ set }, enabled: boolean) => {
     await desktopComputerUseApi().setKeepAwakeEnabled(enabled);
@@ -156,6 +166,10 @@ export const openAccessibilitySettings$ = command(async () => {
 
 export const openScreenRecordingSettings$ = command(async () => {
   await desktopComputerUseApi().openScreenRecordingSettings();
+});
+
+export const openAutomationSettings$ = command(async () => {
+  await desktopComputerUseApi().openAutomationSettings();
 });
 
 export const openDesktopSignIn$ = command(async () => {

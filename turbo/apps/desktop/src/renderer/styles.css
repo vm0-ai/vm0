@@ -393,6 +393,10 @@ button {
   background: rgba(249, 250, 251, 0.76);
 }
 
+.browser-automation-card {
+  margin-top: 10px;
+}
+
 .checkbox-row {
   min-height: 58px;
   border: 1px solid rgba(30, 38, 52, 0.08);
@@ -679,6 +683,7 @@ button {
 }
 
 .check-pill,
+.automation-pill,
 .outcome,
 .status-badge,
 .command-status {
@@ -695,11 +700,24 @@ button {
 }
 
 .check-pill,
+.automation-pill-granted,
 .status-online,
 .outcome-approved,
 .command-status-succeeded {
   color: #067647;
   background: #ecfdf3;
+}
+
+.automation-pill-unknown,
+.automation-pill-not_running,
+.automation-pill-not_installed {
+  color: #344054;
+  background: #f2f4f7;
+}
+
+.automation-pill-denied {
+  color: #b42318;
+  background: #fef3f2;
 }
 
 .status-offline {

@@ -88,6 +88,9 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     typeof vi.fn<DesktopComputerUseApi["getState"]>
   >;
   readonly start: ReturnType<typeof vi.fn<DesktopComputerUseApi["start"]>>;
+  readonly probeAutomationPermission: ReturnType<
+    typeof vi.fn<DesktopComputerUseApi["probeAutomationPermission"]>
+  >;
   readonly subscribe: ReturnType<
     typeof vi.fn<DesktopComputerUseApi["subscribe"]>
   >;
@@ -143,6 +146,35 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     });
     return currentState;
   });
+  const probeAutomationPermission = vi.fn<
+    DesktopComputerUseApi["probeAutomationPermission"]
+  >(async (target) => {
+    currentState = createComputerUseState({
+      keepAwake: currentState.keepAwake,
+      permissions: {
+        ...currentState.permissions,
+        automation: {
+          chrome: {
+            status: "unknown",
+            updatedAt: null,
+            reason: null,
+          },
+          safari: {
+            status: "unknown",
+            updatedAt: null,
+            reason: null,
+          },
+          [target]: {
+            status: "granted",
+            updatedAt: "2026-06-22T00:00:00.000Z",
+            reason: null,
+          },
+        },
+      },
+      status: currentState.host.status,
+    });
+    return currentState;
+  });
   const setKeepAwakeEnabled = vi.fn<
     DesktopComputerUseApi["setKeepAwakeEnabled"]
   >(async (enabled) => {
@@ -169,12 +201,16 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     stop,
     requestAccessibilityPermission,
     requestScreenRecordingPermission,
+    probeAutomationPermission,
     setKeepAwakeEnabled,
     openAccessibilitySettings: vi.fn<
       DesktopComputerUseApi["openAccessibilitySettings"]
     >(async () => {}),
     openScreenRecordingSettings: vi.fn<
       DesktopComputerUseApi["openScreenRecordingSettings"]
+    >(async () => {}),
+    openAutomationSettings: vi.fn<
+      DesktopComputerUseApi["openAutomationSettings"]
     >(async () => {}),
     subscribe,
   };
@@ -188,6 +224,7 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
       }
     },
     getState,
+    probeAutomationPermission,
     start,
     subscribe,
   };
@@ -368,6 +405,28 @@ describe("Desktop renderer bridge integration", () => {
     expect(await screen.findByText("lisa")).toBeTruthy();
     expect(auth.getState).toHaveBeenCalled();
     expect(computerUse.getState).toHaveBeenCalled();
+  });
+
+  it("probes browser automation from an explicit user action", async () => {
+    const { computerUse } = installDesktopBridges();
+    renderDesktopApp();
+
+    expect(await screen.findByText("Browser Automation")).toBeTruthy();
+    expect(await screen.findByText("Google Chrome")).toBeTruthy();
+    expect(screen.getAllByText("Not tested")).toHaveLength(2);
+    expect(computerUse.probeAutomationPermission).not.toHaveBeenCalled();
+
+    const chromeTestButton = screen.getAllByText("Test")[0]?.closest("button");
+    if (!(chromeTestButton instanceof HTMLButtonElement)) {
+      throw new Error("Could not find Chrome Automation test button");
+    }
+    fireEvent.click(chromeTestButton);
+
+    await waitFor(() => {
+      expect(computerUse.probeAutomationPermission).toHaveBeenCalledWith(
+        "chrome",
+      );
+    });
   });
 
   it("keeps offline account actions in the overflow menu until it is opened", async () => {

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
-import type { DesktopComputerUseState } from "./computer-use-types";
+import type {
+  ComputerUseAutomationPermissionTarget,
+  DesktopComputerUseState,
+} from "./computer-use-types";
 import { COMPUTER_USE_FEATURE_SWITCH_KEY } from "./computer-use-types";
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
@@ -83,6 +86,13 @@ describe("Desktop IPC boundary", () => {
     await expect(
       invokeIpc(COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, rendererUrl, "true"),
     ).rejects.toThrow("Desktop keep-awake enabled state must be a boolean");
+    await expect(
+      invokeIpc(
+        COMPUTER_USE_CHANNELS.probeAutomationPermission,
+        rendererUrl,
+        "firefox",
+      ),
+    ).rejects.toThrow("Unknown Computer Use Automation permission target");
 
     await invokeIpc(COMPUTER_USE_CHANNELS.start, rendererUrl, {
       userInitiated: true,
@@ -92,9 +102,15 @@ describe("Desktop IPC boundary", () => {
       rendererUrl,
       true,
     );
+    await invokeIpc(
+      COMPUTER_USE_CHANNELS.probeAutomationPermission,
+      rendererUrl,
+      "chrome",
+    );
 
     expect(api.start).toHaveBeenCalledWith({ userInitiated: true });
     expect(api.setKeepAwakeEnabled).toHaveBeenCalledWith(true);
+    expect(api.probeAutomationPermission).toHaveBeenCalledWith("chrome");
   });
 
   it("protects auth handlers by renderer URL, allowed app origins, and token payloads", async () => {
@@ -225,6 +241,13 @@ function createComputerUseApi(): {
   readonly requestScreenRecordingPermission: ReturnType<
     typeof vi.fn<() => Promise<DesktopComputerUseState>>
   >;
+  readonly probeAutomationPermission: ReturnType<
+    typeof vi.fn<
+      (
+        target: ComputerUseAutomationPermissionTarget,
+      ) => Promise<DesktopComputerUseState>
+    >
+  >;
   readonly setKeepAwakeEnabled: ReturnType<
     typeof vi.fn<(enabled: boolean) => DesktopComputerUseState>
   >;
@@ -237,6 +260,7 @@ function createComputerUseApi(): {
     stop: vi.fn(async () => state),
     requestAccessibilityPermission: vi.fn(async () => state),
     requestScreenRecordingPermission: vi.fn(async () => state),
+    probeAutomationPermission: vi.fn(async () => state),
     setKeepAwakeEnabled: vi.fn(() => state),
   };
 }
