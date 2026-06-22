@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.127.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.126.0...runner-rs-v0.127.0) (2026-06-22)
+
+
+### Features
+
+* add google sheets manifest firewall ([#18502](https://github.com/vm0-ai/vm0/issues/18502)) ([ef3ad04](https://github.com/vm0-ai/vm0/commit/ef3ad044651ff554754dea6b54e095ea2da1802a))
+
 ## [0.126.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.5...runner-rs-v0.126.0) (2026-06-22)
 
 
