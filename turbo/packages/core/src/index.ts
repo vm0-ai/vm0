@@ -860,7 +860,14 @@ export {
   type NonFirewallConnectorType,
   type ConnectorTypeCoverage,
 } from "./firewalls";
-export { getGmtOffset } from "./timezone";
+export {
+  getGmtOffset,
+  hasExplicitDateTimeOffset,
+  isValidTimeZone,
+  parseScheduledAtTime,
+  type ScheduledAtTimeParseErrorCode,
+  type ScheduledAtTimeParseResult,
+} from "./timezone";
 export { getModelDisplayName } from "./model-display-name";
 export { formatMessage, serializeError, extractFields } from "./log-utils";
 

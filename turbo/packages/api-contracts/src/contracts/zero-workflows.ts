@@ -117,7 +117,7 @@ export const zeroWorkflowScheduleSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("once"),
-    atTime: z.string().datetime(),
+    atTime: z.string().min(1),
     timezone: z.string().min(1),
   }),
 ]);

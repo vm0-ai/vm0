@@ -58,6 +58,15 @@ const cronTrigger = {
   cronExpression: "0 9 * * *",
 };
 
+const onceTrigger = {
+  ...triggerBase,
+  id: SECOND_TRIGGER_ID,
+  kind: "once",
+  atTime: "2026-06-10T01:00:00Z",
+  timezone: "Asia/Shanghai",
+  nextRunAt: "2026-06-10T01:00:00Z",
+};
+
 const webhookTrigger = {
   id: "44444444-4444-4444-8444-444444444444",
   automationId: AUTOMATION_ID,
@@ -251,6 +260,60 @@ describe("zero automation update command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Automation "alerts-v2" updated');
       expect(logCalls).toContain(`Trigger ${TRIGGER_ID} updated`);
+    });
+
+    it("should switch the single time trigger to once with timezone", async () => {
+      let capturedTriggerBody: Record<string, unknown> | undefined;
+
+      mockShowAutomation([loopTrigger]);
+      server.use(
+        http.patch(
+          "http://localhost:3000/api/automation-triggers/:id",
+          async ({ request }) => {
+            capturedTriggerBody = (await request.json()) as Record<
+              string,
+              unknown
+            >;
+            return HttpResponse.json({
+              ...onceTrigger,
+              id: TRIGGER_ID,
+            });
+          },
+        ),
+      );
+
+      await updateCommand.parseAsync([
+        "node",
+        "cli",
+        "alerts",
+        "--once",
+        "2026-06-10T09:00",
+        "--timezone",
+        "Asia/Shanghai",
+      ]);
+
+      expect(capturedTriggerBody).toEqual({
+        kind: "once",
+        atTime: "2026-06-10T09:00",
+        timezone: "Asia/Shanghai",
+      });
+    });
+
+    it("should reject a local --once update without --timezone", async () => {
+      await expect(async () => {
+        await updateCommand.parseAsync([
+          "node",
+          "cli",
+          "alerts",
+          "--once",
+          "2026-06-10T09:00",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("requires --timezone"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should error when the automation has no time trigger", async () => {
