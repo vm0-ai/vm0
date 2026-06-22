@@ -278,9 +278,10 @@ impl CodexAppServerClient {
                         error: Box::new(error),
                     });
                 }
-                IncomingMessage::Success { id, .. } | IncomingMessage::Error { id, .. } => {
+                IncomingMessage::Success { .. } | IncomingMessage::Error { .. } => {
+                    self.signal_process_group(libc::SIGKILL);
                     return Err(CodexAppServerError::Protocol(format!(
-                        "received response for unknown id {id:?} while waiting for {method}"
+                        "received response for unknown id while waiting for {method}"
                     )));
                 }
                 IncomingMessage::Notification {

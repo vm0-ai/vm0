@@ -310,6 +310,31 @@ async fn codex_app_server_unexpected_typed_response_fails_without_raw_payload() 
 }
 
 #[tokio::test]
+async fn codex_app_server_unknown_response_id_fails_without_raw_payload() -> Result<(), String> {
+    let mut client = spawn_client(Some("unknown-response-before-response"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let result = wait_result_allow_error(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("received response for unknown id"));
+            assert!(!message.contains("do-not-log-unknown-response-id"));
+        }
+        other => {
+            return Err(format!(
+                "expected unknown response id protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_disconnect_after_initialize_fails_next_request() -> Result<(), String> {
     let mut client = spawn_client(Some("disconnect-after-initialize"))?;
 

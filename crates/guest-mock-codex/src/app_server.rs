@@ -25,6 +25,7 @@ enum Scenario {
     NotificationOverflow,
     OversizedStdout,
     ServerRequestBeforeResponse,
+    UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
 }
@@ -47,6 +48,7 @@ impl Scenario {
                 "notification-overflow" => Ok(Self::NotificationOverflow),
                 "oversized-stdout" => Ok(Self::OversizedStdout),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
+                "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 _ => Err(io::Error::new(
@@ -237,6 +239,14 @@ impl AppServerState {
                         for index in 0..NOTIFICATION_OVERFLOW_COUNT {
                             write_json_line(output, &server_notification_with_index(index))?;
                         }
+                        write_success(output, id, result)?;
+                    }
+                    Scenario::UnknownResponseBeforeResponse => {
+                        write_success(
+                            output,
+                            json!("do-not-log-unknown-response-id"),
+                            json!({ "ignored": true }),
+                        )?;
                         write_success(output, id, result)?;
                     }
                     _ => {
