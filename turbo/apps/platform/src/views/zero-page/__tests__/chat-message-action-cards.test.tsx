@@ -162,21 +162,26 @@ describe("chat message action cards", () => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
         capturedBody = body;
-        return respond(200, {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt: "2026-06-09T12:00:00.000Z",
-          createdAt: "2026-06-09T11:00:00Z",
-          updatedAt: "2026-06-09T11:01:00Z",
-        });
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: "2026-06-09T12:00:00.000Z",
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
       },
     );
-
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-load-retry`,
       threadTitle: "Permission load retry",
@@ -226,9 +231,14 @@ describe("chat message action cards", () => {
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
         connectorRef: "gmail",
-        permission: "messages.write",
-        action: "allow",
-        expiresIn: "1h",
+        mode: "patch",
+        grants: [
+          {
+            permission: "messages.write",
+            action: "allow",
+            expiresIn: "1h",
+          },
+        ],
       });
     });
   });
@@ -289,21 +299,26 @@ describe("chat message action cards", () => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
         capturedBody = body;
-        return respond(200, {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt: "2026-06-16T11:01:00.000Z",
-          createdAt: "2026-06-09T11:00:00Z",
-          updatedAt: "2026-06-09T11:01:00Z",
-        });
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: "2026-06-16T11:01:00.000Z",
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
       },
     );
-
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-duration`,
       threadTitle: "Permission duration",
@@ -350,9 +365,14 @@ describe("chat message action cards", () => {
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
         connectorRef: "slack",
-        permission: "admin.analytics:read",
-        action: "allow",
-        expiresIn: "7d",
+        mode: "patch",
+        grants: [
+          {
+            permission: "admin.analytics:read",
+            action: "allow",
+            expiresIn: "7d",
+          },
+        ],
       });
     });
   });
@@ -365,21 +385,26 @@ describe("chat message action cards", () => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
         capturedBody = body;
-        return respond(200, {
-          agentId: body.agentId,
-          connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
-          expiresAt: "2026-06-09T12:00:00.000Z",
-          createdAt: "2026-06-09T11:00:00Z",
-          updatedAt: "2026-06-09T11:01:00Z",
-        });
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: "2026-06-09T12:00:00.000Z",
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
       },
     );
-
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-unknown-permission`,
       threadTitle: "Unknown permission",
@@ -423,9 +448,14 @@ describe("chat message action cards", () => {
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
         connectorRef: "cloudflare",
-        permission: UNKNOWN_PERMISSION_GRANT,
-        action: "allow",
-        expiresIn: "1h",
+        mode: "patch",
+        grants: [
+          {
+            permission: UNKNOWN_PERMISSION_GRANT,
+            action: "allow",
+            expiresIn: "1h",
+          },
+        ],
       });
     });
   });
@@ -448,19 +478,24 @@ describe("chat message action cards", () => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.upsert,
+      zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
+        const appliedGrant = body.grants[0];
+        if (!appliedGrant) {
+          throw new Error("Expected a permission grant");
+        }
+        expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
           connectorRef: body.connectorRef,
-          permission: body.permission,
-          action: body.action,
+          permission: appliedGrant.permission,
+          action: appliedGrant.action,
           expiresAt: null,
           createdAt: grants[0]?.createdAt ?? "2026-06-09T10:30:00Z",
           updatedAt: "2026-06-09T11:02:00Z",
         };
         grants = [grant];
-        return respond(200, grant);
+        return respond(200, [grant]);
       },
     );
 

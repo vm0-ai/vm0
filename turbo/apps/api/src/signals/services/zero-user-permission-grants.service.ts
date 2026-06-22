@@ -6,7 +6,6 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
-  UpsertUserPermissionGrantRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -22,12 +21,6 @@ interface UserPermissionGrantScope {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-}
-
-interface UpsertUserPermissionGrantArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly grant: UpsertUserPermissionGrantRequest;
 }
 
 interface ApplyUserPermissionGrantsArgs {
@@ -54,14 +47,6 @@ type ListUserPermissionGrantsResult =
       readonly grants: readonly UserPermissionGrantResponse[];
     }
   | NotFoundResponse;
-
-type UpsertUserPermissionGrantResult =
-  | {
-      readonly kind: "ok";
-      readonly grant: UserPermissionGrantResponse;
-    }
-  | NotFoundResponse
-  | ValidationErrorResponse;
 
 type ApplyUserPermissionGrantsResult =
   | {
@@ -106,28 +91,6 @@ async function findVisibleAgent(
     )
     .limit(1);
   return agent ?? null;
-}
-
-async function validateGrantTarget(
-  connectorRef: string,
-  permission: string,
-): Promise<ValidationErrorResponse | null> {
-  const index = await loadFirewallPermissionIndex(connectorRef);
-  if (!index) {
-    return validationError(`Unknown connector ref: ${connectorRef}`);
-  }
-
-  if (permission === UNKNOWN_PERMISSION_GRANT) {
-    return null;
-  }
-
-  if (!index.hasPermission(permission)) {
-    return validationError(
-      `Unknown permission "${permission}" for connector "${connectorRef}"`,
-    );
-  }
-
-  return null;
 }
 
 function validateGrantExpiration(grant: {
@@ -279,83 +242,6 @@ async function lockVisibleAgentForUpdate(
   return agent ?? null;
 }
 
-async function upsertVisibleGrantRow(
-  db: Db,
-  args: UpsertUserPermissionGrantArgs,
-): Promise<UserPermissionGrantRow | NotFoundResponse> {
-  return await db.transaction(async (tx) => {
-    const visibleAgent = await lockVisibleAgentForUpdate(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.grant.agentId,
-    });
-    if (!visibleAgent) {
-      return notFound(`Agent not found: ${args.grant.agentId}`);
-    }
-
-    const timestamp = nowDate();
-    const [existing] = await tx
-      .select()
-      .from(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, args.orgId),
-          eq(userPermissionGrants.userId, args.userId),
-          eq(userPermissionGrants.agentId, args.grant.agentId),
-          eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
-          eq(userPermissionGrants.permission, args.grant.permission),
-        ),
-      )
-      .for("update")
-      .limit(1);
-
-    const expiresAt = resolvedExpiresAt({
-      action: args.grant.action,
-      expiresIn: args.grant.expiresIn,
-      existing,
-      timestamp,
-    });
-
-    const [row] = existing
-      ? await tx
-          .update(userPermissionGrants)
-          .set({
-            action: args.grant.action,
-            expiresAt,
-            updatedAt: timestamp,
-          })
-          .where(
-            and(
-              eq(userPermissionGrants.orgId, args.orgId),
-              eq(userPermissionGrants.userId, args.userId),
-              eq(userPermissionGrants.agentId, args.grant.agentId),
-              eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
-              eq(userPermissionGrants.permission, args.grant.permission),
-            ),
-          )
-          .returning()
-      : await tx
-          .insert(userPermissionGrants)
-          .values({
-            orgId: args.orgId,
-            userId: args.userId,
-            agentId: args.grant.agentId,
-            connectorRef: args.grant.connectorRef,
-            permission: args.grant.permission,
-            action: args.grant.action,
-            expiresAt,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          })
-          .returning();
-
-    if (!row) {
-      throw new Error("User permission grant upsert did not return a row");
-    }
-    return row;
-  });
-}
-
 async function validateApplyUserPermissionGrants(
   apply: ApplyUserPermissionGrantsRequest,
 ): Promise<ValidationErrorResponse | null> {
@@ -410,7 +296,7 @@ async function applyVisibleGrantRows(
       eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
     );
 
-    if (args.apply.reset) {
+    if (args.apply.mode === "replace") {
       await tx.delete(userPermissionGrants).where(connectorScopeCondition);
     }
 
@@ -418,13 +304,14 @@ async function applyVisibleGrantRows(
       return [];
     }
 
-    const existingRows = args.apply.reset
-      ? []
-      : await tx
-          .select()
-          .from(userPermissionGrants)
-          .where(connectorScopeCondition)
-          .for("update");
+    const existingRows =
+      args.apply.mode === "replace"
+        ? []
+        : await tx
+            .select()
+            .from(userPermissionGrants)
+            .where(connectorScopeCondition)
+            .for("update");
     const existingRowsByPermission = new Map(
       existingRows.map((row) => {
         return [row.permission, row] as const;
@@ -499,40 +386,6 @@ export const listUserPermissionGrants$ = command(
     return {
       kind: "ok" as const,
       grants: grants.map(formatUserPermissionGrant),
-    };
-  },
-);
-
-export const upsertUserPermissionGrant$ = command(
-  async (
-    { set },
-    args: UpsertUserPermissionGrantArgs,
-    signal: AbortSignal,
-  ): Promise<UpsertUserPermissionGrantResult> => {
-    const validation = await validateGrantTarget(
-      args.grant.connectorRef,
-      args.grant.permission,
-    );
-    signal.throwIfAborted();
-    if (validation) {
-      return validation;
-    }
-    const expirationValidation = validateGrantExpiration(args.grant);
-    if (expirationValidation) {
-      return expirationValidation;
-    }
-
-    const writeDb = set(writeDb$);
-    const row = await upsertVisibleGrantRow(writeDb, args);
-    signal.throwIfAborted();
-
-    if ("status" in row) {
-      return row;
-    }
-
-    return {
-      kind: "ok" as const,
-      grant: formatUserPermissionGrant(row),
     };
   },
 );

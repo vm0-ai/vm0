@@ -9,6 +9,7 @@ const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
 export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);
+export const userPermissionGrantApplyModeSchema = z.enum(["patch", "replace"]);
 export const userPermissionGrantExpiresInSchema = z.enum([
   "1h",
   "24h",
@@ -30,26 +31,6 @@ export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
 
-const upsertUserPermissionGrantBaseRequestSchema = z.object({
-  agentId: agentIdSchema,
-  connectorRef: connectorRefSchema,
-  permission: permissionSchema,
-});
-
-export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
-  "action",
-  [
-    upsertUserPermissionGrantBaseRequestSchema.extend({
-      action: z.literal("allow"),
-      expiresIn: userPermissionGrantExpiresInSchema.optional(),
-    }),
-    upsertUserPermissionGrantBaseRequestSchema.extend({
-      action: z.literal("deny"),
-      expiresIn: z.never().optional(),
-    }),
-  ],
-);
-
 const applyUserPermissionGrantBaseSchema = z.object({
   permission: permissionSchema,
 });
@@ -68,7 +49,7 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
 export const applyUserPermissionGrantsRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
-  reset: z.boolean(),
+  mode: userPermissionGrantApplyModeSchema,
   grants: z.array(applyUserPermissionGrantSchema),
 });
 
@@ -86,20 +67,6 @@ export const zeroUserPermissionGrantsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "List current user's active permission grants for an agent",
-  },
-  upsert: {
-    method: "PUT",
-    path: "/api/zero/user-permission-grants",
-    headers: authHeadersSchema,
-    body: upsertUserPermissionGrantRequestSchema,
-    responses: {
-      200: userPermissionGrantResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Upsert current user's permission grant for an agent",
   },
   apply: {
     method: "PUT",
@@ -121,6 +88,9 @@ export const zeroUserPermissionGrantsContract = c.router({
 export type UserPermissionGrantAction = z.infer<
   typeof userPermissionGrantActionSchema
 >;
+export type UserPermissionGrantApplyMode = z.infer<
+  typeof userPermissionGrantApplyModeSchema
+>;
 export type UserPermissionGrantExpiresIn = z.infer<
   typeof userPermissionGrantExpiresInSchema
 >;
@@ -129,9 +99,6 @@ export type UserPermissionGrantResponse = z.infer<
 >;
 export type ListUserPermissionGrantsQuery = z.infer<
   typeof listUserPermissionGrantsQuerySchema
->;
-export type UpsertUserPermissionGrantRequest = z.infer<
-  typeof upsertUserPermissionGrantRequestSchema
 >;
 export type ApplyUserPermissionGrant = z.infer<
   typeof applyUserPermissionGrantSchema

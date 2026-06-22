@@ -13,7 +13,8 @@ import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   zeroUserPermissionGrantsContract,
-  type UpsertUserPermissionGrantRequest,
+  type ApplyUserPermissionGrant,
+  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
@@ -709,18 +710,39 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
-    async upsertUserPermissionGrant(
+    async applyUserPermissionGrant(
       actor: ApiTestUser,
-      body: UpsertUserPermissionGrantRequest,
+      body: Pick<ApplyUserPermissionGrantsRequest, "agentId" | "connectorRef"> &
+        ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
-        setupApp({ context })(zeroUserPermissionGrantsContract).upsert({
+        setupApp({ context })(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
-          body,
+          body: {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            mode: "patch",
+            grants: [
+              body.action === "allow"
+                ? {
+                    permission: body.permission,
+                    action: "allow",
+                    ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+                  }
+                : {
+                    permission: body.permission,
+                    action: "deny",
+                  },
+            ],
+          },
         }),
         [200],
       );
-      return response.body;
+      const grant = response.body[0];
+      if (!grant) {
+        throw new Error("User permission grant apply did not return a grant");
+      }
+      return grant;
     },
 
     async listUserPermissionGrants(

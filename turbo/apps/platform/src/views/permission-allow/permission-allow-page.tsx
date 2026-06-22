@@ -25,7 +25,7 @@ import {
   permissionAllowUserPermissionGrants$,
   resolveUserPermissionGrantPolicy,
   type Permission,
-  upsertUserPermissionGrant$,
+  applyUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
@@ -230,9 +230,7 @@ function ConfirmGrantCard({
     initialExpiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const expirationAvailable = action === "allow";
-  const [grantLoadable, upsertGrant] = useLoadableSet(
-    upsertUserPermissionGrant$,
-  );
+  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const saving = grantLoadable.state === "loading";
 
   if (grantLoadable.state === "hasData") {
@@ -247,7 +245,7 @@ function ConfirmGrantCard({
 
   const handleSave = () => {
     detach(
-      upsertGrant(
+      applyGrant(
         {
           agentId,
           connectorRef,
