@@ -58,6 +58,7 @@ vi.mock("next-intl/middleware", () => {
 });
 
 let middleware: typeof import("../proxy").default;
+let reloadEnv: typeof import("../src/env").reloadEnv;
 
 function createMockEvent() {
   return {
@@ -69,10 +70,16 @@ function createMockEvent() {
 describe("proxy middleware: public routes", () => {
   beforeAll(async () => {
     middleware = (await import("../proxy")).default;
+    reloadEnv = (await import("../src/env")).reloadEnv;
   });
 
   beforeEach(() => {
     clerkState.protectedPaths = [];
+    vi.unstubAllEnvs();
+    vi.stubEnv("CLERK_SECRET_KEY", "sk_test_proxy");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_proxy");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.vm0.ai");
+    reloadEnv();
   });
 
   it("keeps locale-prefixed web design gallery public", async () => {
@@ -81,6 +88,42 @@ describe("proxy middleware: public routes", () => {
     await middleware(request, createMockEvent());
 
     expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("rejects non-GET requests for so frontend rewrite pages when forwarding is enabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const request = new NextRequest("https://www.vm0.ai/en/pricing", {
+      method: "POST",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("GET, HEAD");
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("allows non-GET requests through when so frontend forwarding is disabled", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/pricing", {
+      method: "POST",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(response.status).not.toBe(405);
+  });
+
+  it("does not reject app-only functional routes when so forwarding is enabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const request = new NextRequest("https://www.vm0.ai/connector/success", {
+      method: "POST",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(response.status).not.toBe(405);
   });
 
   it("keeps locale-less web design gallery public", async () => {

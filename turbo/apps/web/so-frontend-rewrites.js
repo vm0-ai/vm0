@@ -85,6 +85,38 @@ function localizedExactRewrite(locale, source, destinationPrefix) {
   };
 }
 
+function rewriteSourceMatchesPath(source, pathname) {
+  const wildcardSuffix = "/:path*";
+  if (!source.endsWith(wildcardSuffix)) {
+    return source === pathname;
+  }
+
+  const prefix = source.slice(0, -wildcardSuffix.length);
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+export function matchesSoFrontendRewritePath(pathname) {
+  const localizedContentPaths = [
+    ...SO_FRONTEND_EXACT_PATHS,
+    ...SO_FRONTEND_WILDCARD_PATHS,
+  ];
+  const sources = [
+    ...SO_FRONTEND_EXACT_PATHS,
+    ...SO_FRONTEND_WILDCARD_PATHS,
+    ...LOCALES.flatMap((locale) => {
+      return localizedContentPaths.map((source) => {
+        return `/${locale}${source === "/" ? "" : source}`;
+      });
+    }),
+    ...SO_FRONTEND_AUTH_PATHS,
+    ...SO_FRONTEND_ASSET_PATHS,
+  ];
+
+  return sources.some((source) => {
+    return rewriteSourceMatchesPath(source, pathname);
+  });
+}
+
 export function buildSoFrontendRewrites(env) {
   const soFrontendUrl = resolveSoFrontendUrl(env);
   if (!soFrontendUrl) {

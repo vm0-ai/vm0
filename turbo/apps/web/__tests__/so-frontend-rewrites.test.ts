@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSoFrontendRewrites,
+  matchesSoFrontendRewritePath,
   resolveSoFrontendUrl,
 } from "../so-frontend-rewrites";
 
@@ -70,5 +71,18 @@ describe("so frontend rewrites", () => {
     expect(sources.has("/connector/:path*")).toBe(false);
     expect(sources.has("/export")).toBe(false);
     expect(sources.has("/sign-in-token")).toBe(false);
+  });
+
+  it("matches configured so frontend rewrite paths", () => {
+    expect(matchesSoFrontendRewritePath("/pricing")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/en/pricing")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/en/blog/posts/example")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/docs/getting-started")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sign-in/sso-callback")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/assets/vm0-logo.svg")).toBe(true);
+
+    expect(matchesSoFrontendRewritePath("/connector/success")).toBe(false);
+    expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(false);
+    expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(false);
   });
 });

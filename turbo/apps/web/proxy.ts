@@ -16,6 +16,10 @@ import {
   matchesApiBackendRewritePath,
   matchesOAuthWebOriginRewritePath,
 } from "./api-backend-rewrites";
+import {
+  matchesSoFrontendRewritePath,
+  resolveSoFrontendUrl,
+} from "./so-frontend-rewrites.js";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -96,6 +100,7 @@ const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 const OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
+const SO_FRONTEND_ALLOWED_PAGE_METHODS = new Set(["GET", "HEAD"]);
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
@@ -177,6 +182,22 @@ export default async function middleware(
   // from returning our 200 directly.
   if (isApiRoute && request.method === "OPTIONS") {
     return handleCors(request);
+  }
+
+  if (
+    resolveSoFrontendUrl({
+      NEXT_PUBLIC_PAID_ONBOARDING_URL: env().NEXT_PUBLIC_PAID_ONBOARDING_URL,
+      VERCEL_ENV: env().VERCEL_ENV,
+    }) &&
+    matchesSoFrontendRewritePath(request.nextUrl.pathname) &&
+    !SO_FRONTEND_ALLOWED_PAGE_METHODS.has(request.method)
+  ) {
+    return new NextResponse(null, {
+      status: 405,
+      headers: {
+        Allow: "GET, HEAD",
+      },
+    });
   }
 
   const authHeader = request.headers.get("authorization");
