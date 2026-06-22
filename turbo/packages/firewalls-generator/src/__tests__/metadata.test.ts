@@ -107,6 +107,9 @@ describe("firewall metadata generator", () => {
     expect(staticValueModuleSpecifiers(source)).not.toContain(
       "../../connectors/src/firewalls",
     );
+    for (const specifier of staticValueModuleSpecifiers(source)) {
+      expect(specifier).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
+    }
     expect(dynamicImportSpecifiers(source)).not.toContain(
       "../../connectors/src/firewalls",
     );
