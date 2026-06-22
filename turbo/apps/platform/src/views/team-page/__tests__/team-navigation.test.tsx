@@ -167,6 +167,23 @@ async function findLoadedPermissionsDialog(): Promise<HTMLElement> {
   return dialogForElement(unknownEndpoints);
 }
 
+async function openAxiomPermissionsDialog(): Promise<HTMLElement> {
+  mockTeamAPIs();
+  detachedSetupPage({
+    context,
+    path: `/agents/${researchAgentId}`,
+  });
+
+  await screen.findByText("@workspace");
+  click(screen.getByLabelText("Manage Axiom permissions"));
+
+  const permissionsDialog = await findLoadedPermissionsDialog();
+  expect(
+    within(permissionsDialog).getByText("for Research Agent"),
+  ).toBeInTheDocument();
+  return permissionsDialog;
+}
+
 async function connectorCategoryLabel(
   connectorType: ConnectorType,
   category: string,
@@ -594,27 +611,8 @@ describe("team page navigation", () => {
     });
   });
 
-  it("updates connector permission policies from an agent page", async () => {
-    mockTeamAPIs();
-    detachedSetupPage({
-      context,
-      path: `/agents/${researchAgentId}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("@workspace")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Manage Axiom permissions"));
-
-    const permissionsDialog = await findLoadedPermissionsDialog();
-    expect(
-      within(permissionsDialog).getByText("for Research Agent"),
-    ).toBeInTheDocument();
-
+  it("discards connector permission policy drafts when closing the drawer", async () => {
+    const permissionsDialog = await openAxiomPermissionsDialog();
     const permissionRow = await permissionRowByName(
       permissionsDialog,
       "annotations|create",
@@ -642,16 +640,22 @@ describe("team page navigation", () => {
       within(reopenedPermissionRow).queryByText("24h"),
     ).not.toBeInTheDocument();
     expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
+  });
 
+  it("applies and restores connector permission policies from an agent page", async () => {
+    const permissionsDialog = await openAxiomPermissionsDialog();
+    const permissionRow = await permissionRowByName(
+      permissionsDialog,
+      "annotations|create",
+    );
+    const loadedPermissionsDialog = dialogForElement(permissionRow);
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
-      expect(
-        within(reopenedPermissionRow).getByText("24h"),
-      ).toBeInTheDocument();
-      expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeEnabled();
+      expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
+      expect(buttonByText("Apply", loadedPermissionsDialog)).toBeEnabled();
     });
-    click(buttonByText("Apply", reopenedPermissionsDialog));
+    click(buttonByText("Apply", loadedPermissionsDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
