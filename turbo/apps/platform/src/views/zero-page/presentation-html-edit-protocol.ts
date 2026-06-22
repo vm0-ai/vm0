@@ -21,6 +21,15 @@ const UNSAFE_PREVIEW_URL_PROTOCOLS = [
   "javascript:",
   "vbscript:",
 ] as const;
+const THEME_SCRIPT_VARIABLES = {
+  fontMap: "FONTS",
+  monoPaletteMap: "MONO",
+  vibrantPaletteMap: "VIB",
+} as const;
+const THEME_SWITCHER_SELECT_IDS = {
+  font: "swFont",
+  palette: "swPal",
+} as const;
 
 export interface PresentationEditBlock {
   readonly editId: string;
@@ -56,6 +65,17 @@ interface MutableDeckMetadata {
   kind?: string;
   slides?: Record<string, { speakerNotes?: string }>;
 }
+
+type PresentationPalette = readonly [
+  bg: string,
+  surface: string,
+  ink: string,
+  soft: string,
+  placeholder: string,
+  accents: readonly [string, string, string, string],
+];
+
+type PresentationFontPair = readonly [display: string, body: string];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -302,6 +322,322 @@ function sanitizePreviewDocument(doc: Document): void {
   doc.head.prepend(csp);
 }
 
+function extractVariableObjectText(
+  scriptText: string,
+  variableName: string,
+): string | null {
+  const pattern =
+    variableName === THEME_SCRIPT_VARIABLES.monoPaletteMap
+      ? /\bvar\s+MONO\s*=\s*(\{[\s\S]*?\});/
+      : variableName === THEME_SCRIPT_VARIABLES.vibrantPaletteMap
+        ? /\bvar\s+VIB\s*=\s*(\{[\s\S]*?\});/
+        : variableName === THEME_SCRIPT_VARIABLES.fontMap
+          ? /\bvar\s+FONTS\s*=\s*(\{[\s\S]*?\});/
+          : null;
+  const match = pattern?.exec(scriptText);
+  if (!match?.[1]) {
+    return null;
+  }
+  return match[1];
+}
+
+function extractPaletteMap(
+  scriptText: string,
+  variableName: string,
+): Record<string, PresentationPalette> {
+  const objectText = extractVariableObjectText(scriptText, variableName);
+  if (!objectText) {
+    return {};
+  }
+  const paletteMap: Record<string, PresentationPalette> = {};
+  const paletteEntryPattern =
+    /"([^"]+)"\s*:\s*\[\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*\[\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*,\s*"(#[\da-f]{6})"\s*\]\s*\]/gi;
+  for (const match of objectText.matchAll(paletteEntryPattern)) {
+    const [
+      ,
+      name,
+      bg,
+      surface,
+      ink,
+      soft,
+      placeholder,
+      accent,
+      support1,
+      support2,
+      support3,
+    ] = match;
+    if (
+      name &&
+      bg &&
+      surface &&
+      ink &&
+      soft &&
+      placeholder &&
+      accent &&
+      support1 &&
+      support2 &&
+      support3
+    ) {
+      paletteMap[name] = [
+        bg,
+        surface,
+        ink,
+        soft,
+        placeholder,
+        [accent, support1, support2, support3],
+      ];
+    }
+  }
+  return paletteMap;
+}
+
+function extractFontMap(
+  scriptText: string,
+  variableName: string,
+): Record<string, PresentationFontPair> {
+  const objectText = extractVariableObjectText(scriptText, variableName);
+  if (!objectText) {
+    return {};
+  }
+  const fontMap: Record<string, PresentationFontPair> = {};
+  const fontEntryPattern =
+    /"([^"]+)"\s*:\s*\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]/g;
+  for (const match of objectText.matchAll(fontEntryPattern)) {
+    const [, name, display, body] = match;
+    if (name && display?.trim() && body?.trim()) {
+      fontMap[name] = [display, body];
+    }
+  }
+  return fontMap;
+}
+
+const SW_PAL_GET_BY_ID_PATTERN =
+  /\b([A-Za-z_$][\w$]*)\s*=\s*document\.getElementById\(\s*(['"])swPal\2\s*\)/g;
+const SW_FONT_GET_BY_ID_PATTERN =
+  /\b([A-Za-z_$][\w$]*)\s*=\s*document\.getElementById\(\s*(['"])swFont\2\s*\)/g;
+const SW_PAL_QUERY_SELECTOR_PATTERN =
+  /\b([A-Za-z_$][\w$]*)\s*=\s*document\.querySelector\(\s*(['"])#swPal\2\s*\)/g;
+const SW_FONT_QUERY_SELECTOR_PATTERN =
+  /\b([A-Za-z_$][\w$]*)\s*=\s*document\.querySelector\(\s*(['"])#swFont\2\s*\)/g;
+
+const SELECT_VALUE_ASSIGNMENT_PATTERN =
+  /\b([A-Za-z_$][\w$]*)\.value\s*=\s*(['"])(.*?)\2/g;
+
+function collectPatternVariableNames(
+  scriptText: string,
+  patterns: readonly RegExp[],
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    for (const match of scriptText.matchAll(pattern)) {
+      if (match[1]) {
+        names.add(match[1]);
+      }
+    }
+  }
+  return names;
+}
+
+function extractSelectVariableNames(
+  scriptText: string,
+  selectId: string,
+): ReadonlySet<string> {
+  return selectId === THEME_SWITCHER_SELECT_IDS.palette
+    ? collectPatternVariableNames(scriptText, [
+        SW_PAL_GET_BY_ID_PATTERN,
+        SW_PAL_QUERY_SELECTOR_PATTERN,
+      ])
+    : selectId === THEME_SWITCHER_SELECT_IDS.font
+      ? collectPatternVariableNames(scriptText, [
+          SW_FONT_GET_BY_ID_PATTERN,
+          SW_FONT_QUERY_SELECTOR_PATTERN,
+        ])
+      : new Set<string>();
+}
+
+function extractAssignedString(
+  scriptText: string,
+  variableNames: ReadonlySet<string>,
+): string | null {
+  SELECT_VALUE_ASSIGNMENT_PATTERN.lastIndex = 0;
+  for (const match of scriptText.matchAll(SELECT_VALUE_ASSIGNMENT_PATTERN)) {
+    const [, variableName, , value] = match;
+    if (variableName && value && variableNames.has(variableName)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function selectedPaletteFromScript(
+  scriptText: string,
+): PresentationPalette | null {
+  const selectedPalette = extractAssignedString(
+    scriptText,
+    extractSelectVariableNames(scriptText, THEME_SWITCHER_SELECT_IDS.palette),
+  );
+  const paletteMatch = /^([MV]):(.+)$/.exec(selectedPalette ?? "");
+  if (!paletteMatch?.[1] || !paletteMatch[2]) {
+    return null;
+  }
+  const paletteMap =
+    paletteMatch[1] === "M"
+      ? extractPaletteMap(scriptText, THEME_SCRIPT_VARIABLES.monoPaletteMap)
+      : extractPaletteMap(scriptText, THEME_SCRIPT_VARIABLES.vibrantPaletteMap);
+  return paletteMap[paletteMatch[2]] ?? null;
+}
+
+function selectedFontPairFromScript(
+  scriptText: string,
+): PresentationFontPair | null {
+  const selectedFont = extractAssignedString(
+    scriptText,
+    extractSelectVariableNames(scriptText, THEME_SWITCHER_SELECT_IDS.font),
+  );
+  if (!selectedFont) {
+    return null;
+  }
+  const fontMap = extractFontMap(scriptText, THEME_SCRIPT_VARIABLES.fontMap);
+  return fontMap[selectedFont] ?? null;
+}
+
+function hexLuminance(hexColor: string): number {
+  const normalized = hexColor.replace("#", "");
+  const channels = [0, 2, 4].map((index) => {
+    const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
+    return value <= 0.039_28
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
+
+function contrastRatio(colorA: string, colorB: string): number {
+  const luminanceA = hexLuminance(colorA);
+  const luminanceB = hexLuminance(colorB);
+  return (
+    (Math.max(luminanceA, luminanceB) + 0.05) /
+    (Math.min(luminanceA, luminanceB) + 0.05)
+  );
+}
+
+function hexToRgb(hexColor: string): readonly [number, number, number] {
+  const normalized = hexColor.replace("#", "");
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+  ];
+}
+
+function rgbToHex(rgb: readonly [number, number, number]): string {
+  return `#${rgb
+    .map((value) => {
+      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+    })
+    .join("")}`;
+}
+
+function mixRgb(
+  colorA: readonly [number, number, number],
+  colorB: readonly [number, number, number],
+  amount: number,
+): readonly [number, number, number] {
+  return [
+    Math.round(colorA[0] * (1 - amount) + colorB[0] * amount),
+    Math.round(colorA[1] * (1 - amount) + colorB[1] * amount),
+    Math.round(colorA[2] * (1 - amount) + colorB[2] * amount),
+  ];
+}
+
+function previewTextColorOn(background: string): string {
+  return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
+}
+
+function safePreviewGround(accent: string): readonly [string, string] {
+  const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
+  const target: readonly [number, number, number] =
+    text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
+  const accentRgb = hexToRgb(accent);
+  for (let amount = 0; amount <= 1.0001; amount += 0.04) {
+    const ground = rgbToHex(mixRgb(accentRgb, target, amount));
+    if (contrastRatio(text, ground) >= 4.6) {
+      return [ground, text];
+    }
+  }
+  return [accent, text];
+}
+
+function cssFontFamilyName(name: string): string {
+  return `'${name.replaceAll("\\", String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
+}
+
+function materializedThemeCss(params: {
+  readonly fontPair: PresentationFontPair | null;
+  readonly palette: PresentationPalette;
+}): string {
+  const [bg, surface, ink, soft, ph, [accent, s1, s2, s3]] = params.palette;
+  const accents = [accent, s1, s2, s3] as const;
+  const accentVariables = accents
+    .map((accentColor, index) => {
+      const [ground, text] = safePreviewGround(accentColor);
+      return `--g${index}:${ground};--t${index}:${text};`;
+    })
+    .join("");
+  const fontVariables = params.fontPair
+    ? `--fd:${cssFontFamilyName(params.fontPair[0])},'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;--fb:${cssFontFamilyName(params.fontPair[1])},'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;`
+    : "";
+
+  return `
+    :root {
+      --bg:${bg};
+      --surface:${surface};
+      --ink:${ink};
+      --soft:${soft};
+      --ph:${ph};
+      --accent:${accent};
+      --s1:${s1};
+      --s2:${s2};
+      --s3:${s3};
+      --oa:${previewTextColorOn(accent)};
+      --o1:${previewTextColorOn(s1)};
+      --o2:${previewTextColorOn(s2)};
+      --o3:${previewTextColorOn(s3)};
+      --ka:${contrastRatio(accent, bg) >= 4.5 ? accent : ink};
+      --kad:${contrastRatio(accent, ink) >= 4.5 ? accent : bg};
+      --k1:${contrastRatio(s1, bg) >= 4.5 ? s1 : ink};
+      --k2:${contrastRatio(s2, bg) >= 4.5 ? s2 : ink};
+      --k3:${contrastRatio(s3, bg) >= 4.5 ? s3 : ink};
+      ${accentVariables}
+      ${fontVariables}
+    }
+  `;
+}
+
+function materializeThemeSwitcherDefaults(doc: Document): void {
+  const scriptText = Array.from(doc.querySelectorAll("script"))
+    .map((script) => {
+      return script.textContent ?? "";
+    })
+    .join("\n");
+  const palette = selectedPaletteFromScript(scriptText);
+  if (!palette) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.dataset.vm0MaterializedTheme = "true";
+  style.textContent = materializedThemeCss({
+    fontPair: selectedFontPairFromScript(scriptText),
+    palette,
+  });
+  doc.head.append(style);
+}
+
 export function patchPresentationHtml(params: {
   readonly blocks: readonly PresentationEditBlock[];
   readonly html: string;
@@ -366,6 +702,7 @@ export function previewPresentationHtml(params: {
   readonly html: string;
 }): string {
   const doc = new DOMParser().parseFromString(params.html, "text/html");
+  materializeThemeSwitcherDefaults(doc);
   sanitizePreviewTree(doc);
   const previewDoc = document.implementation.createHTMLDocument(
     doc.title || "Presentation preview",
