@@ -3,18 +3,46 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopConfig } from "./config";
 import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
-import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import {
+  checkForDesktopUpdates,
+  installDesktopAutoUpdates,
+} from "./desktop-auto-updates";
 
-const mocks = vi.hoisted(() => ({
-  app: { isPackaged: true },
-  autoUpdater: {
-    quitAndInstall: vi.fn(),
-  },
-  dialog: {
-    showMessageBox: vi.fn<() => Promise<{ response: number }>>(),
-  },
-  updateElectronApp: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  type AutoUpdaterListener = (...args: readonly unknown[]) => void;
+  const autoUpdaterListeners = new Map<string, Set<AutoUpdaterListener>>();
+
+  function addAutoUpdaterListener(
+    eventName: string,
+    listener: AutoUpdaterListener,
+  ): void {
+    const listeners = autoUpdaterListeners.get(eventName) ?? new Set();
+    listeners.add(listener);
+    autoUpdaterListeners.set(eventName, listeners);
+  }
+
+  function removeAutoUpdaterListener(
+    eventName: string,
+    listener: AutoUpdaterListener,
+  ): void {
+    autoUpdaterListeners.get(eventName)?.delete(listener);
+  }
+
+  return {
+    app: { isPackaged: true },
+    autoUpdater: {
+      checkForUpdates: vi.fn<() => void>(),
+      quitAndInstall: vi.fn(),
+      once: vi.fn(addAutoUpdaterListener),
+      removeListener: vi.fn(removeAutoUpdaterListener),
+    },
+    autoUpdaterListeners,
+    dialog: {
+      showMessageBox: vi.fn<() => Promise<{ response: number }>>(),
+    },
+    updateElectronApp: vi.fn(),
+  };
+});
 
 vi.mock("electron", () => ({
   app: mocks.app,
@@ -96,6 +124,17 @@ function installAndCaptureUpdateOptions(
   };
 }
 
+function emitAutoUpdaterEvent(
+  eventName: string,
+  ...args: readonly unknown[]
+): void {
+  const listeners = [...(mocks.autoUpdaterListeners.get(eventName) ?? [])];
+  mocks.autoUpdaterListeners.delete(eventName);
+  listeners.forEach((listener) => {
+    listener(...args);
+  });
+}
+
 async function flushDownloadedUpdateCallback(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
   await Promise.resolve();
@@ -104,6 +143,7 @@ async function flushDownloadedUpdateCallback(): Promise<void> {
 describe("desktop auto-updates", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.autoUpdaterListeners.clear();
     mocks.app.isPackaged = true;
     mocks.dialog.showMessageBox.mockResolvedValue({ response: 1 });
     stubDesktopAutoUpdatePlatform();
@@ -131,6 +171,53 @@ describe("desktop auto-updates", () => {
       expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
     });
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("checks for updates on request", () => {
+    expect(checkForDesktopUpdates()).toBe(true);
+
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows when requested update checks find no update", async () => {
+    expect(checkForDesktopUpdates()).toBe(true);
+
+    emitAutoUpdaterEvent("update-not-available");
+    await flushDownloadedUpdateCallback();
+
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "No Updates Available",
+        message: "Zero Computer Use is up to date.",
+      }),
+    );
+  });
+
+  it("shows when requested update checks fail", async () => {
+    const error = new Error("feed unavailable");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mocks.autoUpdater.checkForUpdates.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    expect(checkForDesktopUpdates()).toBe(false);
+    await flushDownloadedUpdateCallback();
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "Desktop update check failed",
+      error,
+    );
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Unable to Check for Updates",
+        message: "Zero Computer Use could not check for updates.",
+        detail: "feed unavailable",
+      }),
+    );
+
+    consoleError.mockRestore();
   });
 
   it("prompts instead of silently restarting during recent command activity", async () => {
