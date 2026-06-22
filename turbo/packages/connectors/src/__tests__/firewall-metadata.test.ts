@@ -286,6 +286,23 @@ describe("firewall metadata", () => {
     expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
   });
 
+  it("keeps permission detail metadata behind connector-specific dynamic imports", () => {
+    const loader = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/loader.generated.ts",
+    );
+    const source = fs.readFileSync(loader, "utf-8");
+    const dynamicSpecifiers = dynamicImportSpecifiers(source);
+
+    expect(staticImportSpecifiers(source)).toStrictEqual(["./types"]);
+    expect(dynamicSpecifiers).toContain("./details/slack.generated");
+    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+    for (const specifier of dynamicSpecifiers) {
+      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+    }
+  });
+
   it("keeps server metadata behind an explicit package subpath", () => {
     const rootEntrypoint = fs.readFileSync(
       path.resolve(import.meta.dirname, "../index.ts"),
