@@ -11,8 +11,5 @@ pub(super) fn is_valid_session_id(id: &str) -> bool {
 }
 
 pub(super) fn canonical_codex_thread_id(id: &str) -> Option<String> {
-    if !is_valid_session_id(id) {
-        return None;
-    }
-    uuid::Uuid::parse_str(id).ok().map(|uuid| uuid.to_string())
+    guest_contracts::codex_thread_id::canonical_codex_thread_id(id)
 }

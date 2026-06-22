@@ -1,13 +1,15 @@
 //! Session-history reader — abstracts over Claude (literal jsonl path) and
-//! codex (`CODEX_SEARCH:{dir}:{id}` marker → recursive scan + optional zstd decode).
+//! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → recursive scan +
+//! optional zstd decode).
 //!
 //! The event metadata capture path writes one of two payloads to
 //! `paths::session_history_path_file()`:
 //!
 //! - Claude: a literal filesystem path to the `.jsonl` history file.
-//! - Codex:  a `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker. The codex
-//!   CLI only writes the session file out at turn-completion time, so we
-//!   defer resolution until checkpoint time when the file is on disk.
+//! - Codex:  a length-prefixed
+//!   `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}` marker. The codex
+//!   CLI only writes the session file out at turn-completion time, so we defer
+//!   resolution until checkpoint time when the file is on disk.
 //!
 //! `read_session_history` is the file-backed entry point. Checkpoint resolves
 //! missing marker payloads first, then calls `read_session_history_from_payload`.
@@ -28,6 +30,7 @@
 use crate::error::AgentError;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
+use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -39,9 +42,10 @@ const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 
 /// Build the persisted Codex session-history marker payload.
 pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
+    let sessions_dir = sessions_dir.display().to_string();
     format!(
-        "{CODEX_MARKER_PREFIX}{}:{thread_id}",
-        sessions_dir.display()
+        "{CODEX_MARKER_PREFIX}{}:{sessions_dir}:{thread_id}",
+        sessions_dir.len()
     )
 }
 
@@ -53,8 +57,8 @@ pub(crate) fn is_codex_marker(payload: &str) -> bool {
 /// Read the session history bytes pointed to by `path_file`.
 ///
 /// The file content is either a literal path (Claude) or a
-/// `CODEX_SEARCH:{dir}:{id}` marker (codex). Returns the file contents,
-/// decompressed if the resolved path ends in `.zst`.
+/// codex marker. Returns the file contents, decompressed if the resolved path
+/// ends in `.zst`.
 pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
     let raw = std::fs::read_to_string(path_file).map_err(|e| {
         AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
@@ -65,9 +69,14 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
 /// Read session history bytes from an already-resolved marker payload.
 ///
 /// The payload is either a literal path (Claude) or a
-/// `CODEX_SEARCH:{dir}:{id}` marker (codex).
+/// codex marker.
 pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
-    if let Some((sessions_dir, thread_id)) = decode_marker(payload) {
+    if is_codex_marker(payload) {
+        let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
+            return Err(AgentError::Checkpoint(
+                "Invalid Codex session history marker".to_string(),
+            ));
+        };
         return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
             AgentError::Checkpoint(format!(
                 "Codex session file not found under {}",
@@ -80,14 +89,26 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     read_history_bytes(&session_path)
 }
 
-/// Parse `CODEX_SEARCH:{dir}:{thread_id}` into `(dir, thread_id)`. Returns
-/// `None` for any input that doesn't carry the prefix (Claude path).
+/// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
+/// paths containing `:` cannot be confused with decorated thread IDs.
 fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
-    let rest = content.strip_prefix(CODEX_MARKER_PREFIX)?;
-    let last_colon = rest.rfind(':')?;
-    let (dir, id_with_colon) = rest.split_at(last_colon);
-    let thread_id = &id_with_colon[1..];
-    if dir.is_empty() || thread_id.is_empty() {
+    if let Some(rest) = content.strip_prefix(CODEX_MARKER_PREFIX) {
+        return decode_len_prefixed_marker(rest);
+    }
+
+    None
+}
+
+fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
+    let (dir_len, payload) = rest.split_once(':')?;
+    let dir_len: usize = dir_len.parse().ok()?;
+    if dir_len == 0 || payload.len() <= dir_len || !payload.is_char_boundary(dir_len) {
+        return None;
+    }
+
+    let (dir, delimiter_and_thread_id) = payload.split_at(dir_len);
+    let thread_id = delimiter_and_thread_id.strip_prefix(':')?;
+    if thread_id.is_empty() {
         return None;
     }
     Some((PathBuf::from(dir), thread_id))
@@ -97,23 +118,13 @@ fn read_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
+    let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
         return Ok(None);
     };
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
     read_codex_session_history_impl(sessions_dir, &id_norm)
-}
-
-pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
-    Some(canonical_codex_thread_id(thread_id)?.replace('-', ""))
-}
-
-pub(crate) fn canonical_codex_thread_id(thread_id: &str) -> Option<String> {
-    uuid::Uuid::parse_str(thread_id)
-        .ok()
-        .map(|uuid| uuid.to_string())
 }
 
 fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {

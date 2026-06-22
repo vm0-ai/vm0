@@ -42,7 +42,17 @@ while [ -n "$remaining" ]; do
   check_restore_dir_component "$current"
 done
 id="$VM0_CODEX_RESTORE_SESSION_ID"
-id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
+case "$id" in
+  ""|*[!0123456789abcdefABCDEF-]*)
+    echo "invalid codex restore session id" >&2
+    exit 1
+    ;;
+esac
+if [ "${#id}" -ne 36 ]; then
+  echo "invalid codex restore session id" >&2
+  exit 1
+fi
+id_no_dashes="$VM0_CODEX_RESTORE_SESSION_FILENAME_KEY"
 case "$id_no_dashes" in
   ""|*[!0123456789abcdefABCDEF]*)
     echo "invalid codex restore session id" >&2
