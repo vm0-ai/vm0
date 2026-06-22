@@ -138,10 +138,11 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         "turn.failed" => {
             let error = event.get("error");
+            let structured_error = event.pointer("/turn/error").or(error);
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
-                failure_reason: codex_event_failure_reason(event, error),
+                failure_reason: codex_event_failure_reason(event, structured_error),
             })
         }
         "turn.completed" => {
@@ -213,6 +214,9 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     {
         return Some(FailureReason::ReconnectRequired);
     }
+    if let Some(reason) = codex_error_info_failure_reason(error) {
+        return Some(reason);
+    }
     if codex_error_message(Some(error))
         .as_deref()
         .is_some_and(is_codex_model_capacity_message)
@@ -220,6 +224,21 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
         return Some(FailureReason::ProviderOverloaded);
     }
     None
+}
+
+fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
+    match error
+        .get("codex_error_info")
+        .or_else(|| error.get("codexErrorInfo"))?
+    {
+        Value::String(info) => match info.as_str() {
+            "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+            "usageLimitExceeded" => Some(FailureReason::UsageLimit),
+            _ => None,
+        },
+        Value::Object(_) => None,
+        _ => None,
+    }
 }
 
 fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
@@ -855,6 +874,29 @@ mod tests {
     }
 
     #[test]
+    fn codex_turn_failed_uses_nested_turn_error_for_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "turn failed from server",
+            "turn": {
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "Incorrect API key provided"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_model_capacity_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -869,6 +911,46 @@ mod tests {
                 event_type: "turn.failed",
                 message: "Selected model is at capacity. Please try a different model.".to_string(),
                 failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_server_overloaded_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codex_error_info": "serverOverloaded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_usage_limit_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codex_error_info": "usageLimitExceeded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::UsageLimit),
             })
         );
     }

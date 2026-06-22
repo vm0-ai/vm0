@@ -585,6 +585,8 @@ fn invalid_field_for_method(method: &str, field: &'static str) -> CodexAppServer
 mod tests {
     use serde_json::{Value, json};
 
+    use agent_diagnostics::FailureReason;
+
     use crate::events;
     use crate::masker::SecretMasker;
 
@@ -919,6 +921,10 @@ mod tests {
         );
         assert_eq!(diagnostic.event_type, "turn.failed");
         assert_eq!(diagnostic.message, "turn failed (capacity)");
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
     }
 
     #[test]
