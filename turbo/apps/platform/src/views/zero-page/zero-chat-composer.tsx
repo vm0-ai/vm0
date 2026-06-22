@@ -2569,7 +2569,7 @@ function TemplatePreview({
   priority = false,
 }: {
   item: PresentationTemplateItem;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
   const hover = useGet(templateCardHover$);
@@ -2604,6 +2604,15 @@ function TemplatePreview({
     failedImageUrls[preferredStaticPreviewImage] === true
       ? presentationTemplateFallbackSlideImage(item, hoverSlideIndex)
       : preferredStaticPreviewImage;
+  const currentPreviewSlideIndex = () => {
+    const index =
+      presentationTemplateHtmlPreviewCache().activeIndexes.get(item.embedUrl) ??
+      hoverSlideIndex;
+    return Math.max(0, Math.min(index, scrubSlideCount - 1));
+  };
+  const openPreview = () => {
+    onPreview(item, currentPreviewSlideIndex());
+  };
 
   const startHtmlPreviewLoad = () => {
     const cache = presentationTemplateHtmlPreviewCache();
@@ -2817,17 +2826,23 @@ function TemplatePreview({
         }}
       />
       {visibleHtmlPreview?.loading ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-0.5 overflow-hidden bg-muted">
           <div className="h-full w-1/3 animate-pulse bg-muted-foreground/40" />
         </div>
       ) : null}
       <button
         type="button"
+        aria-label={`Preview ${item.title} at current slide`}
+        className="absolute inset-0 z-10 cursor-zoom-in bg-transparent transition-colors hover:bg-foreground/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={openPreview}
+      />
+      <button
+        type="button"
         aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
-          onPreview(item);
+          openPreview();
         }}
       >
         <IconEye size={16} stroke={1.8} />
@@ -3272,7 +3287,7 @@ function PptCard({
   item: PresentationTemplateItem;
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
   priority?: boolean;
 }) {
   return (
@@ -3933,7 +3948,7 @@ function PptTemplateGrid({
   items: PresentationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
-  onPreview: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem, slideIndex: number) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -3977,6 +3992,7 @@ function TemplatePickerDialog({
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4078,8 +4094,9 @@ function TemplatePickerDialog({
     onClose();
   };
 
-  const handlePreview = (item: PresentationTemplateItem) => {
+  const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
     setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
+    setDetailSlideIndex(item.slug, Math.max(0, Math.floor(slideIndex)));
     setPreviewSlug(item.slug);
   };
 

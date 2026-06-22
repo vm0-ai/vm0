@@ -1866,6 +1866,50 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("opens presentation template detail at the scrubbed card slide", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const lastSlideNumber = template.previewImages.length;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+
+    const previewFrame = await screen.findByTestId(
+      `${template.title} card HTML preview`,
+    );
+    const preview = previewFrame.parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(`${String(lastSlideNumber)} of 15`),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {
