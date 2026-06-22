@@ -98,6 +98,7 @@ _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
 _CONNECTOR_DIAGNOSTIC_LOOKUP_DONE = "_connector_diagnostic_lookup_done"
+_CONNECTOR_DIAGNOSTIC_CANDIDATE = "_connector_diagnostic_candidate"
 _CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
 _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
@@ -791,18 +792,6 @@ def _restore_request_headers_probe_metadata(
             flow.metadata.pop(key, None)
 
 
-def _record_connector_diagnostic_candidate(
-    flow: http.HTTPFlow,
-    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
-) -> None:
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES] = candidate.auth_header_names
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES] = candidate.auth_query_param_names
-
-
 def _connector_diagnostic_candidate_from_flow(
     flow: http.HTTPFlow,
 ) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
@@ -835,6 +824,15 @@ def _connector_diagnostic_candidate_from_flow(
     )
 
 
+def _cached_connector_diagnostic_candidate_from_flow(
+    flow: http.HTTPFlow,
+) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
+    candidate = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_CANDIDATE)
+    if isinstance(candidate, builtin_connector_diagnostics.ConnectorDiagnosticCandidate):
+        return candidate
+    return None
+
+
 def _maybe_record_allow_connector_diagnostic_context(
     flow: http.HTTPFlow,
     classification: _RequestClassification,
@@ -865,6 +863,9 @@ def _resolve_connector_diagnostic_candidate(
     candidate = _connector_diagnostic_candidate_from_flow(flow)
     if candidate is not None:
         return candidate
+    candidate = _cached_connector_diagnostic_candidate_from_flow(flow)
+    if candidate is not None:
+        return candidate
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE):
         return None
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_ELIGIBLE) is not True:
@@ -885,7 +886,7 @@ def _resolve_connector_diagnostic_candidate(
         ),
     )
     if candidate is not None:
-        _record_connector_diagnostic_candidate(flow, candidate)
+        flow.metadata[_CONNECTOR_DIAGNOSTIC_CANDIDATE] = candidate
     return candidate
 
 

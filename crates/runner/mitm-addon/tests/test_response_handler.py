@@ -581,6 +581,11 @@ class TestResponseHandler:
                 headers=header_map({"content-type": "text/plain"}),
                 content=b"upstream auth error",
             )
+            mitm_addon.responseheaders(flow)
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
             mitm_addon.response(flow)
 
         assert flow.response.status_code == 401
