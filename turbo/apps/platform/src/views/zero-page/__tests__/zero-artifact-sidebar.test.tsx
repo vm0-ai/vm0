@@ -1098,6 +1098,18 @@ ${openFencedHostedSiteUrl}`,
       expect(screen.getByLabelText("Open slide 1")).toBeInTheDocument();
       expect(screen.getByLabelText("Speaker notes")).toHaveValue("");
     });
+    expect(screen.getByTestId("presentation-editor-workspace")).toHaveClass(
+      "grid-rows-[auto_minmax(0,1fr)]",
+      "md:grid-cols-[260px_minmax(0,1fr)]",
+    );
+    expect(screen.getByTestId("presentation-editor-slide-list")).toHaveClass(
+      "overflow-x-auto",
+      "md:overflow-auto",
+    );
+    expect(screen.getByTestId("presentation-editor-main-pane")).toHaveClass(
+      "grid-rows-[minmax(0,1fr)_136px]",
+      "md:grid-rows-[minmax(0,1fr)_180px]",
+    );
 
     await fill(
       screen.getByLabelText("Speaker notes"),
