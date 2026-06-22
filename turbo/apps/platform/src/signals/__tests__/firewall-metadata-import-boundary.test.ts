@@ -17,6 +17,20 @@ function isSkippedDirectory(name: string): boolean {
   return name === "__tests__" || name === "mocks" || name === "test";
 }
 
+function isProductionSourceFile(name: string): boolean {
+  if (!name.endsWith(".ts") && !name.endsWith(".tsx")) {
+    return false;
+  }
+  if (name.endsWith(".d.ts")) {
+    return false;
+  }
+  return !(
+    name.includes(".test.") ||
+    name.includes(".spec.") ||
+    name.includes(".stories.")
+  );
+}
+
 function listProductionSourceFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -27,11 +41,7 @@ function listProductionSourceFiles(dir: string): string[] {
       }
       continue;
     }
-    if (
-      entry.isFile() &&
-      !entry.name.endsWith(".d.ts") &&
-      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))
-    ) {
+    if (entry.isFile() && isProductionSourceFile(entry.name)) {
       files.push(entryPath);
     }
   }
