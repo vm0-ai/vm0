@@ -29,7 +29,7 @@ pub enum CodexAppServerEventError {
     InvalidField { method: String, field: &'static str },
 }
 
-pub fn notification_to_codex_event(
+pub(super) fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
     match notification.method.as_str() {
@@ -97,6 +97,8 @@ fn map_item(
     let Some(normalized_item) = normalize_item(item, &notification.method)? else {
         return Ok(None);
     };
+    let timestamp =
+        required_number_field(params_object, &notification.method, input_timestamp_field)?;
 
     let mut event = Map::new();
     event.insert("type".to_string(), Value::String(event_type.to_string()));
@@ -106,12 +108,7 @@ fn map_item(
     );
     event.insert("turn_id".to_string(), Value::String(turn_id.to_string()));
     event.insert("item".to_string(), normalized_item);
-    copy_optional_field(
-        &mut event,
-        output_timestamp_field,
-        params_object,
-        input_timestamp_field,
-    );
+    event.insert(output_timestamp_field.to_string(), timestamp);
 
     Ok(Some(Value::Object(event)))
 }
@@ -123,6 +120,7 @@ fn map_error(notification: &ServerNotification) -> Result<Value, CodexAppServerE
         .ok_or_else(|| invalid_field(notification, "params"))?;
     let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
     let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let will_retry = required_bool_field(params_object, &notification.method, "willRetry")?;
     let error = required_object_field(params, &notification.method, "error")?;
     let message = required_string_field(error, &notification.method, "error.message")?;
     let normalized_error = normalize_error(error);
@@ -131,7 +129,7 @@ fn map_error(notification: &ServerNotification) -> Result<Value, CodexAppServerE
         "type": "error",
         "thread_id": thread_id,
         "turn_id": turn_id,
-        "will_retry": params_object.get("willRetry").and_then(Value::as_bool).unwrap_or(false),
+        "will_retry": will_retry,
         "message": message,
         "error": normalized_error,
     }))
@@ -143,12 +141,17 @@ fn map_warning(notification: &ServerNotification) -> Result<Value, CodexAppServe
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
     let message = required_string_field(params_object, &notification.method, "message")?;
+    let thread_id =
+        required_nullable_string_field(params_object, &notification.method, "threadId")?;
 
     let mut event = Map::new();
     event.insert("type".to_string(), Value::String("warning".to_string()));
     event.insert("message".to_string(), Value::String(message.to_string()));
-    if let Some(thread_id) = params_object.get("threadId") {
-        event.insert("thread_id".to_string(), thread_id.clone());
+    if let Some(thread_id) = thread_id {
+        event.insert(
+            "thread_id".to_string(),
+            Value::String(thread_id.to_string()),
+        );
     }
 
     Ok(Value::Object(event))
@@ -162,12 +165,10 @@ fn normalize_turn(
     let id = required_string_field(turn, method, "turn.id")?;
     normalized.insert("id".to_string(), Value::String(id.to_string()));
 
-    if let Some(status) = turn.get("status") {
-        normalized.insert(
-            "status".to_string(),
-            normalize_status_value(status, method, "turn.status")?,
-        );
-    }
+    normalized.insert(
+        "status".to_string(),
+        required_status_field(turn, method, "turn.status")?,
+    );
     if let Some(error) = turn.get("error") {
         normalized.insert("error".to_string(), normalize_optional_error(error));
     }
@@ -371,6 +372,52 @@ fn required_string_field<'a>(
         .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
+fn required_nullable_string_field<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<Option<&'a str>, CodexAppServerEventError> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let value = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    value
+        .as_str()
+        .map(Some)
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_bool_field(
+    object: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<bool, CodexAppServerEventError> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?
+        .as_bool()
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_number_field(
+    object: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<Value, CodexAppServerEventError> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let value = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?;
+    if value.is_number() {
+        return Ok(value.clone());
+    }
+    Err(invalid_field_for_method(method, field))
+}
+
 fn required_status_field(
     object: &Map<String, Value>,
     method: &str,
@@ -481,7 +528,8 @@ mod tests {
     }
 
     fn mapped_event(method: &str, params: Value) -> Value {
-        notification_to_codex_event(&notification(method, params))
+        notification(method, params)
+            .to_codex_event()
             .expect("notification should map")
             .expect("notification should produce an event")
     }
@@ -819,6 +867,25 @@ mod tests {
     }
 
     #[test]
+    fn warning_with_null_thread_id_omits_thread_id() {
+        let event = mapped_event(
+            "warning",
+            json!({
+                "threadId": null,
+                "message": "global warning"
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "warning",
+                "message": "global warning"
+            })
+        );
+    }
+
+    #[test]
     fn delta_notifications_do_not_produce_visible_events() {
         for method in DELTA_NOTIFICATION_METHODS {
             let result = notification_to_codex_event(&notification(
@@ -860,6 +927,86 @@ mod tests {
             CodexAppServerEventError::MissingField {
                 method: "thread/started".to_string(),
                 field: "thread.id"
+            }
+        );
+    }
+
+    #[test]
+    fn item_notification_missing_required_timestamp_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "item": {
+                    "type": "agentMessage",
+                    "id": "item-1",
+                    "text": "hello",
+                    "phase": null,
+                    "memoryCitation": null
+                }
+            })),
+        })
+        .expect_err("missing completedAtMs should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::MissingField {
+                method: "item/completed".to_string(),
+                field: "completedAtMs"
+            }
+        );
+    }
+
+    #[test]
+    fn turn_notification_missing_required_status_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            })),
+        })
+        .expect_err("missing turn status should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::MissingField {
+                method: "turn/completed".to_string(),
+                field: "turn.status"
+            }
+        );
+    }
+
+    #[test]
+    fn error_notification_missing_required_will_retry_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "error".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "error": {
+                    "message": "server rejected request",
+                    "codexErrorInfo": "badRequest",
+                    "additionalDetails": "policy denied"
+                }
+            })),
+        })
+        .expect_err("missing willRetry should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::MissingField {
+                method: "error".to_string(),
+                field: "willRetry"
             }
         );
     }

@@ -17,7 +17,7 @@
 
 mod child_env;
 pub mod codex_app_server;
-pub mod codex_app_server_events;
+mod codex_app_server_events;
 mod codex_setup;
 mod command;
 mod diagnostics;
