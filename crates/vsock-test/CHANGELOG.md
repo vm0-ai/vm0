@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.104](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.103...vsock-test-v0.9.104) (2026-06-22)
+
+
+### Refactoring
+
+* remove legacy exec result projections ([#18429](https://github.com/vm0-ai/vm0/issues/18429)) ([19b22fb](https://github.com/vm0-ai/vm0/commit/19b22fbde865689860394e2e9e9f699347f633b3))
+
 ## [0.9.103](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.102...vsock-test-v0.9.103) (2026-06-20)
 
 ## [0.9.102](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.101...vsock-test-v0.9.102) (2026-06-19)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.17.0...desktop-v0.18.0) (2026-06-22)
+
+
+### Features
+
+* add computer use automation preflight ([#18445](https://github.com/vm0-ai/vm0/issues/18445)) ([874ba1a](https://github.com/vm0-ai/vm0/commit/874ba1a8290ae71c305634af32e4f6c252b6b255))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.16.2...desktop-v0.17.0) (2026-06-20)
 
 

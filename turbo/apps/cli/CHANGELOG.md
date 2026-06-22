@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.200.2](https://github.com/vm0-ai/vm0/compare/cli-v9.200.1...cli-v9.200.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* add resource-based Gmail firewall permissions ([#18425](https://github.com/vm0-ai/vm0/issues/18425)) ([66c2735](https://github.com/vm0-ai/vm0/commit/66c273569d7b5f6086dd56848c403aa7d4ae282b))
+
+
+### Refactoring
+
+* agent-scoped workflow ownership and management (1:N redesign) ([#18436](https://github.com/vm0-ai/vm0/issues/18436)) ([9275df5](https://github.com/vm0-ai/vm0/commit/9275df501a6908443d913284da05703768e778d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.108.0
+    * @vm0/connectors bumped to 1.99.0
+    * @vm0/core bumped to 8.362.2
+
 ## [9.200.1](https://github.com/vm0-ai/vm0/compare/cli-v9.200.0...cli-v9.200.1) (2026-06-21)
 
 

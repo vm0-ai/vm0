@@ -1246,7 +1246,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.39.1"
+version = "0.39.2"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "api-contracts",
  "libc",
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.125.4"
+version = "0.125.5"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.9"
+version = "0.19.10"
 dependencies = [
  "async-trait",
  "serde",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.52"
+version = "0.37.53"
 dependencies = [
  "async-trait",
  "base64",
@@ -2773,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.38"
+version = "0.17.39"
 dependencies = [
  "nix",
  "tokio",
@@ -3689,7 +3689,7 @@ version = "0.18.16"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.103"
+version = "0.9.104"
 dependencies = [
  "guest-write-file",
  "libc",
