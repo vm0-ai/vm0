@@ -49,6 +49,28 @@ async function promptToRestartForUpdate(
   await restartForUpdate(prepareForQuitAndInstall);
 }
 
+async function notifyNoDesktopUpdatesFound(): Promise<void> {
+  await dialog.showMessageBox({
+    type: "info",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "No Updates Available",
+    message: "Zero Computer Use is up to date.",
+  });
+}
+
+async function notifyDesktopUpdateCheckFailed(error: unknown): Promise<void> {
+  console.error("Desktop update check failed", error);
+  await dialog.showMessageBox({
+    type: "error",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "Unable to Check for Updates",
+    message: "Zero Computer Use could not check for updates.",
+    detail: error instanceof Error ? error.message : undefined,
+  });
+}
+
 function shouldPromptForDownloadedUpdate(
   getComputerUseHostState: () => ComputerUseHostRuntimeState,
 ): boolean {
@@ -109,11 +131,40 @@ export function installDesktopAutoUpdates(
 }
 
 export function checkForDesktopUpdates(): boolean {
+  const handleNoUpdate = (): void => {
+    cleanup();
+    void notifyNoDesktopUpdatesFound().catch((error) => {
+      console.error("Desktop update status dialog failed", error);
+    });
+  };
+  const handleUpdateAvailable = (): void => {
+    cleanup();
+  };
+  const handleError = (error: Error): void => {
+    cleanup();
+    void notifyDesktopUpdateCheckFailed(error).catch((dialogError) => {
+      console.error("Desktop update failure dialog failed", dialogError);
+    });
+  };
+
+  function cleanup(): void {
+    autoUpdater.removeListener("update-not-available", handleNoUpdate);
+    autoUpdater.removeListener("update-available", handleUpdateAvailable);
+    autoUpdater.removeListener("error", handleError);
+  }
+
+  autoUpdater.once("update-not-available", handleNoUpdate);
+  autoUpdater.once("update-available", handleUpdateAvailable);
+  autoUpdater.once("error", handleError);
+
   try {
     autoUpdater.checkForUpdates();
     return true;
   } catch (error) {
-    console.error("Desktop update check failed", error);
+    cleanup();
+    void notifyDesktopUpdateCheckFailed(error).catch((dialogError) => {
+      console.error("Desktop update failure dialog failed", dialogError);
+    });
     return false;
   }
 }
