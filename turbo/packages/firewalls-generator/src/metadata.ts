@@ -988,7 +988,7 @@ function buildExecutionMetadata(
   const placeholderValues = buildExecutionPlaceholderValues(firewall);
 
   return {
-    type: source.type as FirewallConnectorType & ConnectorType,
+    type: source.type,
     billable: billableTypes.has(source.type),
     baseUrlVarNames,
     baseUrlTemplates,
