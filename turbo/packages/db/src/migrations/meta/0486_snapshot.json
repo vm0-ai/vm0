@@ -1,6 +1,6 @@
 {
-  "id": "d10e4bda-138e-4dbf-bfa9-40ea8b7e2a14",
-  "prevId": "1bd76d36-af35-4b5b-9e5e-390f837e2112",
+  "id": "1faf39af-9c2f-4927-bfd0-fcdf4c101c30",
+  "prevId": "d10e4bda-138e-4dbf-bfa9-40ea8b7e2a14",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13960,6 +13960,28 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "concurrently": false
+        },
+        "idx_zero_workflows_agent_name_unique": {
+          "name": "idx_zero_workflows_agent_name_unique",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "type = 'workflow'",
           "concurrently": false
         }
       },

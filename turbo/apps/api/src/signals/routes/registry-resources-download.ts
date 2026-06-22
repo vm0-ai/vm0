@@ -45,7 +45,7 @@ function storageServiceNotConfigured() {
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "tool:presentation-deck-tools":
-    "5494156e07c650862e92beb7036ef532ed7b0774fda373c72c50e682b19a5e95",
+    "610da333cd83b2d5d5901316638f5f2ee625058e529ccb8100cd87e489c6a030",
   "design-system:business-data":
     "c9f7a6246c31da8a50f8e0bedee769416af83fdea4047ec59ccf926b78f18fe9",
   "design-system:botane-organic":
@@ -111,31 +111,31 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
   "template:html-ppt-botane-organic":
-    "d83cccffbd6d1d00f4fd2bc8826118033fc28c358c92dd94813caadc6a0a8be4",
+    "7438cf79bbf25501de0c7a91cc35a98e164e6e1e59c8e8571f0f2d4272a5158f",
   "template:html-ppt-playful-launch":
-    "309c6a2b0a89db310fd4479176725891f4bace374f3f9c08b06def05a22a8b1e",
+    "ff2dae6ef1f99d1c754903a7acc49ea220a5439f7408870f8a9074e4543de190",
   "template:html-ppt-business-data":
-    "09c8eff5a9e8f554955dbfccec3f2ea99e357d7f8592c363fc6f699aa1cf9298",
+    "dd820c04b1c913413555adc8402a759abad8da2f6e80dd8add8a2a5120249d1b",
   "template:html-ppt-crayon":
-    "7ac8468455b894a45c1c81faffde66b28505e0c4769e854a9c9f377f858d80be",
+    "23ee8a977f4e437c2ef5e82236822b5bb687077951fc2fa375de3b48b79bb205",
   "template:html-ppt-creative-agency":
-    "0b07366aaf83a87e5e43c076a5f0dbaea276ed68a9ba687029dfbcb60d8167f4",
+    "e8c07a3b33c3edd7dd64693890be854a45fec0b2cf6edece53108472e2a076aa",
   "template:html-ppt-data-report":
-    "5294d776ee5f9451ea938847b8daa4a8cc99cd90f7b37a9e0dfe3a0b18d3b50e",
+    "ecb1617127e5626726790b7e248722e2e0a81592413aa7a98a7da640649ece08",
   "template:html-ppt-editorial-magazine":
-    "d2cd24d759e7ebde294a46f2d17a560e017af501ec4c7d2042ecfe9ce507aa5a",
+    "ef93ddbd125dd9e85f060f61afe7eda17cc26560a0f436eafaa422fb5ad8f6a1",
   "template:html-ppt-landing-consulting":
-    "cc009f54425b0178cfb46d2a12253ec255f93f6592bc4309707190f1f3677731",
+    "fa1f402e0b2c9e071a17cfebe547b11537030be066d4bbf04b1374678ec06d4d",
   "template:html-ppt-lumina":
-    "e848b5288f21e82697293eb8b5ca588f10b4a34547d5108bb05044d398cb81da",
+    "a39fcc27d8f5d6a712959cfccf1cb930627faa8877b8d990439ad9679adc4c5f",
   "template:html-ppt-mosaic-geometric":
-    "48d7be42f3fefbb61106bfa427f8be8bd25ac748e6c7faa3d47f1b88d50bd199",
+    "3a09001e9455d10e96d9cbfd6dc66c2705cb26b7bdc41a9764cb8a20f65d74b1",
   "template:html-ppt-playful-pop":
-    "ffc9dca27b1c56b6233129e46b48b81e04e37071171d2c37be13cb4f0433284a",
+    "6c5a931e683b359c5c8561aeda0b34f5b784da052b051d2e2cb2f155aae20097",
   "template:html-ppt-nocturne":
-    "3d5f86e3de61a3cb268206bb5ab8ee37cb5222f00ab3dc271344d18239be9068",
+    "b0bb3ef5e0fcc772ecfa67e27776e3be38fdff33b411b431d053544b5ffa4abc",
   "template:html-ppt-neo-brutalism":
-    "3751de9d792c738b7ef0deffb01495c8bf210e28862cbef0e9a3145205acab32",
+    "8d3ff7b69bbc1ec197f60688d92ffddf5fd5d3c3186aa69cce35d49ce057514c",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(

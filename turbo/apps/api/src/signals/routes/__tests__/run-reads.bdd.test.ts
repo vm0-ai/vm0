@@ -2707,7 +2707,7 @@ describe("RUN-04: agent run telemetry families", () => {
             },
             featureFlags: { legacyIgnored: true },
             featureFlagEntries: [
-              { name: "computerUse", enabled: true },
+              { name: "sandboxIoLimiters", enabled: true },
               { name: "dummy", enabled: null },
               { enabled: true },
             ],
@@ -2762,7 +2762,7 @@ describe("RUN-04: agent run telemetry families", () => {
           unknownPolicy: "allow",
         },
       },
-      featureFlags: { computerUse: true },
+      featureFlags: { sandboxIoLimiters: true },
       artifact: { vasStorageName: "art-1" },
     });
     expect(contextRead.body.environment).toStrictEqual({

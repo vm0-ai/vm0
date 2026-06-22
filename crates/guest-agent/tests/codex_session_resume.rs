@@ -172,7 +172,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "system log must not contain the raw thread id, got: {system_log}"
     );
     assert!(
-        !system_log.contains("CODEX_SEARCH:"),
+        !system_log.contains("CODEX_SEARCH"),
         "system log must not contain the codex marker payload, got: {system_log}"
     );
     assert!(
@@ -347,7 +347,12 @@ fn send_event_codex_ignores_malformed_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
 
-    for thread_id in ["abc", "0193-abcd-ef01-7234-89abcdef01234567"] {
+    for thread_id in [
+        "abc",
+        "0193-abcd-ef01-7234-89abcdef01234567",
+        "{0193abcd-ef01-7234-89ab-cdef01234567}",
+        "urn:uuid:0193abcd-ef01-7234-89ab-cdef01234567",
+    ] {
         reset_session_files();
 
         let masker = SecretMasker::from_raw("");

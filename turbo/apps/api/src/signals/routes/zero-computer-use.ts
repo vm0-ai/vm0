@@ -7,14 +7,11 @@ import {
   zeroComputerUseHostsContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   claimNextComputerUseHostCommand$,
   completeComputerUseHostCommand$,
@@ -29,16 +26,6 @@ import {
   stopComputerUseHost$,
 } from "../services/zero-computer-use.service";
 import type { RouteEntry } from "../route";
-
-const computerUseDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Computer use is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
 
 const computerUseHostNotAuthorized = Object.freeze({
   status: 403 as const,
@@ -93,26 +80,9 @@ function parseBearerToken(authorization: string | undefined): string | null {
   return token.length > 0 ? token : null;
 }
 
-const computerUseEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
-
 const hostStartBody$ = bodyResultOf(zeroComputerUseHostsContract.start);
 const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(computerUseEnabled$))) {
-    return computerUseDisabled;
-  }
-  signal.throwIfAborted();
-
   const bodyResult = await get(hostStartBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -192,11 +162,6 @@ const hostStopInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(computerUseEnabled$))) {
-    return computerUseDisabled;
-  }
-  signal.throwIfAborted();
-
   const result = await set(
     listComputerUseHosts$,
     { orgId: auth.orgId, userId: auth.userId },
@@ -210,11 +175,6 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const hostDeleteParams$ = pathParamsOf(zeroComputerUseHostsContract.delete);
 const hostDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(computerUseEnabled$))) {
-    return computerUseDisabled;
-  }
-  signal.throwIfAborted();
-
   const params = get(hostDeleteParams$);
   const result = await set(
     deleteComputerUseHost$,
@@ -233,11 +193,6 @@ const commandCreateBody$ = bodyResultOf(zeroComputerUseCommandContract.create);
 const commandCreateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(computerUseEnabled$))) {
-      return computerUseDisabled;
-    }
-    signal.throwIfAborted();
-
     const bodyResult = await get(commandCreateBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -292,11 +247,6 @@ const writeCommandCreateBody$ = bodyResultOf(
 const writeCommandCreateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(computerUseEnabled$))) {
-      return computerUseDisabled;
-    }
-    signal.throwIfAborted();
-
     const bodyResult = await get(writeCommandCreateBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -348,11 +298,6 @@ const writeCommandCreateInner$ = command(
 const commandGetParams$ = pathParamsOf(zeroComputerUseCommandContract.get);
 const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(computerUseEnabled$))) {
-    return computerUseDisabled;
-  }
-  signal.throwIfAborted();
-
   const params = get(commandGetParams$);
   const hostId = auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
   if (auth.tokenType === "zero" && !hostId) {
@@ -382,11 +327,6 @@ const screenshotGetParams$ = pathParamsOf(
 const screenshotGetInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(computerUseEnabled$))) {
-      return computerUseDisabled;
-    }
-    signal.throwIfAborted();
-
     const params = get(screenshotGetParams$);
     const hostId =
       auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
@@ -519,11 +459,6 @@ const auditEventsQuery$ = queryOf(zeroComputerUseAuditEventsContract.list);
 const auditEventsListInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(computerUseEnabled$))) {
-      return computerUseDisabled;
-    }
-    signal.throwIfAborted();
-
     const query = get(auditEventsQuery$);
     const result = await set(
       listComputerUseAuditEvents$,

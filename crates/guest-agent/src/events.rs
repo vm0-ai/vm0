@@ -365,9 +365,9 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///
 /// The on-disk format of `session_history_path_file()` differs by framework:
 /// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
-/// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
-///   doesn't write the session file until turn-completion, so resolution
-///   is deferred to checkpoint time.
+/// - Codex: length-prefixed `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}`
+///   marker — codex doesn't write the session file until turn-completion, so
+///   resolution is deferred to checkpoint time.
 pub(crate) struct SessionMetadataCapture {
     existing_session_id_seeded: bool,
 }
@@ -497,7 +497,7 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     let thread_id = raw_codex_thread_id(event)?;
-    let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
+    let thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)?;
     let marker = session_metadata::codex_history_marker_payload(&thread_id);
 
     Some((thread_id, marker))

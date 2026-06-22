@@ -343,7 +343,13 @@ import { workosFirewall } from "./workos.generated";
 import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
-import { youtubeFirewall } from "./youtube.generated";
+import {
+  youtubeCategories,
+  youtubeCategoryOrder,
+  youtubeDefaultAllowed,
+  youtubeDefaultUnknownPolicy,
+  youtubeFirewall,
+} from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zendeskFirewall } from "./zendesk.generated";
@@ -737,6 +743,10 @@ const CONNECTOR_CATEGORIES: Partial<
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
   vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
+  youtube: {
+    categories: youtubeCategories,
+    displayOrder: youtubeCategoryOrder,
+  },
 };
 
 /** Get the category data for a connector type (null if uncategorized). */
@@ -891,6 +901,7 @@ const DEFAULT_ALLOWED: Partial<
   maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,
+  youtube: youtubeDefaultAllowed,
 };
 
 const DEFAULT_UNKNOWN_POLICY: Partial<
@@ -907,6 +918,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   "google-sheets": googleSheetsDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
+  youtube: youtubeDefaultUnknownPolicy,
 };
 
 /**

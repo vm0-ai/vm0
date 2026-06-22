@@ -415,6 +415,58 @@ describe("known endpoint-scoped firewall bases", () => {
     ).toEqual([]);
   });
 
+  it("keeps YouTube permission names resource-oriented instead of OAuth-scope based", () => {
+    const names = new Set(
+      getConnectorFirewall("youtube").apis.flatMap((api) => {
+        return (
+          api.permissions?.map((permission) => {
+            return permission.name;
+          }) ?? []
+        );
+      }),
+    );
+
+    expect(names).toContain("videos.read");
+    expect(names).toContain("comments.moderate");
+    expect(names).toContain("third-party-links.read");
+    expect(names).not.toContain("youtube");
+    expect(names).not.toContain("youtube.force-ssl");
+    expect(names).not.toContain("youtube.readonly");
+    expect(names).not.toContain("youtube.upload");
+    expect(
+      [...names].filter((name) => {
+        return name.startsWith("youtube.");
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps YouTube upload routes attached to upload-specific permissions", () => {
+    const firewall = getConnectorFirewall("youtube");
+    const rulesByPermission = new Map<string, Set<string>>();
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        const rules = rulesByPermission.get(permission.name) ?? new Set();
+        for (const rule of permission.rules) {
+          rules.add(`${api.base} ${rule}`);
+        }
+        rulesByPermission.set(permission.name, rules);
+      }
+    }
+
+    expect([...rulesByPermission.get("videos.create")!].sort()).toEqual([
+      "https://youtube.googleapis.com/resumable/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/youtube POST /v3/videos",
+    ]);
+    expect(rulesByPermission.get("videos.write")).not.toContain(
+      "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+    );
+    expect(rulesByPermission.get("videos.read")).not.toContain(
+      "https://youtube.googleapis.com/youtube POST /v3/videos",
+    );
+  });
+
   it("narrows Xero tenant discovery to the Connections endpoint", () => {
     const firewall = getConnectorFirewall("xero");
     const bases = apiBases(firewall);

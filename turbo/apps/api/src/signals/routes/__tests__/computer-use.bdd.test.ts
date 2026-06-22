@@ -34,60 +34,6 @@ afterEach(() => {
 });
 
 describe("FILE-03 desktop computer-use runtime", () => {
-  it("keeps disabled desktop computer-use routes behind the public feature switch", async () => {
-    const actor = bdd.user();
-    const missingId = randomUUID();
-
-    const hosts = await api.requestListComputerUseHosts(actor, [403]);
-    expectApiError(hosts.body);
-    expect(hosts.body.error.message).toBe("Computer use is not enabled");
-
-    const startHost = await api.requestStartComputerUseHost(actor, [403]);
-    expectApiError(startHost.body);
-    expect(startHost.body.error.message).toBe("Computer use is not enabled");
-
-    const deleteHost = await api.requestDeleteComputerUseHost(
-      actor,
-      missingId,
-      [403],
-    );
-    expectApiError(deleteHost.body);
-    expect(deleteHost.body.error.message).toBe("Computer use is not enabled");
-
-    const createCommand = await api.requestCreateComputerUseWriteCommand(
-      actor,
-      [403],
-    );
-    expectApiError(createCommand.body);
-    expect(createCommand.body.error.message).toBe(
-      "Computer use is not enabled",
-    );
-
-    const readCommand = await api.requestReadComputerUseCommand(
-      actor,
-      missingId,
-      [403],
-    );
-    expectApiError(readCommand.body);
-    expect(readCommand.body.error.message).toBe("Computer use is not enabled");
-
-    const screenshot = await api.requestComputerUseScreenshot(
-      actor,
-      missingId,
-      [403],
-    );
-    expectApiError(screenshot.body);
-    expect(screenshot.body.error.message).toBe("Computer use is not enabled");
-
-    const audit = await api.requestListComputerUseAuditEvents(
-      actor,
-      { commandId: missingId },
-      [403],
-    );
-    expectApiError(audit.body);
-    expect(audit.body.error.message).toBe("Computer use is not enabled");
-  });
-
   it("does not expose the legacy computer-use command approval route", async () => {
     const app = createApp({ signal: context.signal });
     const response = await app.request(
@@ -107,7 +53,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const actor = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
 
-    await api.enableComputerUse(actor);
     const initialHosts = await api.listComputerUseHosts(actor);
     expect(initialHosts.hosts).toStrictEqual([]);
 
@@ -188,7 +133,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
   it("keeps multiple active hosts and lets stale heartbeats recover", async () => {
     const actor = bdd.user();
-    await api.enableComputerUse(actor);
     const base = now();
     mockNow(base);
 
@@ -253,7 +197,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
   it("keeps installation hosts stable across stop and restart", async () => {
     const actor = bdd.user();
-    await api.enableComputerUse(actor);
     const installationId = randomUUID();
 
     const started = await api.startComputerUseHost(actor, {
@@ -299,7 +242,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
   it("publishes computer-use host list changes", async () => {
     const actor = bdd.user();
-    await api.enableComputerUse(actor);
     const base = now();
     mockNow(base);
 
@@ -433,7 +375,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ orgId, userId });
-    await api.enableComputerUse(actor);
 
     const noHost = await api.requestCreateComputerUseReadCommand(
       actor,
@@ -648,7 +589,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
   it("times out stale running commands and reports completion failures", async () => {
     const actor = bdd.user();
-    await api.enableComputerUse(actor);
     const base = now();
     mockNow(base);
     const host = await api.startComputerUseHost(actor);
@@ -748,8 +688,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ orgId, userId });
     const peer = bdd.user();
-    await api.enableComputerUse(actor);
-    await api.enableComputerUse(peer);
 
     mockNow(now() - 40 * 24 * 60 * 60 * 1000);
     const host = await api.startComputerUseHost(actor);

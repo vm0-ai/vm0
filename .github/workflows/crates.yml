@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -276,7 +276,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
     if: needs.detect.outputs.any-changed == 'true'
     steps:
@@ -333,7 +333,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||
@@ -378,7 +378,7 @@ jobs:
   nbd-cow-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
     if: |
       needs.detect.outputs.metal-job-ref != '' && (
