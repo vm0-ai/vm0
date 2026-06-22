@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.126.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.5...runner-rs-v0.126.0) (2026-06-22)
+
+
+### Features
+
+* add google meet manifest firewall ([#18475](https://github.com/vm0-ai/vm0/issues/18475)) ([0e72804](https://github.com/vm0-ai/vm0/commit/0e728042c42ee7402f701549b738a794df3aefc5))
+
+
+### Bug Fixes
+
+* **runner:** abandon unpublished workspace promotions ([#18466](https://github.com/vm0-ai/vm0/issues/18466)) ([9c967c5](https://github.com/vm0-ai/vm0/commit/9c967c5d28ae9062b58aeaaf5d1c076e880c488a))
+* validate workspace promotion identity on reuse ([#18458](https://github.com/vm0-ai/vm0/issues/18458)) ([a570d5a](https://github.com/vm0-ai/vm0/commit/a570d5a2d738ff7c7eb19e1c3c36475f52f2e339))
+
+
+### Performance Improvements
+
+* **mitm-addon:** reuse auth base tls context ([#18494](https://github.com/vm0-ai/vm0/issues/18494)) ([03cd4a9](https://github.com/vm0-ai/vm0/commit/03cd4a944ce5441408859de3df17a882f279a4a1))
+
 ## [0.125.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.125.4...runner-rs-v0.125.5) (2026-06-22)
 
 

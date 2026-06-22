@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.2...guest-agent-v0.39.3) (2026-06-22)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify repeated claude 529 overloads ([#18465](https://github.com/vm0-ai/vm0/issues/18465)) ([c30ecd1](https://github.com/vm0-ai/vm0/commit/c30ecd12ce74aa9c817653cdbab86cf190cdaa3d))
+
 ## [0.39.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.1...guest-agent-v0.39.2) (2026-06-22)
 
 ## [0.39.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.0...guest-agent-v0.39.1) (2026-06-20)

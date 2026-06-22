@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.168.1](https://github.com/vm0-ai/vm0/compare/api-v1.168.0...api-v1.168.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* **goal:** drop sandbox-fresh note from continuation prompt ([#18438](https://github.com/vm0-ai/vm0/issues/18438)) ([321fe60](https://github.com/vm0-ai/vm0/commit/321fe605f6affa6f87975448a9aa21cb50a422c2))
+
+
+### Refactoring
+
+* fold firewall execution metadata into server metadata ([#18472](https://github.com/vm0-ai/vm0/issues/18472)) ([f86f3e1](https://github.com/vm0-ai/vm0/commit/f86f3e17e5ab5e6e06f3625ebbdee6c4e2bce65e))
+* remove computer use command approval flow ([#18481](https://github.com/vm0-ai/vm0/issues/18481)) ([12d4897](https://github.com/vm0-ai/vm0/commit/12d48973b4926c6f2be676667db3ad0c4bc300f8))
+* unify user permission grant write api ([#18469](https://github.com/vm0-ai/vm0/issues/18469)) ([17d02f7](https://github.com/vm0-ai/vm0/commit/17d02f7f5b9256e12623037907d812a3c00fc995))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.1
+    * @vm0/connectors bumped to 1.100.0
+    * @vm0/core bumped to 8.362.3
+    * @vm0/db bumped to 1.62.0
+
 ## [1.168.0](https://github.com/vm0-ai/vm0/compare/api-v1.167.1...api-v1.168.0) (2026-06-22)
 
 
