@@ -36,13 +36,11 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  getFirewallExecutionMetadata,
   isFirewallExecutionMetadataConnectorType,
-  loadFirewallExecutionMetadata,
-  type FirewallExecutionMetadataDetail,
-  type FirewallExecutionMetadataConnectorType,
-} from "@vm0/connectors/firewall-execution-metadata/server";
-import {
   loadFirewallPermissionIndex,
+  type FirewallExecutionMetadata,
+  type FirewallExecutionMetadataConnectorType,
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
 import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
@@ -2234,10 +2232,10 @@ async function loadRequiredFirewallPermissionIndex(
   return index;
 }
 
-async function loadRequiredFirewallExecutionMetadata(
+function getRequiredFirewallExecutionMetadata(
   type: FirewallExecutionMetadataConnectorType,
-): Promise<FirewallExecutionMetadataDetail> {
-  const metadata = await loadFirewallExecutionMetadata(type);
+): FirewallExecutionMetadata {
+  const metadata = getFirewallExecutionMetadata(type);
   if (!metadata) {
     throw new Error(`Missing firewall execution metadata: ${type}`);
   }
@@ -2330,7 +2328,7 @@ function baseUrlValidationAuth(
 }
 
 function builtinFirewallEntryForMetadata(
-  metadata: FirewallExecutionMetadataDetail,
+  metadata: FirewallExecutionMetadata,
   vars: Record<string, string> | undefined,
 ): ExecutionFirewallEntry {
   if (metadata.baseUrlVarNames.length === 0) {
@@ -2479,7 +2477,7 @@ function modelProviderPermissionManifest(
 }
 
 interface BuiltinConnectorManifestSource {
-  readonly metadata: FirewallExecutionMetadataDetail;
+  readonly metadata: FirewallExecutionMetadata;
   readonly permissionIndex: FirewallPermissionIndex;
 }
 
@@ -2557,10 +2555,8 @@ async function buildPermissionManifest(args: {
 
   const loadedConnectorSources = await Promise.all(
     builtinConnectorTypes.map(async (type) => {
-      const [metadata, permissionIndex] = await Promise.all([
-        loadRequiredFirewallExecutionMetadata(type),
-        loadRequiredFirewallPermissionIndex(type),
-      ]);
+      const metadata = getRequiredFirewallExecutionMetadata(type);
+      const permissionIndex = await loadRequiredFirewallPermissionIndex(type);
       if (
         type === "figma" &&
         args.connectorAuthMethods?.[type] === "api-token"

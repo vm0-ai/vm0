@@ -7,9 +7,3 @@ src/firewall-metadata/*.generated.ts
 src/firewall-metadata/.metadata-*
 src/firewall-metadata/.*.previous-*
 src/firewall-metadata/details/*
-
-# Firewall execution metadata produced by @vm0/firewalls-generator at install time.
-src/firewall-execution-metadata/*.generated.ts
-src/firewall-execution-metadata/.metadata-*
-src/firewall-execution-metadata/.*.previous-*
-src/firewall-execution-metadata/details/*
