@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
@@ -78,15 +79,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expectApiError(screenshot.body);
     expect(screenshot.body.error.message).toBe("Computer use is not enabled");
 
-    const approval = await api.decideComputerUseApproval(
-      actor,
-      missingId,
-      { decision: "deny" },
-      [403],
-    );
-    expectApiError(approval.body);
-    expect(approval.body.error.message).toBe("Computer use is not enabled");
-
     const audit = await api.requestListComputerUseAuditEvents(
       actor,
       { commandId: missingId },
@@ -94,6 +86,20 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
     expectApiError(audit.body);
     expect(audit.body.error.message).toBe("Computer use is not enabled");
+  });
+
+  it("does not expose the legacy computer-use command approval route", async () => {
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      `/api/zero/computer-use/commands/${randomUUID()}/approval`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision: "approve" }),
+      },
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("chains host start, command claim, completion, audit, and host deletion", async () => {
@@ -895,55 +901,5 @@ describe("FILE-03 desktop computer-use runtime", () => {
       throw new Error("Expected the second cleanup sweep to run");
     }
     expect(resweep.body.cleaned).toBe(0);
-  });
-
-  it("rejects approval decisions for unknown or non-pending write commands", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const actor = bdd.user({ orgId, userId });
-    await api.enableComputerUse(actor);
-
-    const unknown = await api.decideComputerUseApproval(
-      actor,
-      randomUUID(),
-      { decision: "deny" },
-      [404],
-    );
-    expectApiError(unknown.body);
-    expect(unknown.body.error.message).toBe(
-      "Computer-use write command not found",
-    );
-
-    await api.startComputerUseHost(actor);
-    const created = await api.createComputerUseWriteCommand(actor);
-    expect(created.status).toBe("queued");
-
-    const notPending = await api.decideComputerUseApproval(
-      actor,
-      created.commandId,
-      { decision: "deny", message: "blocked by reviewer" },
-      [409],
-    );
-    expectApiError(notPending.body);
-    expect(notPending.body.error.message).toBe(
-      "Computer-use write command is not pending approval",
-    );
-
-    const zeroCaller = await api.decideComputerUseApproval(
-      {
-        bearer: zeroComputerUseToken({
-          userId,
-          orgId,
-          capabilities: ["computer-use:write"],
-        }).token,
-      },
-      created.commandId,
-      { decision: "approve" },
-      [403],
-    );
-    expectApiError(zeroCaller.body);
-    expect(zeroCaller.body.error.message).toBe(
-      "This endpoint is not available for sandbox tokens",
-    );
   });
 });

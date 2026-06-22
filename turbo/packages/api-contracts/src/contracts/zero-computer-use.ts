@@ -27,7 +27,6 @@ export const computerUseCommandKindSchema = z.enum([
 ]);
 
 export const computerUseCommandStatusSchema = z.enum([
-  "pending_approval",
   "queued",
   "running",
   "succeeded",
@@ -394,7 +393,7 @@ export const computerUseHostDeleteResponseSchema = z.object({
 
 export const computerUseCommandCreateResponseSchema = z.object({
   commandId: z.string(),
-  status: z.enum(["queued", "pending_approval"]),
+  status: z.literal("queued"),
 });
 
 export const computerUseCommandResponseSchema = z.object({
@@ -410,16 +409,6 @@ export const computerUseCommandResponseSchema = z.object({
   createdAt: z.string(),
   claimedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
-});
-
-export const computerUseCommandApprovalBodySchema = z.object({
-  decision: z.enum(["approve", "deny"]),
-  message: z.string().max(512).optional(),
-});
-
-export const computerUseCommandApprovalResponseSchema = z.object({
-  commandId: z.string(),
-  status: z.enum(["queued", "failed"]),
 });
 
 export const computerUseHostCommandNextBodySchema = z.object({
@@ -462,8 +451,7 @@ export const computerUseAuditEventSchema = z.object({
   hostId: z.string().nullable(),
   kind: computerUseWriteCommandKindSchema,
   app: z.string().nullable(),
-  event: z.enum(["created", "approved", "denied", "completed"]),
-  approvalOutcome: z.enum(["approved", "denied"]).nullable(),
+  event: z.literal("completed"),
   redactedResult: z.record(z.string(), z.unknown()).nullable(),
   error: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
@@ -601,24 +589,6 @@ export const zeroComputerUseWriteCommandContract = c.router({
   },
 });
 
-export const zeroComputerUseCommandApprovalContract = c.router({
-  decide: {
-    method: "POST",
-    path: "/api/zero/computer-use/commands/:commandId/approval",
-    headers: authHeadersSchema,
-    pathParams: commandIdPathParamsSchema,
-    body: computerUseCommandApprovalBodySchema,
-    responses: {
-      200: computerUseCommandApprovalResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Approve or deny a pending desktop computer-use write command",
-  },
-});
-
 export const zeroComputerUseHostCommandsContract = c.router({
   next: {
     method: "POST",
@@ -705,8 +675,6 @@ export type ComputerUseWriteCommandKind = z.infer<
 >;
 export type ZeroComputerUseAuditEventsContract =
   typeof zeroComputerUseAuditEventsContract;
-export type ZeroComputerUseCommandApprovalContract =
-  typeof zeroComputerUseCommandApprovalContract;
 export type ZeroComputerUseCommandContract =
   typeof zeroComputerUseCommandContract;
 export type ZeroComputerUseHeartbeatContract =

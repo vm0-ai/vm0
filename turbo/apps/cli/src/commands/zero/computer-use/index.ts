@@ -83,9 +83,9 @@ Workflow:
      overwrites the same files.
 
 Notes:
-  Write commands are sent to the connected Desktop host and may wait for local
-  approval before they run. Coordinate fallbacks use screenshot coordinates from
-  get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
+  Write commands are sent to the connected Desktop host. Coordinate fallbacks use
+  screenshot coordinates from get-app-state; pass the matching --snapshot-id when
+  acting on a prior snapshot.
   type-text sends literal keyboard input to the target app's current focus. It
   first verifies the focused element is editable and fails with
   element_not_editable when it is not (for example a focused table or list), so
@@ -378,11 +378,7 @@ async function waitForCommand(
   const deadline = Date.now() + timeoutSeconds * 1000;
   while (Date.now() <= deadline) {
     const command = await getComputerUseCommand(commandId);
-    if (
-      command.status === "pending_approval" ||
-      command.status === "queued" ||
-      command.status === "running"
-    ) {
+    if (command.status === "queued" || command.status === "running") {
       if (process.stdout.isTTY) {
         process.stdout.write(".");
       }

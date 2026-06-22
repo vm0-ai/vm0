@@ -4,7 +4,6 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import {
   zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandApprovalContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
@@ -254,10 +253,6 @@ export function createComputerUseBddApi(context: TestContext) {
 
   function writeCommandClient() {
     return setupApp({ context })(zeroComputerUseWriteCommandContract);
-  }
-
-  function approvalClient() {
-    return setupApp({ context })(zeroComputerUseCommandApprovalContract);
   }
 
   function hostCommandsClient() {
@@ -581,25 +576,6 @@ export function createComputerUseBddApi(context: TestContext) {
         contentType: response.headers.get("content-type"),
         bytes: Buffer.from(await body.arrayBuffer()),
       };
-    },
-
-    async decideComputerUseApproval(
-      auth: ComputerUseAuth,
-      commandId: string,
-      body: {
-        readonly decision: "approve" | "deny";
-        readonly message?: string;
-      },
-      statuses: readonly (200 | 401 | 403 | 404 | 409)[],
-    ) {
-      return await accept(
-        approvalClient().decide({
-          headers: authenticate(auth),
-          params: { commandId },
-          body,
-        }),
-        statuses,
-      );
     },
 
     async claimNextComputerUseCommand(hostToken: string): Promise<
