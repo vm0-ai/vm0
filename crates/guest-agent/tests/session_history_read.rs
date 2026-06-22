@@ -167,26 +167,31 @@ fn read_session_history_legacy_codex_marker_rejects_urn_thread_id_with_colons() 
 }
 
 #[test]
-fn read_session_history_rejects_malformed_codex_marker_without_literal_read() {
-    let tmp = tempfile::tempdir().unwrap();
-    let path_file = tmp.path().join("path.txt");
-    std::fs::write(
-        &path_file,
+fn read_session_history_rejects_malformed_codex_markers_without_literal_read() {
+    for marker in [
         format!("CODEX_SEARCH_V2:not-a-length:/tmp:{VALID_CODEX_THREAD_ID}"),
-    )
-    .unwrap();
+        format!("CODEX_SEARCH_V2:999:/tmp:{VALID_CODEX_THREAD_ID}"),
+        "CODEX_SEARCH_V2:0::0193abcd-ef01-7234-89ab-cdef01234567".to_string(),
+        "CODEX_SEARCH_V2:4:/tmp".to_string(),
+        "CODEX_SEARCH_V2:4:/tmp:".to_string(),
+        format!("CODEX_SEARCH_V2:1:π:{VALID_CODEX_THREAD_ID}"),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let path_file = tmp.path().join("path.txt");
+        std::fs::write(&path_file, marker.as_bytes()).unwrap();
 
-    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
-        .expect_err("malformed codex marker must not fall back to literal path reads");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("Invalid Codex session history marker"),
-        "expected invalid marker error, got: {msg}"
-    );
-    assert!(
-        !msg.contains(VALID_CODEX_THREAD_ID),
-        "invalid marker error must not expose the thread id, got: {msg}"
-    );
+        let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+            .expect_err("malformed codex marker must not fall back to literal path reads");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Invalid Codex session history marker"),
+            "expected invalid marker error for {marker:?}, got: {msg}"
+        );
+        assert!(
+            !msg.contains(VALID_CODEX_THREAD_ID),
+            "invalid marker error must not expose the thread id for {marker:?}, got: {msg}"
+        );
+    }
 }
 
 #[test]
