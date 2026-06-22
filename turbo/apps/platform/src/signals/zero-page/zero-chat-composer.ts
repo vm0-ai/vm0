@@ -262,7 +262,6 @@ interface TemplateDetailHtmlPreviewState {
   readonly loading: boolean;
   readonly failed: boolean;
   readonly frameUrl: string | null;
-  readonly thumbnailFrameUrls: readonly string[];
   readonly slideCount: number;
 }
 
