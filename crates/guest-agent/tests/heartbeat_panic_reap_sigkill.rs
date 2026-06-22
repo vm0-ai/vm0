@@ -5,6 +5,7 @@
 
 mod common;
 
+use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
 use guest_agent::error::AgentError;
 use std::time::Duration;
 
@@ -39,13 +40,21 @@ async fn heartbeat_panic_reap_escalates_to_sigkill_when_sigterm_ignored()
     .await
     .expect("execute_cli did not return within 15s - heartbeat panic reap likely broken");
 
-    let err = match result {
-        Ok(_) => return Err("heartbeat panic should fail the run".into()),
-        Err(err) => err,
-    };
+    let result = result.expect("execute_cli returned Err before collecting controlled termination");
+    let err = result
+        .control_error
+        .as_ref()
+        .expect("heartbeat panic should preserve a controlled execution error");
     assert!(
         err.to_string().contains("heartbeat task panicked"),
         "expected heartbeat panic error, got {err}"
     );
+    let termination = result
+        .cli_termination
+        .expect("heartbeat panic should attach CLI termination diagnostic");
+    assert_eq!(termination.reason, CliTerminationReason::HeartbeatPanic);
+    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigkill));
+    assert!(termination.escalated);
+    assert_eq!(termination.observed_exit_code, Some(common::SIGKILL_EXIT));
     Ok(())
 }

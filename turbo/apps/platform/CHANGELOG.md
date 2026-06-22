@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.480.3](https://github.com/vm0-ai/vm0/compare/app-v0.480.2...app-v0.480.3) (2026-06-22)
+
+
+### Bug Fixes
+
+* support mobile video template previews ([#18433](https://github.com/vm0-ai/vm0/issues/18433)) ([4d8c5dd](https://github.com/vm0-ai/vm0/commit/4d8c5dd934a154d06b6382d3a93a2ac75a78b247))
+
+
+### Refactoring
+
+* fold firewall execution metadata into server metadata ([#18472](https://github.com/vm0-ai/vm0/issues/18472)) ([f86f3e1](https://github.com/vm0-ai/vm0/commit/f86f3e17e5ab5e6e06f3625ebbdee6c4e2bce65e))
+* unify user permission grant write api ([#18469](https://github.com/vm0-ai/vm0/issues/18469)) ([17d02f7](https://github.com/vm0-ai/vm0/commit/17d02f7f5b9256e12623037907d812a3c00fc995))
+
+
+### Performance Improvements
+
+* reduce presentation theme preview work ([#18480](https://github.com/vm0-ai/vm0/issues/18480)) ([9f9bc3d](https://github.com/vm0-ai/vm0/commit/9f9bc3df375a92c2a468c33a3ec7bf90ad50158e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.1
+    * @vm0/connectors bumped to 1.100.0
+    * @vm0/core bumped to 8.362.3
+
 ## [0.480.2](https://github.com/vm0-ai/vm0/compare/app-v0.480.1...app-v0.480.2) (2026-06-22)
 
 

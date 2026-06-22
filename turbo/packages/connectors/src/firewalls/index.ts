@@ -170,7 +170,13 @@ import {
   googleDriveDefaultUnknownPolicy,
   googleDriveFirewall,
 } from "./google-drive.generated";
-import { googleMeetFirewall } from "./google-meet.generated";
+import {
+  googleMeetCategories,
+  googleMeetCategoryOrder,
+  googleMeetDefaultAllowed,
+  googleMeetDefaultUnknownPolicy,
+  googleMeetFirewall,
+} from "./google-meet.generated";
 import { googleSearchConsoleFirewall } from "./google-search-console.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
@@ -703,6 +709,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: googleDriveCategories,
     displayOrder: googleDriveCategoryOrder,
   },
+  "google-meet": {
+    categories: googleMeetCategories,
+    displayOrder: googleMeetCategoryOrder,
+  },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
@@ -860,6 +870,7 @@ const DEFAULT_ALLOWED: Partial<
   "google-cloud": googleCloudDefaultAllowed,
   "google-docs": googleDocsDefaultAllowed,
   "google-drive": googleDriveDefaultAllowed,
+  "google-meet": googleMeetDefaultAllowed,
   gmail: gmailDefaultAllowed,
   maskdb: maskdbDefaultAllowed,
   slack: slackDefaultAllowed,
@@ -875,6 +886,7 @@ const DEFAULT_UNKNOWN_POLICY: Partial<
   "google-cloud": googleCloudDefaultUnknownPolicy,
   "google-docs": googleDocsDefaultUnknownPolicy,
   "google-drive": googleDriveDefaultUnknownPolicy,
+  "google-meet": googleMeetDefaultUnknownPolicy,
   gmail: gmailDefaultUnknownPolicy,
   maskdb: maskdbDefaultUnknownPolicy,
 };

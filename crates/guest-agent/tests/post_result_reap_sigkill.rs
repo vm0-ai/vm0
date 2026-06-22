@@ -10,6 +10,7 @@
 
 mod common;
 
+use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::time::Duration;
 
 #[tokio::test]
@@ -50,5 +51,16 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
         "expected SIGKILL exit ({}), got {exit_code} — SigkillPending escalation path is not firing",
         common::SIGKILL_EXIT
     );
+    assert!(
+        result.control_error.is_none(),
+        "post-result reap should not set a controlled execution error"
+    );
+    let termination = result
+        .cli_termination
+        .expect("post-result SIGKILL escalation should attach CLI termination diagnostic");
+    assert_eq!(termination.reason, CliTerminationReason::PostResultReap);
+    assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigkill));
+    assert!(termination.escalated);
+    assert_eq!(termination.observed_exit_code, Some(common::SIGKILL_EXIT));
     Ok(())
 }

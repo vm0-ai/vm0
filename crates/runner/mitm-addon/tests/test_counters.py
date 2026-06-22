@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import usage
-from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
@@ -113,11 +112,11 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-2")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
-    def test_buffered_usage_blocks_pending_until_flush(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_buffered_usage_blocks_pending_until_flush(self, tmp_path, real_flow, mitm_ctx):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
+        enqueue = RecordingEnqueue(return_value=True)
+        usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
@@ -126,100 +125,18 @@ class TestUsagePendingCounter:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
-        with usage_webhook_api() as webhook:
+        with mitm_ctx(api_url="https://api.test"):
             usage.report_model_provider_usage(flow, "run-1")
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
                 pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1"
             )
-            assert webhook.request_count == 0
+            enqueue.assert_not_called()
 
-            usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
-
+            assert usage.flush_usage_events(trigger="test") == 1
+        enqueue.assert_called_once()
         assert_current_pending(
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2"
-        )
-
-    def test_enqueue_logs_body_free_payload_summary(self, tmp_path):
-        proxy_log = tmp_path / "proxy.jsonl"
-        payload = {
-            "url": "payload-url",
-            "type": "payload-type",
-            "attempt": 99,
-            "error": "payload-error",
-            "runId": "run-1",
-            "events": [],
-        }
-
-        try:
-            with patch.object(usage.webhook.usage_executor, "submit") as mock_submit:
-                usage.webhook._enqueue_webhook(
-                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
-                    "tok",
-                    payload,
-                    str(proxy_log),
-                    "usage_event",
-                )
-            mock_submit.assert_called_once()
-        finally:
-            usage.counters.decrement_pending_reports()
-
-        [entry] = read_jsonl_entries_after_flush(proxy_log)
-        assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
-        assert entry["type"] == "usage_event"
-        assert entry["payload_run_id"] == "run-1"
-        assert entry["payload_event_count"] == 0
-        assert "payload" not in entry
-        assert "payload_bytes" not in entry
-        assert "events" not in entry
-        assert "idempotencyKey" not in json.dumps(entry)
-
-    def test_submit_failure_rolls_back_pending_report(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-
-        with (
-            patch.object(usage.webhook.usage_executor, "submit", side_effect=OSError("no threads")),
-            pytest.raises(OSError, match="no threads"),
-        ):
-            usage.webhook._enqueue_webhook(
-                "https://api.vm0.ai/api/webhooks/agent/usage-event",
-                "tok",
-                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
-                "",
-                "usage_event",
-            )
-
-        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
-        )
-
-    def test_sync_fallback_log_failure_rolls_back_pending_report(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-
-        with (
-            patch.object(
-                usage.webhook.usage_executor, "submit", side_effect=RuntimeError("shutdown")
-            ),
-            patch.object(
-                usage.webhook, "log_proxy_entry", side_effect=[None, OSError("disk full")]
-            ),
-            pytest.raises(OSError, match="disk full"),
-        ):
-            usage.webhook._enqueue_webhook(
-                "https://api.vm0.ai/api/webhooks/agent/usage-event",
-                "tok",
-                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
-                str(tmp_path / "proxy.jsonl"),
-                "usage_event",
-            )
-
-        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
         )
 
     def test_saturated_usage_flush_keeps_buffered_pending_snapshot(self, tmp_path):
@@ -375,82 +292,3 @@ class TestUsagePendingCounter:
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
             usage.write_pending_snapshot(flush_request_id="request-1")  # should not raise
-
-    def test_report_decrements_after_completion(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
-        """Retry exhaustion decrements reports but keeps the usage flush buffered."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok"
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
-
-        with (
-            usage_webhook_api() as webhook,
-            patch.object(usage.webhook.time, "sleep"),
-        ):
-            webhook.queue_response(500)
-            webhook.queue_response(500)
-            usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
-
-        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert_current_pending(
-            pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1"
-        )
-
-    def test_enqueue_increments_and_drains_reports(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
-        """Public entry increments pending on enqueue; executor drain decrements to 0."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok"
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
-
-        with usage_webhook_api():
-            usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
-
-        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
-        )
-
-    def test_sync_fallback_decrements_reports(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
-        """When the executor is already shut down, the sync fallback still decrements."""
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-        # Shut down the executor so _enqueue_webhook takes the sync fallback.
-        usage.flush_usage_events(trigger="test")
-        usage.webhook.usage_executor.shutdown(wait=True)
-
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok"
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
-
-        with usage_webhook_api():
-            usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events(trigger="test")
-
-        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
-        )

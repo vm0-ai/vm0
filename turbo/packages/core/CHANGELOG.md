@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.362.3](https://github.com/vm0-ai/vm0/compare/core-v8.362.2...core-v8.362.3) (2026-06-22)
+
+
+### Bug Fixes
+
+* support mobile video template previews ([#18433](https://github.com/vm0-ai/vm0/issues/18433)) ([4d8c5dd](https://github.com/vm0-ai/vm0/commit/4d8c5dd934a154d06b6382d3a93a2ac75a78b247))
+
+
+### Refactoring
+
+* remove computer use command approval flow ([#18481](https://github.com/vm0-ai/vm0/issues/18481)) ([12d4897](https://github.com/vm0-ai/vm0/commit/12d48973b4926c6f2be676667db3ad0c4bc300f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.1
+    * @vm0/connectors bumped to 1.100.0
+
 ## [8.362.2](https://github.com/vm0-ai/vm0/compare/core-v8.362.1...core-v8.362.2) (2026-06-22)
 
 
