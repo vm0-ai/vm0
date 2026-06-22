@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.128.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.127.1...runner-rs-v0.128.0) (2026-06-22)
+
+
+### Features
+
+* add google search console manifest firewall ([#18489](https://github.com/vm0-ai/vm0/issues/18489)) ([e77a78f](https://github.com/vm0-ai/vm0/commit/e77a78f27238f87230a394210e61676c01f5b254))
+
 ## [0.127.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.127.0...runner-rs-v0.127.1) (2026-06-22)
 
 

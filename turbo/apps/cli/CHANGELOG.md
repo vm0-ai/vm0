@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.201.0](https://github.com/vm0-ai/vm0/compare/cli-v9.200.4...cli-v9.201.0) (2026-06-22)
+
+
+### Features
+
+* add workflow trigger CLI commands ([#18515](https://github.com/vm0-ai/vm0/issues/18515)) ([7d147b0](https://github.com/vm0-ai/vm0/commit/7d147b0fa9b2abc1a8f6b90ae39a31c44c622660))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.108.3
+    * @vm0/connectors bumped to 1.102.0
+    * @vm0/core bumped to 8.362.5
+
 ## [9.200.4](https://github.com/vm0-ai/vm0/compare/cli-v9.200.3...cli-v9.200.4) (2026-06-22)
 
 
