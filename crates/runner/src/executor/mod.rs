@@ -25,10 +25,12 @@ use tokio_util::sync::CancellationToken;
 
 mod active_input;
 mod agent_run;
+mod cli_framework;
 mod diagnostics;
 mod env;
 mod guest_state;
 mod sandbox_run;
+mod session_id;
 mod session_restore;
 mod storage;
 mod telemetry;

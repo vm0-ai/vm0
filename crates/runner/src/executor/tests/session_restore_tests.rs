@@ -1,8 +1,13 @@
-use sandbox::{ExecResult, SandboxError, SandboxInvalidStateContext, SandboxOperation};
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, SandboxError, SandboxInvalidStateContext,
+    SandboxOperation,
+};
 use sandbox_mock::MockSandbox;
 use tracing_subscriber::prelude::*;
 
-use super::super::session_restore::{is_valid_session_id, restore_session};
+use super::super::DEFAULT_EXEC_TIMEOUT;
+use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
+use super::super::session_restore::restore_session;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::ResumeSession;
@@ -39,6 +44,19 @@ fn session_id_validation_accepts_valid_ids() {
     for id in valid_ids {
         assert!(is_valid_session_id(id), "expected acceptance for: {id:?}");
     }
+}
+
+#[test]
+fn codex_thread_id_canonicalizes_uuid_spellings() {
+    assert_eq!(
+        canonical_codex_thread_id("019E9154C30470F0ADDE36EFB1BE1701").as_deref(),
+        Some("019e9154-c304-70f0-adde-36efb1be1701")
+    );
+    assert_eq!(
+        canonical_codex_thread_id("019e9154-c304-70f0-adde-36efb1be1701").as_deref(),
+        Some("019e9154-c304-70f0-adde-36efb1be1701")
+    );
+    assert!(canonical_codex_thread_id("codex-safe-but-not-uuid").is_none());
 }
 
 #[tokio::test]
@@ -717,9 +735,11 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
             "VM0_CODEX_RESTORE_SESSION_PATH".to_string()
         ]
     );
+    assert_eq!(exec_calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
+    assert_eq!(exec_calls[0].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
     assert!(!exec_calls[0].sudo);
     assert!(exec_calls[0].stdin_bytes.is_none());
-    assert!(exec_calls[0].cmd.contains("codex_home=/home/user/.codex"));
+    assert!(exec_calls[0].cmd.contains("codex_home='/home/user/.codex'"));
     assert!(exec_calls[0].cmd.contains("root=\"$codex_home/sessions\""));
     assert!(exec_calls[0].cmd.contains("check_restore_dir_component"));
     assert!(
