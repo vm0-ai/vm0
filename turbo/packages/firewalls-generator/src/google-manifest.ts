@@ -200,22 +200,91 @@ function collectRouteAssignments<
   return assignments;
 }
 
-function assertKnownApiKinds<Kind extends string>(
+function assertApiKindsMatchRouteKinds<Kind extends string>(
   serviceLabel: string,
   routeKinds: readonly Kind[],
   apis: readonly GoogleManifestApiConfig<Kind>[],
 ): void {
   const knownKinds = new Set(routeKinds);
+  const apiKinds = apis.map((api) => api.kind);
   const unknownKinds = sortedValues(
-    apis
-      .map((api) => api.kind)
-      .filter((kind) => {
-        return !knownKinds.has(kind);
-      }),
+    apiKinds.filter((kind) => {
+      return !knownKinds.has(kind);
+    }),
   );
+  const missingKinds = sortedValues(
+    [...knownKinds].filter((kind) => {
+      return !apiKinds.includes(kind);
+    }),
+  );
+
+  const seenKinds = new Set<Kind>();
+  const duplicateKinds = new Set<Kind>();
+  for (const kind of apiKinds) {
+    if (seenKinds.has(kind)) {
+      duplicateKinds.add(kind);
+    }
+    seenKinds.add(kind);
+  }
+
+  const messages: string[] = [];
   if (unknownKinds.length > 0) {
-    throw new Error(
+    messages.push(
       `Unknown ${serviceLabel} API route kinds:\n${unknownKinds.join("\n")}`,
+    );
+  }
+  if (missingKinds.length > 0) {
+    messages.push(
+      `Missing ${serviceLabel} API route kinds:\n${missingKinds.join("\n")}`,
+    );
+  }
+  if (duplicateKinds.size > 0) {
+    messages.push(
+      `Duplicate ${serviceLabel} API route kinds:\n${sortedValues(duplicateKinds).join("\n")}`,
+    );
+  }
+  if (messages.length > 0) {
+    throw new Error(messages.join("\n\n"));
+  }
+}
+
+function assertRouteKindsAreUnique<Kind extends string>(
+  serviceLabel: string,
+  routeKinds: readonly Kind[],
+): void {
+  const seenKinds = new Set<Kind>();
+  const duplicateKinds = new Set<Kind>();
+  for (const kind of routeKinds) {
+    if (seenKinds.has(kind)) {
+      duplicateKinds.add(kind);
+    }
+    seenKinds.add(kind);
+  }
+  if (duplicateKinds.size > 0) {
+    throw new Error(
+      `Duplicate ${serviceLabel} route kinds:\n${sortedValues(duplicateKinds).join("\n")}`,
+    );
+  }
+}
+
+function assertOfficialRouteKindsHaveRoutes<Kind extends string>(
+  serviceLabel: string,
+  routeKinds: readonly Kind[],
+  officialRouteKeys: ReadonlySet<string>,
+): void {
+  const officialKinds = new Set(
+    [...officialRouteKeys].map((routeKey) => {
+      return routeKeyParts(serviceLabel, routeKinds, routeKey).kind;
+    }),
+  );
+  const missingOfficialKinds = sortedValues(
+    routeKinds.filter((kind) => {
+      return !officialKinds.has(kind);
+    }),
+  );
+  if (missingOfficialKinds.length > 0) {
+    throw new Error(
+      `Missing ${serviceLabel} official route kinds:\n${missingOfficialKinds.join("\n")}`,
     );
   }
 }
@@ -230,6 +299,7 @@ export function validateGoogleManifestPermissionManifest<
   manifest,
   categoryOrder,
 }: Omit<GoogleManifestCompileConfig<Kind, Permission>, "apis">): void {
+  assertRouteKindsAreUnique(serviceLabel, routeKinds);
   assertUniquePermissionNames(serviceLabel, manifest);
   assertValidCategories(serviceLabel, manifest, categoryOrder);
 
@@ -343,7 +413,16 @@ export function compileGoogleManifestFirewall<
   config: GoogleManifestCompileConfig<Kind, Permission>,
 ): CompiledGoogleManifestFirewall<Kind> {
   validateGoogleManifestPermissionManifest(config);
-  assertKnownApiKinds(config.serviceLabel, config.routeKinds, config.apis);
+  assertOfficialRouteKindsHaveRoutes(
+    config.serviceLabel,
+    config.routeKinds,
+    config.officialRouteKeys,
+  );
+  assertApiKindsMatchRouteKinds(
+    config.serviceLabel,
+    config.routeKinds,
+    config.apis,
+  );
 
   return {
     apis: config.apis.map((api) => {

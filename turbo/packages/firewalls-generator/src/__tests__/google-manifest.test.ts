@@ -340,6 +340,41 @@ describe("Google manifest compiler", () => {
     }).toThrow("Test Google category order has duplicate categories");
   });
 
+  it("fails duplicate configured route kinds", () => {
+    expect(() => {
+      validateGoogleManifestPermissionManifest({
+        serviceLabel: "Test Google",
+        routeKinds: ["base", "base"],
+        officialRouteKeys: new Set(["base:GET /v1/files/{fileId}"]),
+        manifest: [
+          {
+            name: "files.read",
+            description: "Read files.",
+            routeKeys: ["base:GET /v1/files/{fileId}"],
+          },
+        ],
+      });
+    }).toThrow("Duplicate Test Google route kinds");
+  });
+
+  it("fails configured route kinds with no official routes", () => {
+    expect(() => {
+      compileGoogleManifestFirewall({
+        serviceLabel: "Test Google",
+        routeKinds: ROUTE_KINDS,
+        officialRouteKeys: new Set(["base:GET /v1/files/{fileId}"]),
+        manifest: [
+          {
+            name: "files.read",
+            description: "Read files.",
+            routeKeys: ["base:GET /v1/files/{fileId}"],
+          },
+        ],
+        apis: APIS,
+      });
+    }).toThrow("Missing Test Google official route kinds");
+  });
+
   it("fails API route kinds outside the configured route kinds", () => {
     expect(() => {
       compileGoogleManifestFirewall({
@@ -361,5 +396,49 @@ describe("Google manifest compiler", () => {
         ],
       });
     }).toThrow("Unknown Test Google API route kinds");
+  });
+
+  it("fails missing API route kinds", () => {
+    expect(() => {
+      compileGoogleManifestFirewall({
+        serviceLabel: "Test Google",
+        routeKinds: ROUTE_KINDS,
+        officialRouteKeys: OFFICIAL_ROUTE_KEYS,
+        manifest: MANIFEST,
+        apis: [
+          {
+            base: "https://example.test/api",
+            kind: "base",
+          },
+        ],
+      });
+    }).toThrow("Missing Test Google API route kinds");
+  });
+
+  it("fails duplicate API route kinds", () => {
+    expect(() => {
+      compileGoogleManifestFirewall({
+        serviceLabel: "Test Google",
+        routeKinds: ["base"],
+        officialRouteKeys: new Set(["base:GET /v1/files/{fileId}"]),
+        manifest: [
+          {
+            name: "files.read",
+            description: "Read files.",
+            routeKeys: ["base:GET /v1/files/{fileId}"],
+          },
+        ],
+        apis: [
+          {
+            base: "https://example.test/api",
+            kind: "base",
+          },
+          {
+            base: "https://example.test/api-duplicate",
+            kind: "base",
+          },
+        ],
+      });
+    }).toThrow("Duplicate Test Google API route kinds");
   });
 });
