@@ -359,7 +359,7 @@ describe("Google manifest compiler", () => {
 
   it("fails configured route kinds with no official routes", () => {
     expect(() => {
-      compileGoogleManifestFirewall({
+      validateGoogleManifestPermissionManifest({
         serviceLabel: "Test Google",
         routeKinds: ROUTE_KINDS,
         officialRouteKeys: new Set(["base:GET /v1/files/{fileId}"]),
@@ -370,7 +370,6 @@ describe("Google manifest compiler", () => {
             routeKeys: ["base:GET /v1/files/{fileId}"],
           },
         ],
-        apis: APIS,
       });
     }).toThrow("Missing Test Google official route kinds");
   });

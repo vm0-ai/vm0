@@ -302,10 +302,11 @@ export function validateGoogleManifestPermissionManifest<
   assertRouteKindsAreUnique(serviceLabel, routeKinds);
   assertUniquePermissionNames(serviceLabel, manifest);
   assertValidCategories(serviceLabel, manifest, categoryOrder);
-
-  for (const routeKey of officialRouteKeys) {
-    routeKeyParts(serviceLabel, routeKinds, routeKey);
-  }
+  assertOfficialRouteKindsHaveRoutes(
+    serviceLabel,
+    routeKinds,
+    officialRouteKeys,
+  );
 
   const assignments = collectRouteAssignments(
     serviceLabel,
@@ -413,11 +414,6 @@ export function compileGoogleManifestFirewall<
   config: GoogleManifestCompileConfig<Kind, Permission>,
 ): CompiledGoogleManifestFirewall<Kind> {
   validateGoogleManifestPermissionManifest(config);
-  assertOfficialRouteKindsHaveRoutes(
-    config.serviceLabel,
-    config.routeKinds,
-    config.officialRouteKeys,
-  );
   assertApiKindsMatchRouteKinds(
     config.serviceLabel,
     config.routeKinds,
