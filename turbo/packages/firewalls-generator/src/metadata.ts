@@ -4,15 +4,10 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 import type { ConnectorType } from "../../connectors/src/connectors";
-import { expandFirewallPlaceholders } from "../../connectors/src/firewall-placeholder-expansion";
-import {
-  extractBaseUrlVarNames,
-  extractSecretNamesFromApis,
-  firewallAuthInjectsCredentials,
-  hasBaseUrlVars,
-  type FirewallConfig,
-  type FirewallPolicy,
-  type FirewallPolicyValue,
+import type {
+  FirewallConfig,
+  FirewallPolicy,
+  FirewallPolicyValue,
 } from "../../connectors/src/firewall-types";
 import type {
   FirewallExecutionMetadataDetail,
@@ -30,10 +25,23 @@ const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const GENERATED_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
+const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
+const AUTH_SECRET_REFERENCE_PATTERN = /\bsecrets\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
 
 interface ConnectorCategories {
   readonly categories: Record<string, string>;
   readonly displayOrder: readonly string[];
+}
+
+interface ConnectorEnvBindingEntry {
+  readonly envName: string;
+  readonly valueRef: string;
+}
+
+interface ConnectorMetadata {
+  readonly label: string;
+  readonly envBindingEntries: readonly ConnectorEnvBindingEntry[];
 }
 
 interface GeneratedFirewallSource {
@@ -41,6 +49,7 @@ interface GeneratedFirewallSource {
   readonly firewallExportName: string;
   readonly firewall: FirewallConfig;
   readonly label: string;
+  readonly envBindingEntries: readonly ConnectorEnvBindingEntry[];
   readonly categories: ConnectorCategories | null;
   readonly defaultAllowed: readonly string[] | null;
   readonly defaultUnknownPolicy: FirewallPolicyValue;
@@ -241,10 +250,78 @@ function stringLiteralText(expression: ts.Expression): string | null {
   return null;
 }
 
-function loadConnectorLabel(
+function connectorEnvBindingValueRef(expression: ts.Expression): string | null {
+  const direct = stringLiteralText(expression);
+  if (direct !== null) {
+    return direct;
+  }
+  const object = unwrapObjectLiteral(expression);
+  if (!object) {
+    return null;
+  }
+  const valueRef = findObjectProperty(object, "valueRef");
+  return valueRef ? stringLiteralText(valueRef) : null;
+}
+
+function connectorEnvBindingEntries(
+  expression: ts.Expression,
+): ConnectorEnvBindingEntry[] {
+  const envBindings = unwrapObjectLiteral(expression);
+  if (!envBindings) {
+    return [];
+  }
+
+  const entries: ConnectorEnvBindingEntry[] = [];
+  for (const property of envBindings.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const envName = propertyNameText(property.name);
+    const valueRef = connectorEnvBindingValueRef(property.initializer);
+    if (envName && valueRef) {
+      entries.push({ envName, valueRef });
+    }
+  }
+  return entries;
+}
+
+function connectorAuthMethodEnvBindingEntries(
+  connectorObject: ts.ObjectLiteralExpression,
+): ConnectorEnvBindingEntry[] {
+  const authMethods = findObjectProperty(connectorObject, "authMethods");
+  const authMethodsObject = authMethods
+    ? unwrapObjectLiteral(authMethods)
+    : null;
+  if (!authMethodsObject) {
+    return [];
+  }
+
+  const entries: ConnectorEnvBindingEntry[] = [];
+  for (const property of authMethodsObject.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const authMethod = unwrapObjectLiteral(property.initializer);
+    if (!authMethod) {
+      continue;
+    }
+    const access = findObjectProperty(authMethod, "access");
+    const accessObject = access ? unwrapObjectLiteral(access) : null;
+    if (!accessObject) {
+      continue;
+    }
+    const envBindings = findObjectProperty(accessObject, "envBindings");
+    if (envBindings) {
+      entries.push(...connectorEnvBindingEntries(envBindings));
+    }
+  }
+  return entries;
+}
+
+function loadConnectorMetadata(
   connectorsDir: string,
   type: FirewallConnectorType,
-): string {
+): ConnectorMetadata {
   const connectorFile = path.join(connectorsDir, `${type}.ts`);
   if (!fs.existsSync(connectorFile)) {
     throw new Error(
@@ -279,13 +356,15 @@ function loadConnectorLabel(
         continue;
       }
       const label = findObjectProperty(connectorObject, "label");
-      if (!label) {
+      const labelText = label ? stringLiteralText(label) : null;
+      if (labelText === null) {
         continue;
       }
-      const labelText = stringLiteralText(label);
-      if (labelText !== null) {
-        return labelText;
-      }
+      return {
+        label: labelText,
+        envBindingEntries:
+          connectorAuthMethodEnvBindingEntries(connectorObject),
+      };
     }
   }
 
@@ -314,6 +393,7 @@ async function loadGeneratedFirewallSource(
   registration: RegisteredFirewallSource,
 ): Promise<GeneratedFirewallSource> {
   const { type, firewallExportName } = registration;
+  const connectorMetadata = loadConnectorMetadata(connectorsDir, type);
   const moduleExports = await importModule(
     path.join(firewallsDir, generatedDetailFileName(type)),
   );
@@ -345,7 +425,8 @@ async function loadGeneratedFirewallSource(
     type,
     firewallExportName,
     firewall,
-    label: loadConnectorLabel(connectorsDir, type),
+    label: connectorMetadata.label,
+    envBindingEntries: connectorMetadata.envBindingEntries,
     categories:
       categories && displayOrder ? { categories, displayOrder } : null,
     defaultAllowed: getOptionalGeneratedExport(
@@ -745,6 +826,111 @@ function buildSummaryMetadata(
   };
 }
 
+function hasBaseUrlVars(base: string): boolean {
+  return BASE_URL_VARS_PATTERN.test(base);
+}
+
+function extractBaseUrlVarNames(base: string): string[] {
+  const names = new Set<string>();
+  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+    names.add(match[1]!);
+  }
+  return [...names];
+}
+
+function firewallAuthInjectsCredentials(
+  auth: FirewallConfig["apis"][number]["auth"],
+): boolean {
+  return (
+    Object.keys(auth.headers ?? {}).length > 0 ||
+    Object.keys(auth.query ?? {}).length > 0 ||
+    Object.keys(auth.awsSigv4 ?? {}).length > 0 ||
+    (typeof auth.base === "string" && auth.base.length > 0)
+  );
+}
+
+function extractSecretNamesFromTemplate(template: string): string[] {
+  const names = new Set<string>();
+  for (const match of template.matchAll(AUTH_SECRET_REFERENCE_PATTERN)) {
+    names.add(match[1]!);
+  }
+  return [...names];
+}
+
+function extractSecretNamesFromApis(apis: FirewallConfig["apis"]): string[] {
+  const names = new Set<string>();
+  for (const entry of apis) {
+    for (const value of Object.values(entry.auth.headers ?? {})) {
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+    if (entry.auth.base) {
+      for (const name of extractSecretNamesFromTemplate(entry.auth.base)) {
+        names.add(name);
+      }
+    }
+    for (const value of Object.values(entry.auth.query ?? {})) {
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+    for (const value of Object.values(entry.auth.awsSigv4 ?? {})) {
+      if (!value) {
+        continue;
+      }
+      for (const name of extractSecretNamesFromTemplate(value)) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
+
+function expandFirewallPlaceholders(
+  firewall: FirewallConfig,
+  envBindingEntries: readonly ConnectorEnvBindingEntry[],
+): FirewallConfig {
+  if (!firewall.placeholders || envBindingEntries.length === 0) {
+    return firewall;
+  }
+
+  const expanded: Record<string, string> = { ...firewall.placeholders };
+
+  for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
+    const valueRefs = envBindingEntries
+      .filter(({ envName }) => {
+        return envName === key;
+      })
+      .map(({ valueRef }) => {
+        return valueRef;
+      });
+    for (const valueRef of valueRefs) {
+      if (!valueRef.startsWith("$secrets.")) {
+        continue;
+      }
+      const rawName = valueRef.slice("$secrets.".length);
+      if (!expanded[rawName]) {
+        expanded[rawName] = placeholderValue;
+      }
+      for (const entry of envBindingEntries) {
+        if (entry.valueRef === valueRef && !expanded[entry.envName]) {
+          expanded[entry.envName] = placeholderValue;
+        }
+      }
+    }
+
+    const rawRef = `$secrets.${key}`;
+    for (const entry of envBindingEntries) {
+      if (entry.valueRef === rawRef && !expanded[entry.envName]) {
+        expanded[entry.envName] = placeholderValue;
+      }
+    }
+  }
+
+  return { ...firewall, placeholders: expanded };
+}
+
 function buildExecutionBaseUrlTemplates(
   firewall: FirewallConfig,
 ): FirewallExecutionMetadataDetail["baseUrlTemplates"] {
@@ -789,7 +975,7 @@ function buildExecutionMetadata(
 ): FirewallExecutionMetadataDetail {
   const firewall = expandFirewallPlaceholders(
     source.firewall,
-    source.type as ConnectorType,
+    source.envBindingEntries,
   );
   const baseUrlTemplates = buildExecutionBaseUrlTemplates(firewall);
   const baseUrlVarNames = sortedStrings(
