@@ -1277,7 +1277,6 @@ export {
 } from "./zero-report-error";
 export {
   zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandApprovalContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
@@ -1305,7 +1304,6 @@ export {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
   type ZeroComputerUseAuditEventsContract,
-  type ZeroComputerUseCommandApprovalContract,
   type ZeroComputerUseCommandContract,
   type ZeroComputerUseHeartbeatContract,
   type ZeroComputerUseHostCommandsContract,

@@ -98,18 +98,12 @@ type CreateComputerUseCommandResult =
   | {
       readonly status: "created";
       readonly commandId: string;
-      readonly commandStatus: "queued" | "pending_approval";
+      readonly commandStatus: "queued";
     }
   | { readonly status: "no_host" }
   | { readonly status: "host_ambiguous" }
   | { readonly status: "host_offline" }
   | { readonly status: "host_unsupported" };
-
-type ApproveComputerUseWriteCommandResult =
-  | { readonly status: "approved"; readonly commandId: string }
-  | { readonly status: "denied"; readonly commandId: string }
-  | { readonly status: "not_found" }
-  | { readonly status: "not_pending" };
 
 type ResolveComputerUseCommandTargetsResult =
   | {
@@ -610,8 +604,7 @@ async function insertComputerUseCommandAuditEvent(
   tx: ComputerUseTx,
   params: {
     readonly command: ComputerUseCommandRow;
-    readonly event: "created" | "approved" | "denied" | "completed";
-    readonly approvalOutcome?: "approved" | "denied";
+    readonly event: "completed";
     readonly result?: ComputerUseCommandResult | null;
     readonly error?: ComputerUseCommandError | null;
     readonly createdAt: Date;
@@ -633,7 +626,6 @@ async function insertComputerUseCommandAuditEvent(
         ? params.command.payload.app
         : null,
     event: params.event,
-    approvalOutcome: params.approvalOutcome ?? null,
     redactedResult: redactedResultForAudit(params.result),
     error: errorForAudit(params.error),
     createdAt: params.createdAt,
@@ -1053,7 +1045,6 @@ export const createComputerUseCommand$ = command(
       readonly kind: ComputerUseCommandKind;
       readonly payload: ComputerUseCommandPayload;
       readonly timeoutMs?: number;
-      readonly requiresApproval: boolean;
     },
     signal: AbortSignal,
   ): Promise<CreateComputerUseCommandResult> => {
@@ -1092,49 +1083,32 @@ export const createComputerUseCommand$ = command(
       return target;
     }
 
-    const commandStatus = params.requiresApproval
-      ? ("pending_approval" as const)
-      : ("queued" as const);
     const payload = commandPayload(params.payload);
-    const row = await db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(computerUseCommands)
-        .values({
-          orgId: params.orgId,
-          userId: params.userId,
-          runId: params.runId ?? null,
-          hostId: target.targetHostId,
-          kind: params.kind,
-          status: commandStatus,
-          payload,
-          timeoutMs: params.timeoutMs,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
-      signal.throwIfAborted();
-
-      if (!created) {
-        throw new Error("Failed to create computer-use command");
-      }
-
-      if (params.requiresApproval) {
-        await insertComputerUseCommandAuditEvent(tx, {
-          command: created,
-          event: "created",
-          createdAt: now,
-        });
-        signal.throwIfAborted();
-      }
-
-      return created;
-    });
+    const [row] = await db
+      .insert(computerUseCommands)
+      .values({
+        orgId: params.orgId,
+        userId: params.userId,
+        runId: params.runId ?? null,
+        hostId: target.targetHostId,
+        kind: params.kind,
+        status: "queued",
+        payload,
+        timeoutMs: params.timeoutMs,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
     signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Failed to create computer-use command");
+    }
 
     return {
       status: "created",
       commandId: row.id,
-      commandStatus,
+      commandStatus: "queued",
     };
   },
 );
@@ -1238,130 +1212,6 @@ export const getComputerUseCommandScreenshot$ = command(
       }
     }
     return null;
-  },
-);
-
-async function denyPendingComputerUseWriteCommand(
-  tx: ComputerUseTx,
-  commandRow: ComputerUseCommandRow,
-  params: { readonly message?: string },
-  now: Date,
-  signal: AbortSignal,
-) {
-  const error: ComputerUseCommandError = {
-    code: "permission_denied",
-    message: params.message ?? "Computer-use command was denied",
-  };
-  const [updated] = await tx
-    .update(computerUseCommands)
-    .set({
-      status: "failed",
-      result: { error },
-      error: error.code,
-      completedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(computerUseCommands.id, commandRow.id))
-    .returning();
-  signal.throwIfAborted();
-
-  if (!updated) {
-    throw new Error("Failed to deny computer-use command");
-  }
-
-  await insertComputerUseCommandAuditEvent(tx, {
-    command: updated,
-    event: "denied",
-    approvalOutcome: "denied",
-    error,
-    createdAt: now,
-  });
-  signal.throwIfAborted();
-
-  return { status: "denied" as const, commandId: commandRow.id };
-}
-
-async function approvePendingComputerUseWriteCommand(
-  tx: ComputerUseTx,
-  commandRow: ComputerUseCommandRow,
-  now: Date,
-  signal: AbortSignal,
-) {
-  const [updated] = await tx
-    .update(computerUseCommands)
-    .set({ status: "queued", updatedAt: now })
-    .where(eq(computerUseCommands.id, commandRow.id))
-    .returning();
-  signal.throwIfAborted();
-
-  if (!updated) {
-    throw new Error("Failed to approve computer-use command");
-  }
-
-  await insertComputerUseCommandAuditEvent(tx, {
-    command: updated,
-    event: "approved",
-    approvalOutcome: "approved",
-    createdAt: now,
-  });
-  signal.throwIfAborted();
-
-  return { status: "approved" as const, commandId: commandRow.id };
-}
-
-export const approveComputerUseWriteCommand$ = command(
-  async (
-    { set },
-    params: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly commandId: string;
-      readonly decision: "approve" | "deny";
-      readonly message?: string;
-    },
-    signal: AbortSignal,
-  ): Promise<ApproveComputerUseWriteCommandResult> => {
-    const db = set(writeDb$);
-    const now = nowDate();
-    const result = await db.transaction(async (tx) => {
-      const [commandRow] = await tx
-        .select()
-        .from(computerUseCommands)
-        .where(
-          and(
-            eq(computerUseCommands.id, params.commandId),
-            eq(computerUseCommands.orgId, params.orgId),
-            eq(computerUseCommands.userId, params.userId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (!commandRow || !isComputerUseWriteCommandKind(commandRow.kind)) {
-        return { status: "not_found" as const };
-      }
-      if (commandRow.status !== "pending_approval") {
-        return { status: "not_pending" as const };
-      }
-      if (params.decision === "deny") {
-        return await denyPendingComputerUseWriteCommand(
-          tx,
-          commandRow,
-          { message: params.message },
-          now,
-          signal,
-        );
-      }
-      return await approvePendingComputerUseWriteCommand(
-        tx,
-        commandRow,
-        now,
-        signal,
-      );
-    });
-    signal.throwIfAborted();
-    return result;
   },
 );
 
@@ -1688,8 +1538,7 @@ export const listComputerUseAuditEvents$ = command(
           hostId: row.hostId,
           kind: row.kind as ComputerUseWriteCommandKind,
           app: row.app,
-          event: row.event as "created" | "approved" | "denied" | "completed",
-          approvalOutcome: row.approvalOutcome as "approved" | "denied" | null,
+          event: row.event as "completed",
           redactedResult: row.redactedResult,
           error: row.error,
           createdAt: row.createdAt.toISOString(),

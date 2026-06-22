@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import {
   zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandApprovalContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
@@ -17,7 +16,6 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
-  approveComputerUseWriteCommand$,
   claimNextComputerUseHostCommand$,
   completeComputerUseHostCommand$,
   createComputerUseCommand$,
@@ -260,7 +258,6 @@ const commandCreateInner$ = command(
         kind: bodyResult.data.kind,
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
-        requiresApproval: false,
         ...(auth.tokenType === "zero"
           ? { runId: auth.runId, targetHostId }
           : {}),
@@ -320,7 +317,6 @@ const writeCommandCreateInner$ = command(
         kind: bodyResult.data.kind,
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
-        requiresApproval: false,
         ...(auth.tokenType === "zero"
           ? { runId: auth.runId, targetHostId }
           : {}),
@@ -421,59 +417,6 @@ const screenshotGetInner$ = command(
       status: 200,
       headers,
     });
-  },
-);
-
-const commandApprovalBody$ = bodyResultOf(
-  zeroComputerUseCommandApprovalContract.decide,
-);
-const commandApprovalParams$ = pathParamsOf(
-  zeroComputerUseCommandApprovalContract.decide,
-);
-const commandApprovalInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (!(await set(computerUseEnabled$))) {
-      return computerUseDisabled;
-    }
-    signal.throwIfAborted();
-
-    const bodyResult = await get(commandApprovalBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const params = get(commandApprovalParams$);
-    const result = await set(
-      approveComputerUseWriteCommand$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        commandId: params.commandId,
-        decision: bodyResult.data.decision,
-        ...(bodyResult.data.message
-          ? { message: bodyResult.data.message }
-          : {}),
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status === "not_found") {
-      return notFound("Computer-use write command not found");
-    }
-    if (result.status === "not_pending") {
-      return conflict("Computer-use write command is not pending approval");
-    }
-
-    return {
-      status: 200 as const,
-      body: {
-        commandId: result.commandId,
-        status: result.status === "approved" ? "queued" : "failed",
-      },
-    };
   },
 );
 
@@ -610,11 +553,6 @@ const computerUseCommandAuthOptions = {
   requiredCapability: "computer-use:write",
 } as const;
 
-const computerUseSessionAuthOptions = {
-  ...computerUseAuthOptions,
-  accept: ["session"],
-} as const;
-
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.start,
@@ -651,10 +589,6 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseCommandContract.getScreenshot,
     handler: authRoute(computerUseCommandAuthOptions, screenshotGetInner$),
-  },
-  {
-    route: zeroComputerUseCommandApprovalContract.decide,
-    handler: authRoute(computerUseSessionAuthOptions, commandApprovalInner$),
   },
   {
     route: zeroComputerUseHostCommandsContract.next,
