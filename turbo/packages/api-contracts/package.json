@@ -27,7 +27,7 @@
     "./firewalls/*": null
   },
   "scripts": {
-    "generate:rust": "tsx src/rust-bindings/generate.ts",
+    "generate:rust": "pnpm -F @vm0/firewalls-generator generate && tsx src/rust-bindings/generate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
