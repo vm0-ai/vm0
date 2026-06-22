@@ -144,6 +144,41 @@ class TestAuthBaseForwarderSecurity:
         assert upstream.socket.request_lines()[0] == "GET /path HTTP/1.1"
         assert upstream.socket.request_header_values("Host") == ["hooks.example.com"]
 
+    async def test_reuses_https_context_without_reusing_connections(self):
+        with fake_forwarder_upstream() as upstream:
+            first_status, first_body, _first_headers = await forwarder.forward_request(
+                "https://example.com/one",
+                "GET",
+                [],
+                None,
+            )
+            second_status, second_body, _second_headers = await forwarder.forward_request(
+                "https://example.com/two",
+                "GET",
+                [],
+                None,
+            )
+
+        assert first_status == 200
+        assert first_body == b"ok"
+        assert second_status == 200
+        assert second_body == b"ok"
+        assert len(upstream.contexts) == 1
+        assert upstream.contexts[0].server_hostnames == ["example.com", "example.com"]
+        assert upstream.getaddrinfo_calls == [
+            ("example.com", 443),
+            ("example.com", 443),
+        ]
+        assert upstream.create_connection_calls == [
+            (("93.184.216.34", 443), 30, None),
+            (("93.184.216.34", 443), 30, None),
+        ]
+        assert [socket.request_lines()[0] for socket in upstream.sockets] == [
+            "GET /one HTTP/1.1",
+            "GET /two HTTP/1.1",
+        ]
+        assert [socket.closed for socket in upstream.sockets] == [True, True]
+
     @pytest.mark.parametrize(
         "url",
         [
