@@ -342,6 +342,89 @@ class TestUsageWebhookDelivery:
         with pytest.raises(ValueError, match="absolute http"):
             sync_usage_executor.shutdown(wait=True)
 
+    def test_enqueue_logs_body_free_payload_summary(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        executor = _QueuedUsageExecutor()
+        payload = {
+            "url": "payload-url",
+            "type": "payload-type",
+            "attempt": 99,
+            "error": "payload-error",
+            "runId": "run-1",
+            "events": [],
+        }
+
+        try:
+            with patch.object(usage.webhook, "usage_executor", executor):
+                assert usage.webhook._enqueue_webhook(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    payload,
+                    str(proxy_log),
+                    "usage_event",
+                )
+            assert len(executor.submissions) == 1
+        finally:
+            usage.counters.decrement_pending_reports()
+            usage.webhook.reset_delivery_capacity_for_tests()
+
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
+        assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
+        assert entry["type"] == "usage_event"
+        _assert_body_free_webhook_entry(entry, run_id="run-1", event_count=0)
+        assert "payload_bytes" not in entry
+
+    def test_submit_failure_rolls_back_pending_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            patch.object(usage.webhook.usage_executor, "submit", side_effect=OSError("no threads")),
+            pytest.raises(OSError, match="no threads"),
+        ):
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+                "",
+                "usage_event",
+            )
+
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="submit-failed"
+        )
+
+    def test_sync_fallback_log_failure_rolls_back_pending_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            patch.object(
+                usage.webhook.usage_executor, "submit", side_effect=RuntimeError("shutdown")
+            ),
+            patch.object(
+                usage.webhook, "log_proxy_entry", side_effect=[None, OSError("disk full")]
+            ),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+                str(tmp_path / "proxy.jsonl"),
+                "usage_event",
+            )
+
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="fallback-log-failed",
+        )
+
     def test_sleeps_between_retries(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
@@ -427,6 +510,8 @@ class TestUsageWebhookDelivery:
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         """After executor shutdown, delivery happens synchronously before return."""
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         flow = self._model_flow(real_flow, tmp_path)
         flow.metadata["model_provider_usage"] = {"tokens.input": 42}
         usage.flush_usage_events(trigger="test")
@@ -441,6 +526,9 @@ class TestUsageWebhookDelivery:
         assert body["runId"] == "run-1"
         assert body["events"][0]["quantity"] == 42
         assert body["events"][0]["category"] == "tokens.input"
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="sync-fallback"
+        )
 
     def test_does_not_admit_when_delivery_capacity_is_saturated(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
