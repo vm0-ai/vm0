@@ -332,6 +332,19 @@ async fn codex_app_server_unknown_response_id_fails_without_raw_payload() -> Res
         }
     }
 
+    let retry =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match retry {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("received response for unknown id"));
+        }
+        other => {
+            return Err(format!(
+                "expected persistent unknown response id error, got {other:?}"
+            ));
+        }
+    }
+
     wait_result(client.shutdown(), "shutdown").await
 }
 
@@ -432,6 +445,19 @@ async fn codex_app_server_cancelled_request_fails_next_request() -> Result<(), S
         other => {
             return Err(format!(
                 "expected previous request protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    let retry_result =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match retry_result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("previous app-server request did not complete"));
+        }
+        other => {
+            return Err(format!(
+                "expected persistent previous request protocol error, got {other:?}"
             ));
         }
     }

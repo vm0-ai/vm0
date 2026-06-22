@@ -142,6 +142,7 @@ pub struct CodexAppServerClient {
     next_request_id: i64,
     in_flight_request_id: Option<JsonRpcId>,
     outbound_write_in_progress: bool,
+    stream_unusable_reason: Option<String>,
     notifications: VecDeque<QueuedNotification>,
     notification_queue_bytes: usize,
     closed: bool,
@@ -200,6 +201,7 @@ impl CodexAppServerClient {
             next_request_id: 1,
             in_flight_request_id: None,
             outbound_write_in_progress: false,
+            stream_unusable_reason: None,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
             notification_queue_bytes: 0,
             closed: false,
@@ -251,8 +253,7 @@ impl CodexAppServerClient {
     {
         let value = self.request_value(method, params).await?;
         serde_json::from_value(value).map_err(|_error| {
-            self.signal_process_group(libc::SIGKILL);
-            CodexAppServerError::Protocol(format!(
+            self.poison_stream(format!(
                 "app-server response for {method} had an unexpected shape"
             ))
         })
@@ -306,8 +307,7 @@ impl CodexAppServerClient {
                 }
                 IncomingMessage::Success { .. } | IncomingMessage::Error { .. } => {
                     self.in_flight_request_id = None;
-                    self.signal_process_group(libc::SIGKILL);
-                    return Err(CodexAppServerError::Protocol(format!(
+                    return Err(self.poison_stream(format!(
                         "received response for unknown id while waiting for {method}"
                     )));
                 }
@@ -317,8 +317,7 @@ impl CodexAppServerClient {
                 } => {
                     if let Err(error) = self.push_notification(notification, line_bytes) {
                         self.in_flight_request_id = None;
-                        self.signal_process_group(libc::SIGKILL);
-                        return Err(error);
+                        return Err(self.poison_error(error));
                     }
                 }
                 IncomingMessage::Request(request) => {
@@ -444,16 +443,13 @@ impl CodexAppServerClient {
                             });
                         }
                         Err(error) => {
-                            self.signal_process_group(libc::SIGKILL);
-                            return Err(error);
+                            return Err(self.poison_error(error));
                         }
                     };
                     if line.trim().is_empty() {
                         continue;
                     }
-                    return parse_incoming_message(&line).inspect_err(|_error| {
-                        self.signal_process_group(libc::SIGKILL);
-                    });
+                    return parse_incoming_message(&line).map_err(|error| self.poison_error(error));
                 }
                 result = async {
                     match self.wait_rx.as_mut() {
@@ -462,9 +458,7 @@ impl CodexAppServerClient {
                     }
                 }, if self.wait_rx.is_some() => {
                     let Some(result) = result else {
-                        return Err(CodexAppServerError::Protocol(
-                            "app-server wait receiver disappeared".to_string(),
-                        ));
+                        return Err(self.poison_stream("app-server wait receiver disappeared"));
                     };
                     let status = self.finish_child_wait(result)?;
                     return Err(CodexAppServerError::ChildExited {
@@ -523,11 +517,12 @@ impl CodexAppServerClient {
     }
 
     async fn write_message(&mut self, message: &Value) -> Result<(), CodexAppServerError> {
-        if self.outbound_write_in_progress {
+        if let Some(message) = self.stream_unusable_reason.clone() {
             self.signal_process_group(libc::SIGKILL);
-            return Err(CodexAppServerError::Protocol(
-                "previous app-server write did not complete".to_string(),
-            ));
+            return Err(CodexAppServerError::Protocol(message));
+        }
+        if self.outbound_write_in_progress {
+            return Err(self.poison_stream("previous app-server write did not complete"));
         }
         let mut bytes = serde_json::to_vec(message)?;
         bytes.push(b'\n');
@@ -546,19 +541,40 @@ impl CodexAppServerClient {
     }
 
     fn ensure_stream_usable(&mut self) -> Result<(), CodexAppServerError> {
-        if self.outbound_write_in_progress {
+        if let Some(message) = self.stream_unusable_reason.clone() {
             self.signal_process_group(libc::SIGKILL);
-            return Err(CodexAppServerError::Protocol(
-                "previous app-server write did not complete".to_string(),
-            ));
+            return Err(CodexAppServerError::Protocol(message));
         }
-        if self.in_flight_request_id.take().is_some() {
-            self.signal_process_group(libc::SIGKILL);
-            return Err(CodexAppServerError::Protocol(
-                "previous app-server request did not complete".to_string(),
-            ));
+        if self.outbound_write_in_progress {
+            return Err(self.poison_stream("previous app-server write did not complete"));
+        }
+        if self.in_flight_request_id.is_some() {
+            return Err(self.poison_stream("previous app-server request did not complete"));
         }
         Ok(())
+    }
+
+    fn poison_error(&mut self, error: CodexAppServerError) -> CodexAppServerError {
+        let message = match &error {
+            CodexAppServerError::Protocol(message) => message.clone(),
+            _ => error.to_string(),
+        };
+        self.mark_stream_unusable(message);
+        self.signal_process_group(libc::SIGKILL);
+        error
+    }
+
+    fn poison_stream(&mut self, message: impl Into<String>) -> CodexAppServerError {
+        let message = message.into();
+        self.mark_stream_unusable(message.clone());
+        self.signal_process_group(libc::SIGKILL);
+        CodexAppServerError::Protocol(message)
+    }
+
+    fn mark_stream_unusable(&mut self, message: String) {
+        if self.stream_unusable_reason.is_none() {
+            self.stream_unusable_reason = Some(message);
+        }
     }
 
     async fn drain_stderr(&mut self) {
