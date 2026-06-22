@@ -408,6 +408,39 @@ async fn codex_app_server_child_exit_before_response_fails_pending_request() -> 
 }
 
 #[tokio::test]
+async fn codex_app_server_cancelled_request_fails_next_request() -> Result<(), String> {
+    let mut client = spawn_client(Some("hang-on-thread-start"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let timed_out = tokio::time::timeout(
+        Duration::from_millis(100),
+        client.request_value("thread/start", json!({})),
+    )
+    .await;
+    assert!(timed_out.is_err());
+
+    let next_result =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match next_result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("previous app-server request did not complete"));
+        }
+        other => {
+            return Err(format!(
+                "expected previous request protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await?;
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
 async fn codex_app_server_shutdown_reaps_child() -> Result<(), String> {
     let mut client = spawn_client(None)?;
     let pid = client

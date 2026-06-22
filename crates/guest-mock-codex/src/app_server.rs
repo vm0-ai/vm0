@@ -22,6 +22,7 @@ enum Scenario {
     MalformedErrorResponse,
     MalformedInitializeResult,
     LargeNotificationBeforeResponse,
+    HangOnThreadStart,
     MalformedStdout,
     HangOnStdinEof,
     NullIdServerRequestBeforeResponse,
@@ -45,6 +46,7 @@ impl Scenario {
                 "malformed-error-response" => Ok(Self::MalformedErrorResponse),
                 "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
                 "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
+                "hang-on-thread-start" => Ok(Self::HangOnThreadStart),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
                 "hang-on-stdin-eof" => Ok(Self::HangOnStdinEof),
                 "null-id-server-request-before-response" => {
@@ -212,6 +214,11 @@ impl AppServerState {
                 if !self.initialized {
                     write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
                     return Ok(ServerAction::Continue);
+                }
+                if self.scenario == Scenario::HangOnThreadStart {
+                    loop {
+                        thread::park();
+                    }
                 }
                 let thread_id = Uuid::now_v7().to_string();
                 self.set_current_thread(thread_id.clone());

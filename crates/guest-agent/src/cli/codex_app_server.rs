@@ -140,6 +140,7 @@ pub struct CodexAppServerClient {
     stderr_handle: Option<JoinHandle<Vec<String>>>,
     stderr_tail: Vec<String>,
     next_request_id: i64,
+    in_flight_request_id: Option<JsonRpcId>,
     notifications: VecDeque<QueuedNotification>,
     notification_queue_bytes: usize,
     closed: bool,
@@ -196,6 +197,7 @@ impl CodexAppServerClient {
             stderr_handle: Some(stderr_handle),
             stderr_tail: Vec::new(),
             next_request_id: 1,
+            in_flight_request_id: None,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
             notification_queue_bytes: 0,
             closed: false,
@@ -259,25 +261,46 @@ impl CodexAppServerClient {
         method: &str,
         params: Value,
     ) -> Result<Value, CodexAppServerError> {
+        if self.in_flight_request_id.take().is_some() {
+            self.signal_process_group(libc::SIGKILL);
+            return Err(CodexAppServerError::Protocol(
+                "previous app-server request did not complete".to_string(),
+            ));
+        }
         let id = JsonRpcId::Number(self.next_request_id);
         self.next_request_id = self.next_request_id.checked_add(1).ok_or_else(|| {
             CodexAppServerError::Protocol("app-server request id counter overflow".to_string())
         })?;
-        self.write_message(&outgoing_request(&id, method, params))
-            .await?;
+        self.in_flight_request_id = Some(id.clone());
+        if let Err(error) = self
+            .write_message(&outgoing_request(&id, method, params))
+            .await
+        {
+            self.in_flight_request_id = None;
+            return Err(error);
+        }
 
         loop {
-            match self.read_next_message(method).await? {
+            let message = match self.read_next_message(method).await {
+                Ok(message) => message,
+                Err(error) => {
+                    self.in_flight_request_id = None;
+                    return Err(error);
+                }
+            };
+            match message {
                 IncomingMessage::Success {
                     id: response_id,
                     result,
                 } if response_id == id => {
+                    self.in_flight_request_id = None;
                     return Ok(result);
                 }
                 IncomingMessage::Error {
                     id: response_id,
                     error,
                 } if response_id == id => {
+                    self.in_flight_request_id = None;
                     return Err(CodexAppServerError::Rpc {
                         method: method.to_string(),
                         id: response_id,
@@ -285,6 +308,7 @@ impl CodexAppServerClient {
                     });
                 }
                 IncomingMessage::Success { .. } | IncomingMessage::Error { .. } => {
+                    self.in_flight_request_id = None;
                     self.signal_process_group(libc::SIGKILL);
                     return Err(CodexAppServerError::Protocol(format!(
                         "received response for unknown id while waiting for {method}"
@@ -295,12 +319,16 @@ impl CodexAppServerClient {
                     line_bytes,
                 } => {
                     if let Err(error) = self.push_notification(notification, line_bytes) {
+                        self.in_flight_request_id = None;
                         self.signal_process_group(libc::SIGKILL);
                         return Err(error);
                     }
                 }
                 IncomingMessage::Request(request) => {
-                    self.reject_server_request(&request).await?;
+                    if let Err(error) = self.reject_server_request(&request).await {
+                        self.in_flight_request_id = None;
+                        return Err(error);
+                    }
                 }
             }
         }
