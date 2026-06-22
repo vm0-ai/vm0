@@ -881,19 +881,20 @@ describe("team page navigation", () => {
         );
         const appliedGrantKeys = new Set(
           appliedGrants.map((grant) => {
-            return `${grant.connectorRef}\u0000${grant.permission}`;
+            return `${grant.agentId}\u0000${grant.connectorRef}\u0000${grant.permission}`;
           }),
         );
         grants = [
           ...grants.filter((current) => {
             if (
               body.mode === "replace" &&
+              current.agentId === body.agentId &&
               current.connectorRef === body.connectorRef
             ) {
               return false;
             }
             return !appliedGrantKeys.has(
-              `${current.connectorRef}\u0000${current.permission}`,
+              `${current.agentId}\u0000${current.connectorRef}\u0000${current.permission}`,
             );
           }),
           ...appliedGrants,
