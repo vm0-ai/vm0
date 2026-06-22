@@ -393,8 +393,8 @@ button {
   background: rgba(249, 250, 251, 0.76);
 }
 
-.browser-automation-card {
-  margin-top: 10px;
+.permission-row > div:first-child {
+  min-width: 0;
 }
 
 .checkbox-row {
