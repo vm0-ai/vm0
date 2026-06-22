@@ -350,9 +350,6 @@ fn preserves_successful_post_result_cleanup(
         && cli_result.control_error.is_none()
         && cli_result.exit_code != 0
         && cli_result
-            .claude_result
-            .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
-        && cli_result
             .post_result_cleanup_result
             .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
         && cli_result
@@ -1980,6 +1977,7 @@ mod tests {
         };
         let make_result =
             |claude_result: cli::ClaudeResultSummary,
+             cleanup_result: cli::ClaudeResultSummary,
              termination_reason: agent_diagnostics::CliTerminationReason| {
                 let termination = CliTerminationDiagnostic::new(termination_reason)
                     .record_signal(
@@ -1993,13 +1991,14 @@ mod tests {
                     stderr_lines: Vec::new(),
                     last_event_sequence: None,
                     claude_result: Some(claude_result),
-                    post_result_cleanup_result: Some(success_result),
+                    post_result_cleanup_result: Some(cleanup_result),
                     failure_diagnostic: None,
                     control_error: None,
                     cli_termination: Some(termination),
                 }
             };
         let successful_cleanup = make_result(
+            success_result,
             success_result,
             agent_diagnostics::CliTerminationReason::PostResultReap,
         );
@@ -2013,7 +2012,21 @@ mod tests {
             &successful_cleanup,
         ));
 
+        let late_error_result_after_successful_cleanup = make_result(
+            cli::ClaudeResultSummary {
+                num_turns: Some(1),
+                status: cli::ClaudeResultStatus::Error,
+            },
+            success_result,
+            agent_diagnostics::CliTerminationReason::PostResultReap,
+        );
+        assert!(preserves_successful_post_result_cleanup(
+            env::Framework::ClaudeCode,
+            &late_error_result_after_successful_cleanup,
+        ));
+
         let error_cleanup = make_result(
+            success_result,
             cli::ClaudeResultSummary {
                 num_turns: Some(1),
                 status: cli::ClaudeResultStatus::Error,
@@ -2026,6 +2039,7 @@ mod tests {
         ));
 
         let stronger_termination = make_result(
+            success_result,
             success_result,
             agent_diagnostics::CliTerminationReason::StuckToolWatchdog,
         );
