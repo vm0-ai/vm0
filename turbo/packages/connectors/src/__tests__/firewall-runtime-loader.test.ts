@@ -39,6 +39,16 @@ function staticValueExportSpecifiers(source: string): string[] {
   return specifiers;
 }
 
+function staticExportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*export\s+(?:type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
 function staticValueModuleSpecifiers(source: string): string[] {
   return [
     ...staticValueImportSpecifiers(source),
@@ -79,11 +89,11 @@ describe("firewall runtime loader", () => {
       path.resolve(import.meta.dirname, "../index.ts"),
       "utf-8",
     );
-    const rootSpecifiers = staticValueModuleSpecifiers(rootEntrypoint);
+    const rootExportSpecifiers = staticExportSpecifiers(rootEntrypoint);
 
-    expect(rootSpecifiers).not.toContain("./firewalls");
-    expect(rootSpecifiers).not.toContain("./firewalls/all");
-    expect(rootSpecifiers).not.toContain("./firewalls/runtime");
+    for (const specifier of rootExportSpecifiers) {
+      expect(specifier).not.toMatch(/^\.\/firewalls(?:\/|$)/);
+    }
   });
 
   it("keeps all-catalog access behind an explicit package subpath", () => {
