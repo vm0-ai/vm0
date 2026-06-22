@@ -25,16 +25,20 @@
  *      read the id-keyed volume's SKILL.md, strip the frontmatter via
  *      `extractInstructionFromSkillMd`, and persist the body.
  *
- *   3. Delete legacy name-keyed volumes. After every workflow has an id-keyed
- *      copy, any leftover `custom-skill@{name}` volume is deleted unless a
- *      workflow failed before it could be safely re-keyed in this run.
+ *   3. Preserve legacy name-keyed volumes by default. A later explicit
+ *      `--cleanup-legacy` run deletes leftover `custom-skill@{name}` volumes
+ *      after the id-keyed copies have been verified.
  *
  * The script is idempotent and defaults to dry-run. It only mutates when
- * `--migrate` is passed.
+ * `--migrate` is passed. Legacy name-keyed volumes are preserved by default;
+ * pass `--cleanup-legacy` in a later cleanup run to delete them.
  *
  * Usage (from turbo/packages/db):
+ *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --preseed
+ *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --preseed --migrate
  *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts
  *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate
+ *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --cleanup-legacy
  *   pnpm exec tsx scripts/migrations/007-agent-scoped-workflow-volumes/backfill.ts --migrate --org=org_xxx
  *
  * Environment:
@@ -78,12 +82,20 @@ const { values: args } = parseArgs({
   options: {
     migrate: { type: "boolean", default: false },
     org: { type: "string" },
+    preseed: { type: "boolean", default: false },
+    "cleanup-legacy": { type: "boolean", default: false },
   },
   strict: true,
 });
 
 const DRY_RUN = !args.migrate;
 const SINGLE_ORG_ID = args.org;
+const PRESEED = args.preseed === true;
+const CLEANUP_LEGACY = args["cleanup-legacy"] === true;
+
+if (PRESEED && CLEANUP_LEGACY) {
+  throw new Error("--preseed cannot be combined with --cleanup-legacy");
+}
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -133,10 +145,11 @@ interface S3Manifest {
 interface Stats {
   workflows: number;
   volumesCopied: number;
+  volumesSynced: number;
   volumesAlreadyKeyed: number;
   legacyMissing: number;
   instructionsBackfilled: number;
-  instructionsSkilled: number;
+  instructionsSkipped: number;
   legacyVolumesDeleted: number;
   errors: number;
 }
@@ -388,8 +401,113 @@ function lookupVersions(db: Db, storageId: string): Promise<VersionRow[]> {
 // ---------------------------------------------------------------------------
 
 interface RekeyResult {
-  readonly status: "copied" | "already-keyed" | "legacy-missing";
+  readonly status: "copied" | "synced" | "already-keyed" | "legacy-missing";
   readonly idVolumeS3Prefix: string | null;
+}
+
+interface SyncResult {
+  readonly changed: boolean;
+  readonly versionCount: number;
+}
+
+async function storageVersionExists(
+  db: Db,
+  storageId: string,
+  versionId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: storageVersions.id })
+    .from(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.storageId, storageId),
+        eq(storageVersions.id, versionId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+async function copyLegacyVersionsToStorage(
+  db: Db,
+  client: S3Client,
+  bucket: string,
+  legacy: VolumeRow,
+  target: VolumeRow,
+): Promise<SyncResult> {
+  const legacyVersions = await lookupVersions(db, legacy.id);
+  let headVersionId: string | null = null;
+  let headSize = 0;
+  let headFileCount = 0;
+  let changed = false;
+
+  for (const version of legacyVersions) {
+    const manifest = await downloadManifestJson(
+      client,
+      bucket,
+      `${version.s3Key}/manifest.json`,
+    );
+    const newVersionId = computeStorageVersionId(target.id, manifest.files);
+    const newS3Key = `${target.s3Prefix}/${newVersionId}`;
+
+    if (version.id === legacy.headVersionId) {
+      headVersionId = newVersionId;
+      headSize = version.size;
+      headFileCount = version.fileCount;
+    }
+
+    if (DRY_RUN) {
+      continue;
+    }
+
+    if (await storageVersionExists(db, target.id, newVersionId)) {
+      continue;
+    }
+
+    const sourceObjects = await listObjectsUnderPrefix(
+      client,
+      bucket,
+      version.s3Key,
+    );
+    for (const sourceKey of sourceObjects) {
+      const suffix = sourceKey.slice(version.s3Key.length);
+      await copyObject(client, bucket, sourceKey, `${newS3Key}${suffix}`);
+    }
+
+    await db
+      .insert(storageVersions)
+      .values({
+        id: newVersionId,
+        storageId: target.id,
+        s3Key: newS3Key,
+        size: version.size,
+        fileCount: version.fileCount,
+        message: version.message,
+        createdBy: version.createdBy,
+      })
+      .onConflictDoNothing();
+    changed = true;
+  }
+
+  if (target.headVersionId !== headVersionId) {
+    changed = true;
+  }
+
+  if (!DRY_RUN && changed) {
+    await db
+      .update(storages)
+      .set({
+        headVersionId,
+        size: headSize,
+        fileCount: headFileCount,
+      })
+      .where(eq(storages.id, target.id));
+  }
+
+  return {
+    changed,
+    versionCount: legacyVersions.length,
+  };
 }
 
 /**
@@ -398,7 +516,8 @@ interface RekeyResult {
  *
  * Always copies into a fresh, id-scoped s3Prefix so duplicated rows that share
  * a name never share storage. Idempotent: re-running detects the existing
- * id-keyed volume and does nothing.
+ * id-keyed volume and syncs it forward when the legacy head changed after a
+ * preseed run.
  */
 async function rekeyWorkflowVolume(
   db: Db,
@@ -408,20 +527,38 @@ async function rekeyWorkflowVolume(
 ): Promise<RekeyResult> {
   const idStorageName = getCustomSkillStorageName(workflow.id);
   const existing = await lookupVolume(db, workflow.orgId, idStorageName);
-  if (existing) {
-    return { status: "already-keyed", idVolumeS3Prefix: existing.s3Prefix };
-  }
-
   const legacyStorageName = getCustomSkillStorageName(workflow.name);
   const legacy = await lookupVolume(db, workflow.orgId, legacyStorageName);
   if (!legacy) {
+    if (existing) {
+      return { status: "already-keyed", idVolumeS3Prefix: existing.s3Prefix };
+    }
     return { status: "legacy-missing", idVolumeS3Prefix: null };
   }
 
-  const legacyVersions = await lookupVersions(db, legacy.id);
+  if (existing) {
+    const sync = await copyLegacyVersionsToStorage(
+      db,
+      client,
+      bucket,
+      legacy,
+      existing,
+    );
+    if (!sync.changed) {
+      return { status: "already-keyed", idVolumeS3Prefix: existing.s3Prefix };
+    }
+    console.log(
+      `      ${DRY_RUN ? "would sync" : "synced"} existing id-keyed volume ` +
+        `"${idStorageName}" from legacy "${legacyStorageName}" ` +
+        `(${sync.versionCount} version(s))`,
+    );
+    return { status: "synced", idVolumeS3Prefix: existing.s3Prefix };
+  }
+
   const newPrefix = `${workflow.orgId}/volume/${idStorageName}`;
 
   if (DRY_RUN) {
+    const legacyVersions = await lookupVersions(db, legacy.id);
     console.log(
       `      would copy legacy volume "${legacyStorageName}" → "${idStorageName}" ` +
         `(${legacyVersions.length} version(s), new prefix ${newPrefix})`,
@@ -446,65 +583,15 @@ async function rekeyWorkflowVolume(
     throw new Error(`Failed to create id-keyed storage for ${workflow.id}`);
   }
 
-  // Copy every version's S3 objects under the new prefix, re-pointing s3Key.
-  // Version ids are scoped by storage id in normal writes; recompute them for
-  // the new storage instead of reusing the legacy row's global primary key.
-  let headVersionId: string | null = null;
-  let headSize = 0;
-  let headFileCount = 0;
-
-  for (const version of legacyVersions) {
-    const manifest = await downloadManifestJson(
-      client,
-      bucket,
-      `${version.s3Key}/manifest.json`,
-    );
-    const newVersionId = computeStorageVersionId(newStorage.id, manifest.files);
-    const newS3Key = `${newPrefix}/${newVersionId}`;
-    const sourceObjects = await listObjectsUnderPrefix(
-      client,
-      bucket,
-      version.s3Key,
-    );
-    for (const sourceKey of sourceObjects) {
-      const suffix = sourceKey.slice(version.s3Key.length);
-      await copyObject(client, bucket, sourceKey, `${newS3Key}${suffix}`);
-    }
-
-    await db
-      .insert(storageVersions)
-      .values({
-        id: newVersionId,
-        storageId: newStorage.id,
-        s3Key: newS3Key,
-        size: version.size,
-        fileCount: version.fileCount,
-        message: version.message,
-        createdBy: version.createdBy,
-      })
-      .onConflictDoNothing();
-
-    if (version.id === legacy.headVersionId) {
-      headVersionId = newVersionId;
-      headSize = version.size;
-      headFileCount = version.fileCount;
-    }
-  }
-
-  if (headVersionId) {
-    await db
-      .update(storages)
-      .set({
-        headVersionId,
-        size: headSize,
-        fileCount: headFileCount,
-      })
-      .where(eq(storages.id, newStorage.id));
-  }
+  const sync = await copyLegacyVersionsToStorage(db, client, bucket, legacy, {
+    id: newStorage.id,
+    s3Prefix: newPrefix,
+    headVersionId: null,
+  });
 
   console.log(
     `      copied legacy volume "${legacyStorageName}" → "${idStorageName}" ` +
-      `(${legacyVersions.length} version(s), prefix ${newPrefix})`,
+      `(${sync.versionCount} version(s), prefix ${newPrefix})`,
   );
   return { status: "copied", idVolumeS3Prefix: newPrefix };
 }
@@ -681,14 +768,24 @@ async function deleteLegacyVolumes(
 // Per-org processing
 // ---------------------------------------------------------------------------
 
-async function processOrg(
-  db: Db,
-  client: S3Client,
-  bucket: string,
-  orgId: string,
-  stats: Stats,
-): Promise<void> {
-  const workflows = await db
+async function loadWorkflows(db: Db, orgId: string): Promise<WorkflowRow[]> {
+  if (PRESEED) {
+    const rows = await db
+      .select({
+        id: zeroWorkflows.id,
+        orgId: zeroWorkflows.orgId,
+        name: zeroWorkflows.name,
+      })
+      .from(zeroWorkflows)
+      .where(eq(zeroWorkflows.orgId, orgId))
+      .orderBy(asc(zeroWorkflows.createdAt));
+
+    return rows.map((row) => {
+      return { ...row, description: null, instruction: null };
+    });
+  }
+
+  return await db
     .select({
       id: zeroWorkflows.id,
       orgId: zeroWorkflows.orgId,
@@ -699,12 +796,22 @@ async function processOrg(
     .from(zeroWorkflows)
     .where(eq(zeroWorkflows.orgId, orgId))
     .orderBy(asc(zeroWorkflows.createdAt));
+}
+
+async function processOrg(
+  db: Db,
+  client: S3Client,
+  bucket: string,
+  orgId: string,
+  stats: Stats,
+): Promise<void> {
+  const workflows = await loadWorkflows(db, orgId);
 
   console.log(`\n  Org ${orgId} — ${workflows.length} workflow(s)`);
   stats.workflows += workflows.length;
 
-  // Legacy names to keep because their workflow could not be safely re-keyed in
-  // this run. Successfully copied sources are deleted below.
+  // Legacy names to keep during an explicit cleanup run because their workflow
+  // could not be safely re-keyed in this run.
   const preserveLegacyNames = new Set<string>();
 
   for (const workflow of workflows) {
@@ -714,6 +821,8 @@ async function processOrg(
       const rekey = await rekeyWorkflowVolume(db, client, bucket, workflow);
       if (rekey.status === "already-keyed") {
         stats.volumesAlreadyKeyed++;
+      } else if (rekey.status === "synced") {
+        stats.volumesSynced++;
       } else if (rekey.status === "copied") {
         stats.volumesCopied++;
       } else {
@@ -726,15 +835,17 @@ async function processOrg(
       }
 
       // Step 2: backfill instruction (needs the id-keyed volume to exist).
-      if (rekey.status !== "legacy-missing") {
+      if (PRESEED) {
+        stats.instructionsSkipped++;
+      } else if (rekey.status !== "legacy-missing") {
         const result = await backfillInstruction(db, client, bucket, workflow);
         if (result === "backfilled") {
           stats.instructionsBackfilled++;
         } else {
-          stats.instructionsSkilled++;
+          stats.instructionsSkipped++;
         }
       } else {
-        stats.instructionsSkilled++;
+        stats.instructionsSkipped++;
       }
     } catch (err) {
       stats.errors++;
@@ -744,7 +855,12 @@ async function processOrg(
     }
   }
 
-  // Step 3: delete legacy name-keyed volumes for this org.
+  if (!CLEANUP_LEGACY) {
+    console.log("    legacy cleanup disabled — preserving name-keyed volumes");
+    return;
+  }
+
+  // Step 3: delete legacy name-keyed volumes for this org when explicitly asked.
   try {
     stats.legacyVolumesDeleted += await deleteLegacyVolumes(
       db,
@@ -772,6 +888,12 @@ async function main(): Promise<void> {
   console.log(
     `Mode: ${DRY_RUN ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
   );
+  console.log(
+    `Phase: ${PRESEED ? "preseed (volume sync only, pre-0480 compatible)" : "post-0480 backfill"}`,
+  );
+  console.log(
+    `Legacy cleanup: ${CLEANUP_LEGACY ? "enabled" : "disabled (preserve legacy volumes)"}`,
+  );
   if (SINGLE_ORG_ID) {
     console.log(`Target: ${SINGLE_ORG_ID} (single-org mode)`);
   }
@@ -784,10 +906,11 @@ async function main(): Promise<void> {
   const stats: Stats = {
     workflows: 0,
     volumesCopied: 0,
+    volumesSynced: 0,
     volumesAlreadyKeyed: 0,
     legacyMissing: 0,
     instructionsBackfilled: 0,
-    instructionsSkilled: 0,
+    instructionsSkipped: 0,
     legacyVolumesDeleted: 0,
     errors: 0,
   };
@@ -815,10 +938,11 @@ async function main(): Promise<void> {
     console.log("\n=== Summary ===");
     console.log(`Workflows processed:        ${stats.workflows}`);
     console.log(`Volumes copied (re-keyed):  ${stats.volumesCopied}`);
+    console.log(`Volumes synced:             ${stats.volumesSynced}`);
     console.log(`Volumes already id-keyed:   ${stats.volumesAlreadyKeyed}`);
     console.log(`Legacy volume missing:      ${stats.legacyMissing}`);
     console.log(`Instructions backfilled:    ${stats.instructionsBackfilled}`);
-    console.log(`Instructions skipped:       ${stats.instructionsSkilled}`);
+    console.log(`Instructions skipped:       ${stats.instructionsSkipped}`);
     console.log(`Legacy volumes deleted:     ${stats.legacyVolumesDeleted}`);
     console.log(`Errors:                     ${stats.errors}`);
 
