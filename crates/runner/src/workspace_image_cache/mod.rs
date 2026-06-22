@@ -45,7 +45,8 @@ mod types;
 mod tests;
 
 pub(crate) use lifecycle::{
-    WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
+    WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityFailure,
+    WorkspaceImagePromotionOutcome,
 };
 pub(crate) use types::{
     CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,

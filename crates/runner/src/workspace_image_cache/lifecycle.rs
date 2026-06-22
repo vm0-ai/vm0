@@ -68,6 +68,11 @@ pub(crate) struct WorkspaceImagePromotionContext {
     storage_fingerprints: StorageFingerprints,
 }
 
+pub(crate) struct WorkspaceImagePromotionIdentityFailure {
+    pub(crate) promotion: WorkspaceImagePromotionContext,
+    pub(crate) mismatch: WorkspaceImagePromotionIdentityMismatch,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WorkspaceImagePromotionOutcome {
     Promoted,
@@ -1312,11 +1317,18 @@ impl WorkspaceImagePromotionContext {
         Ok(self.into_active_lease_unchecked(workspace_drive_available))
     }
 
-    pub(crate) fn into_active_lease_after_identity_validation(
+    pub(crate) fn try_into_active_lease_preserving_context(
         self,
+        expected: &WorkspaceImagePromotionIdentity,
         workspace_drive_available: bool,
-    ) -> WorkspaceImageLease {
-        self.into_active_lease_unchecked(workspace_drive_available)
+    ) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
+        if let Err(mismatch) = self.validate_identity(expected) {
+            return Err(Box::new(WorkspaceImagePromotionIdentityFailure {
+                promotion: self,
+                mismatch,
+            }));
+        }
+        Ok(self.into_active_lease_unchecked(workspace_drive_available))
     }
 
     fn into_active_lease_unchecked(self, workspace_drive_available: bool) -> WorkspaceImageLease {

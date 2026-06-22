@@ -119,7 +119,8 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
-    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
+    WorkspaceImagePromotionIdentityFailure, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest,
 };
 use crate::workspace_promotion::abandon_unpublished_workspace_promotion;
 
@@ -522,7 +523,7 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                 ) {
                     Ok(lease) => Some(lease),
                     Err(identity_failure) => {
-                        let ReusedWorkspacePromotionIdentityMismatch {
+                        let WorkspaceImagePromotionIdentityFailure {
                             promotion,
                             mismatch,
                         } = *identity_failure;
@@ -611,7 +612,7 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                 ) {
                     Ok(lease) => lease,
                     Err(identity_failure) => {
-                        let ReusedWorkspacePromotionIdentityMismatch {
+                        let WorkspaceImagePromotionIdentityFailure {
                             promotion,
                             mismatch,
                         } = *identity_failure;
@@ -735,7 +736,7 @@ fn reused_promotion_into_active_lease(
     sandbox_id: SandboxId,
     params: &JobParams,
     cli_agent_session_id: &str,
-) -> Result<WorkspaceImageLease, Box<ReusedWorkspacePromotionIdentityMismatch>> {
+) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
     let expected = match cache
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
@@ -755,24 +756,13 @@ fn reused_promotion_into_active_lease(
         }) {
         Ok(expected) => expected,
         Err(mismatch) => {
-            return Err(Box::new(ReusedWorkspacePromotionIdentityMismatch {
+            return Err(Box::new(WorkspaceImagePromotionIdentityFailure {
                 promotion,
                 mismatch,
             }));
         }
     };
-    if let Err(mismatch) = promotion.validate_identity(&expected) {
-        return Err(Box::new(ReusedWorkspacePromotionIdentityMismatch {
-            promotion,
-            mismatch,
-        }));
-    }
-    Ok(promotion.into_active_lease_after_identity_validation(true))
-}
-
-struct ReusedWorkspacePromotionIdentityMismatch {
-    promotion: WorkspaceImagePromotionContext,
-    mismatch: WorkspaceImagePromotionIdentityMismatch,
+    promotion.try_into_active_lease_preserving_context(&expected, true)
 }
 
 fn workspace_promotion_identity_failure(
