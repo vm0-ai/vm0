@@ -36,12 +36,16 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  BILLABLE_CONNECTORS,
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-  type FirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+  isFirewallExecutionMetadataConnectorType,
+  loadFirewallExecutionMetadata,
+  type FirewallExecutionMetadataDetail,
+  type FirewallExecutionMetadataConnectorType,
+} from "@vm0/connectors/firewall-execution-metadata/server";
+import {
+  loadFirewallPermissionIndex,
+  type FirewallPermissionIndex,
+} from "@vm0/connectors/firewall-metadata/server";
+import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   expandHostWildcardsInBaseUrl,
@@ -188,6 +192,8 @@ const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
 const L = logger("AgentRunCreate");
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
+const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -327,7 +333,10 @@ interface ResolvedModelProviderEnvironment {
 interface PermissionManifest {
   readonly firewalls: ExecutionFirewalls;
   readonly networkPolicies: NetworkPolicies;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[];
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
+  readonly billableFirewalls: readonly string[];
 }
 
 interface StoredExecutionSecrets {
@@ -871,7 +880,9 @@ function expandEnvironment(args: {
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
   readonly additionalEnvironment: Record<string, string> | undefined;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
   readonly storedConnectorEnvironment: Record<string, string> | undefined;
   readonly connectorVars: Record<string, string> | undefined;
 }): Record<string, string> | null {
@@ -883,7 +894,7 @@ function expandEnvironment(args: {
     }),
     vars: args.connectorVars,
     secrets: args.secrets,
-    environmentFirewalls: args.environmentFirewalls,
+    environmentSecretPlaceholders: args.environmentSecretPlaceholders,
   });
   const mergedEnvironment = environmentTemplates({
     content: args.content,
@@ -897,7 +908,7 @@ function expandEnvironment(args: {
     vars: args.vars,
     secrets: {
       ...args.secrets,
-      ...firewallSecretPlaceholders(args.environmentFirewalls),
+      ...args.environmentSecretPlaceholders,
     },
   });
   return mergeRecords(result, storedConnectorEnvironment) ?? null;
@@ -933,7 +944,9 @@ function expandStoredConnectorEnvironment(args: {
   readonly environment: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
 }): Record<string, string> | undefined {
   if (!args.environment) {
     return undefined;
@@ -942,7 +955,7 @@ function expandStoredConnectorEnvironment(args: {
   const expanded: Record<string, string> = {};
   const secretSources = mergeRecords(
     args.secrets,
-    firewallSecretPlaceholders(args.environmentFirewalls),
+    args.environmentSecretPlaceholders,
   );
   for (const [key, value] of Object.entries(args.environment)) {
     const expansion = expandVariablesInString(value, {
@@ -969,20 +982,19 @@ function formatMissingReferences(
     .join(", ");
 }
 
-function firewallSecretPlaceholders(
-  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
+function firewallSecretPlaceholdersFromFirewalls(
+  firewalls: readonly ExpandedFirewallConfig[] | undefined,
 ): Record<string, string> | undefined {
-  if (!environmentFirewalls || environmentFirewalls.length === 0) {
+  if (!firewalls || firewalls.length === 0) {
     return undefined;
   }
 
   const placeholders: Record<string, string> = {};
-  for (const firewall of environmentFirewalls) {
+  for (const firewall of firewalls) {
     const secretNames = extractSecretNamesFromApis(firewall.apis);
     for (const name of secretNames) {
       placeholders[name] =
-        firewall.placeholders?.[name] ??
-        "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+        firewall.placeholders?.[name] ?? DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
     }
     for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
       placeholders[name] = value;
@@ -996,7 +1008,9 @@ function missingEnvironmentReferences(args: {
   readonly content: AgentComposeContent;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
   readonly additionalEnvironment: Record<string, string> | undefined;
   readonly storedConnectorEnvironment: Record<string, string> | undefined;
   readonly connectorVars: Record<string, string> | undefined;
@@ -1009,7 +1023,7 @@ function missingEnvironmentReferences(args: {
     }),
     vars: args.connectorVars,
     secrets: args.secrets,
-    environmentFirewalls: args.environmentFirewalls,
+    environmentSecretPlaceholders: args.environmentSecretPlaceholders,
   });
   const environment = environmentTemplates({
     content: args.content,
@@ -1019,7 +1033,7 @@ function missingEnvironmentReferences(args: {
     environment,
     vars: args.vars,
     secrets: args.secrets,
-    environmentFirewalls: args.environmentFirewalls,
+    environmentSecretPlaceholders: args.environmentSecretPlaceholders,
   });
   return environmentMissing;
 }
@@ -1028,15 +1042,14 @@ function missingReferencesInEnvironment(args: {
   readonly environment: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
 }): string[] {
   if (!args.environment) {
     return [];
   }
   const grouped = extractAndGroupVariables(args.environment);
-  const firewallPlaceholders = firewallSecretPlaceholders(
-    args.environmentFirewalls,
-  );
   const missingVars = grouped.vars
     .filter((ref) => {
       return args.vars?.[ref.name] === undefined;
@@ -1048,7 +1061,7 @@ function missingReferencesInEnvironment(args: {
     .filter((ref) => {
       return (
         args.secrets?.[ref.name] === undefined &&
-        firewallPlaceholders?.[ref.name] === undefined
+        args.environmentSecretPlaceholders?.[ref.name] === undefined
       );
     })
     .map((ref) => {
@@ -1061,7 +1074,9 @@ function assertStoredConnectorEnvironmentReferences(args: {
   readonly environment: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
-  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
 }): void {
   const missing = missingReferencesInEnvironment(args);
   if (missing.length > 0) {
@@ -2196,14 +2211,37 @@ function allAllowPolicyForPermissions(
   };
 }
 
-function defaultBuiltinConnectorPolicyForFirewall(
-  firewall: ExpandedFirewallConfig,
-  permissionNames: readonly string[],
+function defaultPolicyForPermissionIndex(
+  index: FirewallPermissionIndex,
 ): FirewallPolicy {
-  if (isFirewallConnectorType(firewall.name)) {
-    return getDefaultFirewallPolicies(firewall.name);
+  const policies: Record<string, FirewallPolicy["policies"][string]> = {};
+  for (const name of index.permissionNames) {
+    policies[name] = index.policyResolver.permission(name);
   }
-  return allAllowPolicyForPermissions(permissionNames);
+  return {
+    policies,
+    unknownPolicy: index.policyResolver.unknown(),
+  };
+}
+
+async function loadRequiredFirewallPermissionIndex(
+  type: string,
+): Promise<FirewallPermissionIndex> {
+  const index = await loadFirewallPermissionIndex(type);
+  if (!index) {
+    throw new Error(`Missing firewall permission metadata: ${type}`);
+  }
+  return index;
+}
+
+async function loadRequiredFirewallExecutionMetadata(
+  type: FirewallExecutionMetadataConnectorType,
+): Promise<FirewallExecutionMetadataDetail> {
+  const metadata = await loadFirewallExecutionMetadata(type);
+  if (!metadata) {
+    throw new Error(`Missing firewall execution metadata: ${type}`);
+  }
+  return metadata;
 }
 
 function networkPolicyForFirewallPolicy(
@@ -2233,6 +2271,10 @@ function networkPolicyForFirewallPolicy(
 }
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const BASE_URL_VALIDATION_SECRET_TEMPLATE = [
+  "$",
+  "{{ secrets.__VM0_FIREWALL_BASE_URL_VALIDATION }}",
+].join("");
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
   return {
@@ -2275,15 +2317,58 @@ function builtinFirewallEntry(
   return { kind: "builtin", name: firewall.name, baseUrlVars };
 }
 
+function baseUrlValidationAuth(
+  credentialed: boolean,
+): Firewall["apis"][number]["auth"] {
+  return credentialed
+    ? {
+        headers: {
+          Authorization: `Bearer ${BASE_URL_VALIDATION_SECRET_TEMPLATE}`,
+        },
+      }
+    : {};
+}
+
+function builtinFirewallEntryForMetadata(
+  metadata: FirewallExecutionMetadataDetail,
+  vars: Record<string, string> | undefined,
+): ExecutionFirewallEntry {
+  if (metadata.baseUrlVarNames.length === 0) {
+    return { kind: "builtin", name: metadata.type };
+  }
+
+  const baseUrlVars: Record<string, string> = {};
+  for (const name of metadata.baseUrlVarNames) {
+    const value = vars?.[name];
+    if (!value) {
+      throw new Error(
+        `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
+      );
+    }
+    baseUrlVars[name] = value;
+  }
+  resolveFirewallBaseUrlVars(
+    [
+      {
+        name: metadata.type,
+        apis: metadata.baseUrlTemplates.map((template) => {
+          return {
+            base: template.base,
+            auth: baseUrlValidationAuth(template.credentialed),
+            permissions: [],
+          };
+        }),
+      },
+    ],
+    vars,
+  );
+  return { kind: "builtin", name: metadata.type, baseUrlVars };
+}
+
 function inlineFirewallEntry(
   firewall: ExpandedFirewallConfig,
 ): ExecutionFirewallEntry {
   return { kind: "inline", firewall: runtimeFirewall(firewall) };
-}
-
-interface RuntimeConnectorFirewall {
-  readonly firewall: ExpandedFirewallConfig;
-  readonly inline: boolean;
 }
 
 const FIGMA_API_TOKEN_TEMPLATE = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
@@ -2308,15 +2393,12 @@ function figmaApiTokenFirewall(
   };
 }
 
-function runtimeConnectorFirewall(
-  type: FirewallConnectorType,
-  authMethod: string | undefined,
-): RuntimeConnectorFirewall {
-  const firewall = getConnectorFirewall(type);
-  if (type === "figma" && authMethod === "api-token") {
-    return { firewall: figmaApiTokenFirewall(firewall), inline: true };
+async function loadFigmaApiTokenFirewall(): Promise<ExpandedFirewallConfig> {
+  const firewall = await loadConnectorFirewall("figma");
+  if (!firewall) {
+    throw new Error("Missing figma runtime firewall");
   }
-  return { firewall, inline: false };
+  return figmaApiTokenFirewall(firewall);
 }
 
 function applyConnectorPolicies(
@@ -2329,7 +2411,7 @@ function applyConnectorPolicies(
     firewall: ExpandedFirewallConfig,
     permissionNames: readonly string[],
   ) => FirewallPolicy,
-): Omit<PermissionManifest, "environmentFirewalls"> {
+): Pick<PermissionManifest, "firewalls" | "networkPolicies"> {
   const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
 
@@ -2379,7 +2461,10 @@ function modelProviderPermissionManifest(
   const askSet = new Set(firewall.defaultPolicies?.ask ?? []);
   return {
     firewalls: [builtinFirewallEntry(firewall, vars)],
-    environmentFirewalls: [firewall],
+    environmentSecretPlaceholders: firewallSecretPlaceholdersFromFirewalls([
+      firewall,
+    ]),
+    billableFirewalls: [],
     networkPolicies: {
       [firewall.name]: {
         allow: permissionNames.filter((name) => {
@@ -2393,7 +2478,60 @@ function modelProviderPermissionManifest(
   };
 }
 
-function buildPermissionManifest(args: {
+interface BuiltinConnectorManifestSource {
+  readonly metadata: FirewallExecutionMetadataDetail;
+  readonly permissionIndex: FirewallPermissionIndex;
+}
+
+function applyBuiltinConnectorMetadataPolicies(
+  sources: readonly BuiltinConnectorManifestSource[],
+  policies: FirewallPolicies | undefined,
+  vars: Record<string, string> | undefined,
+): PermissionManifest {
+  const firewalls: ExecutionFirewalls = [];
+  const networkPolicies: NetworkPolicies = {};
+  const environmentSecretPlaceholders: Record<string, string> = {};
+  const billableFirewalls: string[] = [];
+
+  for (const source of sources) {
+    const name = source.metadata.type;
+    const permissionNames = [...source.permissionIndex.permissionNames];
+    const defaultPolicy = defaultPolicyForPermissionIndex(
+      source.permissionIndex,
+    );
+    const policy = policies?.[name];
+    firewalls.push(builtinFirewallEntryForMetadata(source.metadata, vars));
+    Object.assign(
+      environmentSecretPlaceholders,
+      source.metadata.placeholderValues,
+    );
+    if (source.metadata.billable) {
+      billableFirewalls.push(name);
+    }
+
+    if (!policy) {
+      networkPolicies[name] = networkPolicyForFirewallPolicy(
+        permissionNames,
+        defaultPolicy,
+      );
+      continue;
+    }
+
+    networkPolicies[name] = networkPolicyForFirewallPolicy(permissionNames, {
+      ...policy,
+      unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+    });
+  }
+
+  return {
+    firewalls,
+    networkPolicies,
+    environmentSecretPlaceholders: compactRecord(environmentSecretPlaceholders),
+    billableFirewalls,
+  };
+}
+
+async function buildPermissionManifest(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -2401,38 +2539,75 @@ function buildPermissionManifest(args: {
   readonly connectorTypes?: readonly ConnectorType[];
   readonly connectorAuthMethods?: Partial<Record<ConnectorType, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
-}): PermissionManifest | undefined {
+}): Promise<PermissionManifest | undefined> {
   const connectorTypes =
     args.connectorTypes ??
-    Object.keys(args.permissionPolicies ?? {}).filter(isFirewallConnectorType);
+    Object.keys(args.permissionPolicies ?? {}).filter(
+      isFirewallExecutionMetadataConnectorType,
+    );
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const runtimeConnectorFirewalls = connectorTypes
-    .filter(isFirewallConnectorType)
-    .map((type) => {
-      return runtimeConnectorFirewall(type, args.connectorAuthMethods?.[type]);
-    });
-  const connectorFirewalls = runtimeConnectorFirewalls.map(({ firewall }) => {
-    return firewall;
-  });
-  const inlineConnectorFirewallNames = new Set(
-    runtimeConnectorFirewalls
-      .filter(({ inline }) => {
-        return inline;
-      })
-      .map(({ firewall }) => {
-        return firewall.name;
-      }),
+  const builtinConnectorTypes = connectorTypes.filter(
+    isFirewallExecutionMetadataConnectorType,
   );
-  const connectorManifest = applyConnectorPolicies(
-    connectorFirewalls,
-    args.permissionPolicies,
-    (firewall) => {
-      if (inlineConnectorFirewallNames.has(firewall.name)) {
-        return inlineFirewallEntry(firewall);
+
+  const builtinSources: BuiltinConnectorManifestSource[] = [];
+  const inlineConnectorFirewalls: ExpandedFirewallConfig[] = [];
+  const inlineConnectorDefaultPolicies = new Map<string, FirewallPolicy>();
+  const inlineConnectorBillableFirewalls: string[] = [];
+
+  const loadedConnectorSources = await Promise.all(
+    builtinConnectorTypes.map(async (type) => {
+      const [metadata, permissionIndex] = await Promise.all([
+        loadRequiredFirewallExecutionMetadata(type),
+        loadRequiredFirewallPermissionIndex(type),
+      ]);
+      if (
+        type === "figma" &&
+        args.connectorAuthMethods?.[type] === "api-token"
+      ) {
+        return {
+          type,
+          metadata,
+          permissionIndex,
+          inlineFirewall: await loadFigmaApiTokenFirewall(),
+        };
       }
-      return builtinFirewallEntry(firewall, connectorBaseUrlVars);
+      return { type, metadata, permissionIndex, inlineFirewall: null };
+    }),
+  );
+  for (const source of loadedConnectorSources) {
+    if (source.inlineFirewall) {
+      inlineConnectorFirewalls.push(source.inlineFirewall);
+      inlineConnectorDefaultPolicies.set(
+        source.type,
+        defaultPolicyForPermissionIndex(source.permissionIndex),
+      );
+      if (source.metadata.billable) {
+        inlineConnectorBillableFirewalls.push(source.type);
+      }
+      continue;
+    }
+    builtinSources.push({
+      metadata: source.metadata,
+      permissionIndex: source.permissionIndex,
+    });
+  }
+
+  const connectorManifest = applyBuiltinConnectorMetadataPolicies(
+    builtinSources,
+    args.permissionPolicies,
+    connectorBaseUrlVars,
+  );
+  const inlineConnectorManifest = applyConnectorPolicies(
+    inlineConnectorFirewalls,
+    args.permissionPolicies,
+    inlineFirewallEntry,
+    (firewall, permissionNames) => {
+      return (
+        inlineConnectorDefaultPolicies.get(firewall.name) ??
+        allAllowPolicyForPermissions(permissionNames)
+      );
     },
-    defaultBuiltinConnectorPolicyForFirewall,
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2453,6 +2628,7 @@ function buildPermissionManifest(args: {
   const firewalls = [
     ...(providerManifest?.firewalls ?? []),
     ...connectorManifest.firewalls,
+    ...inlineConnectorManifest.firewalls,
     ...customConnectorManifest.firewalls,
   ];
 
@@ -2462,14 +2638,21 @@ function buildPermissionManifest(args: {
 
   return {
     firewalls,
-    environmentFirewalls: [
-      ...(providerManifest?.environmentFirewalls ?? []),
-      ...connectorFirewalls,
-      ...(args.customConnectorFirewalls ?? []),
+    environmentSecretPlaceholders: mergeRecords(
+      providerManifest?.environmentSecretPlaceholders,
+      connectorManifest.environmentSecretPlaceholders,
+      firewallSecretPlaceholdersFromFirewalls(inlineConnectorFirewalls),
+      firewallSecretPlaceholdersFromFirewalls(args.customConnectorFirewalls),
+    ),
+    billableFirewalls: [
+      ...(providerManifest?.billableFirewalls ?? []),
+      ...connectorManifest.billableFirewalls,
+      ...inlineConnectorBillableFirewalls,
     ],
     networkPolicies: {
       ...providerManifest?.networkPolicies,
       ...connectorManifest.networkPolicies,
+      ...inlineConnectorManifest.networkPolicies,
       ...customConnectorManifest.networkPolicies,
     },
   };
@@ -2969,7 +3152,7 @@ function validateCompose(
   secrets: Record<string, string> | undefined,
   options?: {
     readonly validateEnvironmentReferences?: boolean;
-    readonly environmentFirewalls?: readonly ExpandedFirewallConfig[];
+    readonly environmentSecretPlaceholders?: Readonly<Record<string, string>>;
     readonly additionalEnvironment?: Record<string, string>;
     readonly storedConnectorEnvironment?: Record<string, string>;
     readonly connectorVars?: Record<string, string>;
@@ -2987,7 +3170,7 @@ function validateCompose(
       content,
       vars,
       secrets,
-      environmentFirewalls: options?.environmentFirewalls,
+      environmentSecretPlaceholders: options?.environmentSecretPlaceholders,
       additionalEnvironment: options?.additionalEnvironment,
       storedConnectorEnvironment: options?.storedConnectorEnvironment,
       connectorVars: options?.connectorVars,
@@ -3225,6 +3408,7 @@ async function buildStoredExecutionContext(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
   readonly apiStartTime: number;
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
@@ -3232,15 +3416,7 @@ async function buildStoredExecutionContext(args: {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<BuiltStoredExecutionContext> {
-  const permissions = buildPermissionManifest({
-    modelProvider: args.modelProvider,
-    permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
-    connectorVars: args.connectorContext.vars,
-    connectorTypes: args.connectorContext.connectorTypes,
-    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
-    customConnectorFirewalls: args.customConnectorContext.firewalls,
-  });
+  const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
@@ -3263,7 +3439,8 @@ async function buildStoredExecutionContext(args: {
           vars: args.body.vars,
           secrets: executionSecrets.secrets,
           additionalEnvironment: args.modelProvider?.environment,
-          environmentFirewalls: permissions?.environmentFirewalls,
+          environmentSecretPlaceholders:
+            permissions?.environmentSecretPlaceholders,
           storedConnectorEnvironment: args.connectorContext.storedEnvironment,
           connectorVars: args.connectorContext.vars,
         }),
@@ -3453,7 +3630,6 @@ function billableFirewallsForPermissions(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissions: PermissionManifest | undefined;
 }): string[] {
-  const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   const firewalls = args.permissions?.firewalls ?? [];
   const firewallNames = firewalls.map((firewall) => {
     return firewall.kind === "builtin" ? firewall.name : firewall.firewall.name;
@@ -3464,9 +3640,7 @@ function billableFirewallsForPermissions(args: {
           return name.startsWith("model-provider:");
         })
       : [];
-  const connectorFirewalls = firewallNames.filter((name) => {
-    return billableConnectorSet.has(name);
-  });
+  const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
 }
@@ -3537,6 +3711,7 @@ function buildRunnerJobPayload(
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
+    readonly permissionManifest: PermissionManifest | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -3656,6 +3831,7 @@ function dispatchRun(
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
+    readonly permissionManifest: PermissionManifest | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -3730,6 +3906,7 @@ function enqueueRunForConcurrency(
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
+    readonly permissionManifest: PermissionManifest | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -3835,6 +4012,7 @@ interface PreparedRunContext {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
@@ -4003,17 +4181,9 @@ function validateRunEnvironmentReferences(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
   readonly validateEnvironmentReferences: boolean | undefined;
 }): CreateRunErrorResult | null {
-  const validationPermissions = buildPermissionManifest({
-    modelProvider: args.modelProvider,
-    permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
-    connectorVars: args.connectorContext.vars,
-    connectorTypes: args.connectorContext.connectorTypes,
-    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
-    customConnectorFirewalls: args.customConnectorContext.firewalls,
-  });
   const validationSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
@@ -4026,7 +4196,8 @@ function validateRunEnvironmentReferences(args: {
     validationSecrets.secrets,
     {
       validateEnvironmentReferences: args.validateEnvironmentReferences,
-      environmentFirewalls: validationPermissions?.environmentFirewalls,
+      environmentSecretPlaceholders:
+        args.permissionManifest?.environmentSecretPlaceholders,
       additionalEnvironment: args.modelProvider?.environment,
       storedConnectorEnvironment: args.connectorContext.storedEnvironment,
       connectorVars: args.connectorContext.vars,
@@ -4034,6 +4205,43 @@ function validateRunEnvironmentReferences(args: {
   );
 
   return isRouteError(validation) ? validation : null;
+}
+
+async function buildPreparedPermissionManifest(args: {
+  readonly body: CreateRunBody;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+}): Promise<PermissionManifest | undefined> {
+  return await buildPermissionManifest({
+    modelProvider: args.modelProvider,
+    permissionPolicies: args.body.permissionPolicies,
+    vars: args.body.vars,
+    connectorVars: args.connectorContext.vars,
+    connectorTypes: args.connectorContext.connectorTypes,
+    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
+    customConnectorFirewalls: args.customConnectorContext.firewalls,
+  });
+}
+
+function preparedRunAdditionalVolumes(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly framework: SupportedFramework;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly body: CreateRunBody;
+  readonly resolved: ResolvedCompose;
+}): readonly AdditionalVolume[] | undefined {
+  return mergeAdditionalVolumes({
+    prepend: buildInjectedSkillVolumes(
+      args.createArgs,
+      args.framework,
+      isFeatureEnabled(
+        FeatureSwitchKey.GoalWorkflows,
+        args.featureSwitchContext,
+      ),
+    ),
+    base: args.body.additionalVolumes ?? args.resolved.additionalVolumes,
+  });
 }
 
 function prepareRunContext(
@@ -4125,12 +4333,21 @@ function prepareRunContext(
         await loadRunConnectorContexts(db, args, featureSwitchContext);
       signal.throwIfAborted();
 
+      const permissionManifest = await buildPreparedPermissionManifest({
+        body,
+        modelProvider,
+        connectorContext,
+        customConnectorContext,
+      });
+      signal.throwIfAborted();
+
       const validation = validateRunEnvironmentReferences({
         resolved,
         body,
         modelProvider,
         connectorContext,
         customConnectorContext,
+        permissionManifest,
         validateEnvironmentReferences: args.validateEnvironmentReferences,
       });
       if (validation) {
@@ -4145,16 +4362,12 @@ function prepareRunContext(
         framework,
         bodyArtifacts: body.artifacts,
       });
-      const additionalVolumes = mergeAdditionalVolumes({
-        prepend: buildInjectedSkillVolumes(
-          args,
-          framework,
-          isFeatureEnabled(
-            FeatureSwitchKey.GoalWorkflows,
-            featureSwitchContext,
-          ),
-        ),
-        base: body.additionalVolumes ?? resolved.additionalVolumes,
+      const additionalVolumes = preparedRunAdditionalVolumes({
+        createArgs: args,
+        framework,
+        featureSwitchContext,
+        body,
+        resolved,
       });
 
       return {
@@ -4164,6 +4377,7 @@ function prepareRunContext(
         modelProvider,
         connectorContext,
         customConnectorContext,
+        permissionManifest,
         artifacts: runArtifacts.artifacts,
         additionalVolumes,
         userTimezone,
@@ -4241,6 +4455,7 @@ function completeQueuedRun(input: {
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
+            permissionManifest: input.context.permissionManifest,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
@@ -4293,6 +4508,7 @@ function completePendingRun(input: {
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
+            permissionManifest: input.context.permissionManifest,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,

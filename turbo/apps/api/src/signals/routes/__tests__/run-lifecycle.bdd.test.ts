@@ -923,6 +923,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         return firewallEntryName(firewall);
       }),
     ).toContain("x");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
 
@@ -1203,6 +1207,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
     expect(claim.secretValues).toContain("user-shared-secret");
+    expect(claim.firewalls ?? []).toStrictEqual([]);
+    expect(claim.networkPolicies ?? {}).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -1320,6 +1326,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         return firewallEntryName(firewall);
       }),
     ).toContain("zendesk");
+    expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
+    });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);

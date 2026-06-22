@@ -15,6 +15,7 @@ const FORBIDDEN_RUNTIME_FIREWALL_IMPORTS = [
   "@vm0/connectors/firewalls",
   "@vm0/core/firewalls",
 ] as const;
+const RUN_CREATION_SERVICE = "agent-run-create.service.ts";
 const IMPORT_SPECIFIER_PATTERN =
   /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -30,6 +31,18 @@ function importsSpecifier(source: string, specifier: string): boolean {
       importedSpecifier === specifier ||
       importedSpecifier.startsWith(`${specifier}/`)
     );
+  });
+}
+
+function importsEagerConnectorRuntimeFirewall(source: string): boolean {
+  return importSpecifiers(source).some((specifier) => {
+    if (specifier === "@vm0/connectors/firewalls") {
+      return true;
+    }
+    if (specifier === "@vm0/connectors/firewalls/runtime") {
+      return false;
+    }
+    return specifier.startsWith("@vm0/connectors/firewalls/");
   });
 }
 
@@ -66,4 +79,14 @@ describe("firewall metadata import boundary", () => {
       }
     },
   );
+
+  it("keeps run creation off eager runtime firewall catalogs", () => {
+    const source = readFileSync(
+      resolve(SERVICE_DIR, RUN_CREATION_SERVICE),
+      "utf8",
+    );
+
+    expect(importsEagerConnectorRuntimeFirewall(source)).toBeFalsy();
+    expect(importsSpecifier(source, "@vm0/core/firewalls")).toBeFalsy();
+  });
 });
