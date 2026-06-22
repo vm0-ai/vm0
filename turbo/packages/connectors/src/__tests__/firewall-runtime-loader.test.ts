@@ -32,17 +32,25 @@ function staticValueImportSpecifiers(source: string): string[] {
 function staticValueExportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
-    /^\s*export(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+    /^\s*export(?:\s+\*(?:\s+as\s+\w+)?|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
   )) {
     specifiers.push(match[1]!);
   }
   return specifiers;
 }
 
-function staticExportSpecifiers(source: string): string[] {
+function staticModuleSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
-    /^\s*export\s+(?:type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+    /^\s*import\s+(?:type\s+)?[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(
+    /^\s*export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
   )) {
     specifiers.push(match[1]!);
   }
@@ -89,9 +97,9 @@ describe("firewall runtime loader", () => {
       path.resolve(import.meta.dirname, "../index.ts"),
       "utf-8",
     );
-    const rootExportSpecifiers = staticExportSpecifiers(rootEntrypoint);
+    const rootSpecifiers = staticModuleSpecifiers(rootEntrypoint);
 
-    for (const specifier of rootExportSpecifiers) {
+    for (const specifier of rootSpecifiers) {
       expect(specifier).not.toMatch(/^\.\/firewalls(?:\/|$)/);
     }
   });

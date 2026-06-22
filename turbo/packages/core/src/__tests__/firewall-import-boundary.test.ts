@@ -23,7 +23,7 @@ function staticModuleSpecifiers(source: string): string[] {
     }
   }
   for (const match of source.matchAll(
-    /^\s*export\s+(?:type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+    /^\s*export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
   )) {
     const specifier = match[1];
     if (specifier !== undefined) {
