@@ -141,7 +141,9 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             let structured_error = codex_nested_turn_error(event).or(error);
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
-                message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
+                message: codex_error_message(error)
+                    .or_else(|| codex_error_message(structured_error))
+                    .unwrap_or_else(|| "turn failed".into()),
                 failure_reason: codex_event_failure_reason(event, structured_error),
             })
         }
@@ -205,7 +207,10 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
     }
 
     let message = error.get("message").and_then(Value::as_str);
-    let details = error.get("additional_details").and_then(Value::as_str);
+    let details = error
+        .get("additional_details")
+        .or_else(|| error.get("additionalDetails"))
+        .and_then(Value::as_str);
     combined_message_and_details(message, details)
 }
 
@@ -903,6 +908,28 @@ mod tests {
     }
 
     #[test]
+    fn codex_turn_failed_uses_nested_turn_error_for_message_when_top_level_error_missing() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "turn": {
+                "error": {
+                    "message": "nested turn failure",
+                    "additionalDetails": "quota exhausted"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "nested turn failure (quota exhausted)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_null_nested_turn_error_uses_top_level_error() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -1046,6 +1073,26 @@ mod tests {
             "error": {
                 "message": "turn failed from server",
                 "additional_details": "rate limit exceeded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server (rate limit exceeded)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_appends_camel_case_additional_details() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "additionalDetails": "rate limit exceeded"
             }
         });
 
