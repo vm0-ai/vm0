@@ -556,6 +556,38 @@ async fn codex_app_server_cancelled_shutdown_can_retry_and_reap_child() -> Resul
 }
 
 #[tokio::test]
+async fn codex_app_server_request_after_cancelled_shutdown_kills_child() -> Result<(), String> {
+    let mut client = spawn_client(Some("hang-on-stdin-eof"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+
+    let first_shutdown = tokio::time::timeout(Duration::from_millis(100), client.shutdown()).await;
+    assert!(first_shutdown.is_err());
+
+    let result =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("app-server stdin is closed"));
+        }
+        other => {
+            return Err(format!(
+                "expected closed stdin protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("shutdown failed: {error:?}")),
+        Err(_) => return Err("shutdown waited for grace after half-closed request".to_string()),
+    }
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
 async fn codex_app_server_shutdown_kills_stderr_holder_without_drain_timeout() -> Result<(), String>
 {
     let mut client = spawn_client(Some("stderr-holder-on-stdin-eof"))?;

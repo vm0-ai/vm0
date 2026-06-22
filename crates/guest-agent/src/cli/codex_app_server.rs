@@ -562,6 +562,9 @@ impl CodexAppServerClient {
         if self.outbound_write_in_progress {
             return Err(self.poison_stream("previous app-server write did not complete"));
         }
+        if self.stdin.is_none() {
+            return Err(self.poison_stream("app-server stdin is closed"));
+        }
         if self.in_flight_request_id.is_some() {
             return Err(self.poison_stream("previous app-server request did not complete"));
         }
