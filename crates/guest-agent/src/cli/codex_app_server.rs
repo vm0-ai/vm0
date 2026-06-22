@@ -538,7 +538,7 @@ impl CodexAppServerClient {
 
     async fn write_message(&mut self, message: &Value) -> Result<(), CodexAppServerError> {
         if let Some(message) = self.stream_unusable_reason.clone() {
-            self.kill_unusable_stream_process_if_needed()?;
+            self.kill_unusable_stream_process_if_needed();
             return Err(CodexAppServerError::Protocol(message));
         }
         if self.outbound_write_in_progress {
@@ -567,7 +567,7 @@ impl CodexAppServerClient {
 
     fn ensure_stream_usable(&mut self) -> Result<(), CodexAppServerError> {
         if let Some(message) = self.stream_unusable_reason.clone() {
-            self.kill_unusable_stream_process_if_needed()?;
+            self.kill_unusable_stream_process_if_needed();
             return Err(CodexAppServerError::Protocol(message));
         }
         if self.outbound_write_in_progress {
@@ -691,15 +691,14 @@ impl CodexAppServerClient {
                 .is_some_and(|stderr_handle| !stderr_handle.is_finished())
     }
 
-    fn kill_unusable_stream_process_if_needed(&mut self) -> Result<(), CodexAppServerError> {
-        let _ = self.try_finish_child_wait()?;
+    fn kill_unusable_stream_process_if_needed(&mut self) {
+        let _ = self.try_finish_child_wait();
         if self.process_group_signal_needed() {
             self.signal_process_group(libc::SIGKILL);
         }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
         }
-        Ok(())
     }
 }
 
