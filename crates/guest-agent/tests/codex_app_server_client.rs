@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+const BLOCKED_STDIN_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 static MOCK_CODEX_BUILD: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 
@@ -431,6 +432,47 @@ async fn codex_app_server_cancelled_request_fails_next_request() -> Result<(), S
         other => {
             return Err(format!(
                 "expected previous request protocol error, got {other:?}"
+            ));
+        }
+    }
+
+    wait_result(client.shutdown(), "shutdown").await?;
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
+async fn codex_app_server_cancelled_notification_fails_next_request() -> Result<(), String> {
+    let mut client = spawn_client(Some("hang-after-initialize-response"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+    let initialized: InitializeResponse = wait_result(
+        client.request("initialize", initialize_params()),
+        "manual initialize",
+    )
+    .await?;
+    assert_eq!(initialized.platform_family, std::env::consts::FAMILY);
+
+    let timed_out = tokio::time::timeout(
+        Duration::from_millis(100),
+        client.notify(
+            "initialized",
+            Value::String("x".repeat(BLOCKED_STDIN_PAYLOAD_BYTES)),
+        ),
+    )
+    .await;
+    assert!(timed_out.is_err());
+
+    let next_result =
+        wait_result_allow_error(client.request_value("mock/state", json!({})), "mock/state").await;
+    match next_result {
+        Err(CodexAppServerError::Protocol(message)) => {
+            assert!(message.contains("previous app-server write did not complete"));
+        }
+        other => {
+            return Err(format!(
+                "expected previous write protocol error, got {other:?}"
             ));
         }
     }

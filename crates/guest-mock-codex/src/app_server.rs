@@ -22,6 +22,7 @@ enum Scenario {
     MalformedErrorResponse,
     MalformedInitializeResult,
     LargeNotificationBeforeResponse,
+    HangAfterInitializeResponse,
     HangOnThreadStart,
     MalformedStdout,
     HangOnStdinEof,
@@ -46,6 +47,7 @@ impl Scenario {
                 "malformed-error-response" => Ok(Self::MalformedErrorResponse),
                 "malformed-initialize-result" => Ok(Self::MalformedInitializeResult),
                 "large-notification-before-response" => Ok(Self::LargeNotificationBeforeResponse),
+                "hang-after-initialize-response" => Ok(Self::HangAfterInitializeResponse),
                 "hang-on-thread-start" => Ok(Self::HangOnThreadStart),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
                 "hang-on-stdin-eof" => Ok(Self::HangOnStdinEof),
@@ -205,6 +207,11 @@ impl AppServerState {
                 }
                 self.initialized = true;
                 write_success(output, id, initialize_response())?;
+                if self.scenario == Scenario::HangAfterInitializeResponse {
+                    loop {
+                        thread::park();
+                    }
+                }
                 if self.scenario == Scenario::DisconnectAfterInitialize {
                     return Ok(ServerAction::Stop);
                 }

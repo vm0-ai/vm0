@@ -141,6 +141,7 @@ pub struct CodexAppServerClient {
     stderr_tail: Vec<String>,
     next_request_id: i64,
     in_flight_request_id: Option<JsonRpcId>,
+    outbound_write_in_progress: bool,
     notifications: VecDeque<QueuedNotification>,
     notification_queue_bytes: usize,
     closed: bool,
@@ -198,6 +199,7 @@ impl CodexAppServerClient {
             stderr_tail: Vec::new(),
             next_request_id: 1,
             in_flight_request_id: None,
+            outbound_write_in_progress: false,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
             notification_queue_bytes: 0,
             closed: false,
@@ -261,12 +263,7 @@ impl CodexAppServerClient {
         method: &str,
         params: Value,
     ) -> Result<Value, CodexAppServerError> {
-        if self.in_flight_request_id.take().is_some() {
-            self.signal_process_group(libc::SIGKILL);
-            return Err(CodexAppServerError::Protocol(
-                "previous app-server request did not complete".to_string(),
-            ));
-        }
+        self.ensure_stream_usable()?;
         let id = JsonRpcId::Number(self.next_request_id);
         self.next_request_id = self.next_request_id.checked_add(1).ok_or_else(|| {
             CodexAppServerError::Protocol("app-server request id counter overflow".to_string())
@@ -335,6 +332,7 @@ impl CodexAppServerClient {
     }
 
     pub async fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexAppServerError> {
+        self.ensure_stream_usable()?;
         self.write_message(&outgoing_notification(method, params))
             .await
     }
@@ -525,13 +523,41 @@ impl CodexAppServerClient {
     }
 
     async fn write_message(&mut self, message: &Value) -> Result<(), CodexAppServerError> {
-        let stdin = self.stdin.as_mut().ok_or_else(|| {
-            CodexAppServerError::Protocol("app-server stdin is closed".to_string())
-        })?;
+        if self.outbound_write_in_progress {
+            self.signal_process_group(libc::SIGKILL);
+            return Err(CodexAppServerError::Protocol(
+                "previous app-server write did not complete".to_string(),
+            ));
+        }
         let mut bytes = serde_json::to_vec(message)?;
         bytes.push(b'\n');
-        stdin.write_all(&bytes).await?;
-        stdin.flush().await?;
+        self.outbound_write_in_progress = true;
+        let result = async {
+            let stdin = self.stdin.as_mut().ok_or_else(|| {
+                CodexAppServerError::Protocol("app-server stdin is closed".to_string())
+            })?;
+            stdin.write_all(&bytes).await?;
+            stdin.flush().await?;
+            Ok(())
+        }
+        .await;
+        self.outbound_write_in_progress = false;
+        result
+    }
+
+    fn ensure_stream_usable(&mut self) -> Result<(), CodexAppServerError> {
+        if self.outbound_write_in_progress {
+            self.signal_process_group(libc::SIGKILL);
+            return Err(CodexAppServerError::Protocol(
+                "previous app-server write did not complete".to_string(),
+            ));
+        }
+        if self.in_flight_request_id.take().is_some() {
+            self.signal_process_group(libc::SIGKILL);
+            return Err(CodexAppServerError::Protocol(
+                "previous app-server request did not complete".to_string(),
+            ));
+        }
         Ok(())
     }
 
