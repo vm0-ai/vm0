@@ -992,17 +992,6 @@ function resetVideoTemplatePreview(video: HTMLVideoElement | null): void {
   markVideoTemplatePreviewPlaying(video, false);
 }
 
-function toggleVideoTemplatePreview(video: HTMLVideoElement | null): void {
-  if (!video) {
-    return;
-  }
-  if (video.paused || video.ended) {
-    playVideoTemplatePreview(video);
-    return;
-  }
-  resetVideoTemplatePreview(video);
-}
-
 function videoTemplatePosterImage(item: VideoTemplateItem): string {
   if (item.cardPreviewImage !== undefined) {
     return r2ImageTransformUrl(
@@ -1061,7 +1050,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          toggleVideoTemplatePreview(
+          playVideoTemplatePreview(
             event.currentTarget.parentElement?.querySelector("video") ?? null,
           );
         }}

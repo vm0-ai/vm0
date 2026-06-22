@@ -2336,11 +2336,10 @@ describe("chat composer templates", () => {
       if (!previewRoot) {
         throw new Error("Video template preview root not found");
       }
-      fireEvent.click(
-        screen.getByLabelText(
-          `Play video template preview ${videoStyle.title}`,
-        ),
+      const previewPlayButton = screen.getByLabelText(
+        `Play video template preview ${videoStyle.title}`,
       );
+      fireEvent.click(previewPlayButton);
       expect(playSpy).toHaveBeenCalledTimes(1);
       expect(previewVideo.defaultMuted).toBeTruthy();
       expect(previewVideo.muted).toBeTruthy();
@@ -2356,6 +2355,11 @@ describe("chat composer templates", () => {
 
       fireEvent.mouseEnter(previewRoot);
       expect(playSpy).toHaveBeenCalledTimes(2);
+      previewVideo.currentTime = 4;
+      fireEvent.click(previewPlayButton);
+      expect(playSpy).toHaveBeenCalledTimes(3);
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(previewVideo.currentTime).toBe(4);
     } finally {
       playSpy.mockRestore();
       pauseSpy.mockRestore();
