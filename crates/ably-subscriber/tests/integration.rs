@@ -408,6 +408,67 @@ async fn connect_and_receive_message() {
 }
 
 #[tokio::test]
+async fn initial_attach_is_clean_without_resume_or_serial() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (connected_seen_tx, connected_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-1".into()),
+            connection_key: Some("conn-1!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-1!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&connected).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for initial ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, false);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-0".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        wait_for_test_observation(connected_seen_rx, "initial Connected event").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    connected_seen_tx.send(()).unwrap();
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn message_without_channel_is_ignored() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
