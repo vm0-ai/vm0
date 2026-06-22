@@ -205,6 +205,7 @@ async fn execute(
         error_message,
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
+        cli_execution_succeeded,
     ) = match cli::execute_cli_with_active_input(
         masker,
         heartbeat_monitor,
@@ -224,7 +225,7 @@ async fn execute(
                     cli_result.claude_result,
                 );
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
-                (cli_exit_code, 1, msg, false, Some(diagnostic))
+                (cli_exit_code, 1, msg, false, Some(diagnostic), false)
             } else if cli_exit_code != 0 {
                 let failure_message = cli_failure_message(
                     cli_exit_code,
@@ -249,6 +250,7 @@ async fn execute(
                     failure_message.message,
                     false,
                     Some(diagnostic),
+                    false,
                 )
             } else if http.has_api()
                 && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
@@ -268,12 +270,19 @@ async fn execute(
                         .with_cli_exit_code(cli_exit_code)
                         .with_claude_num_turns(Some(0))
                         .with_session_history_status(session_history_status);
-                    (cli_exit_code, 1, msg.to_string(), true, Some(diagnostic))
+                    (
+                        cli_exit_code,
+                        1,
+                        msg.to_string(),
+                        true,
+                        Some(diagnostic),
+                        true,
+                    )
                 } else {
-                    (0, 0, String::new(), false, None)
+                    (0, 0, String::new(), false, None, true)
                 }
             } else {
-                (0, 0, String::new(), false, None)
+                (0, 0, String::new(), false, None, true)
             }
         }
         Err(e) => {
@@ -285,6 +294,7 @@ async fn execute(
                 msg,
                 false,
                 Some(base_failure_diagnostic(FailureClass::CliExecutionError)),
+                false,
             )
         }
     };
@@ -292,11 +302,11 @@ async fn execute(
     record_sandbox_op(
         "cli_execution",
         cli_elapsed,
-        cli_exit_code == 0,
-        if cli_exit_code != 0 {
-            Some(error_message.as_str())
-        } else {
+        cli_execution_succeeded,
+        if cli_execution_succeeded {
             None
+        } else {
+            Some(error_message.as_str())
         },
     );
 
