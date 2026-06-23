@@ -3312,7 +3312,7 @@ function TemplatePreviewPage({
             Template
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="block min-w-0 flex-1 truncate leading-none">
+          <span className="block min-w-0 truncate leading-none">
             {item.title}
           </span>
         </DialogTitle>
@@ -3391,8 +3391,7 @@ function TemplatePreviewPage({
             ) : null}
           </div>
           <div
-            data-presentation-template-thumbnail-strip=""
-            className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] sm:grid sm:grid-cols-6 sm:gap-1.5 sm:overflow-visible sm:pb-0 md:grid-cols-8"
+            className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
             onKeyDown={handleDetailSlideKeyDown}
           >
             {Array.from(
@@ -3419,7 +3418,7 @@ function TemplatePreviewPage({
                     selectDetailSlide(slideIndex);
                   }}
                   className={cn(
-                    "relative aspect-[16/9] min-w-[96px] flex-1 snap-start overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-0",
+                    "relative aspect-[16/9] overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active
                       ? "border-ring ring-1 ring-ring"
                       : "border-border hover:border-muted-foreground/50",
@@ -3455,7 +3454,7 @@ function TemplatePreviewPage({
                 <p className="px-1 text-xs font-medium text-muted-foreground">
                   Multi-accent
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {multiAccentThemes.map((theme) => {
                     const active = theme.id === selectedTheme.id;
                     return (
@@ -3468,7 +3467,7 @@ function TemplatePreviewPage({
                           selectDetailTheme(theme);
                         }}
                         className={cn(
-                          "relative h-11 overflow-hidden rounded-lg border bg-background p-1 transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "relative h-7 w-14 overflow-hidden rounded-lg border bg-background transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           active
                             ? "border-ring ring-1 ring-ring"
                             : "border-border hover:border-muted-foreground/60",
@@ -3496,7 +3495,7 @@ function TemplatePreviewPage({
                 <p className="px-1 text-xs font-medium text-muted-foreground">
                   Single-accent
                 </p>
-                <div className="grid grid-cols-8 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {singleAccentThemes.map((theme) => {
                     const active = theme.id === selectedTheme.id;
                     const swatches = presentationTemplateThemeAccentSwatches(
@@ -3513,7 +3512,7 @@ function TemplatePreviewPage({
                           selectDetailTheme(theme);
                         }}
                         className={cn(
-                          "relative h-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "relative h-7 w-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           active
                             ? "border-ring ring-1 ring-ring"
                             : "border-border hover:border-muted-foreground/60",
