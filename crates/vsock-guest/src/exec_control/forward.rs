@@ -80,7 +80,7 @@ pub(super) fn forward_control_request(
         match sink.wait_for_stream(deadline) {
             Ok(stream) => match stream.lock_until(deadline, &sink.active) {
                 Ok(mut stream) => {
-                    if !sink.active.load(Ordering::Acquire) {
+                    let outcome = if !sink.active.load(Ordering::Acquire) {
                         ControlForwardOutcome {
                             status: ExecControlStatus::Inactive,
                             diagnostic: EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
@@ -94,7 +94,11 @@ pub(super) fn forward_control_request(
                         }
                     } else {
                         forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
+                    };
+                    if matches!(outcome.sink_disposition, ControlSinkDisposition::Fail) {
+                        sink.fail(outcome.diagnostic.clone());
                     }
+                    outcome
                 }
                 Err(ControlStreamLockError::Inactive) => ControlForwardOutcome {
                     status: ExecControlStatus::Inactive,
@@ -121,15 +125,8 @@ pub(super) fn forward_control_request(
     };
 
     let ControlForwardOutcome {
-        status,
-        diagnostic,
-        sink_disposition,
+        status, diagnostic, ..
     } = outcome;
-
-    match sink_disposition {
-        ControlSinkDisposition::Keep => {}
-        ControlSinkDisposition::Fail => sink.fail(diagnostic.clone()),
-    }
 
     let result = writer.write_generated_frame_after_lock(|| {
         let (status, diagnostic) = if sink.active.load(Ordering::Acquire) {
