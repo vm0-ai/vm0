@@ -350,12 +350,15 @@ impl ControlStreamState {
                     let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
                     let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
                     if !active.load(Ordering::Acquire) {
+                        drop(stream);
                         self.release_locked_gate(&mut gate);
                         return Err(ControlStreamLockError::Inactive);
                     }
                     match &*gate {
                         ControlStreamGate::Failed(message) => {
-                            return Err(ControlStreamLockError::SinkError(message.clone()));
+                            let message = message.clone();
+                            drop(stream);
+                            return Err(ControlStreamLockError::SinkError(message));
                         }
                         ControlStreamGate::Available => {
                             *gate = ControlStreamGate::Locked;
@@ -405,8 +408,8 @@ impl ControlStreamState {
     fn release_locked_gate(&self, gate: &mut ControlStreamGate) {
         if matches!(*gate, ControlStreamGate::Locked) {
             *gate = ControlStreamGate::Available;
+            self.ready.notify_one();
         }
-        self.ready.notify_one();
     }
 }
 
