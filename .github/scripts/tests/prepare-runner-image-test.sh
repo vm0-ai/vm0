@@ -73,7 +73,7 @@ if JOB_REF=pr-123 \
   "$PREPARE" >"${TMPDIR}/invalid-alias.out" 2>"${TMPDIR}/invalid-alias.err"; then
   fail "expected invalid metal host alias to fail"
 fi
-grep -q "invalid METAL_HOSTS entry: host-" "${TMPDIR}/invalid-alias.err" || fail "expected invalid metal host alias message"
+grep -qF "invalid METAL_HOSTS entry: host-" "${TMPDIR}/invalid-alias.err" || fail "expected invalid metal host alias message"
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \

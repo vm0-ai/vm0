@@ -100,7 +100,7 @@ for host in -host . .. _host host_ host- host.; do
   if run_clean AWS_METAL_RUNNER_HOSTS="$host" "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-alias.out" 2>"${TMPDIR}/invalid-alias.err"; then
     fail "expected invalid host alias '${host}' to fail"
   fi
-  grep -q "invalid runner host entry: ${host}" "${TMPDIR}/invalid-alias.err" || fail "expected invalid host alias message"
+  grep -qF "invalid runner host entry: ${host}" "${TMPDIR}/invalid-alias.err" || fail "expected invalid host alias message"
 done
 
 if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
