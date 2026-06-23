@@ -619,7 +619,9 @@ function materializedThemeCss(params: {
   `;
 }
 
-function materializeThemeSwitcherDefaults(doc: Document): void {
+export function materializePresentationThemeSwitcherDefaults(
+  doc: Document,
+): void {
   const scriptText = Array.from(doc.querySelectorAll("script"))
     .map((script) => {
       return script.textContent ?? "";
@@ -702,7 +704,7 @@ export function previewPresentationHtml(params: {
   readonly html: string;
 }): string {
   const doc = new DOMParser().parseFromString(params.html, "text/html");
-  materializeThemeSwitcherDefaults(doc);
+  materializePresentationThemeSwitcherDefaults(doc);
   sanitizePreviewTree(doc);
   const previewDoc = document.implementation.createHTMLDocument(
     doc.title || "Presentation preview",
