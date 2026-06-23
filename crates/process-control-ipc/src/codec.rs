@@ -426,6 +426,20 @@ mod tests {
     }
 
     #[test]
+    fn response_roundtrip_at_max_diagnostic_size() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let response = ControlResponse {
+            message_id: "msg-1".to_string(),
+            status: ControlResponseStatus::Error,
+            diagnostic: "x".repeat(MAX_DIAGNOSTIC_BYTES),
+        };
+
+        write_response(&mut a, &response).unwrap();
+
+        assert_eq!(read_response(&mut b).unwrap(), response);
+    }
+
+    #[test]
     fn hello_roundtrip() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         write_hello(&mut a).unwrap();
@@ -443,10 +457,10 @@ mod tests {
     }
 
     #[test]
-    fn request_roundtrip_at_max_payload_size() {
+    fn request_roundtrip_at_max_frame_size() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         let request = ControlRequest {
-            message_id: "msg-1".to_string(),
+            message_id: "m".repeat(MAX_MESSAGE_ID_BYTES),
             payload: vec![0xA5; MAX_CONTROL_PAYLOAD_BYTES],
         };
         let reader = thread::spawn(move || read_request(&mut b).unwrap());
