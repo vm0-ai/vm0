@@ -73,6 +73,9 @@ import {
 // fullscreen toggle that swaps to a full-viewport layout.
 // ---------------------------------------------------------------------------
 
+const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
+  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
+
 export function ArtifactSidebar({
   artifactRef,
   onBack,
@@ -185,7 +188,7 @@ function ArtifactSidebarContent({
       <div
         className={cn(
           fullscreen
-            ? "fixed inset-0 z-[100] flex flex-col bg-background pt-[env(safe-area-inset-top)]"
+            ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
             : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
           "animate-in fade-in duration-[180ms] ease",
         )}
@@ -233,7 +236,7 @@ function ArtifactSidebarContent({
     <div
       className={cn(
         fullscreen
-          ? "fixed inset-0 z-[100] flex flex-col bg-background pt-[env(safe-area-inset-top)]"
+          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}

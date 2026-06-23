@@ -415,6 +415,12 @@ async function backToArtifactInbox(): Promise<void> {
   });
 }
 
+function expectFullscreenSafeAreaClass(element: HTMLElement): void {
+  const className = element.getAttribute("class") ?? "";
+  expect(className).toContain("pt-[var(--sat)]");
+  expect(className).toContain("pb-[var(--sab)]");
+}
+
 function menuItemByText(text: string): HTMLElement {
   const menuItems = queryAllByRoleFast("menuitem");
   const item = menuItems.find((element) => {
@@ -670,6 +676,7 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expectFullscreenSafeAreaClass(screen.getByTestId("artifact-sidebar"));
 
     await user.click(screen.getByLabelText("Exit fullscreen"));
     await waitFor(() => {
@@ -690,6 +697,7 @@ describe("zero artifact sidebar", () => {
         screen.getByText("Unsupported artifact reference."),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+      expectFullscreenSafeAreaClass(screen.getByTestId("artifact-sidebar"));
     });
 
     click(screen.getByLabelText("Close artifact"));
@@ -1468,7 +1476,7 @@ ${openFencedHostedSiteUrl}`,
 
     click(screen.getByLabelText("Open artifacts"));
 
-    const inbox = await waitFor(() => {
+    let inbox = await waitFor(() => {
       const element = screen.getByTestId("artifact-inbox");
       expect(screen.getByText("release-notes.md")).toBeInTheDocument();
       expect(screen.getByText("launch-chart.png")).toBeInTheDocument();
@@ -1492,6 +1500,18 @@ ${openFencedHostedSiteUrl}`,
     expect(
       screen.getByTestId("artifact-html-preview-badge"),
     ).toBeInTheDocument();
+
+    click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    });
+    expectFullscreenSafeAreaClass(screen.getByTestId("artifact-inbox"));
+
+    click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+    inbox = screen.getByTestId("artifact-inbox");
 
     click(getArtifactTab(inbox, "Media"));
 

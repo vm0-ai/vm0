@@ -1442,6 +1442,9 @@ const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
 const CHAT_INLINE_IMAGE_PREVIEW_CLASS =
   "aspect-[10/9] w-[50px] max-w-full cursor-pointer rounded-lg border border-foreground/10 bg-muted/30 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
+const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
+  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
+
 function ChatImagePreviewLink({
   alt,
   ariaLabel,
@@ -1899,7 +1902,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
     <div
       className={cn(
         fullscreen
-          ? "fixed inset-0 z-[100] flex flex-col bg-background"
+          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}
@@ -2486,7 +2489,7 @@ export function ZeroChatThreadPage() {
       className={cn(
         "flex min-w-0 overflow-hidden bg-background",
         artifactFullscreen
-          ? "fixed inset-0 z-[100] min-h-0 flex-col pt-[var(--sat)] pb-[var(--sab)]"
+          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
           : "h-full w-full flex-1",
       )}
     >
