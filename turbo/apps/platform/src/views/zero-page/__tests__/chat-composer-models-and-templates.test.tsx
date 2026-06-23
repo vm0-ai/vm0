@@ -1849,7 +1849,9 @@ describe("chat composer templates", () => {
   });
 
   it("opens the presentation theme page from the card theme trigger on mobile", async () => {
-    const restoreMatchMedia = mockMatchMedia(true);
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(max-width: 639px)";
+    });
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
@@ -1888,11 +1890,9 @@ describe("chat composer templates", () => {
     expect(
       screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
     ).not.toBeInTheDocument();
-
-    restoreMatchMedia();
   });
 
-  it("selects presentation templates without a card theme picker", async () => {
+  it("selects presentation templates with the default card theme", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
     });
@@ -1916,8 +1916,8 @@ describe("chat composer templates", () => {
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
-      screen.queryByLabelText(`Change theme for ${template.title}`),
-    ).not.toBeInTheDocument();
+      screen.getByLabelText(`Change theme for ${template.title}`),
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
     ).not.toBeInTheDocument();
@@ -1955,8 +1955,8 @@ describe("chat composer templates", () => {
     click(templateButton);
 
     expect(
-      screen.queryByLabelText(`Change theme for ${template.title}`),
-    ).not.toBeInTheDocument();
+      screen.getByLabelText(`Change theme for ${template.title}`),
+    ).toBeInTheDocument();
 
     click(screen.getByLabelText(`Select template ${template.title}`));
     await waitFor(() => {

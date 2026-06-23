@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { localStorageSignals } from "../external/local-storage.ts";
+import { jsonParseOr } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -233,6 +235,96 @@ export const setTemplateCardLoadedHtmlFrameUrl$ = command(
       ...get(internalTemplateCardLoadedHtmlFrameUrls$),
       [key]: frameUrl,
     });
+  },
+);
+
+const internalTemplateCardThemeIdBySlug$ = state<
+  Readonly<Record<string, string>>
+>({});
+const {
+  get$: templateCardThemeIdBySlugRaw$,
+  set$: setTemplateCardThemeIdBySlugRaw$,
+} = localStorageSignals("presentationTemplateThemeIdBySlug");
+
+function parseTemplateCardThemeIdBySlug(
+  raw: string | null,
+): Readonly<Record<string, string>> {
+  if (raw === null) {
+    return {};
+  }
+  const parsed = jsonParseOr<unknown>(raw, {});
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  const values: Record<string, string> = {};
+  for (const [slug, themeId] of Object.entries(parsed)) {
+    if (typeof themeId === "string") {
+      values[slug] = themeId;
+    }
+  }
+  return values;
+}
+
+export const templateCardThemeIdBySlug$ = computed((get) => {
+  return {
+    ...parseTemplateCardThemeIdBySlug(get(templateCardThemeIdBySlugRaw$)),
+    ...get(internalTemplateCardThemeIdBySlug$),
+  };
+});
+export const setTemplateCardThemeId$ = command(
+  ({ get, set }, slug: string, themeId: string) => {
+    const next = {
+      ...get(templateCardThemeIdBySlug$),
+      [slug]: themeId,
+    };
+    set(internalTemplateCardThemeIdBySlug$, next);
+    set(setTemplateCardThemeIdBySlugRaw$, JSON.stringify(next));
+  },
+);
+
+export type TemplateCardThemePopoverSide = "bottom" | "left" | "right";
+export type TemplateCardThemePopoverAlign = "end" | "start";
+export interface TemplateCardThemePopoverPlacement {
+  readonly align: TemplateCardThemePopoverAlign;
+  readonly alignOffset: number;
+  readonly side: TemplateCardThemePopoverSide;
+}
+
+const internalTemplateCardThemePopoverPlacementBySlug$ = state<
+  Readonly<Record<string, TemplateCardThemePopoverPlacement>>
+>({});
+export const templateCardThemePopoverPlacementBySlug$ = computed((get) => {
+  return get(internalTemplateCardThemePopoverPlacementBySlug$);
+});
+export const setTemplateCardThemePopoverPlacement$ = command(
+  (
+    { get, set },
+    slug: string,
+    placement: TemplateCardThemePopoverPlacement,
+  ) => {
+    const current = get(internalTemplateCardThemePopoverPlacementBySlug$);
+    const previous = current[slug];
+    if (
+      previous?.align === placement.align &&
+      previous.alignOffset === placement.alignOffset &&
+      previous.side === placement.side
+    ) {
+      return;
+    }
+    set(internalTemplateCardThemePopoverPlacementBySlug$, {
+      ...current,
+      [slug]: placement,
+    });
+  },
+);
+
+const internalTemplateCardThemePopoverOpenSlug$ = state<string | null>(null);
+export const templateCardThemePopoverOpenSlug$ = computed((get) => {
+  return get(internalTemplateCardThemePopoverOpenSlug$);
+});
+export const setTemplateCardThemePopoverOpenSlug$ = command(
+  ({ set }, slug: string | null) => {
+    set(internalTemplateCardThemePopoverOpenSlug$, slug);
   },
 );
 
