@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.436.0](https://github.com/vm0-ai/vm0/compare/web-v12.435.10...web-v12.436.0) (2026-06-23)
+
+
+### Features
+
+* add pagination to the blog index ([#18219](https://github.com/vm0-ai/vm0/issues/18219)) ([5c6dc36](https://github.com/vm0-ai/vm0/commit/5c6dc36797a0df809228b6e7c2db87148ec1d56c))
+
 ## [12.435.10](https://github.com/vm0-ai/vm0/compare/web-v12.435.9...web-v12.435.10) (2026-06-22)
 
 
