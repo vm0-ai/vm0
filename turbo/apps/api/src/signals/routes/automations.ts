@@ -19,11 +19,9 @@ import {
   setChatThreadWorkflowTriggerEnabled,
 } from "../services/zero-workflow-trigger.service";
 import {
-  addTrigger$,
   createAutomation$,
   deleteAutomation$,
   listAutomations$,
-  removeTrigger$,
   runAutomationNow$,
   setAutomationEnabled$,
   setTriggerEnabled$,
@@ -340,85 +338,6 @@ const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 201 as const, body: { runId: result.runId } };
 });
 
-const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsByRefContract.addTrigger));
-  const bodyResult = await get(
-    bodyResultOf(automationsByRefContract.addTrigger),
-  );
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-
-  if (auth.orgRole !== undefined) {
-    await set(
-      upsertMemberRoleCache$,
-      auth.orgId,
-      auth.userId,
-      auth.orgRole,
-      signal,
-    );
-    signal.throwIfAborted();
-  }
-
-  const result = await set(
-    addTrigger$,
-    {
-      userId: auth.userId,
-      orgId: auth.orgId,
-      ref: params.ref,
-      request: bodyResult.data,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.kind === "not_found") {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  if (result.kind === "ambiguous") {
-    return badRequestMessage(AMBIGUOUS_MESSAGE);
-  }
-  if (result.kind === "bad_request") {
-    return badRequestMessage(result.message);
-  }
-  return {
-    status: 201 as const,
-    body: {
-      trigger: triggerResponse(result.trigger),
-    },
-  };
-});
-
-const listTriggersInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationsByRefContract.listTriggers));
-
-    const result = await set(
-      showAutomation$,
-      { userId: auth.userId, orgId: auth.orgId, ref: params.ref },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found") {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    if (result.kind === "ambiguous") {
-      return badRequestMessage(AMBIGUOUS_MESSAGE);
-    }
-    if (result.kind === "bad_request") {
-      return badRequestMessage(result.message);
-    }
-    return {
-      status: 200 as const,
-      body: { triggers: result.view.triggers.map(triggerResponse) },
-    };
-  },
-);
-
 const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationTriggersContract.show));
@@ -467,25 +386,6 @@ const updateTriggerInner$ = command(
       return badRequestMessage(result.message);
     }
     return { status: 200 as const, body: triggerResponse(result.trigger) };
-  },
-);
-
-const removeTriggerInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersContract.remove));
-
-    const result = await set(
-      removeTrigger$,
-      { userId: auth.userId, orgId: auth.orgId, id: params.id },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found") {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    return { status: 204 as const, body: undefined };
   },
 );
 
@@ -614,28 +514,6 @@ export const automationsRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsByRefContract.addTrigger,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:write",
-      },
-      addTriggerInner$,
-    ),
-  },
-  {
-    route: automationsByRefContract.listTriggers,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:read",
-      },
-      listTriggersInner$,
-    ),
-  },
-  {
     route: automationTriggersContract.show,
     handler: authRoute(
       {
@@ -655,17 +533,6 @@ export const automationsRoutes: readonly RouteEntry[] = [
         requiredCapability: "automation:write",
       },
       updateTriggerInner$,
-    ),
-  },
-  {
-    route: automationTriggersContract.remove,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "automation:delete",
-      },
-      removeTriggerInner$,
     ),
   },
   {

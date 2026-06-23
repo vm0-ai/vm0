@@ -66,7 +66,7 @@ describe("zero automation show command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("should display automation fields and the triggers table", async () => {
+  it("should display automation fields and the schedule table", async () => {
     server.use(
       http.get("http://localhost:3000/api/automations/:ref", ({ params }) => {
         expect(params.ref).toBe("alerts");
@@ -87,7 +87,7 @@ describe("zero automation show command", () => {
     expect(logCalls).toContain("every 15m");
   });
 
-  it("should hint at adding a trigger when the automation has none", async () => {
+  it("should display a missing schedule trigger fallback", async () => {
     server.use(
       http.get("http://localhost:3000/api/automations/:ref", () => {
         return HttpResponse.json({ ...mockAutomation, triggers: [] });
@@ -97,8 +97,7 @@ describe("zero automation show command", () => {
     await showCommand.parseAsync(["node", "cli", "alerts"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("No triggers");
-    expect(logCalls).toContain("zero automation trigger add");
+    expect(logCalls).toContain("No schedule trigger");
   });
 
   it("should surface the ambiguous-name API error", async () => {

@@ -93,7 +93,7 @@ export const automations = pgTable(
 /**
  * Automation triggers table
  *
- * The event source(s) that fire an automation. `kind` discriminates the time
+ * The event source that fires an automation. `kind` discriminates the time
  * trigger type; `config` holds kind-specific extensibility as jsonb.
  *
  * For time triggers (`kind ∈ {cron,once,loop}`), the config columns mirror
@@ -152,7 +152,7 @@ export const automationTriggers = pgTable(
   },
   (table) => {
     return [
-      index("idx_automation_triggers_automation").on(table.automationId),
+      uniqueIndex("idx_automation_triggers_automation").on(table.automationId),
       // Partial index for efficient time-trigger polling: enabled triggers with
       // due next_run_at (mirrors idx_zero_agent_schedules_next_run).
       index("idx_automation_triggers_next_run")

@@ -242,7 +242,7 @@ interface CreateAutomationBody {
   readonly appendSystemPrompt?: string;
   readonly enabled?: boolean;
   readonly chatThreadId?: string;
-  readonly trigger?: CreateTriggerRequest;
+  readonly trigger: CreateTriggerRequest;
 }
 
 type CreateAutomationResult =
@@ -302,7 +302,7 @@ async function isChatThreadLinkable(
 
 // The create transaction: link the supplied owned chat thread or create one
 // titled description ?? name, insert the automation (default interpreter,
-// D1), and insert the optional first-trigger sugar row.
+// D1), and insert its schedule trigger.
 async function insertAutomationWithTrigger(
   db: Db,
   args: {
@@ -312,7 +312,7 @@ async function insertAutomationWithTrigger(
     readonly displayName: string | null;
     readonly enabled: boolean;
     readonly currentTime: Date;
-    readonly triggerInsert: ResolvedTriggerInsert | null;
+    readonly triggerInsert: ResolvedTriggerInsert;
   },
 ): Promise<AutomationView> {
   const { body, currentTime } = args;
@@ -357,29 +357,25 @@ async function insertAutomationWithTrigger(
       throw new Error(`Failed to create automation ${body.name}`);
     }
 
-    const triggers: AutomationTriggerRow[] = [];
-    if (args.triggerInsert) {
-      const [trigger] = await tx
-        .insert(automationTriggers)
-        .values({ automationId: automation.id, ...args.triggerInsert.values })
-        .returning();
-      if (!trigger) {
-        throw new Error(`Failed to create trigger for ${body.name}`);
-      }
-      triggers.push(trigger);
+    const [trigger] = await tx
+      .insert(automationTriggers)
+      .values({ automationId: automation.id, ...args.triggerInsert.values })
+      .returning();
+    if (!trigger) {
+      throw new Error(`Failed to create trigger for ${body.name}`);
     }
 
-    return { automation, displayName: args.displayName, triggers };
+    return { automation, displayName: args.displayName, triggers: [trigger] };
   });
 }
 
 /**
- * Create an automation (optionally with its first trigger): validate the
+ * Create an automation with its schedule trigger: validate the
  * target agent through the same visibility gate the automation deploy uses,
  * enforce the (agent, name, org, user) unique key up front, resolve the
  * chat-thread link (an owned existing thread or a server-created one — the
- * link is create-only), and persist the automation plus the optional sugar
- * trigger in one transaction. A write `command`.
+ * link is create-only), and persist the automation plus its trigger in one
+ * transaction. A write `command`.
  */
 export const createAutomation$ = command(
   async (
@@ -436,18 +432,14 @@ export const createAutomation$ = command(
 
     const enabled = body.enabled ?? true;
     const currentTime = nowDate();
-    let triggerInsert: ResolvedTriggerInsert | null = null;
-    if (body.trigger) {
-      const resolved = await resolveTriggerInsert({
-        request: body.trigger,
-        automationEnabled: enabled,
-        currentTime,
-      });
-      signal.throwIfAborted();
-      if (resolved.kind === "bad_request") {
-        return resolved;
-      }
-      triggerInsert = resolved.insert;
+    const resolvedTrigger = await resolveTriggerInsert({
+      request: body.trigger,
+      automationEnabled: enabled,
+      currentTime,
+    });
+    signal.throwIfAborted();
+    if (resolvedTrigger.kind === "bad_request") {
+      return resolvedTrigger;
     }
 
     // Parity with the legacy deploy behavior: an omitted description is
@@ -460,13 +452,13 @@ export const createAutomation$ = command(
               {
                 name: body.name,
                 instruction: body.instruction,
-                ...(body.trigger?.kind === "cron" && {
+                ...(body.trigger.kind === "cron" && {
                   cronExpression: body.trigger.cronExpression,
                 }),
-                ...(body.trigger?.kind === "once" && {
+                ...(body.trigger.kind === "once" && {
                   atTime: body.trigger.atTime,
                 }),
-                ...(body.trigger?.kind === "loop" && {
+                ...(body.trigger.kind === "loop" && {
                   intervalSeconds: body.trigger.intervalSeconds,
                 }),
               },
@@ -483,7 +475,7 @@ export const createAutomation$ = command(
       displayName: agent.displayName,
       enabled,
       currentTime,
-      triggerInsert,
+      triggerInsert: resolvedTrigger.insert,
     });
     signal.throwIfAborted();
 
@@ -502,7 +494,7 @@ export const createAutomation$ = command(
 
 /**
  * List the caller's automations (every interpreter kind — this is the unified
- * surface) with ALL their triggers, scoped to (orgId, userId), newest first.
+ * surface) with their schedule trigger, scoped to (orgId, userId), newest first.
  */
 export const listAutomations$ = command(
   async (
@@ -766,7 +758,7 @@ function isTimeTriggerKind(kind: string): boolean {
 }
 
 /**
- * Enable or disable an automation. Enabling recomputes `nextRunAt` for each
+ * Enable or disable an automation. Enabling recomputes `nextRunAt` for its
  * still-enabled time trigger (an expired one-time trigger is disabled instead)
  * so resumed automations fire on their next occurrence rather than catching up.
  * Disabling clears `nextRunAt` on every time trigger (without touching their
@@ -881,63 +873,6 @@ type TriggerMutationResult =
   | { readonly kind: "ambiguous" }
   | { readonly kind: "bad_request"; readonly message: string };
 
-/**
- * Add a trigger to an automation (the same resolution backing the create-time
- * sugar). Multiple triggers of the same kind are allowed.
- */
-export const addTrigger$ = command(
-  async (
-    { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly ref: string;
-      readonly request: CreateTriggerRequest;
-    },
-    signal: AbortSignal,
-  ): Promise<TriggerMutationResult> => {
-    const db = set(writeDb$);
-    const resolved = await resolveAutomationRef(db, args);
-    signal.throwIfAborted();
-    if (resolved.kind !== "ok") {
-      return resolved;
-    }
-
-    const result = await resolveTriggerInsert({
-      request: args.request,
-      automationEnabled: resolved.automation.enabled,
-      currentTime: nowDate(),
-    });
-    signal.throwIfAborted();
-    if (result.kind === "bad_request") {
-      return result;
-    }
-
-    const [trigger] = await db
-      .insert(automationTriggers)
-      .values({
-        automationId: resolved.automation.id,
-        ...result.insert.values,
-      })
-      .returning();
-    signal.throwIfAborted();
-    if (!trigger) {
-      throw new Error(`Failed to create trigger for ${args.ref}`);
-    }
-
-    await publishChatThreadAutomationsChangedSafely(
-      args.userId,
-      resolved.automation.chatThreadId,
-    );
-    signal.throwIfAborted();
-
-    return {
-      kind: "ok",
-      trigger,
-    };
-  },
-);
-
 interface TriggerOwnership {
   readonly trigger: AutomationTriggerRow;
   readonly automation: AutomationRow;
@@ -989,43 +924,6 @@ export const showTrigger$ = command(
       return { kind: "not_found" };
     }
     return { kind: "ok", trigger: owned.trigger };
-  },
-);
-
-type RemoveTriggerResult =
-  | { readonly kind: "ok" }
-  | { readonly kind: "not_found" };
-
-/** Remove a single trigger; the automation itself is untouched. */
-export const removeTrigger$ = command(
-  async (
-    { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly id: string;
-    },
-    signal: AbortSignal,
-  ): Promise<RemoveTriggerResult> => {
-    const db = set(writeDb$);
-    const owned = await loadOwnedTrigger(db, args);
-    signal.throwIfAborted();
-    if (!owned) {
-      return { kind: "not_found" };
-    }
-
-    await db
-      .delete(automationTriggers)
-      .where(eq(automationTriggers.id, owned.trigger.id));
-    signal.throwIfAborted();
-
-    await publishChatThreadAutomationsChangedSafely(
-      args.userId,
-      owned.automation.chatThreadId,
-    );
-    signal.throwIfAborted();
-
-    return { kind: "ok" };
   },
 );
 
@@ -1186,9 +1084,8 @@ function isActivePreviousRunStatus(status: string): boolean {
  * Manually fire an automation as a web-chat turn in its linked thread:
  * instruction-only, no event payload. No trigger row is claimed, so the run
  * carries only the chat callback (nothing to reschedule) and automation-only
- * provenance. The fire conflicts (409) while any of the automation's triggers
- * has an active last run — the same per-trigger skip-if-active rule the
- * poller applies; a triggerless automation has nothing to conflict with.
+ * provenance. The fire conflicts (409) while the automation trigger has an
+ * active last run — the same skip-if-active rule the poller applies.
  */
 export const runAutomationNow$ = command(
   async (

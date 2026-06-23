@@ -6,7 +6,7 @@ import { printTriggersTable } from "./trigger-display";
 
 export const showCommand = new Command()
   .name("show")
-  .description("Show an automation and its triggers")
+  .description("Show an automation and its schedule")
   .argument("<automation>", "Automation ID or name")
   .addHelpText(
     "after",
@@ -42,16 +42,12 @@ Notes:
       console.log(`${"Thread:".padEnd(14)}${automation.chatThreadId}`);
 
       console.log();
-      if (automation.triggers.length === 0) {
-        console.log(chalk.dim("No triggers"));
-        console.log(
-          chalk.dim(
-            `  Add one with: zero automation trigger add ${automation.name} cron --expr "0 9 * * *"`,
-          ),
-        );
+      const [trigger] = automation.triggers;
+      if (!trigger) {
+        console.log(chalk.dim("No schedule trigger"));
         return;
       }
 
-      printTriggersTable(automation.triggers);
+      printTriggersTable([trigger]);
     }),
   );

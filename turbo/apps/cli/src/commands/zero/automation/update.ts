@@ -87,8 +87,7 @@ Examples:
   zero automation update alerts --loop 10m
 
 Notes:
-  - At most one of --cron, --once, --loop; it replaces the automation's single time trigger in place (the kind may switch, run history is kept)
-  - With multiple time triggers, address one directly: zero automation trigger update <trigger-id>`,
+  - At most one of --cron, --once, --loop; it replaces the automation's schedule trigger in place (the kind may switch, run history is kept)`,
   )
   .action(
     withErrorHandler(async (ref: string, options: UpdateOptions) => {
@@ -112,19 +111,7 @@ Notes:
         const timeTriggers = automation.triggers;
         const [first] = timeTriggers;
         if (!first) {
-          throw new Error(
-            `No time trigger to update; add one with: zero automation trigger add ${ref} cron --expr "0 9 * * *"`,
-          );
-        }
-        if (timeTriggers.length > 1) {
-          const ids = timeTriggers
-            .map((trigger) => {
-              return trigger.id;
-            })
-            .join(", ");
-          throw new Error(
-            `Multiple time triggers; update one explicitly: zero automation trigger update <id> ... (ids: ${ids})`,
-          );
+          throw new Error(`Automation ${ref} has no schedule trigger`);
         }
         timeTriggerId = first.id;
       }

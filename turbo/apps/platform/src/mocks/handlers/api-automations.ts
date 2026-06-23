@@ -20,8 +20,7 @@ import {
 // (flat single-trigger projection) is served as an automation carrying one
 // time trigger. Trigger ids are minted per row and remembered so trigger
 // sub-resource calls can be traced back to their store row. Schedule updates
-// PATCH the trigger in place (the id survives); replaced ids from explicit
-// add+remove flows stay resolvable (`triggerOwners`).
+// PATCH the trigger in place (the id survives).
 
 const currentTriggerIds = new Map<string, string>();
 const triggerOwners = new Map<string, string>();
@@ -171,9 +170,6 @@ export const apiAutomationsHandlers = [
 
   // POST /api/automations
   mockApi(automationsMainContract.create, ({ body, respond }) => {
-    if (!body.trigger) {
-      throw new Error("Automation mocks expect the first-trigger sugar");
-    }
     const now = nowDate().toISOString();
     const row: AutomationView = {
       id: crypto.randomUUID(),
@@ -260,28 +256,6 @@ export const apiAutomationsHandlers = [
     respond(201, { runId: crypto.randomUUID() }),
   ),
 
-  // POST /api/automations/:ref/triggers
-  mockApi(automationsByRefContract.addTrigger, ({ params, body, respond }) => {
-    const row = findByRef(params.ref);
-    if (!row) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    const updated: AutomationView = {
-      ...row,
-      ...triggerFields(body),
-      enabled: true,
-      consecutiveFailures: 0,
-      updatedAt: nowDate().toISOString(),
-    };
-    // Mint a fresh id for the new trigger; the replaced id stays known so
-    // the update flow can still DELETE it afterwards.
-    currentTriggerIds.delete(row.id);
-    replaceRow(updated);
-    return respond(201, { trigger: toTrigger(updated) });
-  }),
-
   // PATCH /api/automation-triggers/:id — in-place schedule replacement
   // mirroring the server semantics: kind/config swap, failure counter reset,
   // same trigger id (the `currentTriggerIds` entry stays valid).
@@ -303,23 +277,6 @@ export const apiAutomationsHandlers = [
     };
     replaceRow(updated);
     return respond(200, toTrigger(updated));
-  }),
-
-  // DELETE /api/automation-triggers/:id
-  mockApi(automationTriggersContract.remove, ({ params, respond }) => {
-    const automationId = automationIdForTrigger(params.id);
-    if (!automationId) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    // The store keeps the row; only the trigger id is retired. Removing an
-    // already-replaced id leaves the row's current trigger untouched.
-    triggerOwners.delete(params.id);
-    if (currentTriggerIds.get(automationId) === params.id) {
-      currentTriggerIds.delete(automationId);
-    }
-    return respond(204);
   }),
 
   // POST /api/automation-triggers/:id/enable

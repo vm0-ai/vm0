@@ -5,16 +5,13 @@ import { withErrorHandler } from "../../../lib/command";
 
 export const enableCommand = new Command()
   .name("enable")
-  .description("Enable an automation (all of its triggers resume)")
+  .description("Enable an automation")
   .argument("<automation>", "Automation ID or name")
   .addHelpText(
     "after",
     `
 Examples:
-  zero automation enable alerts
-
-Notes:
-  - To enable a single trigger instead: zero automation trigger enable <trigger-id>`,
+  zero automation enable alerts`,
   )
   .action(
     withErrorHandler(async (ref: string) => {

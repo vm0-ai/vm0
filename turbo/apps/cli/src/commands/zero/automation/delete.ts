@@ -27,7 +27,7 @@ Notes:
           throw new Error("--yes flag is required in non-interactive mode");
         }
         const confirmed = await promptConfirm(
-          `Delete automation ${chalk.cyan(ref)} and all of its triggers?`,
+          `Delete automation ${chalk.cyan(ref)} and its schedule trigger?`,
           false,
         );
         if (!confirmed) {

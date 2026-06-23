@@ -317,32 +317,7 @@ describe("zero automation update command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No time trigger to update"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should error listing ids when the automation has multiple time triggers", async () => {
-      mockShowAutomation([loopTrigger, cronTrigger]);
-
-      await expect(async () => {
-        await updateCommand.parseAsync([
-          "node",
-          "cli",
-          "alerts",
-          "--loop",
-          "10m",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Multiple time triggers"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(TRIGGER_ID),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(SECOND_TRIGGER_ID),
+        expect.stringContaining("has no schedule trigger"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -187,7 +187,7 @@ export {
   completePhoneFileUpload,
 } from "./domains/integrations-phone";
 
-// Domain modules - Automations (unified automations + triggers)
+// Domain modules - Automations
 export {
   createAutomation,
   listAutomations,
@@ -197,13 +197,7 @@ export {
   enableAutomation,
   disableAutomation,
   runAutomation,
-  addAutomationTrigger,
-  listAutomationTriggers,
-  showAutomationTrigger,
   updateAutomationTrigger,
-  removeAutomationTrigger,
-  enableAutomationTrigger,
-  disableAutomationTrigger,
 } from "./domains/automations";
 
 // Domain modules - Zero Runs

@@ -14,21 +14,21 @@ import type {
 
 /**
  * Client for the unified Automation resource API (#16847 slice 2): one
- * automation = identity + intent, carrying N schedule triggers (cron / once /
+ * automation = identity + intent, carrying one schedule trigger (cron / once /
  * loop).
  *
  * `ref` is an automation id (UUID) or its unique name; an ambiguous name is
  * rejected by the server with 400. Triggers are addressed by UUID only.
  */
 
-/** Create an automation, optionally with its first trigger. */
+/** Create an automation with its schedule trigger. */
 export async function createAutomation(body: {
   name: string;
   agentId: string;
   instruction: string;
   description?: string;
   chatThreadId?: string;
-  trigger?: CreateTriggerRequest;
+  trigger: CreateTriggerRequest;
 }): Promise<{ automation: AutomationResponse }> {
   const config = await getClientConfig();
   const client = initClient(automationsMainContract, config);
@@ -116,7 +116,7 @@ export async function deleteAutomation(ref: string): Promise<void> {
 }
 
 /**
- * Enable an automation (all of its triggers resume)
+ * Enable an automation.
  */
 export async function enableAutomation(
   ref: string,
@@ -134,7 +134,7 @@ export async function enableAutomation(
 }
 
 /**
- * Disable an automation (suspends all of its triggers)
+ * Disable an automation.
  */
 export async function disableAutomation(
   ref: string,
@@ -167,59 +167,6 @@ export async function runAutomation(ref: string): Promise<{ runId: string }> {
   handleError(result, `Failed to run automation "${ref}"`);
 }
 
-/** Add a trigger to an automation. */
-export async function addAutomationTrigger(
-  ref: string,
-  body: CreateTriggerRequest,
-): Promise<{ trigger: AutomationTriggerResponse }> {
-  const config = await getClientConfig();
-  const client = initClient(automationsByRefContract, config);
-
-  const result = await client.addTrigger({ params: { ref }, body });
-
-  if (result.status === 201) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to add trigger to automation "${ref}"`);
-}
-
-/**
- * List an automation's triggers
- */
-export async function listAutomationTriggers(ref: string): Promise<{
-  triggers: AutomationTriggerResponse[];
-}> {
-  const config = await getClientConfig();
-  const client = initClient(automationsByRefContract, config);
-
-  const result = await client.listTriggers({ params: { ref } });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to list triggers of automation "${ref}"`);
-}
-
-/**
- * Show a trigger by id
- */
-export async function showAutomationTrigger(
-  id: string,
-): Promise<AutomationTriggerResponse> {
-  const config = await getClientConfig();
-  const client = initClient(automationTriggersContract, config);
-
-  const result = await client.show({ params: { id } });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Trigger not found: ${id}`);
-}
-
 /**
  * Replace a time trigger's schedule config in place (the kind may switch
  * among cron/once/loop). The trigger keeps its id, enabled flag, and run
@@ -239,56 +186,4 @@ export async function updateAutomationTrigger(
   }
 
   handleError(result, `Failed to update trigger ${id}`);
-}
-
-/**
- * Remove a trigger by id
- */
-export async function removeAutomationTrigger(id: string): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(automationTriggersContract, config);
-
-  const result = await client.remove({ params: { id } });
-
-  if (result.status === 204) {
-    return;
-  }
-
-  handleError(result, `Failed to remove trigger ${id}`);
-}
-
-/**
- * Enable a single trigger
- */
-export async function enableAutomationTrigger(
-  id: string,
-): Promise<AutomationTriggerResponse> {
-  const config = await getClientConfig();
-  const client = initClient(automationTriggersContract, config);
-
-  const result = await client.enable({ params: { id }, body: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to enable trigger ${id}`);
-}
-
-/**
- * Disable a single trigger
- */
-export async function disableAutomationTrigger(
-  id: string,
-): Promise<AutomationTriggerResponse> {
-  const config = await getClientConfig();
-  const client = initClient(automationTriggersContract, config);
-
-  const result = await client.disable({ params: { id }, body: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to disable trigger ${id}`);
 }
