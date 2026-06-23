@@ -175,3 +175,45 @@ def test_slack_firewall_has_one_owner_per_route():
     assert route_owners[("https://slack.com/api", "POST /assistant.search.context")] == (
         "assistant.search:read"
     )
+
+
+def test_strava_firewall_uses_tiered_route_permissions():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["strava"]
+    permissions = {
+        permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
+    }
+
+    assert "activities:read" in permissions
+    assert "profile:read" in permissions
+    assert "routes:read" in permissions
+    assert "segments:read" in permissions
+    assert "activity:read" not in permissions
+    assert "activity:read_all" not in permissions
+
+
+def test_strava_firewall_has_one_owner_per_route():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["strava"]
+    route_owners: dict[tuple[str, str], str] = {}
+    duplicates: list[tuple[str, str, str, str]] = []
+
+    for api in firewall["apis"]:
+        base = api["base"]
+        for permission in api.get("permissions", []):
+            permission_name = permission["name"]
+            for rule in permission.get("rules", []):
+                key = (base, rule)
+                existing = route_owners.get(key)
+                if existing is not None:
+                    duplicates.append((base, rule, existing, permission_name))
+                    continue
+                route_owners[key] = permission_name
+
+    assert duplicates == []
+    assert route_owners[("https://www.strava.com", "GET /api/v3/activities/{id}")] == (
+        "activities:read"
+    )
+    assert route_owners[("https://www.strava.com", "GET /api/v3/athlete")] == ("profile:read")
+    assert route_owners[("https://www.strava.com", "GET /api/v3/routes/{id}")] == ("routes:read")
+    assert route_owners[("https://www.strava.com", "GET /api/v3/segments/{id}")] == (
+        "segments:read"
+    )

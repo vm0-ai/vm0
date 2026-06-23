@@ -3452,6 +3452,13 @@
       "when": 1782209965856,
       "tag": "0492_remap_slack_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1782211744871,
+      "tag": "0493_remap_strava_permission_grants",
+      "breakpoints": true
     }
   ]
 }
