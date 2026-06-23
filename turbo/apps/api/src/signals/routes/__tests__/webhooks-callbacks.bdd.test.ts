@@ -3733,6 +3733,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     // User storage cleanup is best-effort: a failing S3 listing must not
     // stop the rest of the teardown.
+    const s3CallCountBeforeCleanup = context.mocks.s3.send.mock.calls.length;
     context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
     api.verifyNextClerkWebhook({
       type: "user.deleted",
@@ -3742,13 +3743,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(response.body).toBe("OK");
     await flushWaitUntilForTest();
     expect(
-      context.mocks.s3.send.mock.calls.some(([command]) => {
-        const prefix = commandInput(command).Prefix;
-        return (
-          typeof prefix === "string" &&
-          prefix.startsWith(`${orgOf(doomed)}/artifact/`)
-        );
-      }),
+      context.mocks.s3.send.mock.calls
+        .slice(s3CallCountBeforeCleanup)
+        .some(([command]) => {
+          const prefix = commandInput(command).Prefix;
+          return (
+            typeof prefix === "string" &&
+            prefix.startsWith(`${orgOf(doomed)}/artifact/`)
+          );
+        }),
     ).toBeTruthy();
 
     await waitForExpectation(() => {
