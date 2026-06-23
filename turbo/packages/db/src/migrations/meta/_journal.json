@@ -3452,6 +3452,13 @@
       "when": 1782209965856,
       "tag": "0492_remap_slack_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1782218487662,
+      "tag": "0493_add_mimo_hy3_model_support",
+      "breakpoints": true
     }
   ]
 }
