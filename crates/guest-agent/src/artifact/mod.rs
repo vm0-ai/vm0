@@ -32,6 +32,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct FileEntry {
+    /// UTF-8 relative protocol path used in prepare/commit payloads, manifests,
+    /// and archive creation. Do not derive this from lossy filesystem conversion.
     pub(crate) path: String,
     pub(crate) hash: String,
     pub(crate) size: u64,
