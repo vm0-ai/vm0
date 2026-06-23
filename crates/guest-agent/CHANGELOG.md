@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.3...guest-agent-v0.40.4) (2026-06-23)
+
+
+### Bug Fixes
+
+* reject non-utf8 artifact paths ([#18625](https://github.com/vm0-ai/vm0/issues/18625)) ([27173de](https://github.com/vm0-ai/vm0/commit/27173dee401a35e30edc2c99092f1fd96b969c51))
+
 ## [0.40.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.2...guest-agent-v0.40.3) (2026-06-23)
 
 

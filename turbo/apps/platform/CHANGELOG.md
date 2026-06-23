@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.483.3](https://github.com/vm0-ai/vm0/compare/app-v0.483.2...app-v0.483.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* keep firewall metadata chunks stable ([#18630](https://github.com/vm0-ai/vm0/issues/18630)) ([9d15fa0](https://github.com/vm0-ai/vm0/commit/9d15fa0e8b09d25672c49087b3861fb1bbdbaa3a))
+* remove presentation preview iframes from tab order ([#18609](https://github.com/vm0-ai/vm0/issues/18609)) ([6710a67](https://github.com/vm0-ai/vm0/commit/6710a67781cc3ac2269e316641530784352b9ce8))
+* reveal adjacent illustration thumbnails on selection ([#18569](https://github.com/vm0-ai/vm0/issues/18569)) ([7d62c8c](https://github.com/vm0-ai/vm0/commit/7d62c8cc7bd66ebd294352da4fc07e1f6a73874c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.3
+    * @vm0/connectors bumped to 1.104.3
+    * @vm0/core bumped to 8.364.3
+
 ## [0.483.2](https://github.com/vm0-ai/vm0/compare/app-v0.483.1...app-v0.483.2) (2026-06-23)
 
 
