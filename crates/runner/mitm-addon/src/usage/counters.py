@@ -99,8 +99,8 @@ def read_usage_flush_request_id() -> str | None:
 
     marker_path = Path(pending_path).with_name(_FLUSH_REQUEST_FILE)
     try:
-        marker = json.loads(marker_path.read_text())
-    except (OSError, json.JSONDecodeError):
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
     if not isinstance(marker, dict):
