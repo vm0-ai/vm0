@@ -3344,7 +3344,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
       connectorRef: "slack",
-      permission: "channels:read",
+      permission: "conversations:read",
       action: "allow",
     });
     await expect(
@@ -3721,7 +3721,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await runs.applyUserPermissionGrant(doomed, {
       agentId: sharedAgent.agentId,
       connectorRef: "slack",
-      permission: "channels:read",
+      permission: "conversations:read",
       action: "allow",
     });
     await runs.applyUserPermissionGrant(peer, {

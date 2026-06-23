@@ -56,7 +56,7 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "agent-123",
     connectorRef: "slack",
-    permission: "channels:read",
+    permission: "conversations:read",
     action: "allow",
     expiresAt: null,
     createdAt: "2025-01-01T00:00:00Z",
@@ -519,7 +519,7 @@ describe("zero whoami command", () => {
         }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
-            permission: "channels:read",
+            permission: "conversations:read",
             action: "allow",
           }),
           makePermissionGrant({
@@ -551,7 +551,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("✓") && line.includes("channels:read");
+          return line.includes("✓") && line.includes("conversations:read");
         }),
       ).toBe(true);
       expect(

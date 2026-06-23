@@ -1478,7 +1478,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.heartbeatRunner(runnerGroup);
     const defaults = await claimSlackPolicy("no grants yet");
-    expect(defaults.allow).toContain("channels:read");
+    expect(defaults.allow).toContain("conversations:read");
     expect(defaults.allow).toContain("users:read");
     expect(defaults.deny).toContain("chat:write");
     expect(defaults.unknownPolicy).toBe("allow");
@@ -1508,7 +1508,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
-      permission: "groups:read",
+      permission: "conversations:read",
       action: "allow",
     });
     const grants = await api.listUserPermissionGrants(actor, agentId);
@@ -1526,7 +1526,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(expiryByPermission.get("search:read")).toStrictEqual(
       expect.any(String),
     );
-    expect(expiryByPermission.get("groups:read")).toBeNull();
+    expect(expiryByPermission.get("conversations:read")).toBeNull();
 
     // A same-org member's own grant never leaks into the owner's runs.
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
@@ -1558,7 +1558,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const unknownDenied = await claimSlackPolicy("deny unknown permissions");
     expect(unknownDenied.unknownPolicy).toBe("deny");
-    expect(unknownDenied.allow).toContain("channels:read");
+    expect(unknownDenied.allow).toContain("conversations:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
     // The grant snapshot is baked into the queued run: flipping the grant

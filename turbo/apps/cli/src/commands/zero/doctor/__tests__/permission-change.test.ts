@@ -9,6 +9,8 @@ import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionChangeCommand } from "../permission-change";
 
 describe("zero doctor permission-change command", () => {
+  const SLACK_READ_PERMISSION = "conversations:read";
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -33,18 +35,18 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      'You can allow the "channels:read" permission for your connector access',
+      `You can allow the "${SLACK_READ_PERMISSION}" permission for your connector access`,
     );
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).toContain("ref=slack");
-    expect(logCalls).toContain("permission=channels%3Aread");
+    expect(logCalls).toContain("permission=conversations%3Aread");
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("expiresIn=1h");
     expect(logCalls).toContain("Requested duration: 1h");
@@ -60,7 +62,7 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--enable",
       "--duration",
       "24h",
@@ -81,13 +83,13 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--disable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      'You can deny the "channels:read" permission for your connector access',
+      `You can deny the "${SLACK_READ_PERMISSION}" permission for your connector access`,
     );
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("action=deny");
@@ -129,7 +131,7 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--enable",
       "--reason",
       "Need to read channel list",
@@ -150,7 +152,7 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--enable",
     ]);
 
@@ -168,7 +170,7 @@ describe("zero doctor permission-change command", () => {
       "cli",
       "slack",
       "--permission",
-      "channels:read",
+      SLACK_READ_PERMISSION,
       "--enable",
     ]);
 
@@ -299,7 +301,7 @@ describe("zero doctor permission-change command", () => {
         "cli",
         "slack",
         "--permission",
-        "channels:read",
+        SLACK_READ_PERMISSION,
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -315,7 +317,7 @@ describe("zero doctor permission-change command", () => {
         "cli",
         "slack",
         "--permission",
-        "channels:read",
+        SLACK_READ_PERMISSION,
         "--disable",
         "--duration",
         "1h",

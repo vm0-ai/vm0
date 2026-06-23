@@ -122,3 +122,56 @@ def test_figma_firewall_has_one_owner_per_route():
     assert route_owners[("https://api.figma.com", "GET /v2/webhooks/{webhook_id}")] == (
         "webhooks:read"
     )
+
+
+def test_slack_firewall_uses_shared_route_permissions():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["slack"]
+    permissions = {
+        permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
+    }
+
+    assert "assistant.search:read" in permissions
+    assert "conversations:history" in permissions
+    assert "conversations:read" in permissions
+    assert "conversations:write" in permissions
+    assert "conversations:write.invites" in permissions
+    assert "conversations:write.topic" in permissions
+    assert "conversations.connect:read" in permissions
+
+
+def test_slack_firewall_has_one_owner_per_route():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["slack"]
+    route_owners: dict[tuple[str, str], str] = {}
+    duplicates: list[tuple[str, str, str, str]] = []
+
+    for api in firewall["apis"]:
+        base = api["base"]
+        for permission in api.get("permissions", []):
+            permission_name = permission["name"]
+            for rule in permission.get("rules", []):
+                key = (base, rule)
+                existing = route_owners.get(key)
+                if existing is not None:
+                    duplicates.append((base, rule, existing, permission_name))
+                    continue
+                route_owners[key] = permission_name
+
+    assert duplicates == []
+    assert route_owners[("https://slack.com/api", "GET /conversations.history")] == (
+        "conversations:history"
+    )
+    assert route_owners[("https://slack.com/api", "GET /conversations.info")] == (
+        "conversations:read"
+    )
+    assert route_owners[("https://slack.com/api", "POST /conversations.archive")] == (
+        "conversations:write"
+    )
+    assert route_owners[("https://slack.com/api", "POST /conversations.invite")] == (
+        "conversations:write.invites"
+    )
+    assert route_owners[("https://slack.com/api", "POST /conversations.setTopic")] == (
+        "conversations:write.topic"
+    )
+    assert route_owners[("https://slack.com/api", "POST /assistant.search.context")] == (
+        "assistant.search:read"
+    )

@@ -12,9 +12,12 @@
  *   { "scope": { "bot": ["chat:write"], "user": ["chat:write"] }, ... }
  *
  * We group methods by scope across every token type listed by the source
- * data to generate firewall permission groups. Methods with no scope
- * (like auth.test, oauth.*) are included in a "no_scopes_required" group
- * since they still require a valid token.
+ * data to generate firewall permission groups. Some Slack methods list
+ * multiple alternative scopes for the same runtime endpoint, usually because
+ * the required Slack scope depends on conversation type. Those methods use
+ * explicit vm0-owned route owners so one runtime route maps to one firewall
+ * permission. Methods with no scope (like auth.test, oauth.*) are included in
+ * a "no_scopes_required" group since they still require a valid token.
  */
 
 import {
@@ -28,11 +31,11 @@ import {
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
 
-// ── Scope descriptions (from docs.slack.dev/reference/scopes/) ──────────
+// ── Permission descriptions ──────────────────────────────────────────────
 
 /**
- * Official Slack scope descriptions sourced from docs.slack.dev.
- * Used to enrich the generated firewall config with human-readable text.
+ * Official Slack scope descriptions sourced from docs.slack.dev plus
+ * vm0-owned aggregate permission descriptions for shared Slack routes.
  */
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   // Admin
@@ -72,10 +75,17 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "admin.workflows:write":
     "Manage workflow builder workflows in an Enterprise organization",
   apps: "Manage Slack app collaborators",
+  "assistant.search:read": "Search assistant context across Slack content",
   "channels:manage":
     "Manage public channels that the app has been added to and create new ones",
+  "conversations:history":
+    "View messages and replies across Slack conversation types",
+  "conversations:read":
+    "View basic information across Slack conversation types",
   "conversations.connect:manage":
     "Manage Slack Connect channels (approve or decline invitations)",
+  "conversations.connect:read":
+    "View Slack Connect external teams and discoverable contacts",
   "team.billing:read": "View billing information for a workspace",
 
   // Read
@@ -141,6 +151,11 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "Manage a user's public channels and create new ones on a user's behalf",
   "channels:write.invites": "Invite members to public channels",
   "channels:write.topic": "Set the topic and purpose of public channels",
+  "conversations:write": "Manage Slack conversations across conversation types",
+  "conversations:write.invites":
+    "Invite members across Slack conversation types",
+  "conversations:write.topic":
+    "Set topics and purposes across Slack conversation types",
   "datastore:write": "Write data to Slack's hosted datastore",
   "dnd:write": "Edit a user's Do Not Disturb settings",
   "groups:write":
@@ -209,13 +224,17 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "conversations.connect:manage": "Admin",
   "team.billing:read": "Admin",
 
-  // Read (38)
+  // Read
   "app_configurations:read": "Read",
+  "assistant.search:read": "Read",
   "bookmarks:read": "Read",
   "calls:read": "Read",
   "canvases:read": "Read",
   "channels:history": "Read",
   "channels:read": "Read",
+  "conversations:history": "Read",
+  "conversations:read": "Read",
+  "conversations.connect:read": "Read",
   "datastore:read": "Read",
   "dnd:read": "Read",
   "emoji:read": "Read",
@@ -249,7 +268,7 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "users:read": "Read",
   "users:read.email": "Read",
 
-  // Write (24)
+  // Write
   "app_configurations:write": "Write",
   "bookmarks:write": "Write",
   "calls:write": "Write",
@@ -257,6 +276,9 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "channels:write": "Write",
   "channels:write.invites": "Write",
   "channels:write.topic": "Write",
+  "conversations:write": "Write",
+  "conversations:write.invites": "Write",
+  "conversations:write.topic": "Write",
   "datastore:write": "Write",
   "dnd:write": "Write",
   "groups:write": "Write",
@@ -301,6 +323,271 @@ interface SlackMethodData {
   scope?: unknown;
   http_method?: unknown;
 }
+
+interface SlackMethodOwnerOverride {
+  readonly permission: string;
+  readonly scopes: readonly string[];
+}
+
+const RUNTIME_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
+const SLACK_METHOD_OWNER_OVERRIDES = new Map<string, SlackMethodOwnerOverride>([
+  [
+    "assistant.search.context",
+    {
+      permission: "assistant.search:read",
+      scopes: [
+        "search:read.files",
+        "search:read.im",
+        "search:read.mpim",
+        "search:read.private",
+        "search:read.public",
+        "search:read.users",
+      ],
+    },
+  ],
+  [
+    "conversations.archive",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.close",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.create",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.history",
+    {
+      permission: "conversations:history",
+      scopes: [
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+      ],
+    },
+  ],
+  [
+    "conversations.info",
+    {
+      permission: "conversations:read",
+      scopes: ["channels:read", "groups:read", "im:read", "mpim:read"],
+    },
+  ],
+  [
+    "conversations.invite",
+    {
+      permission: "conversations:write.invites",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "channels:write.invites",
+        "groups:write",
+        "groups:write.invites",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.join",
+    {
+      permission: "channels:join",
+      scopes: ["channels:join", "channels:write"],
+    },
+  ],
+  [
+    "conversations.kick",
+    {
+      permission: "conversations:write",
+      scopes: ["channels:manage", "channels:write", "groups:write"],
+    },
+  ],
+  [
+    "conversations.leave",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.list",
+    {
+      permission: "conversations:read",
+      scopes: ["channels:read", "groups:read", "im:read", "mpim:read"],
+    },
+  ],
+  [
+    "conversations.mark",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.members",
+    {
+      permission: "conversations:read",
+      scopes: ["channels:read", "groups:read", "im:read", "mpim:read"],
+    },
+  ],
+  [
+    "conversations.open",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.rename",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "conversations.replies",
+    {
+      permission: "conversations:history",
+      scopes: [
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+      ],
+    },
+  ],
+  [
+    "conversations.setPurpose",
+    {
+      permission: "conversations:write.topic",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "channels:write.topic",
+        "groups:write",
+        "groups:write.topic",
+        "im:write",
+        "im:write.topic",
+        "mpim:write",
+        "mpim:write.topic",
+      ],
+    },
+  ],
+  [
+    "conversations.setTopic",
+    {
+      permission: "conversations:write.topic",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "channels:write.topic",
+        "groups:write",
+        "groups:write.topic",
+        "im:write",
+        "im:write.topic",
+        "mpim:write",
+        "mpim:write.topic",
+      ],
+    },
+  ],
+  [
+    "conversations.unarchive",
+    {
+      permission: "conversations:write",
+      scopes: [
+        "channels:manage",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+      ],
+    },
+  ],
+  [
+    "team.externalTeams.list",
+    {
+      permission: "conversations.connect:read",
+      scopes: ["conversations.connect:manage", "team:read"],
+    },
+  ],
+  [
+    "users.conversations",
+    {
+      permission: "conversations:read",
+      scopes: ["channels:read", "groups:read", "im:read", "mpim:read"],
+    },
+  ],
+  [
+    "users.discoverableContacts.lookup",
+    {
+      permission: "conversations.connect:read",
+      scopes: ["conversations.connect:manage", "team:read"],
+    },
+  ],
+]);
 
 function loadMethods(): Map<string, SlackMethodData> {
   console.error("Loading slack-api-ref (cached)…");
@@ -354,6 +641,86 @@ function collectScopes(
   return allScopes;
 }
 
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => {
+    return left.localeCompare(right);
+  });
+}
+
+function formatScopes(scopes: readonly string[]): string {
+  return scopes.join(", ");
+}
+
+export function pickSlackPermissionOwners(
+  methodName: string,
+  scopes: readonly string[],
+): readonly string[] {
+  const uniqueScopes = uniqueSorted(scopes);
+  const override = SLACK_METHOD_OWNER_OVERRIDES.get(methodName);
+  if (!override) {
+    return uniqueScopes;
+  }
+
+  const expectedScopes = uniqueSorted(override.scopes);
+  const matchesExpected =
+    uniqueScopes.length === expectedScopes.length &&
+    uniqueScopes.every((scope, index) => {
+      return scope === expectedScopes[index];
+    });
+
+  if (!matchesExpected) {
+    throw new Error(
+      `Slack method "${methodName}" owner override scopes changed: expected [${formatScopes(
+        expectedScopes,
+      )}], got [${formatScopes(uniqueScopes)}]`,
+    );
+  }
+
+  return [override.permission];
+}
+
+function expandRuntimeRule(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+function assertUniqueSlackRules(permissions: readonly PermissionGroup[]): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      for (const runtimeRule of expandRuntimeRule(rule)) {
+        const existing = owners.get(runtimeRule);
+        if (existing) {
+          duplicates.push(`${runtimeRule}: ${existing}, ${permission.name}`);
+          continue;
+        }
+        owners.set(runtimeRule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Slack generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
+}
+
 function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
 
@@ -384,11 +751,14 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
       continue;
     }
 
-    for (const s of allScopes) {
-      let ruleSet = groups.get(s);
+    const ownerPermissions = pickSlackPermissionOwners(methodName, [
+      ...allScopes,
+    ]);
+    for (const permissionName of ownerPermissions) {
+      let ruleSet = groups.get(permissionName);
       if (!ruleSet) {
         ruleSet = new Set();
-        groups.set(s, ruleSet);
+        groups.set(permissionName, ruleSet);
       }
       ruleSet.add(rule);
     }
@@ -420,6 +790,7 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
     });
   }
 
+  assertUniqueSlackRules(ordered);
   return ordered;
 }
 
@@ -427,8 +798,9 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
 
 const DEFAULT_ALLOWED: string[] = [
   "bookmarks:read",
-  "channels:history",
-  "channels:read",
+  "conversations.connect:read",
+  "conversations:history",
+  "conversations:read",
   "emoji:read",
   "pins:read",
   "reactions:read",
