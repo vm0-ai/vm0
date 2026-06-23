@@ -3,8 +3,6 @@
 //! When using netlink + socketpair, no handshake is needed.
 //! The kernel NBD client communicates directly using the transmission protocol.
 
-use std::io::{Cursor, Read, Write};
-
 /// Magic number in every NBD request (client -> server).
 pub const REQUEST_MAGIC: u32 = 0x2560_9513;
 
@@ -16,6 +14,17 @@ pub const REQUEST_HEADER_SIZE: usize = 28;
 
 /// Size of the reply header in bytes (excluding payload).
 pub const REPLY_HEADER_SIZE: usize = 16;
+
+const REQUEST_MAGIC_OFFSET: usize = 0;
+const REQUEST_FLAGS_OFFSET: usize = 4;
+const REQUEST_COMMAND_OFFSET: usize = 6;
+const REQUEST_HANDLE_OFFSET: usize = 8;
+const REQUEST_OFFSET_FIELD_OFFSET: usize = 16;
+const REQUEST_LENGTH_OFFSET: usize = 24;
+
+const REPLY_MAGIC_OFFSET: usize = 0;
+const REPLY_ERROR_OFFSET: usize = 4;
+const REPLY_HANDLE_OFFSET: usize = 8;
 
 /// NBD command types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,72 +92,76 @@ pub enum ProtocolError {
     BufferTooShort { expected: usize, actual: usize },
 }
 
+fn read_bytes<const N: usize>(buf: &[u8], offset: usize) -> [u8; N] {
+    let mut bytes = [0u8; N];
+    let copied = if let Some(slice) = offset.checked_add(N).and_then(|end| buf.get(offset..end)) {
+        bytes.copy_from_slice(slice);
+        true
+    } else {
+        false
+    };
+    assert!(copied, "NBD field offset must fit fixed header");
+    bytes
+}
+
+fn read_u16(buf: &[u8], offset: usize) -> u16 {
+    u16::from_be_bytes(read_bytes(buf, offset))
+}
+
+fn read_u32(buf: &[u8], offset: usize) -> u32 {
+    u32::from_be_bytes(read_bytes(buf, offset))
+}
+
+fn read_u64(buf: &[u8], offset: usize) -> u64 {
+    u64::from_be_bytes(read_bytes(buf, offset))
+}
+
+#[cfg(test)]
+fn write_u16(buf: &mut [u8], offset: usize, value: u16) {
+    write_bytes(buf, offset, value.to_be_bytes());
+}
+
+fn write_u32(buf: &mut [u8], offset: usize, value: u32) {
+    write_bytes(buf, offset, value.to_be_bytes());
+}
+
+fn write_u64(buf: &mut [u8], offset: usize, value: u64) {
+    write_bytes(buf, offset, value.to_be_bytes());
+}
+
+fn write_bytes<const N: usize>(buf: &mut [u8], offset: usize, bytes: [u8; N]) {
+    let copied = if let Some(dest) = offset
+        .checked_add(N)
+        .and_then(|end| buf.get_mut(offset..end))
+    {
+        dest.copy_from_slice(&bytes);
+        true
+    } else {
+        false
+    };
+    assert!(copied, "NBD field offset must fit fixed header");
+}
+
 /// Parse a 28-byte NBD request header.
 pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
-    if buf.len() < REQUEST_HEADER_SIZE {
-        return Err(ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        });
-    }
-
-    let mut cursor = Cursor::new(buf);
-    let mut b4 = [0u8; 4];
-    let mut b2 = [0u8; 2];
-    let mut b8 = [0u8; 8];
-
-    // We already checked buf.len() >= 28, so all reads will succeed.
-    let _: () = cursor
-        .read_exact(&mut b4)
-        .map_err(|_| ProtocolError::BufferTooShort {
+    let header = buf
+        .get(..REQUEST_HEADER_SIZE)
+        .ok_or(ProtocolError::BufferTooShort {
             expected: REQUEST_HEADER_SIZE,
             actual: buf.len(),
         })?;
-    let magic = u32::from_be_bytes(b4);
+
+    let magic = read_u32(header, REQUEST_MAGIC_OFFSET);
     if magic != REQUEST_MAGIC {
         return Err(ProtocolError::InvalidRequestMagic(magic));
     }
 
-    let _: () = cursor
-        .read_exact(&mut b2)
-        .map_err(|_| ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        })?;
-    let flags = u16::from_be_bytes(b2);
-
-    let _: () = cursor
-        .read_exact(&mut b2)
-        .map_err(|_| ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        })?;
-    let cmd_type = u16::from_be_bytes(b2);
+    let flags = read_u16(header, REQUEST_FLAGS_OFFSET);
+    let cmd_type = read_u16(header, REQUEST_COMMAND_OFFSET);
     let command = Command::from_u16(cmd_type)?;
-
-    let _: () = cursor
-        .read_exact(&mut b8)
-        .map_err(|_| ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        })?;
-    let handle = u64::from_be_bytes(b8);
-
-    let _: () = cursor
-        .read_exact(&mut b8)
-        .map_err(|_| ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        })?;
-    let offset = u64::from_be_bytes(b8);
-
-    let _: () = cursor
-        .read_exact(&mut b4)
-        .map_err(|_| ProtocolError::BufferTooShort {
-            expected: REQUEST_HEADER_SIZE,
-            actual: buf.len(),
-        })?;
-    let length = u32::from_be_bytes(b4);
+    let handle = read_u64(header, REQUEST_HANDLE_OFFSET);
+    let offset = read_u64(header, REQUEST_OFFSET_FIELD_OFFSET);
+    let length = read_u32(header, REQUEST_LENGTH_OFFSET);
 
     Ok(NbdRequest {
         flags,
@@ -162,11 +175,9 @@ pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
 /// Serialize a 16-byte NBD reply header.
 pub fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
     let mut buf = [0u8; REPLY_HEADER_SIZE];
-    let mut cursor = Cursor::new(buf.as_mut_slice());
-    // All writes fit within the 16-byte buffer, so write_all cannot fail.
-    let _ = cursor.write_all(&REPLY_MAGIC.to_be_bytes());
-    let _ = cursor.write_all(&reply.error.to_be_bytes());
-    let _ = cursor.write_all(&reply.handle.to_be_bytes());
+    write_u32(&mut buf, REPLY_MAGIC_OFFSET, REPLY_MAGIC);
+    write_u32(&mut buf, REPLY_ERROR_OFFSET, reply.error);
+    write_u64(&mut buf, REPLY_HANDLE_OFFSET, reply.handle);
     buf
 }
 
@@ -174,14 +185,12 @@ pub fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
 #[cfg(test)]
 pub(crate) fn serialize_request(req: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let mut buf = [0u8; REQUEST_HEADER_SIZE];
-    let mut cursor = Cursor::new(buf.as_mut_slice());
-    // All writes fit within the 28-byte buffer, so write_all cannot fail.
-    let _ = cursor.write_all(&REQUEST_MAGIC.to_be_bytes());
-    let _ = cursor.write_all(&req.flags.to_be_bytes());
-    let _ = cursor.write_all(&(req.command as u16).to_be_bytes());
-    let _ = cursor.write_all(&req.handle.to_be_bytes());
-    let _ = cursor.write_all(&req.offset.to_be_bytes());
-    let _ = cursor.write_all(&req.length.to_be_bytes());
+    write_u32(&mut buf, REQUEST_MAGIC_OFFSET, REQUEST_MAGIC);
+    write_u16(&mut buf, REQUEST_FLAGS_OFFSET, req.flags);
+    write_u16(&mut buf, REQUEST_COMMAND_OFFSET, req.command as u16);
+    write_u64(&mut buf, REQUEST_HANDLE_OFFSET, req.handle);
+    write_u64(&mut buf, REQUEST_OFFSET_FIELD_OFFSET, req.offset);
+    write_u32(&mut buf, REQUEST_LENGTH_OFFSET, req.length);
     buf
 }
 
@@ -200,6 +209,28 @@ mod tests {
         };
 
         let buf = serialize_request(&req);
+        let parsed = parse_request(&buf).unwrap();
+
+        assert_eq!(parsed.flags, req.flags);
+        assert_eq!(parsed.command, req.command);
+        assert_eq!(parsed.handle, req.handle);
+        assert_eq!(parsed.offset, req.offset);
+        assert_eq!(parsed.length, req.length);
+    }
+
+    #[test]
+    fn parse_request_ignores_trailing_bytes() {
+        let req = NbdRequest {
+            flags: 0x0001,
+            command: Command::Trim,
+            handle: 0xCAFE_BABE_DEAD_BEEF,
+            offset: 16_384,
+            length: 4096,
+        };
+
+        let mut buf = serialize_request(&req).to_vec();
+        buf.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+
         let parsed = parse_request(&buf).unwrap();
 
         assert_eq!(parsed.flags, req.flags);
