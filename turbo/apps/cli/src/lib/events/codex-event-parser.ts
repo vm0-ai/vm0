@@ -344,5 +344,5 @@ function isCommandExecutionError(item: CodexItem): boolean {
   if (item.status === "completed") {
     return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
   }
-  return item.exit_code !== 0;
+  return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
 }

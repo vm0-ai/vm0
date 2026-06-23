@@ -473,6 +473,8 @@ fn normalize_optional_error(error: &Value) -> Value {
 
 fn normalize_error(error: &Map<String, Value>) -> Value {
     let mut normalized = Map::new();
+    copy_optional_field(&mut normalized, "code", error, "code");
+    copy_optional_field(&mut normalized, "error", error, "error");
     copy_optional_field(&mut normalized, "message", error, "message");
     copy_optional_field(
         &mut normalized,
@@ -481,6 +483,8 @@ fn normalize_error(error: &Map<String, Value>) -> Value {
         "additionalDetails",
     );
     copy_optional_field(&mut normalized, "codex_error_info", error, "codexErrorInfo");
+    copy_optional_field(&mut normalized, "connectors", error, "connectors");
+    copy_optional_field(&mut normalized, "failureReason", error, "failureReason");
     Value::Object(normalized)
 }
 
@@ -1275,6 +1279,74 @@ mod tests {
         );
         assert_eq!(diagnostic.event_type, "error");
         assert_eq!(diagnostic.message, "server rejected request");
+    }
+
+    #[test]
+    fn error_preserves_code_for_failure_reason_classification() {
+        let event = mapped_event(
+            "error",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "willRetry": false,
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "Incorrect API key provided"
+                }
+            }),
+        );
+        let diagnostic =
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+                .expect("error event should produce a diagnostic");
+
+        assert_eq!(
+            event.pointer("/error/code"),
+            Some(&json!("invalid_api_key"))
+        );
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::InvalidApiKey)
+        );
+    }
+
+    #[test]
+    fn failed_turn_preserves_refresh_failure_fields_for_classification() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "code": "TOKEN_REFRESH_FAILED",
+                        "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                        "connectors": ["codex-oauth-token"],
+                        "failureReason": "reconnect_required"
+                    }
+                }
+            }),
+        );
+        let diagnostic =
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+                .expect("failed turn should produce a diagnostic");
+
+        assert_eq!(
+            event.pointer("/turn/error/code"),
+            Some(&json!("TOKEN_REFRESH_FAILED"))
+        );
+        assert_eq!(
+            event.pointer("/turn/error/connectors"),
+            Some(&json!(["codex-oauth-token"]))
+        );
+        assert_eq!(
+            event.pointer("/turn/error/failureReason"),
+            Some(&json!("reconnect_required"))
+        );
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ReconnectRequired)
+        );
     }
 
     #[test]
