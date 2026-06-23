@@ -2,12 +2,20 @@ WITH permission_remaps(old_permission, new_permission) AS (
   VALUES
     ('activity:read', 'activities:read'),
     ('activity:read_all', 'activities:read'),
+    ('activity:write', 'activities:write'),
+    ('activity:write', 'uploads:write'),
+    ('read', 'athlete_stats:read'),
+    ('read', 'clubs:read'),
+    ('read', 'gear:read'),
     ('read', 'profile:read'),
     ('profile:read_all', 'profile:read'),
     ('read', 'routes:read'),
     ('read_all', 'routes:read'),
+    ('read_all', 'segment_effort_streams:read'),
+    ('read', 'segment_efforts:read'),
     ('read', 'segments:read'),
-    ('read_all', 'segments:read')
+    ('read_all', 'segments:read'),
+    ('profile:write', 'segments:write')
 ),
 migrated_grants AS (
   SELECT
@@ -98,5 +106,9 @@ DELETE FROM user_permission_grants
 WHERE connector_ref = 'strava'
   AND permission IN (
     'activity:read',
-    'activity:read_all'
+    'activity:read_all',
+    'activity:write',
+    'profile:read_all',
+    'read',
+    'read_all'
   );

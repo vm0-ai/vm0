@@ -26,52 +26,45 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "activity:write",
+          "name": "activities:write",
           "rules": [
             "POST /api/v3/activities",
-            "PUT /api/v3/activities/{id}",
-            "POST /api/v3/uploads",
-            "GET /api/v3/uploads/{uploadId}"
+            "PUT /api/v3/activities/{id}"
+          ]
+        },
+        {
+          "name": "athlete_stats:read",
+          "rules": [
+            "GET /api/v3/athletes/{id}/stats"
+          ]
+        },
+        {
+          "name": "clubs:read",
+          "rules": [
+            "GET /api/v3/athlete/clubs",
+            "GET /api/v3/clubs/{id}",
+            "GET /api/v3/clubs/{id}/activities",
+            "GET /api/v3/clubs/{id}/admins",
+            "GET /api/v3/clubs/{id}/members"
+          ]
+        },
+        {
+          "name": "gear:read",
+          "rules": [
+            "GET /api/v3/gear/{id}"
           ]
         },
         {
           "name": "profile:read",
           "rules": [
-            "GET /api/v3/athlete"
-          ]
-        },
-        {
-          "name": "profile:read_all",
-          "rules": [
+            "GET /api/v3/athlete",
             "GET /api/v3/athlete/zones"
           ]
         },
         {
           "name": "profile:write",
           "rules": [
-            "PUT /api/v3/athlete",
-            "PUT /api/v3/segments/{id}/starred"
-          ]
-        },
-        {
-          "name": "read",
-          "rules": [
-            "GET /api/v3/athlete/clubs",
-            "GET /api/v3/athletes/{id}/stats",
-            "GET /api/v3/clubs/{id}",
-            "GET /api/v3/clubs/{id}/activities",
-            "GET /api/v3/clubs/{id}/admins",
-            "GET /api/v3/clubs/{id}/members",
-            "GET /api/v3/gear/{id}",
-            "GET /api/v3/segment_efforts",
-            "GET /api/v3/segment_efforts/{id}",
-            "GET /api/v3/segments/explore"
-          ]
-        },
-        {
-          "name": "read_all",
-          "rules": [
-            "GET /api/v3/segment_efforts/{id}/streams"
+            "PUT /api/v3/athlete"
           ]
         },
         {
@@ -85,11 +78,38 @@ JSON_PART = r"""{
           ]
         },
         {
+          "name": "segment_effort_streams:read",
+          "rules": [
+            "GET /api/v3/segment_efforts/{id}/streams"
+          ]
+        },
+        {
+          "name": "segment_efforts:read",
+          "rules": [
+            "GET /api/v3/segment_efforts",
+            "GET /api/v3/segment_efforts/{id}"
+          ]
+        },
+        {
           "name": "segments:read",
           "rules": [
+            "GET /api/v3/segments/explore",
             "GET /api/v3/segments/starred",
             "GET /api/v3/segments/{id}",
             "GET /api/v3/segments/{id}/streams"
+          ]
+        },
+        {
+          "name": "segments:write",
+          "rules": [
+            "PUT /api/v3/segments/{id}/starred"
+          ]
+        },
+        {
+          "name": "uploads:write",
+          "rules": [
+            "POST /api/v3/uploads",
+            "GET /api/v3/uploads/{uploadId}"
           ]
         }
       ]

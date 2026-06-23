@@ -177,18 +177,31 @@ def test_slack_firewall_has_one_owner_per_route():
     )
 
 
-def test_strava_firewall_uses_tiered_route_permissions():
+def test_strava_firewall_uses_resource_permissions():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS["strava"]
     permissions = {
         permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
     }
 
     assert "activities:read" in permissions
+    assert "activities:write" in permissions
+    assert "athlete_stats:read" in permissions
+    assert "clubs:read" in permissions
+    assert "gear:read" in permissions
     assert "profile:read" in permissions
+    assert "profile:write" in permissions
     assert "routes:read" in permissions
+    assert "segment_effort_streams:read" in permissions
+    assert "segment_efforts:read" in permissions
     assert "segments:read" in permissions
+    assert "segments:write" in permissions
+    assert "uploads:write" in permissions
     assert "activity:read" not in permissions
     assert "activity:read_all" not in permissions
+    assert "activity:write" not in permissions
+    assert "profile:read_all" not in permissions
+    assert "read" not in permissions
+    assert "read_all" not in permissions
 
 
 def test_strava_firewall_has_one_owner_per_route():
@@ -212,8 +225,27 @@ def test_strava_firewall_has_one_owner_per_route():
     assert route_owners[("https://www.strava.com", "GET /api/v3/activities/{id}")] == (
         "activities:read"
     )
+    assert route_owners[("https://www.strava.com", "POST /api/v3/activities")] == (
+        "activities:write"
+    )
     assert route_owners[("https://www.strava.com", "GET /api/v3/athlete")] == ("profile:read")
+    assert route_owners[("https://www.strava.com", "GET /api/v3/athlete/zones")] == ("profile:read")
+    assert route_owners[("https://www.strava.com", "GET /api/v3/athlete/clubs")] == ("clubs:read")
+    assert route_owners[("https://www.strava.com", "GET /api/v3/athletes/{id}/stats")] == (
+        "athlete_stats:read"
+    )
+    assert route_owners[("https://www.strava.com", "GET /api/v3/gear/{id}")] == ("gear:read")
     assert route_owners[("https://www.strava.com", "GET /api/v3/routes/{id}")] == ("routes:read")
     assert route_owners[("https://www.strava.com", "GET /api/v3/segments/{id}")] == (
         "segments:read"
     )
+    assert route_owners[("https://www.strava.com", "PUT /api/v3/segments/{id}/starred")] == (
+        "segments:write"
+    )
+    assert route_owners[("https://www.strava.com", "GET /api/v3/segment_efforts/{id}/streams")] == (
+        "segment_effort_streams:read"
+    )
+    assert route_owners[("https://www.strava.com", "GET /api/v3/segment_efforts/{id}")] == (
+        "segment_efforts:read"
+    )
+    assert route_owners[("https://www.strava.com", "POST /api/v3/uploads")] == ("uploads:write")

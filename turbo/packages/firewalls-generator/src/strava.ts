@@ -108,9 +108,22 @@ const RUNTIME_METHODS = [
 ] as const;
 
 const ACTIVITY_READ_SCOPES = ["activity:read", "activity:read_all"] as const;
+const ACTIVITY_WRITE_SCOPES = ["activity:write"] as const;
+const PROFILE_READ_ALL_SCOPES = ["profile:read_all"] as const;
+const PROFILE_WRITE_SCOPES = ["profile:write"] as const;
+const READ_SCOPES = ["read"] as const;
 const READ_ALL_SCOPES = ["read", "read_all"] as const;
+const READ_ALL_ONLY_SCOPES = ["read_all"] as const;
 
 const STRAVA_ROUTE_OWNER_OVERRIDES = new Map<string, StravaRouteOwnerOverride>([
+  [
+    "POST /api/v3/activities",
+    { permission: "activities:write", scopes: ACTIVITY_WRITE_SCOPES },
+  ],
+  [
+    "PUT /api/v3/activities/{id}",
+    { permission: "activities:write", scopes: ACTIVITY_WRITE_SCOPES },
+  ],
   [
     "GET /api/v3/activities/{id}",
     { permission: "activities:read", scopes: ACTIVITY_READ_SCOPES },
@@ -144,6 +157,36 @@ const STRAVA_ROUTE_OWNER_OVERRIDES = new Map<string, StravaRouteOwnerOverride>([
     { permission: "profile:read", scopes: ["profile:read_all", "read"] },
   ],
   [
+    "PUT /api/v3/athlete",
+    { permission: "profile:write", scopes: PROFILE_WRITE_SCOPES },
+  ],
+  [
+    "GET /api/v3/athlete/zones",
+    { permission: "profile:read", scopes: PROFILE_READ_ALL_SCOPES },
+  ],
+  [
+    "GET /api/v3/athletes/{id}/stats",
+    { permission: "athlete_stats:read", scopes: READ_SCOPES },
+  ],
+  [
+    "GET /api/v3/athlete/clubs",
+    { permission: "clubs:read", scopes: READ_SCOPES },
+  ],
+  ["GET /api/v3/clubs/{id}", { permission: "clubs:read", scopes: READ_SCOPES }],
+  [
+    "GET /api/v3/clubs/{id}/activities",
+    { permission: "clubs:read", scopes: READ_SCOPES },
+  ],
+  [
+    "GET /api/v3/clubs/{id}/admins",
+    { permission: "clubs:read", scopes: READ_SCOPES },
+  ],
+  [
+    "GET /api/v3/clubs/{id}/members",
+    { permission: "clubs:read", scopes: READ_SCOPES },
+  ],
+  ["GET /api/v3/gear/{id}", { permission: "gear:read", scopes: READ_SCOPES }],
+  [
     "GET /api/v3/athletes/{id}/routes",
     { permission: "routes:read", scopes: READ_ALL_SCOPES },
   ],
@@ -164,6 +207,10 @@ const STRAVA_ROUTE_OWNER_OVERRIDES = new Map<string, StravaRouteOwnerOverride>([
     { permission: "routes:read", scopes: READ_ALL_SCOPES },
   ],
   [
+    "GET /api/v3/segments/explore",
+    { permission: "segments:read", scopes: READ_SCOPES },
+  ],
+  [
     "GET /api/v3/segments/starred",
     { permission: "segments:read", scopes: READ_ALL_SCOPES },
   ],
@@ -174,6 +221,30 @@ const STRAVA_ROUTE_OWNER_OVERRIDES = new Map<string, StravaRouteOwnerOverride>([
   [
     "GET /api/v3/segments/{id}/streams",
     { permission: "segments:read", scopes: READ_ALL_SCOPES },
+  ],
+  [
+    "PUT /api/v3/segments/{id}/starred",
+    { permission: "segments:write", scopes: PROFILE_WRITE_SCOPES },
+  ],
+  [
+    "GET /api/v3/segment_efforts",
+    { permission: "segment_efforts:read", scopes: READ_SCOPES },
+  ],
+  [
+    "GET /api/v3/segment_efforts/{id}",
+    { permission: "segment_efforts:read", scopes: READ_SCOPES },
+  ],
+  [
+    "GET /api/v3/segment_efforts/{id}/streams",
+    { permission: "segment_effort_streams:read", scopes: READ_ALL_ONLY_SCOPES },
+  ],
+  [
+    "POST /api/v3/uploads",
+    { permission: "uploads:write", scopes: ACTIVITY_WRITE_SCOPES },
+  ],
+  [
+    "GET /api/v3/uploads/{uploadId}",
+    { permission: "uploads:write", scopes: ACTIVITY_WRITE_SCOPES },
   ],
 ]);
 
@@ -191,12 +262,12 @@ export function pickStravaPermissionOwners(
   rule: string,
   scopes: readonly string[],
 ): readonly string[] {
-  const uniqueScopes = uniqueSorted(scopes);
   const override = STRAVA_ROUTE_OWNER_OVERRIDES.get(rule);
   if (!override) {
-    return uniqueScopes;
+    throw new Error(`Strava route "${rule}" has no vm0 permission owner`);
   }
 
+  const uniqueScopes = uniqueSorted(scopes);
   const expectedScopes = uniqueSorted(override.scopes);
   const matchesExpected =
     uniqueScopes.length === expectedScopes.length &&
@@ -278,6 +349,25 @@ function assertStravaRouteOwnerOverridesMapped(): void {
   );
 }
 
+function assertStravaScopeMapEntriesHaveOwners(): void {
+  const missingOwners = Object.keys(SCOPE_MAP).filter((rule) => {
+    return !STRAVA_ROUTE_OWNER_OVERRIDES.has(rule);
+  });
+  if (missingOwners.length === 0) return;
+
+  throw new Error(
+    "Strava SCOPE_MAP entries without route owners:\n" +
+      missingOwners
+        .sort((left, right) => {
+          return left.localeCompare(right);
+        })
+        .map((rule) => {
+          return `  - ${rule}`;
+        })
+        .join("\n"),
+  );
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 function buildGroups(spec: SwaggerSpec): {
@@ -285,6 +375,7 @@ function buildGroups(spec: SwaggerSpec): {
   unmapped: string[];
 } {
   assertStravaRouteOwnerOverridesMapped();
+  assertStravaScopeMapEntriesHaveOwners();
 
   const basePath = spec.basePath ?? "";
   const groups = new Map<string, Set<string>>();

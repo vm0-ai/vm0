@@ -13,6 +13,31 @@ const RUNTIME_METHODS = [
   "OPTIONS",
 ] as const;
 
+const STRAVA_RESOURCE_PERMISSIONS = [
+  "activities:read",
+  "activities:write",
+  "athlete_stats:read",
+  "clubs:read",
+  "gear:read",
+  "profile:read",
+  "profile:write",
+  "routes:read",
+  "segment_effort_streams:read",
+  "segment_efforts:read",
+  "segments:read",
+  "segments:write",
+  "uploads:write",
+] as const;
+
+const STRAVA_OFFICIAL_SCOPES = [
+  "activity:read",
+  "activity:read_all",
+  "activity:write",
+  "profile:read_all",
+  "read",
+  "read_all",
+] as const;
+
 function stravaMatches(method: string, path: string): string[] {
   return findMatchingPermissions(method, path, getConnectorFirewall("strava"), {
     apiBase: "https://www.strava.com",
@@ -40,6 +65,21 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("strava firewall", () => {
+  it("uses vm0 resource permissions instead of official OAuth scopes", () => {
+    const permissions = new Set(
+      getConnectorFirewall("strava").apis.flatMap((api) => {
+        return (api.permissions ?? []).map((permission) => {
+          return permission.name;
+        });
+      }),
+    );
+
+    expect(permissions).toStrictEqual(new Set(STRAVA_RESOURCE_PERMISSIONS));
+    for (const officialScope of STRAVA_OFFICIAL_SCOPES) {
+      expect(permissions.has(officialScope)).toBe(false);
+    }
+  });
+
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
     for (const api of getConnectorFirewall("strava").apis) {
@@ -62,7 +102,7 @@ describe("strava firewall", () => {
     expect(duplicates).toStrictEqual([]);
   });
 
-  it("maps tiered Strava activity routes to one vm0-owned permission", () => {
+  it("maps Strava routes to resource owners", () => {
     expectStravaMatches("GET", "/api/v3/activities/123", ["activities:read"]);
     expectStravaMatches("GET", "/api/v3/activities/123/comments", [
       "activities:read",
@@ -73,29 +113,40 @@ describe("strava firewall", () => {
     expectStravaMatches("GET", "/api/v3/athlete/activities", [
       "activities:read",
     ]);
-  });
-
-  it("maps tiered Strava route, segment, and profile routes to one owner", () => {
+    expectStravaMatches("POST", "/api/v3/activities", ["activities:write"]);
     expectStravaMatches("GET", "/api/v3/athlete", ["profile:read"]);
+    expectStravaMatches("GET", "/api/v3/athlete/zones", ["profile:read"]);
+    expectStravaMatches("PUT", "/api/v3/athlete", ["profile:write"]);
+    expectStravaMatches("GET", "/api/v3/athlete/clubs", ["clubs:read"]);
+    expectStravaMatches("GET", "/api/v3/clubs/123/activities", ["clubs:read"]);
+    expectStravaMatches("GET", "/api/v3/athletes/123/stats", [
+      "athlete_stats:read",
+    ]);
+    expectStravaMatches("GET", "/api/v3/gear/b123", ["gear:read"]);
     expectStravaMatches("GET", "/api/v3/athletes/123/routes", ["routes:read"]);
     expectStravaMatches("GET", "/api/v3/routes/123", ["routes:read"]);
     expectStravaMatches("GET", "/api/v3/routes/123/export_gpx", [
       "routes:read",
     ]);
+    expectStravaMatches("GET", "/api/v3/segments/explore", ["segments:read"]);
     expectStravaMatches("GET", "/api/v3/segments/starred", ["segments:read"]);
     expectStravaMatches("GET", "/api/v3/segments/123", ["segments:read"]);
     expectStravaMatches("GET", "/api/v3/segments/123/streams", [
       "segments:read",
     ]);
-  });
-
-  it("keeps non-overlapping official Strava scopes as route owners", () => {
-    expectStravaMatches("GET", "/api/v3/athlete/zones", ["profile:read_all"]);
-    expectStravaMatches("GET", "/api/v3/athlete/clubs", ["read"]);
-    expectStravaMatches("GET", "/api/v3/segment_efforts/123/streams", [
-      "read_all",
+    expectStravaMatches("PUT", "/api/v3/segments/123/starred", [
+      "segments:write",
     ]);
-    expectStravaMatches("POST", "/api/v3/uploads", ["activity:write"]);
-    expectStravaMatches("PUT", "/api/v3/athlete", ["profile:write"]);
+    expectStravaMatches("GET", "/api/v3/segment_efforts", [
+      "segment_efforts:read",
+    ]);
+    expectStravaMatches("GET", "/api/v3/segment_efforts/123", [
+      "segment_efforts:read",
+    ]);
+    expectStravaMatches("GET", "/api/v3/segment_efforts/123/streams", [
+      "segment_effort_streams:read",
+    ]);
+    expectStravaMatches("POST", "/api/v3/uploads", ["uploads:write"]);
+    expectStravaMatches("GET", "/api/v3/uploads/123", ["uploads:write"]);
   });
 });

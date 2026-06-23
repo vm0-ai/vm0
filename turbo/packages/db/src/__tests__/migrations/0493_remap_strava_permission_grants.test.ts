@@ -42,19 +42,37 @@ const STRAVA_PERMISSION_REMAPS: readonly StravaPermissionRemapCase[] = [
     newPermissions: ["activities:read"],
   },
   {
+    oldPermission: "activity:write",
+    newPermissions: ["activities:write", "uploads:write"],
+  },
+  {
     oldPermission: "read",
-    newPermissions: ["profile:read", "routes:read", "segments:read"],
-    retainOldPermission: true,
+    newPermissions: [
+      "athlete_stats:read",
+      "clubs:read",
+      "gear:read",
+      "profile:read",
+      "routes:read",
+      "segment_efforts:read",
+      "segments:read",
+    ],
   },
   {
     oldPermission: "profile:read_all",
     newPermissions: ["profile:read"],
+  },
+  {
+    oldPermission: "profile:write",
+    newPermissions: ["segments:write"],
     retainOldPermission: true,
   },
   {
     oldPermission: "read_all",
-    newPermissions: ["routes:read", "segments:read"],
-    retainOldPermission: true,
+    newPermissions: [
+      "routes:read",
+      "segment_effort_streams:read",
+      "segments:read",
+    ],
   },
 ];
 
@@ -203,6 +221,15 @@ describe("migration 0493 remap Strava permission grants", () => {
           userId,
           agentId,
           connectorRef: "strava",
+          permission: "activity:write",
+          action: "allow",
+          expiresAt: new Date("2037-01-01T00:00:00Z"),
+        },
+        {
+          orgId,
+          userId,
+          agentId,
+          connectorRef: "strava",
           permission: "profile:read_all",
           action: "deny",
           expiresAt: new Date("2033-01-01T00:00:00Z"),
@@ -215,6 +242,15 @@ describe("migration 0493 remap Strava permission grants", () => {
           permission: "read_all",
           action: "allow",
           expiresAt: null,
+        },
+        {
+          orgId,
+          userId,
+          agentId,
+          connectorRef: "strava",
+          permission: "profile:write",
+          action: "allow",
+          expiresAt: new Date("2035-01-01T00:00:00Z"),
         },
         {
           orgId,
@@ -268,27 +304,39 @@ describe("migration 0493 remap Strava permission grants", () => {
         },
         {
           connectorRef: "strava",
+          permission: "activities:write",
+          action: "allow",
+          expiresAt: new Date("2037-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
+          permission: "athlete_stats:read",
+          action: "allow",
+          expiresAt: new Date("2032-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
+          permission: "clubs:read",
+          action: "allow",
+          expiresAt: new Date("2032-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
+          permission: "gear:read",
+          action: "allow",
+          expiresAt: new Date("2032-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
           permission: "profile:read",
           action: "deny",
           expiresAt: null,
         },
         {
           connectorRef: "strava",
-          permission: "profile:read_all",
-          action: "deny",
-          expiresAt: new Date("2033-01-01T00:00:00Z"),
-        },
-        {
-          connectorRef: "strava",
-          permission: "read",
+          permission: "profile:write",
           action: "allow",
-          expiresAt: new Date("2032-01-01T00:00:00Z"),
-        },
-        {
-          connectorRef: "strava",
-          permission: "read_all",
-          action: "allow",
-          expiresAt: null,
+          expiresAt: new Date("2035-01-01T00:00:00Z"),
         },
         {
           connectorRef: "strava",
@@ -298,9 +346,33 @@ describe("migration 0493 remap Strava permission grants", () => {
         },
         {
           connectorRef: "strava",
+          permission: "segment_effort_streams:read",
+          action: "allow",
+          expiresAt: null,
+        },
+        {
+          connectorRef: "strava",
+          permission: "segment_efforts:read",
+          action: "allow",
+          expiresAt: new Date("2032-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
           permission: "segments:read",
           action: "allow",
           expiresAt: null,
+        },
+        {
+          connectorRef: "strava",
+          permission: "segments:write",
+          action: "allow",
+          expiresAt: new Date("2035-01-01T00:00:00Z"),
+        },
+        {
+          connectorRef: "strava",
+          permission: "uploads:write",
+          action: "allow",
+          expiresAt: new Date("2037-01-01T00:00:00Z"),
         },
       ]);
     });
