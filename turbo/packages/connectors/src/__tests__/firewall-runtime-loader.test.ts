@@ -207,6 +207,18 @@ describe("firewall runtime loader", () => {
     );
   });
 
+  it("keeps metadata category helpers out of the eager runtime entrypoint", () => {
+    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+      "getBuiltinConnectorDisplayName",
+    );
+    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+      "getPermissionCategories",
+    );
+    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+      "groupPermissionsByCategory",
+    );
+  });
+
   it("does not statically import the eager registry or connector runtime modules", () => {
     const runtimeSource = fs.readFileSync(
       path.resolve(import.meta.dirname, "../firewall-runtime.ts"),

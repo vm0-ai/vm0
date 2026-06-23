@@ -39,8 +39,6 @@ import {
   BILLABLE_CONNECTORS,
   getAllBuiltinConnectorHosts,
   getDefaultFirewallPolicies,
-  getPermissionCategories,
-  groupPermissionsByCategory,
   resolveFirewallPolicies,
   type FirewallConnectorType,
 } from "../firewalls";
@@ -640,7 +638,6 @@ describe("firewall metadata", () => {
         label: connectorLabel(type),
         hasPermissions: permissions.length > 0,
         permissionCount: permissions.length,
-        hasCategories: getPermissionCategories(type) !== null,
       });
     }
   });
@@ -696,35 +693,44 @@ describe("firewall metadata", () => {
     expect(getFirewallExecutionMetadata("cloudinary")).toBeNull();
   });
 
-  it("keeps category metadata synchronized with runtime categories", async () => {
+  it("keeps category summary flags synchronized with detail metadata", async () => {
     for (const [type] of runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
-      const categories = getPermissionCategories(type);
-      if (!categories) {
-        expect(detail!.categories).toBeUndefined();
-        continue;
-      }
-
-      expect(detail!.categories).toStrictEqual({
-        categories: categories.categories,
-        displayOrder: [...categories.displayOrder],
-      });
+      const summary = getFirewallPermissionSummary(type);
+      expect(summary).not.toBeNull();
+      expect(summary!.hasCategories).toBe(detail!.categories !== undefined);
     }
   });
 
-  it("groups metadata permissions like runtime categories", async () => {
-    for (const [type, firewall] of runtimeEntries()) {
+  it("groups metadata permissions by generated category metadata", async () => {
+    for (const [type] of runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
-      expect(
-        groupFirewallMetadataPermissionsByCategory(
-          detail!.permissions,
-          detail!,
-        ),
-      ).toStrictEqual(
-        groupPermissionsByCategory(collectRuntimePermissions(firewall), type),
+      const grouped = groupFirewallMetadataPermissionsByCategory(
+        detail!.permissions,
+        detail!,
       );
+      const categories = detail!.categories;
+      if (categories === undefined) {
+        expect(grouped).toBeNull();
+        continue;
+      }
+
+      const expected = categories.displayOrder
+        .map((category) => {
+          return {
+            category,
+            permissions: detail!.permissions.filter((permission) => {
+              return categories.categories[permission.name] === category;
+            }),
+          };
+        })
+        .filter((group) => {
+          return group.permissions.length > 0;
+        });
+
+      expect(grouped).toStrictEqual(expected);
     }
   });
 
