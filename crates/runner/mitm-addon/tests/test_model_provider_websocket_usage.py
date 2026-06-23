@@ -426,6 +426,13 @@ class TestModelProviderWebSocketUsage:
             ("gpt-5.4", "tokens.input"): 3,
             ("gpt-5.4", "tokens.output"): 2,
         }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.4", "tokens.output"): 2,
+        }
 
     def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
         self, tmp_path, real_flow
@@ -446,7 +453,12 @@ class TestModelProviderWebSocketUsage:
             usage.flush_usage_events(trigger="test")
 
         assert _model_websocket_usage_sources(flow) == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
             "tokens.input": 10,
             "tokens.output": 4,
         }
@@ -473,6 +485,10 @@ class TestModelProviderWebSocketUsage:
 
         assert _model_websocket_usage_sources(flow) == {}
         assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
             "tokens.input": 20,
             "tokens.output": 12,
         }
