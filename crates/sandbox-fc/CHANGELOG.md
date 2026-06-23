@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.56](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.55...sandbox-fc-v0.37.56) (2026-06-23)
+
+
+### Documentation
+
+* **sandbox-fc:** clarify netns active queue docs ([#18634](https://github.com/vm0-ai/vm0/issues/18634)) ([ad32f8e](https://github.com/vm0-ai/vm0/commit/ad32f8e7db4683c299414a381918dc302b630d0b))
+
 ## [0.37.55](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.54...sandbox-fc-v0.37.55) (2026-06-23)
 
 

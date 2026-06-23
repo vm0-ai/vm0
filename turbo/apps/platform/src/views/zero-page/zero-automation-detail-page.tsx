@@ -1,11 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import {
-  useGet,
-  useSet,
-  useLastLoadable,
-  useLastResolved,
-} from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -56,8 +51,6 @@ import {
   type OrgAutomationEntry,
   type ZeroAutomationSaveParams,
 } from "../../signals/zero-page/zero-automations.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import {
   automationDetailTab$,
@@ -102,7 +95,6 @@ import {
   incrementDiscardNonce$,
   syncSettingsFormEntry$,
   syncInstructionDraftEntry$,
-  type AutomationFormData,
   type AutomationSettingsSnapshot,
 } from "../../signals/automation-page/automation-form.ts";
 import {
@@ -257,135 +249,12 @@ function isSettingsChanged(
   );
 }
 
-function triggerKindLabel(kind: CombinedEntry["triggerKinds"][number]): string {
-  if (kind === "cron") {
-    return "Schedule";
-  }
-  if (kind === "once") {
-    return "Once";
-  }
-  if (kind === "loop") {
-    return "Loop";
-  }
-
-  const exhaustive: never = kind;
-  return exhaustive;
-}
-
-function triggerReadOnlyCopy(entry: CombinedEntry): string {
-  if (entry.triggerReadOnlyReason === "multiple_triggers") {
-    return "This automation has multiple triggers. Manage them from the CLI or API.";
-  }
-  return "This automation does not have a platform-managed trigger.";
-}
-
-function AutomationTriggerSection({
-  entry,
-  form,
-  saving,
-  updateForm,
-}: {
-  entry: CombinedEntry;
-  form: AutomationFormData;
-  saving: boolean;
-  updateForm: (partial: Partial<AutomationFormData>) => void;
-}) {
-  const triggerEditable = entry.triggerEditable;
-
-  return (
-    <Card className="zero-card overflow-hidden">
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0 sm:w-[46%] sm:shrink-0">
-            <h3 className="text-sm font-medium text-foreground">Trigger</h3>
-            <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              How this automation starts.
-            </p>
-          </div>
-          <div className="min-w-0 w-full sm:max-w-[min(100%,28rem)]">
-            <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-              <span className="inline-flex h-7 max-w-full items-center rounded-md border border-border/60 bg-muted/30 px-2.5 text-xs font-medium text-foreground">
-                <span className="truncate">{entry.triggerSummary}</span>
-              </span>
-              {entry.triggerCount > 1 && (
-                <span className="inline-flex h-7 items-center rounded-md border border-border/60 bg-background px-2.5 text-xs text-muted-foreground">
-                  {entry.triggerCount} triggers
-                </span>
-              )}
-            </div>
-
-            {triggerEditable ? (
-              <fieldset
-                disabled={saving}
-                className="min-w-0 border-0 p-0 m-0 space-y-3 disabled:opacity-60"
-              >
-                <AutomationEditFields
-                  freq={form.freq}
-                  setFreq={(v) => {
-                    return updateForm({ freq: v });
-                  }}
-                  loopMinutes={form.loopMinutes}
-                  setLoopMinutes={(v) => {
-                    return updateForm({ loopMinutes: v });
-                  }}
-                  date={form.date}
-                  setDate={(v) => {
-                    return updateForm({ date: v });
-                  }}
-                  hour={form.hour}
-                  setHour={(v) => {
-                    return updateForm({ hour: v });
-                  }}
-                  minute={form.minute}
-                  setMinute={(v) => {
-                    return updateForm({ minute: v });
-                  }}
-                  timezone={form.timezone}
-                  setTimezone={(v) => {
-                    return updateForm({ timezone: v });
-                  }}
-                />
-              </fieldset>
-            ) : (
-              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                <div className="flex min-w-0 flex-wrap gap-1.5">
-                  {entry.triggerBadges.length > 0 ? (
-                    entry.triggerBadges.map((trigger) => {
-                      return (
-                        <span
-                          key={trigger.id}
-                          className="inline-flex h-6 items-center rounded-md bg-background px-2 text-xs text-muted-foreground ring-1 ring-border/60"
-                        >
-                          {triggerKindLabel(trigger.kind)}
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <span className="inline-flex h-6 items-center rounded-md bg-background px-2 text-xs text-muted-foreground ring-1 ring-border/60">
-                      No trigger
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-xs leading-snug text-muted-foreground">
-                  {triggerReadOnlyCopy(entry)}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function AutomationSettingsForm({
   entry,
   agents,
   saving,
   toggling,
-  automationMultiTriggerEnabled,
   onSave,
-  onIntentSave,
   onToggle,
   onDelete,
 }: {
@@ -396,10 +265,8 @@ function AutomationSettingsForm({
   onSave: (
     params: ZeroAutomationSaveParams & { agentId: string },
   ) => Promise<void>;
-  onIntentSave: (params: { description?: string | null }) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onDelete: () => void;
-  automationMultiTriggerEnabled: boolean;
 }) {
   const parsed = parseAutomationTimeString(entry.time);
   const initial = buildSettingsSnapshot(entry, parsed);
@@ -446,13 +313,6 @@ function AutomationSettingsForm({
 
   const handleSave = async () => {
     if (!entry.prompt.trim() || entry.name === undefined) {
-      return;
-    }
-    if (automationMultiTriggerEnabled && !entry.triggerEditable) {
-      await onIntentSave({
-        description: form.description.trim() || null,
-      });
-      setSavedState(current);
       return;
     }
     await onSave({
@@ -517,47 +377,45 @@ function AutomationSettingsForm({
             </div>
           </InlineSettingsRow>
 
-          {!automationMultiTriggerEnabled && (
-            <InlineSettingsRow
-              label="Runs at"
-              description="How often this task runs and at what local time."
+          <InlineSettingsRow
+            label="Runs at"
+            description="How often this task runs and at what local time."
+          >
+            <fieldset
+              disabled={saving}
+              className={cn(
+                "min-w-0 border-0 p-0 m-0 space-y-3 disabled:opacity-60",
+                AUTOMATION_DETAIL_CONTROL_WIDTH,
+              )}
             >
-              <fieldset
-                disabled={saving}
-                className={cn(
-                  "min-w-0 border-0 p-0 m-0 space-y-3 disabled:opacity-60",
-                  AUTOMATION_DETAIL_CONTROL_WIDTH,
-                )}
-              >
-                <AutomationEditFields
-                  freq={form.freq}
-                  setFreq={(v) => {
-                    return updateForm({ freq: v });
-                  }}
-                  loopMinutes={form.loopMinutes}
-                  setLoopMinutes={(v) => {
-                    return updateForm({ loopMinutes: v });
-                  }}
-                  date={form.date}
-                  setDate={(v) => {
-                    return updateForm({ date: v });
-                  }}
-                  hour={form.hour}
-                  setHour={(v) => {
-                    return updateForm({ hour: v });
-                  }}
-                  minute={form.minute}
-                  setMinute={(v) => {
-                    return updateForm({ minute: v });
-                  }}
-                  timezone={form.timezone}
-                  setTimezone={(v) => {
-                    return updateForm({ timezone: v });
-                  }}
-                />
-              </fieldset>
-            </InlineSettingsRow>
-          )}
+              <AutomationEditFields
+                freq={form.freq}
+                setFreq={(v) => {
+                  return updateForm({ freq: v });
+                }}
+                loopMinutes={form.loopMinutes}
+                setLoopMinutes={(v) => {
+                  return updateForm({ loopMinutes: v });
+                }}
+                date={form.date}
+                setDate={(v) => {
+                  return updateForm({ date: v });
+                }}
+                hour={form.hour}
+                setHour={(v) => {
+                  return updateForm({ hour: v });
+                }}
+                minute={form.minute}
+                setMinute={(v) => {
+                  return updateForm({ minute: v });
+                }}
+                timezone={form.timezone}
+                setTimezone={(v) => {
+                  return updateForm({ timezone: v });
+                }}
+              />
+            </fieldset>
+          </InlineSettingsRow>
 
           <InlineSettingsRow
             label="Status"
@@ -575,15 +433,6 @@ function AutomationSettingsForm({
           </InlineSettingsRow>
         </CardContent>
       </Card>
-
-      {automationMultiTriggerEnabled && (
-        <AutomationTriggerSection
-          entry={entry}
-          form={form}
-          saving={saving}
-          updateForm={updateForm}
-        />
-      )}
 
       {canDelete && (
         <Card className="zero-card overflow-hidden border-destructive/20">
@@ -851,7 +700,6 @@ function AutomationDetailView({
   saving,
   agents,
   onSettingsSave,
-  onIntentSave,
   onToggle,
   onRunNow,
   onDelete,
@@ -866,7 +714,6 @@ function AutomationDetailView({
   onSettingsSave: (
     params: ZeroAutomationSaveParams & { agentId: string },
   ) => Promise<void>;
-  onIntentSave: (params: { description?: string | null }) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onRunNow: () => Promise<void>;
   onDelete: () => void;
@@ -879,9 +726,6 @@ function AutomationDetailView({
 
   const activeTab = useGet(automationDetailTab$);
   const setActiveTab = useSet(setAutomationDetailTab$);
-  const features = useLastResolved(featureSwitch$);
-  const automationMultiTriggerEnabled =
-    features?.[FeatureSwitchKey.AutomationMultiTrigger] ?? false;
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -1047,9 +891,7 @@ function AutomationDetailView({
                 agents={agents}
                 saving={saving}
                 toggling={toggling}
-                automationMultiTriggerEnabled={automationMultiTriggerEnabled}
                 onSave={onSettingsSave}
-                onIntentSave={onIntentSave}
                 onToggle={onToggle}
                 onDelete={onDelete}
               />
@@ -1109,16 +951,6 @@ function AutomationActionsContainer({
     await saveAutomationTracked(params, pageSignal);
   };
 
-  const handleIntentSave = async (params: { description?: string | null }) => {
-    await updateAutomationIntentTracked(
-      {
-        id: entry.id,
-        ...params,
-      },
-      pageSignal,
-    );
-  };
-
   const handleInstructionSavePrompt = (prompt: string) => {
     if (!prompt) {
       return;
@@ -1176,7 +1008,6 @@ function AutomationActionsContainer({
       saving={saving}
       agents={agents}
       onSettingsSave={handleSettingsSave}
-      onIntentSave={handleIntentSave}
       onToggle={handleToggle}
       onRunNow={handleRunNow}
       onDelete={handleDelete}

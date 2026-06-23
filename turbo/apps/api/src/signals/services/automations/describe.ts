@@ -23,8 +23,8 @@ interface OpenRouterResponse {
 
 /**
  * The trigger facts the description prompt summarizes. Optional fields mirror
- * the deploy/create request shapes: exactly one of them is set for a time
- * trigger, none for a triggerless automation.
+ * the deploy/create request shapes: exactly one of them is set for a schedule
+ * trigger.
  */
 interface DescribeAutomationInput {
   readonly name: string;

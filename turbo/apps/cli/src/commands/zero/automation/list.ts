@@ -5,20 +5,17 @@ import { listAutomations } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 function formatTriggerSummary(automation: AutomationResponse): string {
-  if (automation.triggers.length === 0) {
+  const [trigger] = automation.triggers;
+  if (!trigger) {
     return chalk.dim("-");
   }
-  return automation.triggers
-    .map((t) => {
-      return t.kind;
-    })
-    .join(", ");
+  return trigger.kind;
 }
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List automations with their triggers")
+  .description("List automations with their schedule trigger")
   .addHelpText(
     "after",
     `
@@ -65,7 +62,7 @@ Examples:
             "ID".padEnd(idWidth),
             "AGENT".padEnd(agentWidth),
             "STATUS".padEnd(8),
-            "TRIGGERS",
+            "TRIGGER",
           ].join("  "),
         ),
       );

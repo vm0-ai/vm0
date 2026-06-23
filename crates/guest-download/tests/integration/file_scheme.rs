@@ -3,7 +3,7 @@ use crate::support::{
 };
 
 // ---------------------------------------------------------------------------
-// file:// scheme — host-staged tarballs (epic #10800)
+// file:// scheme — runner-staged local archives (epic #10800)
 // ---------------------------------------------------------------------------
 
 // Successful file:// extraction: the local tarball is read and its contents are

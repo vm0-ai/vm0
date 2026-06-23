@@ -13,6 +13,7 @@ export type ZeroGoalStopReason = z.infer<typeof zeroGoalStopReasonSchema>;
 export const zeroGoalPreferenceSchema = z.object({
   version: z.literal(1),
   objective: z.string().min(1),
+  objectiveBrief: z.string().min(1).optional(),
   tokenBudget: z.number().int().positive().optional(),
   stopReason: zeroGoalStopReasonSchema.optional(),
 });

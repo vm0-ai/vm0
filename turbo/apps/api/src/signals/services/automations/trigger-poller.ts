@@ -3,7 +3,7 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, exists, inArray, lte } from "drizzle-orm";
 
 import { logger } from "../../../lib/log";
 import { writeDb$, type Db } from "../../external/db";
@@ -284,6 +284,28 @@ async function recordTriggerPreRunFailure(
     failureTime,
     shouldDisable,
   });
+  const parentAutomationIsEnabled = exists(
+    db
+      .select({ id: automations.id })
+      .from(automations)
+      .where(
+        and(
+          eq(automations.id, automationTriggers.automationId),
+          eq(automations.enabled, true),
+        ),
+      ),
+  );
+  const triggerIsStillEligible =
+    due.trigger.kind === "once"
+      ? and(
+          eq(automationTriggers.id, due.trigger.id),
+          parentAutomationIsEnabled,
+        )
+      : and(
+          eq(automationTriggers.id, due.trigger.id),
+          eq(automationTriggers.enabled, true),
+          parentAutomationIsEnabled,
+        );
 
   await db
     .update(automationTriggers)
@@ -293,7 +315,7 @@ async function recordTriggerPreRunFailure(
       nextRunAt,
       updatedAt: failureTime,
     })
-    .where(eq(automationTriggers.id, due.trigger.id));
+    .where(triggerIsStillEligible);
   signal.throwIfAborted();
 
   if (shouldDisable) {

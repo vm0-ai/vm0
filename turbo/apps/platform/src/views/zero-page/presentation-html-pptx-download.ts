@@ -7,6 +7,7 @@ import {
   settle,
   withCleanup,
 } from "../../signals/utils.ts";
+import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
 const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
@@ -649,6 +650,7 @@ async function htmlWithExportScript(
   options: DomToPptxOptions,
   signal: AbortSignal,
 ): Promise<string> {
+  materializePresentationThemeSwitcherDefaults(doc);
   await inlineFetchableImages(doc, baseUrl, signal);
   for (const script of doc.querySelectorAll("script")) {
     script.remove();
@@ -667,6 +669,20 @@ async function htmlWithExportScript(
   script.textContent = createExportScript(options);
   doc.body.append(script);
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+}
+
+export function buildPresentationHtmlPptxExportHtml(params: {
+  readonly baseUrl: string;
+  readonly html: string;
+  readonly options: DomToPptxOptions;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  return htmlWithExportScript(
+    parseHtml(params.html),
+    params.baseUrl,
+    params.options,
+    params.signal,
+  );
 }
 
 function createExportFrame(html: string): HTMLIFrameElement {

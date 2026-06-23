@@ -19,20 +19,18 @@ interface CreateOptions {
 }
 
 /**
- * Build the optional first trigger from the inline sugar flags
+ * Build the automation schedule trigger from exactly one inline flag
  * (--cron / --once / --loop, with optional --timezone).
  */
-function buildInlineTrigger(
-  options: CreateOptions,
-): CreateTriggerRequest | undefined {
+function buildInlineTrigger(options: CreateOptions): CreateTriggerRequest {
   const sugarCount = [options.cron, options.once, options.loop].filter(
     (value) => {
       return value !== undefined;
     },
   ).length;
 
-  if (sugarCount > 1) {
-    throw new Error("Use at most one of --cron, --once, --loop");
+  if (sugarCount !== 1) {
+    throw new Error("Use exactly one of --cron, --once, --loop");
   }
 
   if (options.timezone && !options.cron && !options.once) {
@@ -56,12 +54,12 @@ function buildInlineTrigger(
       intervalSeconds: parseDurationSeconds(options.loop),
     };
   }
-  return undefined;
+  throw new Error("Use exactly one of --cron, --once, --loop");
 }
 
 export const createCommand = new Command()
   .name("create")
-  .description("Create an automation (optionally with its first trigger)")
+  .description("Create an automation with a schedule trigger")
   .requiredOption("-n, --name <name>", "Automation name")
   .requiredOption("--agent <id>", "Agent ID or name to run")
   .requiredOption(
@@ -80,13 +78,12 @@ export const createCommand = new Command()
     "after",
     `
 Examples:
-  Triggerless:    zero automation create -n alerts --agent my-agent -p "Summarize alerts"
   Daily at 9am:   zero automation create -n alerts --agent my-agent -p "..." --cron "0 9 * * *"
   One-time:       zero automation create -n alerts --agent my-agent -p "..." --once "2026-06-10T09:00" -z UTC
   Every 15 min:   zero automation create -n alerts --agent my-agent -p "..." --loop 15m
 
 Notes:
-  - At most one of --cron, --once, --loop; add more triggers later with: zero automation trigger add`,
+  - Exactly one of --cron, --once, --loop is required`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
@@ -121,11 +118,6 @@ Notes:
       }
 
       console.log();
-      if (!createdTrigger) {
-        console.log(
-          `  Add a trigger: ${chalk.cyan(`zero automation trigger add ${automation.name} cron --expr "0 9 * * *"`)}`,
-        );
-      }
       console.log(
         `  Run manually:  ${chalk.cyan(`zero automation run ${automation.name}`)}`,
       );

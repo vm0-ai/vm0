@@ -23,6 +23,7 @@ import {
   automationTriggersContract,
   type AutomationResponse,
   type AutomationTriggerResponse,
+  type CreateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
@@ -76,9 +77,6 @@ type ContractCreateAutomationRequest = z.infer<
 >;
 type ContractUpdateAutomationRequest = z.infer<
   (typeof automationsByRefContract.update)["body"]
->;
-type CreateTriggerRequest = z.infer<
-  (typeof automationsByRefContract.addTrigger)["body"]
 >;
 type DeployAutomationRequest = {
   readonly name: string;
@@ -1051,31 +1049,21 @@ export function createRunsAutomationsApi(context: TestContext) {
 
       const trigger = createTimeTriggerRequest(body);
       if (trigger !== null) {
-        const triggers = await accept(
-          setupApp({ context })(automationsByRefContract).listTriggers({
+        const shown = await accept(
+          setupApp({ context })(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
           [200],
         );
-        for (const existing of triggers.body.triggers) {
-          if (isTimeTrigger(existing)) {
-            await accept(
-              setupApp({ context })(automationTriggersContract).remove({
-                headers: authenticate(context, actor),
-                params: { id: existing.id },
-              }),
-              [204],
-            );
-          }
-        }
+        const existing = timeTriggerFor(shown.body);
         await accept(
-          setupApp({ context })(automationsByRefContract).addTrigger({
+          setupApp({ context })(automationTriggersContract).update({
             headers: authenticate(context, actor),
-            params: { ref: updated.body.id },
+            params: { id: existing.id },
             body: trigger,
           }),
-          [201],
+          [200],
         );
       }
 
@@ -1264,35 +1252,25 @@ export function createRunsAutomationsApi(context: TestContext) {
           }),
           [200],
         );
-        const triggers = await accept(
-          setupApp({ context })(automationsByRefContract).listTriggers({
+        const shownBeforeTriggerUpdate = await accept(
+          setupApp({ context })(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
           [200],
         );
-        for (const trigger of triggers.body.triggers) {
-          if (isTimeTrigger(trigger)) {
-            await accept(
-              setupApp({ context })(automationTriggersContract).remove({
-                headers: authenticate(context, actor),
-                params: { id: trigger.id },
-              }),
-              [204],
-            );
-          }
-        }
         const nextTrigger = createTimeTriggerRequest(body);
         if (!nextTrigger) {
           throw new Error("Automation deployment requires a time trigger");
         }
+        const existingTrigger = timeTriggerFor(shownBeforeTriggerUpdate.body);
         await accept(
-          setupApp({ context })(automationsByRefContract).addTrigger({
+          setupApp({ context })(automationTriggersContract).update({
             headers: authenticate(context, actor),
-            params: { ref: updated.body.id },
+            params: { id: existingTrigger.id },
             body: nextTrigger,
           }),
-          [201],
+          [200],
         );
         if (body.enabled === true && !updated.body.enabled) {
           await accept(

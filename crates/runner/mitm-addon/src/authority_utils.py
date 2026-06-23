@@ -17,6 +17,7 @@ from url_syntax import ASCII_CONTROL_MAX, ASCII_DELETE
 IPV6_VERSION = 6
 
 _AUTHORITY_PORT_MAX = 65535
+_AUTHORITY_PORT_MAX_TEXT = str(_AUTHORITY_PORT_MAX)
 _PERCENT_ESCAPE_LENGTH = 3
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
@@ -90,9 +91,12 @@ def is_default_scheme_port(scheme: str, port: int) -> bool:
 
 
 def parse_authority_port(raw_port: str) -> int:
-    if not raw_port or not raw_port.isdigit():
+    if not raw_port or not all("0" <= char <= "9" for char in raw_port):
         raise ValueError("invalid authority port")
-    port = int(raw_port)
-    if port > _AUTHORITY_PORT_MAX:
+    normalized_port = raw_port.lstrip("0") or "0"
+    if len(normalized_port) > len(_AUTHORITY_PORT_MAX_TEXT) or (
+        len(normalized_port) == len(_AUTHORITY_PORT_MAX_TEXT)
+        and normalized_port > _AUTHORITY_PORT_MAX_TEXT
+    ):
         raise ValueError("authority port out of range")
-    return port
+    return int(normalized_port)

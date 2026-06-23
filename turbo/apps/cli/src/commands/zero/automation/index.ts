@@ -7,11 +7,10 @@ import { deleteCommand } from "./delete";
 import { enableCommand } from "./enable";
 import { disableCommand } from "./disable";
 import { runCommand } from "./run";
-import { triggerCommand } from "./trigger";
 
 export const zeroAutomationCommand = new Command()
   .name("automation")
-  .description("Create or manage automations and their triggers")
+  .description("Create or manage scheduled automations")
   .addCommand(createCommand)
   .addCommand(listCommand)
   .addCommand(showCommand)
@@ -20,7 +19,6 @@ export const zeroAutomationCommand = new Command()
   .addCommand(enableCommand)
   .addCommand(disableCommand)
   .addCommand(runCommand)
-  .addCommand(triggerCommand)
   // Deprecated aliases — fully functional, but print a stderr notice pointing
   // at the replacement command.
   .addHelpText(
@@ -31,7 +29,6 @@ Examples:
   List automations:       zero automation list
   Inspect one:            zero automation show alerts
   Fire manually:          zero automation run alerts
-  Manage triggers:        zero automation trigger --help
   Pause an automation:    zero automation disable alerts
   Resume an automation:   zero automation enable alerts
   Delete an automation:   zero automation delete alerts`,

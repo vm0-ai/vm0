@@ -250,11 +250,14 @@ async function seedGoalTrigger(
   scenario: Scenario,
   args: {
     readonly threadId: string;
+    readonly objective?: string;
+    readonly objectiveBrief?: string;
     readonly consecutiveFailures?: number;
     readonly enabled?: boolean;
   },
 ): Promise<{ workflowId: string; triggerId: string }> {
   const db = store.set(writeDb$);
+  const objective = args.objective ?? "Ship the goal workflow";
   const [workflow] = await db
     .insert(zeroWorkflows)
     .values({
@@ -264,7 +267,11 @@ async function seedGoalTrigger(
       visibility: "private",
       type: "goal",
       active: true,
-      preference: { version: 1, objective: "Ship the goal workflow" },
+      preference: {
+        version: 1,
+        objective,
+        ...(args.objectiveBrief ? { objectiveBrief: args.objectiveBrief } : {}),
+      },
       ownerUserId: scenario.fixture.userId,
       displayName: "Goal",
       createdBy: scenario.fixture.userId,
@@ -540,8 +547,13 @@ describe("zero workflow trigger scheduler", () => {
     const scenario = await setup();
     await enableGoalFeature(scenario);
     const terminal = await seedThreadRun(scenario, { status: "completed" });
+    const objective =
+      "Ship the goal workflow by checking every backend transition, fixing any failed CI jobs, coordinating release timing, and continuing until the external rollout is verified.";
+    const objectiveBrief = "Ship the goal workflow";
     const { triggerId } = await seedGoalTrigger(scenario, {
       threadId: terminal.threadId,
+      objective,
+      objectiveBrief,
       consecutiveFailures: 2,
     });
 
@@ -557,6 +569,7 @@ describe("zero workflow trigger scheduler", () => {
         id: zeroRuns.id,
         triggerSource: zeroRuns.triggerSource,
         prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
       })
       .from(zeroRuns)
@@ -567,9 +580,12 @@ describe("zero workflow trigger scheduler", () => {
       triggerSource: "workflow-event",
       continuedFromSessionId: terminal.sessionId,
     });
-    // The continuation prompt is the rendered Codex-style template carrying the
-    // objective, not a `/goal` slash command (which the harness would intercept).
-    expect(runs[0]!.prompt).toContain("Ship the goal workflow");
+    // The continuation prompt is chat-visible, so it carries only the objective
+    // brief. The full objective is hidden in the appended system prompt so it
+    // remains available to the agent without becoming chat-visible copy.
+    expect(runs[0]!.prompt).toBe(objectiveBrief);
+    expect(runs[0]!.prompt).not.toContain(objective);
+    expect(runs[0]!.appendSystemPrompt).toContain(objective);
     expect(runs[0]!.prompt).not.toBe("/goal");
 
     const callbacks = await db
@@ -593,9 +609,14 @@ describe("zero workflow trigger scheduler", () => {
       .where(eq(chatMessages.chatThreadId, terminal.threadId));
     expect(
       messages.some((message) => {
-        return message.content?.includes("Ship the goal workflow");
+        return message.content === objectiveBrief;
       }),
     ).toBeTruthy();
+    expect(
+      messages.some((message) => {
+        return message.content?.includes(objective);
+      }),
+    ).toBeFalsy();
   });
 
   it("does not continue a goal when another run is already queued on the thread", async () => {

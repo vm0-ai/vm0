@@ -107,44 +107,24 @@ describe("zero automation create command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("should create a triggerless automation", async () => {
-    let capturedBody: Record<string, unknown> | undefined;
+  it("should require a schedule trigger", async () => {
+    await expect(async () => {
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "-n",
+        "alerts",
+        "--agent",
+        "my-agent",
+        "-p",
+        "Summarize alerts",
+      ]);
+    }).rejects.toThrow("process.exit called");
 
-    server.use(
-      composeByNameHandler(),
-      http.post(
-        "http://localhost:3000/api/automations",
-        async ({ request }) => {
-          capturedBody = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json(
-            { automation: baseAutomation([]) },
-            { status: 201 },
-          );
-        },
-      ),
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Use exactly one of --cron, --once, --loop"),
     );
-
-    await createCommand.parseAsync([
-      "node",
-      "cli",
-      "-n",
-      "alerts",
-      "--agent",
-      "my-agent",
-      "-p",
-      "Summarize alerts",
-    ]);
-
-    expect(capturedBody).toMatchObject({
-      name: "alerts",
-      agentId: AGENT_ID,
-      instruction: "Summarize alerts",
-    });
-    expect(capturedBody).not.toHaveProperty("trigger");
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain('Automation "alerts" created');
-    expect(logCalls).toContain("zero automation trigger add");
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should create with an inline cron trigger (--cron sugar)", async () => {
@@ -261,7 +241,7 @@ describe("zero automation create command", () => {
         async ({ request }) => {
           capturedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(
-            { automation: baseAutomation([]) },
+            { automation: baseAutomation([cronTrigger]) },
             { status: 201 },
           );
         },
@@ -328,7 +308,7 @@ describe("zero automation create command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Use at most one of --cron, --once, --loop"),
+      expect.stringContaining("Use exactly one of --cron, --once, --loop"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
@@ -359,6 +339,8 @@ describe("zero automation create command", () => {
         "my-agent",
         "-p",
         "Summarize alerts",
+        "--cron",
+        "0 9 * * *",
       ]);
     }).rejects.toThrow("process.exit called");
 
