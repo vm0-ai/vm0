@@ -31,7 +31,7 @@ jobs:
       stable-runner-image-allowed: ${{ steps.needed.outputs.stable-runner-image-allowed }}
       image-selection-reason: ${{ steps.needed.outputs.image-selection-reason }}
       runner-host-groups-matrix: ${{ steps.host-groups.outputs.matrix }}
-      runner-host-groups-configured: ${{ steps.host-groups.outputs.configured }}
+      runner-host-groups-configured: ${{ steps.host-group-presence.outputs.configured }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -179,8 +179,8 @@ jobs:
           RUNNER_IMAGE_CI_CHANGED="$runner_image_ci_changed" \
           .github/scripts/runner-image-context.sh image-inputs
 
-      - name: Resolve runner host architecture groups
-        id: host-groups
+      - name: Detect runner host architecture groups
+        id: host-group-presence
         env:
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
@@ -188,28 +188,46 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
-            echo "matrix=[]" >> "$GITHUB_OUTPUT"
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping runner host architecture groups for release skip"
             exit 0
           fi
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
-          configured=$(.github/scripts/runner-host-architecture-groups.sh has-groups)
-          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          configured=false
+          if printf '%s\n%s\n' "$AWS_METAL_RUNNER_HOSTS" "$X86_64_METAL_RUNNER_HOSTS" \
+            | tr ',' '\n' \
+            | grep -q '[^[:space:]]'; then
+            configured=true
+          fi
           echo "configured=${configured}" >> "$GITHUB_OUTPUT"
-          echo "Configured runner host architecture groups: $(jq -r 'map(.id) | join(",") // ""' <<<"$matrix")"
 
       - name: Determine whether runner image is needed
         id: needed
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
-          RUNNER_HOST_GROUPS_CONFIGURED: ${{ steps.host-groups.outputs.configured }}
+          RUNNER_HOST_GROUPS_CONFIGURED: ${{ steps.host-group-presence.outputs.configured }}
           TURBO_RUNNER_CONSUMER_NEEDED: ${{ steps.turbo.outputs.turbo-runner-consumer-needed }}
           CRATES_RUNNER_CONSUMER_NEEDED: ${{ steps.crates.outputs.crates-runner-consumer-needed }}
           RUNNER_IMAGE_INPUTS_CHANGED: ${{ steps.image-inputs.outputs.runner-image-inputs-changed }}
         run: .github/scripts/runner-image-context.sh needed
+
+      - name: Resolve runner host architecture groups
+        id: host-groups
+        env:
+          CURRENT_RUNNER_IMAGE_NEEDED: ${{ steps.needed.outputs.current-runner-image-needed }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          X86_64_METAL_RUNNER_HOSTS: ${{ secrets.X86_64_METAL_RUNNER_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ "$CURRENT_RUNNER_IMAGE_NEEDED" != "true" ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "Skipping runner host architecture group resolution because runner image is not needed"
+            exit 0
+          fi
+
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Configured runner host architecture groups: $(jq -r 'map(.id) | join(",") // ""' <<<"$matrix")"
 
   build:
     name: Build runner image (${{ matrix.label }})
