@@ -11,6 +11,7 @@ parameterized hosts are meaningful only for firewall config bases.
 import ipaddress
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
@@ -237,10 +238,27 @@ class _CompiledPermission(NamedTuple):
     rules: tuple[_CompiledRule, ...]
 
 
+class _CompiledRuleEntry(NamedTuple):
+    order: int
+    permission: str
+    rule: _CompiledRule
+
+
+class _CompiledRuleMethodIndex(NamedTuple):
+    fallback: tuple[_CompiledRuleEntry, ...]
+    prefix_buckets: Mapping[tuple[str, ...], tuple[_CompiledRuleEntry, ...]]
+
+
+class _CompiledRuleIndex(NamedTuple):
+    all_rules: tuple[_CompiledRuleEntry, ...]
+    by_method: Mapping[str, _CompiledRuleMethodIndex]
+
+
 class _CompiledApiCore(NamedTuple):
     raw_api_index: int
     base: _CompiledBase
     permissions: tuple[_CompiledPermission, ...]
+    rule_index: _CompiledRuleIndex
     base_malformed: bool
     auth_malformed: bool
     # True when API compilation encountered malformed permissions/rules config.
@@ -258,6 +276,10 @@ class _CompiledApi(NamedTuple):
     @property
     def permissions(self) -> tuple[_CompiledPermission, ...]:
         return self.core.permissions
+
+    @property
+    def rule_index(self) -> _CompiledRuleIndex:
+        return self.core.rule_index
 
     @property
     def base_malformed(self) -> bool:
@@ -291,8 +313,35 @@ class _CompiledFirewall(NamedTuple):
         return self.core.name_malformed
 
 
-class CompiledFirewallSet(NamedTuple):
+class _CompiledApiCandidate(NamedTuple):
+    order: int
+    firewall: _CompiledFirewall
+    api: _CompiledApi
+
+
+class _CompiledApiIndex(NamedTuple):
+    all_candidates: tuple[_CompiledApiCandidate, ...]
+    fallback: tuple[_CompiledApiCandidate, ...]
+    static_buckets: Mapping[tuple[str, str, tuple[str, ...]], tuple[_CompiledApiCandidate, ...]]
+
+
+@dataclass(frozen=True, init=False, slots=True, eq=False, repr=False)
+class CompiledFirewallSet:
     firewalls: tuple[_CompiledFirewall, ...]
+    _api_index: _CompiledApiIndex = field(compare=False, repr=False)
+
+    def __init__(self, firewalls: tuple[_CompiledFirewall, ...]) -> None:
+        object.__setattr__(self, "firewalls", firewalls)
+        object.__setattr__(self, "_api_index", _compile_api_candidate_index(firewalls))
+
+    def __bool__(self) -> bool:
+        return bool(self.firewalls)
+
+    def indexed_api_candidates(self, url_parts: _BaseUrlParts) -> tuple[_CompiledApiCandidate, ...]:
+        return _indexed_api_candidates(self._api_index, url_parts)
+
+    def linear_api_candidates(self) -> tuple[_CompiledApiCandidate, ...]:
+        return self._api_index.all_candidates
 
 
 UnknownPolicy = Literal["allow", "deny", "ask"]
@@ -1279,6 +1328,165 @@ def _match_compiled_base_url_parts(
     return rel_path, all_params
 
 
+def _path_index_key(path: str) -> tuple[str, ...]:
+    return tuple(_split_path_segments(path))
+
+
+def _path_prefix_index_keys(path_segs: list[str]) -> tuple[tuple[str, ...], ...]:
+    return tuple(tuple(path_segs[:length]) for length in range(1, len(path_segs) + 1))
+
+
+def _static_api_index_key(
+    base: _CompiledBase,
+) -> tuple[str, str, tuple[str, ...]] | None:
+    if (
+        base.has_params
+        or base.raw_syntax_malformed
+        or base.param_parse_malformed
+        or base.parts.host_malformed
+        or base.parts.has_userinfo
+        or base.parts.port_malformed
+    ):
+        return None
+    return (
+        base.parts.scheme.lower(),
+        base.parts.authority.lower(),
+        _path_index_key(base.parts.path),
+    )
+
+
+def _request_api_index_keys(
+    url_parts: _BaseUrlParts,
+) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    scheme = url_parts.scheme.lower()
+    authority = url_parts.authority.lower()
+    path_segs = _split_path_segments(url_parts.path)
+    return tuple(
+        (scheme, authority, tuple(path_segs[:length])) for length in range(len(path_segs) + 1)
+    )
+
+
+def _compile_api_candidate_index(
+    firewalls: tuple[_CompiledFirewall, ...],
+) -> _CompiledApiIndex:
+    all_candidates: list[_CompiledApiCandidate] = []
+    fallback: list[_CompiledApiCandidate] = []
+    static_buckets: dict[tuple[str, str, tuple[str, ...]], list[_CompiledApiCandidate]] = {}
+
+    order = 0
+    for firewall in firewalls:
+        for api in firewall.apis:
+            candidate = _CompiledApiCandidate(order, firewall, api)
+            all_candidates.append(candidate)
+            key = _static_api_index_key(api.base)
+            if key is None:
+                fallback.append(candidate)
+            else:
+                static_buckets.setdefault(key, []).append(candidate)
+            order += 1
+
+    return _CompiledApiIndex(
+        tuple(all_candidates),
+        tuple(fallback),
+        MappingProxyType({key: tuple(candidates) for key, candidates in static_buckets.items()}),
+    )
+
+
+def _indexed_api_candidates(
+    api_index: _CompiledApiIndex,
+    url_parts: _BaseUrlParts,
+) -> tuple[_CompiledApiCandidate, ...]:
+    candidates = list(api_index.fallback)
+    for key in _request_api_index_keys(url_parts):
+        candidates.extend(api_index.static_buckets.get(key, ()))
+    if len(candidates) <= 1:
+        return tuple(candidates)
+    return tuple(sorted(candidates, key=lambda candidate: candidate.order))
+
+
+def _rule_path_index_key(rule: _CompiledRule) -> tuple[str, ...] | None:
+    prefix: list[str] = []
+    for segment in rule.path.segments:
+        if not isinstance(segment, SegmentLiteral):
+            break
+        prefix.append(segment.value)
+    return tuple(prefix) if prefix else None
+
+
+def _compile_rule_method_index(
+    entries: list[_CompiledRuleEntry],
+) -> _CompiledRuleMethodIndex:
+    fallback: list[_CompiledRuleEntry] = []
+    prefix_buckets: dict[tuple[str, ...], list[_CompiledRuleEntry]] = {}
+    for entry in entries:
+        key = _rule_path_index_key(entry.rule)
+        if key is None:
+            fallback.append(entry)
+        else:
+            prefix_buckets.setdefault(key, []).append(entry)
+    return _CompiledRuleMethodIndex(
+        tuple(fallback),
+        MappingProxyType({key: tuple(candidates) for key, candidates in prefix_buckets.items()}),
+    )
+
+
+def _compile_rule_index(
+    permissions: tuple[_CompiledPermission, ...],
+) -> _CompiledRuleIndex:
+    all_rules: list[_CompiledRuleEntry] = []
+    by_method_entries: dict[str, list[_CompiledRuleEntry]] = {}
+
+    order = 0
+    for permission in permissions:
+        for rule in permission.rules:
+            entry = _CompiledRuleEntry(order, permission.name, rule)
+            all_rules.append(entry)
+            by_method_entries.setdefault(rule.method, []).append(entry)
+            order += 1
+
+    return _CompiledRuleIndex(
+        tuple(all_rules),
+        MappingProxyType(
+            {
+                method: _compile_rule_method_index(entries)
+                for method, entries in by_method_entries.items()
+            }
+        ),
+    )
+
+
+def _indexed_rule_candidates(
+    api_entry: _CompiledApi,
+    upper_method: str,
+    rel_path_segs: list[str],
+) -> tuple[_CompiledRuleEntry, ...]:
+    candidates: list[_CompiledRuleEntry] = []
+    path_keys = _path_prefix_index_keys(rel_path_segs)
+    seen_orders: set[int] = set()
+
+    def add_method_candidates(method: str) -> None:
+        method_index = api_entry.rule_index.by_method.get(method)
+        if method_index is None:
+            return
+        for entry in method_index.fallback:
+            if entry.order not in seen_orders:
+                seen_orders.add(entry.order)
+                candidates.append(entry)
+        for key in path_keys:
+            for entry in method_index.prefix_buckets.get(key, ()):
+                if entry.order not in seen_orders:
+                    seen_orders.add(entry.order)
+                    candidates.append(entry)
+
+    add_method_candidates("ANY")
+    if upper_method != "ANY":
+        add_method_candidates(upper_method)
+
+    if len(candidates) <= 1:
+        return tuple(candidates)
+    return tuple(sorted(candidates, key=lambda entry: entry.order))
+
+
 def _compile_rule(rule_str: str) -> _CompiledRule | None:
     parts = rule_str.split(" ", 1)
     if len(parts) != _RULE_TOKEN_COUNT:
@@ -1418,11 +1626,13 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         elif permissions_present:
             has_malformed_rules = True
 
+        compiled_permissions_tuple = tuple(compiled_permissions)
         api_cores.append(
             _CompiledApiCore(
                 api_index,
                 base,
-                tuple(compiled_permissions),
+                compiled_permissions_tuple,
+                _compile_rule_index(compiled_permissions_tuple),
                 base_malformed,
                 auth_malformed,
                 has_malformed_rules,
@@ -1816,6 +2026,196 @@ def _resolve_firewall_decision(
     )
 
 
+def _evaluate_rule_entries(
+    *,
+    decision: _FirewallDecisionState,
+    api_entry: _CompiledApi,
+    fw_entry: _CompiledFirewall,
+    policy: _CompiledNetworkPolicy | None,
+    block_match: _BlockMatch,
+    rel_path: str,
+    rel_path_segs: list[str],
+    base_params: dict[str, str],
+    upper_method: str,
+    rule_entries: tuple[_CompiledRuleEntry, ...],
+) -> None:
+    for entry in rule_entries:
+        rule = entry.rule
+        if rule.method not in ("ANY", upper_method):
+            continue
+        if not decision.can_rule_specificity_affect_decision(rule.specificity):
+            continue
+
+        permission_blocked = policy is not None and entry.permission in policy.blocked_permissions
+        if permission_blocked:
+            if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
+                continue
+            if not decision.accept_rule_specificity(rule.specificity):
+                continue
+            decision.record_denied_rule(block_match, entry.permission)
+            continue
+
+        params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
+        if params is None:
+            continue
+        if not decision.accept_rule_specificity(rule.specificity):
+            continue
+
+        decision.record_allowed_rule(
+            _AllowedRuleMatch(
+                api_entry.raw_api_entry,
+                fw_entry.name,
+                rel_path,
+                _CompiledRuleCandidate(
+                    entry.permission,
+                    rule.raw,
+                    rule.specificity,
+                    {**base_params, **params},
+                ),
+            )
+        )
+
+
+def _match_compiled_firewall_request_with_api_candidates(
+    *,
+    url_parts: _BaseUrlParts,
+    url_has_backslash: bool,
+    upper_method: str,
+    compiled_network_policies: CompiledNetworkPolicies,
+    api_candidates: tuple[_CompiledApiCandidate, ...],
+    indexed_rules: bool,
+) -> FirewallAllow | FirewallBlock | None:
+    decision = _FirewallDecisionState()
+    unsafe_path: bool | None = True if url_has_backslash else None
+
+    for candidate in api_candidates:
+        fw_entry = candidate.firewall
+        api_entry = candidate.api
+        policy = compiled_network_policies.policies.get(fw_entry.name)
+
+        base_result = _match_compiled_base_url_parts(url_parts, api_entry.base)
+        if base_result is None:
+            continue
+
+        rel_path, base_params = base_result
+
+        if unsafe_path is None:
+            unsafe_path = has_unsafe_path(url_parts.path)
+
+        if unsafe_path:
+            return FirewallBlock(
+                api_entry.base.raw,
+                fw_entry.name,
+                upper_method,
+                rel_path,
+                (),
+                "unsafe_path",
+            )
+
+        if not decision.accept_base_match(
+            api_entry,
+            name=fw_entry.name,
+            rel_path=rel_path,
+            base_params=base_params,
+        ):
+            continue
+
+        block_match = _BlockMatch(
+            api_entry.base.raw,
+            fw_entry.name,
+            upper_method,
+            rel_path,
+        )
+        if api_entry.base_malformed or api_entry.auth_malformed or api_entry.has_malformed_rules:
+            decision.record_malformed_config(block_match)
+        if fw_entry.name_malformed or api_entry.base_malformed or api_entry.auth_malformed:
+            continue
+        if compiled_network_policies.top_level_malformed or (
+            policy is not None and policy.permission_malformed
+        ):
+            decision.record_malformed_policy(block_match)
+            continue
+
+        if not api_entry.permissions:
+            continue
+
+        rel_path_segs = _split_path_segments(rel_path)
+        rule_entries = (
+            _indexed_rule_candidates(api_entry, upper_method, rel_path_segs)
+            if indexed_rules
+            else api_entry.rule_index.all_rules
+        )
+        _evaluate_rule_entries(
+            decision=decision,
+            api_entry=api_entry,
+            fw_entry=fw_entry,
+            policy=policy,
+            block_match=block_match,
+            rel_path=rel_path,
+            rel_path_segs=rel_path_segs,
+            base_params=base_params,
+            upper_method=upper_method,
+            rule_entries=rule_entries,
+        )
+
+    return _resolve_firewall_decision(
+        decision,
+        compiled_network_policies=compiled_network_policies,
+        upper_method=upper_method,
+    )
+
+
+def _prepare_compiled_request_match(
+    url: str,
+    method: str,
+    compiled_firewalls: CompiledFirewallSet | None,
+    network_policies: object | None,
+) -> tuple[_BaseUrlParts, bool, str, CompiledNetworkPolicies] | None:
+    if not compiled_firewalls:
+        return None
+
+    url_has_backslash = "\\" in url
+    url_parts = _split_base_match_url(
+        url,
+        allow_runtime_backslash_syntax=url_has_backslash,
+    )
+    if url_parts is None:
+        return None
+
+    return (
+        url_parts,
+        url_has_backslash,
+        method.upper(),
+        _ensure_compiled_network_policies(network_policies),
+    )
+
+
+def _match_compiled_firewall_request_linear(
+    url: str,
+    method: str,
+    compiled_firewalls: CompiledFirewallSet | None,
+    network_policies: object | None = None,
+) -> FirewallAllow | FirewallBlock | None:
+    prepared = _prepare_compiled_request_match(
+        url,
+        method,
+        compiled_firewalls,
+        network_policies,
+    )
+    if prepared is None or compiled_firewalls is None:
+        return None
+
+    url_parts, url_has_backslash, upper_method, compiled_network_policies = prepared
+    return _match_compiled_firewall_request_with_api_candidates(
+        url_parts=url_parts,
+        url_has_backslash=url_has_backslash,
+        upper_method=upper_method,
+        compiled_network_policies=compiled_network_policies,
+        api_candidates=compiled_firewalls.linear_api_candidates(),
+        indexed_rules=False,
+    )
+
+
 def match_compiled_firewall_request(
     url: str,
     method: str,
@@ -1843,117 +2243,21 @@ def match_compiled_firewall_request(
 
     ``unknownPolicy="ask"`` is treated as block at the proxy layer.
     """
-    if not compiled_firewalls:
-        return None
-
-    url_has_backslash = "\\" in url
-    url_parts = _split_base_match_url(
+    prepared = _prepare_compiled_request_match(
         url,
-        allow_runtime_backslash_syntax=url_has_backslash,
+        method,
+        compiled_firewalls,
+        network_policies,
     )
-    if url_parts is None:
+    if prepared is None or compiled_firewalls is None:
         return None
 
-    compiled_network_policies = _ensure_compiled_network_policies(network_policies)
-
-    upper_method = method.upper()
-
-    decision = _FirewallDecisionState()
-    unsafe_path: bool | None = True if url_has_backslash else None
-
-    for fw_entry in compiled_firewalls.firewalls:
-        policy = compiled_network_policies.policies.get(fw_entry.name)
-
-        for api_entry in fw_entry.apis:
-            base_result = _match_compiled_base_url_parts(url_parts, api_entry.base)
-            if base_result is None:
-                continue
-
-            rel_path, base_params = base_result
-
-            if unsafe_path is None:
-                unsafe_path = has_unsafe_path(url_parts.path)
-
-            if unsafe_path:
-                return FirewallBlock(
-                    api_entry.base.raw,
-                    fw_entry.name,
-                    upper_method,
-                    rel_path,
-                    (),
-                    "unsafe_path",
-                )
-
-            if not decision.accept_base_match(
-                api_entry,
-                name=fw_entry.name,
-                rel_path=rel_path,
-                base_params=base_params,
-            ):
-                continue
-
-            block_match = _BlockMatch(
-                api_entry.base.raw,
-                fw_entry.name,
-                upper_method,
-                rel_path,
-            )
-            if (
-                api_entry.base_malformed
-                or api_entry.auth_malformed
-                or api_entry.has_malformed_rules
-            ):
-                decision.record_malformed_config(block_match)
-            if fw_entry.name_malformed or api_entry.base_malformed or api_entry.auth_malformed:
-                continue
-            if compiled_network_policies.top_level_malformed or (
-                policy is not None and policy.permission_malformed
-            ):
-                decision.record_malformed_policy(block_match)
-                continue
-
-            if not api_entry.permissions:
-                continue
-
-            rel_path_segs = _split_path_segments(rel_path)
-            for perm in api_entry.permissions:
-                permission_blocked = policy is not None and perm.name in policy.blocked_permissions
-                for rule in perm.rules:
-                    if rule.method not in ("ANY", upper_method):
-                        continue
-                    if not decision.can_rule_specificity_affect_decision(rule.specificity):
-                        continue
-
-                    if permission_blocked:
-                        if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
-                            continue
-                        if not decision.accept_rule_specificity(rule.specificity):
-                            continue
-                        decision.record_denied_rule(block_match, perm.name)
-                        continue
-
-                    params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
-                    if params is None:
-                        continue
-                    if not decision.accept_rule_specificity(rule.specificity):
-                        continue
-
-                    decision.record_allowed_rule(
-                        _AllowedRuleMatch(
-                            api_entry.raw_api_entry,
-                            fw_entry.name,
-                            rel_path,
-                            _CompiledRuleCandidate(
-                                perm.name,
-                                rule.raw,
-                                rule.specificity,
-                                {**base_params, **params},
-                            ),
-                        )
-                    )
-
-    return _resolve_firewall_decision(
-        decision,
-        compiled_network_policies=compiled_network_policies,
+    url_parts, url_has_backslash, upper_method, compiled_network_policies = prepared
+    return _match_compiled_firewall_request_with_api_candidates(
+        url_parts=url_parts,
+        url_has_backslash=url_has_backslash,
         upper_method=upper_method,
+        compiled_network_policies=compiled_network_policies,
+        api_candidates=compiled_firewalls.indexed_api_candidates(url_parts),
+        indexed_rules=True,
     )

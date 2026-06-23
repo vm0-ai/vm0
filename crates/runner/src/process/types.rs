@@ -1,9 +1,13 @@
 use std::path::PathBuf;
 
-/// Stable facts read from `/proc/{pid}/stat`.
+/// Process facts read from `/proc/{pid}/stat`.
+///
+/// Only `pgid` and `starttime` are used as stable process identity; `ppid`
+/// is the parent relationship observed at read time.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessStat {
     pub state: char,
+    pub ppid: u32,
     pub pgid: u32,
     pub starttime: u64,
 }

@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import { getConnectorFirewall } from "../../firewalls";
 
+const RUNTIME_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
 function sentryPermissionRules(permissionName: string): readonly string[] {
   const firewall = getConnectorFirewall("sentry");
   const permission = firewall.apis
@@ -19,27 +29,53 @@ function sentryPermissionRules(permissionName: string): readonly string[] {
   return permission.rules;
 }
 
-function expectSentryMatchesContaining(
+function sentryMatches(method: string, path: string): string[] {
+  return findMatchingPermissions(method, path, getConnectorFirewall("sentry"));
+}
+
+function expectSentryMatches(
   method: string,
   path: string,
-  includedPermissionNames: readonly string[],
-  excludedPermissionNames: readonly string[],
+  permissionNames: readonly string[],
 ): void {
-  const matches = findMatchingPermissions(
-    method,
-    path,
-    getConnectorFirewall("sentry"),
+  expect([...sentryMatches(method, path)].sort()).toStrictEqual(
+    [...permissionNames].sort(),
   );
+}
 
-  for (const permissionName of includedPermissionNames) {
-    expect(matches).toContain(permissionName);
-  }
-  for (const permissionName of excludedPermissionNames) {
-    expect(matches).not.toContain(permissionName);
-  }
+function expandRuntimeRules(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
 }
 
 describe("sentry firewall", () => {
+  it("assigns one permission owner to every runtime route", () => {
+    const duplicates: string[] = [];
+    for (const api of getConnectorFirewall("sentry").apis) {
+      const owners = new Map<string, string>();
+      for (const permission of api.permissions ?? []) {
+        for (const rule of permission.rules) {
+          for (const runtimeRule of expandRuntimeRules(rule)) {
+            const key = `${api.base} ${runtimeRule}`;
+            const existing = owners.get(key);
+            if (existing) {
+              duplicates.push(`${key}: ${existing}, ${permission.name}`);
+              continue;
+            }
+            owners.set(key, permission.name);
+          }
+        }
+      }
+    }
+
+    expect(duplicates).toStrictEqual([]);
+  });
+
   it("keeps read permissions non-mutating", () => {
     const firewall = getConnectorFirewall("sentry");
 
@@ -56,51 +92,68 @@ describe("sentry firewall", () => {
   });
 
   it("maps member mutations according to Sentry's official method scopes", () => {
-    expectSentryMatchesContaining(
-      "DELETE",
-      "/api/0/organizations/acme/members/123/",
-      ["member:admin"],
-      ["member:read", "member:write"],
-    );
-    expectSentryMatchesContaining(
+    expectSentryMatches("DELETE", "/api/0/organizations/acme/members/123/", [
+      "member:admin",
+    ]);
+    expectSentryMatches(
       "PUT",
       "/api/0/organizations/acme/members/123/teams/team-a/",
-      [
-        "member:admin",
-        "member:write",
-        "org:admin",
-        "org:write",
-        "team:admin",
-        "team:write",
-      ],
-      ["member:read", "org:read", "team:read"],
+      ["team:write"],
     );
   });
 
   it("maps project mutations according to Sentry's official method scopes", () => {
-    expectSentryMatchesContaining(
-      "POST",
-      "/api/0/organizations/acme/projects/",
-      ["project:admin", "project:write"],
-      ["project:read"],
+    expectSentryMatches("POST", "/api/0/organizations/acme/projects/", [
+      "project:write",
+    ]);
+    expectSentryMatches("PUT", "/api/0/projects/acme/web/ownership/", [
+      "project:write",
+    ]);
+  });
+
+  it("maps issue and event routes to the least privileged event scope", () => {
+    expectSentryMatches("GET", "/api/0/organizations/acme/issues/", [
+      "event:read",
+    ]);
+    expectSentryMatches("PUT", "/api/0/organizations/acme/issues/", [
+      "event:write",
+    ]);
+    expectSentryMatches("DELETE", "/api/0/organizations/acme/issues/", [
+      "event:admin",
+    ]);
+  });
+
+  it("maps monitor routes to alerts scopes instead of broad org/project scopes", () => {
+    expectSentryMatches("GET", "/api/0/organizations/acme/detectors/", [
+      "alerts:read",
+    ]);
+    expectSentryMatches("PUT", "/api/0/organizations/acme/detectors/", [
+      "alerts:write",
+    ]);
+    expectSentryMatches(
+      "GET",
+      "/api/0/organizations/acme/monitors/my-monitor/",
+      ["alerts:read"],
     );
-    expectSentryMatchesContaining(
+    expectSentryMatches(
       "PUT",
-      "/api/0/projects/acme/web/ownership/",
-      ["project:admin", "project:write"],
-      ["project:read"],
+      "/api/0/organizations/acme/monitors/my-monitor/",
+      ["alerts:write"],
     );
   });
 
-  it("preserves Sentry's project:releases exception", () => {
+  it("preserves Sentry's release and CI custom scopes", () => {
     expect(sentryPermissionRules("project:releases")).toContain(
       "POST /api/0/organizations/{organization_id_or_slug}/releases/",
     );
-    expectSentryMatchesContaining(
-      "POST",
-      "/api/0/organizations/acme/releases/",
-      ["project:releases"],
-      ["project:read", "project:write", "project:admin"],
+    expect(sentryPermissionRules("org:ci")).toContain(
+      "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/files/dsyms/",
     );
+    expectSentryMatches("POST", "/api/0/organizations/acme/releases/", [
+      "project:releases",
+    ]);
+    expectSentryMatches("GET", "/api/0/projects/acme/web/files/dsyms/", [
+      "org:ci",
+    ]);
   });
 });
