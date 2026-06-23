@@ -174,6 +174,31 @@ assert_contains "$out" "runner-image-inputs-changed=false"
 assert_contains "$out" "current-runner-image-needed=false"
 assert_contains "$out" "image-selection-reason=no-metal-hosts"
 
+out=$(assert_needed_case "no runner host groups" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  RUNNER_HOST_GROUPS_CONFIGURED=false \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "has-metal-hosts=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "current-runner-image-needed=false"
+assert_contains "$out" "image-selection-reason=no-metal-hosts"
+
+out=$(assert_needed_case "runner host group without legacy metal hosts" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  RUNNER_HOST_GROUPS_CONFIGURED=true \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=true)
+assert_contains "$out" "has-metal-hosts=true"
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+assert_contains "$out" "image-selection-reason=runner-image-inputs-changed"
+
 out=$(assert_needed_case "no consumer" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \

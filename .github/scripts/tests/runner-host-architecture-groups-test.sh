@@ -32,17 +32,40 @@ assert_compact_json() {
   fi
 }
 
+assert_no_hosts_field() {
+  local output=$1
+  jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
+}
+
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
+assert_compact_json "$out"
+assert_no_hosts_field "$out"
+assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
+[ "$out" = "true" ] || fail "expected ARM64 has-groups=true, got: ${out}"
 
 out=$(run_clean X86_64_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","hosts":"x86-1","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
+out=$(run_clean X86_64_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS" matrix)
+assert_compact_json "$out"
+assert_no_hosts_field "$out"
+assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","hosts":"x86-1,x86-2","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS" matrix)
+assert_compact_json "$out"
+assert_no_hosts_field "$out"
+assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS")
 assert_compact_json "$out"
@@ -51,6 +74,13 @@ assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","tar
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'
+
+out=$(run_clean "$HOST_GROUPS" matrix)
+assert_compact_json "$out"
+assert_json_eq "$out" '[]'
+
+out=$(run_clean "$HOST_GROUPS" has-groups)
+[ "$out" = "false" ] || fail "expected empty has-groups=false, got: ${out}"
 
 if bash -c '. "$1"; runner_image_cache_suffix ""' bash "$TARGET" >"${TMPDIR}/cache-empty.out" 2>"${TMPDIR}/cache-empty.err"; then
   fail "expected empty cache suffix target to fail"

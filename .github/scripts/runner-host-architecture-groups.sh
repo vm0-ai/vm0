@@ -6,12 +6,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh
+Usage: runner-host-architecture-groups.sh [matrix|has-groups]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
   AWS_METAL_RUNNER_HOSTS      Existing ARM64 host list.
   X86_64_METAL_RUNNER_HOSTS   Optional x86_64 host list.
+
+Commands:
+  <none>      Emit the full local contract, including hosts.
+  matrix      Emit the cross-job matrix contract, excluding hosts.
+  has-groups  Emit true when at least one host group is configured.
 USAGE
 }
 
@@ -69,10 +74,30 @@ emit_groups() {
   printf '%s\n' "$groups"
 }
 
+emit_matrix() {
+  emit_groups | jq -c 'map(del(.hosts))'
+}
+
+emit_has_groups() {
+  local groups
+  groups=$(emit_groups)
+  if jq -e 'length > 0' >/dev/null <<<"$groups"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
 cmd="${1:-}"
 case "$cmd" in
   "")
     emit_groups
+    ;;
+  matrix)
+    emit_matrix
+    ;;
+  has-groups)
+    emit_has_groups
     ;;
   -h|--help|help)
     usage
