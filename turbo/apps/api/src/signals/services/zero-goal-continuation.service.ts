@@ -104,43 +104,42 @@ function failureMessage(error: unknown): string {
   return error.message;
 }
 
-function buildGoalContinuationSystemPrompt(): string {
-  return [
+function buildGoalContinuationSystemPrompt(
+  preference: ZeroGoalPreference,
+): string {
+  const lines = [
     "# Current context",
     "You are autonomously continuing a persistent goal on this web chat thread.",
     "Everything you output is shown to the user in this thread.",
-  ].join("\n");
-}
-
-/**
- * The continuation user prompt — vm0's analog of Codex's `continuation.md`.
- * Rendered in code each turn with the goal's objective (and optional token
- * budget) from `zero_workflows.preference`, then injected as the run's user
- * prompt. Plain instruction text, not a `/goal` slash command, so the harness
- * never intercepts it.
- */
-function buildGoalContinuationPrompt(preference: ZeroGoalPreference): string {
-  const lines = [
+    "",
     "# Active thread goal",
     "",
-    "You are autonomously continuing a persistent goal. Make concrete progress this turn, then end the turn — the goal automatically continues on the next idle.",
-    "",
-    "## Objective",
-    "",
     preference.objective,
-    "",
   ];
+  if (
+    preference.objectiveBrief &&
+    preference.objectiveBrief !== preference.objective
+  ) {
+    lines.push(
+      "",
+      "# User-visible objective brief",
+      "",
+      preference.objectiveBrief,
+    );
+  }
   if (preference.tokenBudget) {
     lines.push(
-      "## Token budget",
+      "",
+      "# Token budget",
       "",
       `Soft budget: about ${preference.tokenBudget} tokens across the whole goal. Be economical; if you have clearly exhausted it without completing, run \`zero goal block\` and explain.`,
-      "",
     );
   }
   lines.push(
-    "## How to operate",
     "",
+    "# How to operate",
+    "",
+    "- Make concrete progress this turn, then end the turn. The goal automatically continues on the next idle.",
     "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors).",
     "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state (not your assumptions); only then run `zero goal complete`.",
     "- If the same blocker stops you for 3 consecutive turns, run `zero goal block` and explain why.",
@@ -148,6 +147,15 @@ function buildGoalContinuationPrompt(preference: ZeroGoalPreference): string {
     "- Do not stop to ask the user and wait — this is an autonomous continuation; act on the best available information.",
   );
   return lines.join("\n");
+}
+
+/**
+ * The continuation user prompt shown in the chat. Keep it short and focused on
+ * what the goal is trying to accomplish; the full objective and operating rules
+ * are carried in the appended system prompt.
+ */
+function buildGoalContinuationPrompt(preference: ZeroGoalPreference): string {
+  return preference.objectiveBrief ?? preference.objective;
 }
 
 async function loadTerminatingRun(
@@ -516,7 +524,7 @@ export const continueGoalIfIdle$ = command(
         ...(sessionId ? { sessionId } : {}),
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGoalContinuationSystemPrompt(),
+        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal.preference),
         callbacks: buildChatOnlyWorkflowTriggerCallbacks(
           trigger,
           goal.agentId,
@@ -617,7 +625,7 @@ export const bootstrapGoalRun$ = command(
         apiStartTime: now(),
         prompt: buildGoalContinuationPrompt(goal.preference),
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGoalContinuationSystemPrompt(),
+        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal.preference),
         callbacks: buildChatOnlyWorkflowTriggerCallbacks(
           args.trigger,
           goal.agentId,

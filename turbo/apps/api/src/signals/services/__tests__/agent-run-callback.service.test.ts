@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -1980,6 +1980,60 @@ describe("dispatchRunCallbacks$ trigger internal dispatch", () => {
     await expect(readCallback(callbackId)).resolves.toMatchObject({
       url: null,
       internalKind: "trigger:cron",
+      status: "delivered",
+      attempts: 1,
+      lastError: null,
+    });
+  });
+
+  it("does not reschedule trigger callbacks after the automation is disabled", async () => {
+    mockNow(new Date("2026-05-13T04:00:00.000Z"));
+    const fixture = await seedAgentCallbackRun();
+    const triggerId = await seedAutomationTrigger(fixture, {
+      kind: "cron",
+      consecutiveFailures: 2,
+    });
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: fixture.runId,
+        internalKind: "trigger:cron",
+        payload: { triggerId, cronExpression: "0 9 * * *", timezone: "UTC" },
+      },
+      context.signal,
+    );
+    const routeRequests = failIfCallbackRouteIsFetched(
+      TRIGGER_CRON_CALLBACK_URL,
+    );
+    const db = store.set(writeDb$);
+
+    await db
+      .update(automations)
+      .set({ enabled: false })
+      .where(
+        inArray(
+          automations.id,
+          db
+            .select({ id: automationTriggers.automationId })
+            .from(automationTriggers)
+            .where(eq(automationTriggers.id, triggerId)),
+        ),
+      );
+
+    const results = await store.set(
+      dispatchRunCallbacks$,
+      { db, runId: fixture.runId, status: "completed" },
+      context.signal,
+    );
+
+    expect(results).toStrictEqual([{ callbackId, success: true }]);
+    expect(routeRequests()).toBe(0);
+    await expect(readTrigger(triggerId)).resolves.toMatchObject({
+      consecutiveFailures: 2,
+      enabled: true,
+      nextRunAt: null,
+    });
+    await expect(readCallback(callbackId)).resolves.toMatchObject({
       status: "delivered",
       attempts: 1,
       lastError: null,

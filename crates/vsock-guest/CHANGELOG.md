@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.3...vsock-guest-v0.19.4) (2026-06-23)
+
+
+### Bug Fixes
+
+* reject exec-control requests after sink failure ([#18635](https://github.com/vm0-ai/vm0/issues/18635)) ([c02a11c](https://github.com/vm0-ai/vm0/commit/c02a11c00b710810decdf25b974278eed6f3518f))
+
 ## [0.19.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.2...vsock-guest-v0.19.3) (2026-06-23)
 
 

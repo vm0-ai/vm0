@@ -537,6 +537,10 @@ describe("zero goals", () => {
     expect(workflowMarkerContent).not.toBe(objective);
     expect(workflowMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
     expect(workflowMarkerContent).toMatch(/\.\.\.$/);
+    expect(goalRows?.preference).toMatchObject({
+      objective,
+      objectiveBrief: workflowMarkerContent,
+    });
     expect(markerContent(afterCreate, "goal-trigger:active")).toStrictEqual([
       goalRows!.triggerId,
     ]);
@@ -605,6 +609,10 @@ describe("zero goals", () => {
     expect(editedMarkerContent).not.toBe(objective);
     expect(editedMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
     expect(editedMarkerContent).toMatch(/\.\.\.$/);
+    expect((await loadGoalRows(fixture))?.preference).toMatchObject({
+      objective,
+      objectiveBrief: editedMarkerContent,
+    });
   });
 
   it("auto-resumes a blocked goal when edited and clears stopReason", async () => {
