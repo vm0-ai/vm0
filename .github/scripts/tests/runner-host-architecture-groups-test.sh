@@ -37,16 +37,16 @@ assert_no_hosts_field() {
   jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
 }
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS")
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
 [ "$out" = "true" ] || fail "expected ARM64 has-groups=true, got: ${out}"
 
 out=$(run_clean X86_64_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS")
@@ -61,69 +61,69 @@ assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","target":"x86_64-unknown
 out=$(run_clean X86_64_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS" has-groups)
 [ "$out" = "true" ] || fail "expected x86_64 has-groups=true, got: ${out}"
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS")
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","hosts":"x86-1,x86-2","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS" matrix)
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS")
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS='runner-1.vm3.ai,runner_2' "$HOST_GROUPS" matrix)
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS='runner-1.vm3.ai,runner_2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
-out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
+out=$(run_clean ARM64_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='bad host' "$HOST_GROUPS" >"${TMPDIR}/invalid-space.out" 2>"${TMPDIR}/invalid-space.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='bad host' "$HOST_GROUPS" >"${TMPDIR}/invalid-space.out" 2>"${TMPDIR}/invalid-space.err"; then
   fail "expected host with whitespace to fail"
 fi
 grep -q "invalid runner host entry: bad host" "${TMPDIR}/invalid-space.err" || fail "expected host whitespace message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='bad/host' "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-slash.out" 2>"${TMPDIR}/invalid-slash.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='bad/host' "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-slash.out" 2>"${TMPDIR}/invalid-slash.err"; then
   fail "expected host with slash to fail"
 fi
 grep -q "invalid runner host entry: bad/host" "${TMPDIR}/invalid-slash.err" || fail "expected host slash message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='bad*host' "$HOST_GROUPS" has-groups >"${TMPDIR}/invalid-glob.out" 2>"${TMPDIR}/invalid-glob.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='bad*host' "$HOST_GROUPS" has-groups >"${TMPDIR}/invalid-glob.out" 2>"${TMPDIR}/invalid-glob.err"; then
   fail "expected host with glob character to fail"
 fi
 grep -q "invalid runner host entry: bad\*host" "${TMPDIR}/invalid-glob.err" || fail "expected host glob message"
 
 for host in -host . .. _host host_ host- host.; do
-  if run_clean AWS_METAL_RUNNER_HOSTS="$host" "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-alias.out" 2>"${TMPDIR}/invalid-alias.err"; then
+  if run_clean ARM64_METAL_RUNNER_HOSTS="$host" "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-alias.out" 2>"${TMPDIR}/invalid-alias.err"; then
     fail "expected invalid host alias '${host}' to fail"
   fi
   grep -qF "invalid runner host entry: ${host}" "${TMPDIR}/invalid-alias.err" || fail "expected invalid host alias message"
 done
 
-if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
   fail "expected duplicate host in one group to fail"
 fi
 grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-group.err" || fail "expected duplicate host in one group message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='Arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-case.out" 2>"${TMPDIR}/duplicate-case.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='Arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-case.out" 2>"${TMPDIR}/duplicate-case.err"; then
   fail "expected case-insensitive duplicate host in one group to fail"
 fi
 grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-case.err" || fail "expected case-insensitive duplicate host message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross.out" 2>"${TMPDIR}/duplicate-cross.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross.out" 2>"${TMPDIR}/duplicate-cross.err"; then
   fail "expected duplicate host across groups to fail"
 fi
 grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross.err" || fail "expected duplicate host across groups message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='Shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross-case.out" 2>"${TMPDIR}/duplicate-cross-case.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='Shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross-case.out" 2>"${TMPDIR}/duplicate-cross-case.err"; then
   fail "expected case-insensitive duplicate host across groups to fail"
 fi
 grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross-case.err" || fail "expected case-insensitive duplicate host across groups message"
 
-if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" has-groups >"${TMPDIR}/duplicate-has-groups.out" 2>"${TMPDIR}/duplicate-has-groups.err"; then
+if run_clean ARM64_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" has-groups >"${TMPDIR}/duplicate-has-groups.out" 2>"${TMPDIR}/duplicate-has-groups.err"; then
   fail "expected duplicate host has-groups to fail"
 fi
 grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-has-groups.err" || fail "expected duplicate host has-groups message"

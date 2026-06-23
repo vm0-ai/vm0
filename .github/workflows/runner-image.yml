@@ -183,7 +183,7 @@ jobs:
         id: host-group-presence
         env:
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ARM64_METAL_RUNNER_HOSTS: ${{ secrets.ARM64_METAL_RUNNER_HOSTS }}
           X86_64_METAL_RUNNER_HOSTS: ${{ secrets.X86_64_METAL_RUNNER_HOSTS }}
         run: |
           set -euo pipefail
@@ -193,7 +193,7 @@ jobs:
           fi
 
           configured=false
-          if printf '%s\n%s\n' "$AWS_METAL_RUNNER_HOSTS" "$X86_64_METAL_RUNNER_HOSTS" \
+          if printf '%s\n%s\n' "$ARM64_METAL_RUNNER_HOSTS" "$X86_64_METAL_RUNNER_HOSTS" \
             | tr ',' '\n' \
             | grep '[^[:space:]]' >/dev/null; then
             configured=true
@@ -215,7 +215,7 @@ jobs:
         id: host-groups
         env:
           CURRENT_RUNNER_IMAGE_NEEDED: ${{ steps.needed.outputs.current-runner-image-needed }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ARM64_METAL_RUNNER_HOSTS: ${{ secrets.ARM64_METAL_RUNNER_HOSTS }}
           X86_64_METAL_RUNNER_HOSTS: ${{ secrets.X86_64_METAL_RUNNER_HOSTS }}
         run: |
           set -euo pipefail
@@ -288,7 +288,7 @@ jobs:
       - name: Provision metal hosts
         uses: ./.github/actions/provision
         with:
-          hosts: ${{ matrix.id == 'arm64' && secrets.AWS_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
+          hosts: ${{ matrix.id == 'arm64' && secrets.ARM64_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
           metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
           grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
@@ -301,7 +301,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ matrix.id == 'arm64' && secrets.AWS_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
+          METAL_HOSTS: ${{ matrix.id == 'arm64' && secrets.ARM64_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
           EXPECTED_REMOTE_ARCH: ${{ matrix.unameM }}
           MANIFEST_PATH: runner-image-manifest/manifest.json
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -317,7 +317,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           TARGET: ${{ env.TARGET_TRIPLE }}
           PROFILE: ${{ env.PROFILE }}
-          METAL_HOSTS: ${{ matrix.id == 'arm64' && secrets.AWS_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
+          METAL_HOSTS: ${{ matrix.id == 'arm64' && secrets.ARM64_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
         run: .github/scripts/runner-image-manifest.sh validate
 
       - name: Resolve manifest artifact name

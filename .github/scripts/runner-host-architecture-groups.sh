@@ -10,7 +10,7 @@ Usage: runner-host-architecture-groups.sh [matrix|has-groups]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
-  AWS_METAL_RUNNER_HOSTS      Existing ARM64 host list.
+  ARM64_METAL_RUNNER_HOSTS    ARM64 host list.
   X86_64_METAL_RUNNER_HOSTS   Optional x86_64 host list.
 
 Commands:
@@ -99,7 +99,7 @@ validate_unique_hosts() {
 emit_groups() {
   local groups
   groups=$(jq -n -c '[]')
-  groups=$(append_group "$groups" "arm64" "ARM64" "${AWS_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
+  groups=$(append_group "$groups" "arm64" "ARM64" "${ARM64_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "${X86_64_METAL_RUNNER_HOSTS:-}" "x86_64-unknown-linux-musl")
   validate_host_entries "$groups" || return $?
   validate_unique_hosts "$groups" || return $?
