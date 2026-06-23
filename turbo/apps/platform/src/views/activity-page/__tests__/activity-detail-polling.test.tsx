@@ -924,6 +924,16 @@ function codexActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 14,
+      eventType: "warning",
+      eventData: {
+        type: "warning",
+        message: "temporary stream disconnect",
+        will_retry: true,
+      },
+      createdAt: "2026-03-10T15:00:15Z",
+    },
+    {
+      sequenceNumber: 15,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -934,7 +944,7 @@ function codexActivityEvents(): AgentEvent[] {
           reasoning_output_tokens: 4,
         },
       },
-      createdAt: "2026-03-10T15:00:15Z",
+      createdAt: "2026-03-10T15:00:16Z",
     },
   ];
 }
@@ -1877,6 +1887,9 @@ describe("activity detail polling", () => {
     expect(screen.getByText("[completed] Inspect logs")).toBeInTheDocument();
     expect(screen.getByText("[in progress] Patch retry")).toBeInTheDocument();
     expect(screen.getByText("[pending] Run tests")).toBeInTheDocument();
+    expect(
+      screen.getByText("[warning] temporary stream disconnect"),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
       screen.getAllByText("pnpm test --filter billing-worker"),

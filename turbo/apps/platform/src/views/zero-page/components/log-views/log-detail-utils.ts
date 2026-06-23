@@ -246,6 +246,7 @@ function isCodexEventType(eventType: string): boolean {
     eventType === "turn.completed" ||
     eventType === "turn.failed" ||
     eventType === "turn.plan.updated" ||
+    eventType === "warning" ||
     eventType === "error" ||
     eventType.startsWith("item.")
   );
@@ -401,16 +402,30 @@ function formatCodexPlanUpdate(
   return [header, ...steps].join("\n");
 }
 
+function formatCodexWarningMessage(
+  codexEvent: CodexEventData | undefined,
+): string | null {
+  const message = codexEvent?.message?.trim();
+  if (message) {
+    return message;
+  }
+
+  return codexEvent?.error?.trim() || null;
+}
+
 function formatCodexPlanStatus(status: string | undefined): string {
   switch (status) {
     case "completed":
-    case "pending":
+    case "pending": {
       return status;
+    }
     case "inProgress":
-    case "in_progress":
+    case "in_progress": {
       return "in progress";
-    default:
+    }
+    default: {
       return status?.trim() || "unknown";
+    }
   }
 }
 
@@ -468,32 +483,63 @@ function normalizeCodexRunEvent(
       });
     }
     case "turn.failed": {
-      return makeCodexResultEvent({
-        event,
-        success: false,
-        result: codexEvent?.error ?? "Turn failed",
-        usage: codexEvent?.usage,
-      });
+      return normalizeCodexFailedTurnEvent(event, codexEvent);
     }
     case "turn.plan.updated": {
-      const text = formatCodexPlanUpdate(
-        codexEvent?.plan,
-        codexEvent?.explanation,
-      );
-      return text ? makeCodexAssistantTextEvent(event, text) : null;
+      return normalizeCodexPlanUpdateEvent(event, codexEvent);
+    }
+    case "warning": {
+      return normalizeCodexWarningEvent(event, codexEvent);
     }
     case "error": {
-      return makeCodexResultEvent({
-        event,
-        success: false,
-        result: codexEvent?.message ?? codexEvent?.error ?? "Codex error",
-        usage: codexEvent?.usage,
-      });
+      return normalizeCodexErrorEvent(event, codexEvent);
     }
     default: {
       return event;
     }
   }
+}
+
+function normalizeCodexFailedTurnEvent(
+  event: AgentEvent,
+  codexEvent: CodexEventData | undefined,
+): AgentEvent {
+  return makeCodexResultEvent({
+    event,
+    success: false,
+    result: codexEvent?.error ?? "Turn failed",
+    usage: codexEvent?.usage,
+  });
+}
+
+function normalizeCodexPlanUpdateEvent(
+  event: AgentEvent,
+  codexEvent: CodexEventData | undefined,
+): AgentEvent | null {
+  const text = formatCodexPlanUpdate(codexEvent?.plan, codexEvent?.explanation);
+  return text ? makeCodexAssistantTextEvent(event, text) : null;
+}
+
+function normalizeCodexWarningEvent(
+  event: AgentEvent,
+  codexEvent: CodexEventData | undefined,
+): AgentEvent | null {
+  const message = formatCodexWarningMessage(codexEvent);
+  return message
+    ? makeCodexAssistantTextEvent(event, `[warning] ${message}`)
+    : null;
+}
+
+function normalizeCodexErrorEvent(
+  event: AgentEvent,
+  codexEvent: CodexEventData | undefined,
+): AgentEvent {
+  return makeCodexResultEvent({
+    event,
+    success: false,
+    result: codexEvent?.message ?? codexEvent?.error ?? "Codex error",
+    usage: codexEvent?.usage,
+  });
 }
 
 function normalizeCodexCommandEvent(

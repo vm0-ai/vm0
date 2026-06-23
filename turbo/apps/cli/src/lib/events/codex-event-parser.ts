@@ -6,6 +6,7 @@
  * - thread.started: Session initialization
  * - turn.started/turn.completed/turn.failed/turn.plan.updated: Turn lifecycle
  * - item.started/item.updated/item.completed: Individual items (messages, commands, etc.)
+ * - warning: Recoverable warnings
  * - error: Unrecoverable errors
  */
 
@@ -75,6 +76,12 @@ interface ErrorEvent {
   error?: string;
 }
 
+interface WarningEvent {
+  type: "warning";
+  message?: unknown;
+  error?: unknown;
+}
+
 type RawCodexEvent =
   | ThreadStartedEvent
   | TurnStartedEvent
@@ -82,6 +89,7 @@ type RawCodexEvent =
   | TurnFailedEvent
   | TurnPlanUpdatedEvent
   | ItemEvent
+  | WarningEvent
   | ErrorEvent
   | Record<string, unknown>;
 
@@ -114,6 +122,10 @@ export class CodexEventParser {
 
     if (eventType === "turn.plan.updated") {
       return this.parseTurnPlanUpdated(rawEvent as TurnPlanUpdatedEvent);
+    }
+
+    if (eventType === "warning") {
+      return this.parseWarningEvent(rawEvent as WarningEvent);
     }
 
     // Item events (started, updated, completed)
@@ -361,6 +373,19 @@ export class CodexEventParser {
       },
     };
   }
+
+  private static parseWarningEvent(event: WarningEvent): ParsedEvent | null {
+    const message = formatCodexWarningMessage(event);
+    if (!message) {
+      return null;
+    }
+
+    return {
+      type: "text",
+      timestamp: new Date(),
+      data: { text: `[warning] ${message}` },
+    };
+  }
 }
 
 function isCommandExecutionError(item: CodexItem): boolean {
@@ -383,6 +408,37 @@ function getStringField(
 ): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function formatCodexWarningMessage(event: WarningEvent): string | null {
+  if (typeof event.message === "string") {
+    const message = event.message.trim();
+    if (message) {
+      return message;
+    }
+  }
+
+  return formatCodexErrorMessage(event.error);
+}
+
+function formatCodexErrorMessage(error: unknown): string | null {
+  if (typeof error === "string") {
+    return error.trim() || null;
+  }
+  if (!isRecord(error)) {
+    return null;
+  }
+
+  const message = getStringField(error, "message")?.trim();
+  const details =
+    getStringField(error, "additional_details")?.trim() ??
+    getStringField(error, "additionalDetails")?.trim();
+
+  if (message && details) {
+    return `${message} (${details})`;
+  }
+
+  return message || details || null;
 }
 
 function formatCodexPlanUpdate(

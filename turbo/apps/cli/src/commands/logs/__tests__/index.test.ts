@@ -946,6 +946,61 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("[plan] 123");
     });
 
+    it("should render warnings as text without failing the run", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "warning",
+                    message: "temporary stream disconnect",
+                    will_retry: true,
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "warning",
+                    message: 123,
+                    error: {
+                      message: "retry queued",
+                      additional_details: "server overloaded",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:05Z",
+                  eventData: {
+                    type: "turn.completed",
+                    usage: {},
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[warning] temporary stream disconnect");
+      expect(logCalls).toContain("[warning] retry queued (server overloaded)");
+      expect(logCalls).not.toContain("failed");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(
