@@ -52,10 +52,20 @@ out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'
 
+if bash -c '. "$1"; runner_image_cache_suffix ""' bash "$TARGET" >"${TMPDIR}/cache-empty.out" 2>"${TMPDIR}/cache-empty.err"; then
+  fail "expected empty cache suffix target to fail"
+fi
+grep -q "missing runner image target" "${TMPDIR}/cache-empty.err" || fail "expected missing cache suffix target message"
+
 if bash -c '. "$1"; runner_image_cache_suffix powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/cache.out" 2>"${TMPDIR}/cache.err"; then
   fail "expected unsupported cache suffix target to fail"
 fi
 grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/cache.err" || fail "expected unsupported cache suffix message"
+
+if bash -c '. "$1"; runner_image_asset_suffix ""' bash "$TARGET" >"${TMPDIR}/asset-empty.out" 2>"${TMPDIR}/asset-empty.err"; then
+  fail "expected empty asset suffix target to fail"
+fi
+grep -q "missing runner image target" "${TMPDIR}/asset-empty.err" || fail "expected missing asset suffix target message"
 
 if bash -c '. "$1"; runner_image_asset_suffix powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset.out" 2>"${TMPDIR}/asset.err"; then
   fail "expected unsupported asset suffix target to fail"

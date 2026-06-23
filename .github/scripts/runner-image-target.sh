@@ -42,6 +42,10 @@ runner_image_expected_uname_m() {
     x86_64-unknown-linux-musl)
       printf '%s\n' "x86_64"
       ;;
+    *)
+      echo "missing runner image uname metadata for target: ${target}" >&2
+      return 2
+      ;;
   esac
 }
 
@@ -56,6 +60,10 @@ runner_image_cache_suffix() {
     x86_64-unknown-linux-musl)
       printf '%s\n' "x86_64-musl"
       ;;
+    *)
+      echo "missing runner image cache suffix metadata for target: ${target}" >&2
+      return 2
+      ;;
   esac
 }
 
@@ -69,6 +77,10 @@ runner_image_asset_suffix() {
       ;;
     x86_64-unknown-linux-musl)
       printf '%s\n' "x86_64-linux"
+      ;;
+    *)
+      echo "missing runner image asset suffix metadata for target: ${target}" >&2
+      return 2
       ;;
   esac
 }
