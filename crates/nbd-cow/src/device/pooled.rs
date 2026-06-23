@@ -88,6 +88,24 @@ impl From<error::NbdCowError> for PooledDestroyError {
 
 impl pool::DevicePoolHandle {
     /// Create a pooled NBD COW device.
+    ///
+    /// `base_image` is the read-only image used for reads from unchanged
+    /// blocks, `cow_file` is the sparse copy-on-write file used for dirty
+    /// blocks, and `size` is the block-device size exposed through the NBD
+    /// device.
+    ///
+    /// On success, the returned [`PooledNbdCowDevice`] owns a pool lease for a
+    /// host-global `/dev/nbdN` device. Callers must finish the lifecycle with an
+    /// explicit finalizer such as [`PooledNbdCowDevice::destroy_with_retries`],
+    /// [`PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
+    /// [`PooledNbdCowDevice::abandon`].
+    ///
+    /// This method must be awaited from a Tokio runtime. Device setup starts
+    /// async dispatch tasks and uses async pool and netlink paths.
+    ///
+    /// If creation fails after partial setup, started dispatch tasks are stopped
+    /// and any checked-out pool lease is returned only when the device state is
+    /// known clean; otherwise the lease is discarded or retired as uncertain.
     pub async fn create_cow_device(
         &self,
         base_image: &Path,
@@ -114,7 +132,23 @@ enum DestroyAttemptError {
     Storage(error::NbdCowError),
 }
 
-/// A COW device whose NBD pool ownership is tied to the device lifecycle.
+/// A COW device that owns a pooled host `/dev/nbdN` lease.
+///
+/// This value is the lifecycle owner for both the connected COW device and the
+/// pool lease. Finish every successful creation with one explicit terminal
+/// path:
+///
+/// - [`destroy_with_retries`](Self::destroy_with_retries) for normal cleanup
+///   that removes the COW file and bitmap.
+/// - [`destroy_keep_cow_with_retries`](Self::destroy_keep_cow_with_retries) to
+///   preserve the COW file and bitmap for snapshot persistence.
+/// - [`abandon`](Self::abandon) when cleanup cannot be completed reliably and
+///   the pool should treat the lease as uncertain.
+///
+/// Dropping this value is only an emergency best-effort fallback. It may discard
+/// unflushed COW writes and retires the pool lease as uncertain instead of
+/// releasing it cleanly.
+#[must_use = "pooled NBD COW devices own a /dev/nbdN lease; call an explicit finalizer"]
 pub struct PooledNbdCowDevice {
     device: NbdCowDevice,
     lease: LeaseGuard,
