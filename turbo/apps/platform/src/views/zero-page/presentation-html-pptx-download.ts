@@ -46,7 +46,7 @@ const SLIDE_SELECTORS = [
   "section",
 ] as const;
 
-export type DomToPptxOptions = {
+type DomToPptxOptions = {
   readonly fileName: string;
   readonly layout: "LAYOUT_WIDE";
   readonly skipDownload: boolean;
