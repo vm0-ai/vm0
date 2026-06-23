@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.204.0](https://github.com/vm0-ai/vm0/compare/cli-v9.203.0...cli-v9.204.0) (2026-06-23)
+
+
+### Features
+
+* add custom connector proposal flow ([#18654](https://github.com/vm0-ai/vm0/issues/18654)) ([211c963](https://github.com/vm0-ai/vm0/commit/211c9637b01ffa1764928d83cf5e079c5232a4db))
+
+
+### Refactoring
+
+* remove automation multi trigger ([#18668](https://github.com/vm0-ai/vm0/issues/18668)) ([95ef04f](https://github.com/vm0-ai/vm0/commit/95ef04fa79b65821d26fb8b74525c5b954caaa7c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.110.0
+    * @vm0/connectors bumped to 1.105.0
+    * @vm0/core bumped to 8.365.0
+
 ## [9.203.0](https://github.com/vm0-ai/vm0/compare/cli-v9.202.2...cli-v9.203.0) (2026-06-23)
 
 

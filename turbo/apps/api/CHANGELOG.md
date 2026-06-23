@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.172.0](https://github.com/vm0-ai/vm0/compare/api-v1.171.2...api-v1.172.0) (2026-06-23)
+
+
+### Features
+
+* add custom connector proposal flow ([#18654](https://github.com/vm0-ai/vm0/issues/18654)) ([211c963](https://github.com/vm0-ai/vm0/commit/211c9637b01ffa1764928d83cf5e079c5232a4db))
+
+
+### Bug Fixes
+
+* avoid rescheduling disabled automation triggers ([#18644](https://github.com/vm0-ai/vm0/issues/18644)) ([8b99d8d](https://github.com/vm0-ai/vm0/commit/8b99d8d9352570f5a07673b96158e03d796eddc6))
+* show goal briefs in continuation chat ([#18655](https://github.com/vm0-ai/vm0/issues/18655)) ([7db27d0](https://github.com/vm0-ai/vm0/commit/7db27d0d0f610d4f92bcce52f6ad8c78314f122e))
+
+
+### Refactoring
+
+* remove automation multi trigger ([#18668](https://github.com/vm0-ai/vm0/issues/18668)) ([95ef04f](https://github.com/vm0-ai/vm0/commit/95ef04fa79b65821d26fb8b74525c5b954caaa7c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.0
+    * @vm0/connectors bumped to 1.105.0
+    * @vm0/core bumped to 8.365.0
+    * @vm0/db bumped to 1.67.0
+
 ## [1.171.2](https://github.com/vm0-ai/vm0/compare/api-v1.171.1...api-v1.171.2) (2026-06-23)
 
 

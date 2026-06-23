@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.438.0](https://github.com/vm0-ai/vm0/compare/web-v12.437.3...web-v12.438.0) (2026-06-23)
+
+
+### Features
+
+* add custom connector proposal flow ([#18654](https://github.com/vm0-ai/vm0/issues/18654)) ([211c963](https://github.com/vm0-ai/vm0/commit/211c9637b01ffa1764928d83cf5e079c5232a4db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.0
+    * @vm0/core bumped to 8.365.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.105.0
+
 ## [12.437.3](https://github.com/vm0-ai/vm0/compare/web-v12.437.2...web-v12.437.3) (2026-06-23)
 
 

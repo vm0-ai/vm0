@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.0...process-control-ipc-v0.3.1) (2026-06-23)
+
+
+### Performance Improvements
+
+* reduce process-control ipc payload copies ([#18670](https://github.com/vm0-ai/vm0/issues/18670)) ([95e9670](https://github.com/vm0-ai/vm0/commit/95e9670ada6b3138e20c585cb78e57188b497440))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.2...process-control-ipc-v0.3.0) (2026-06-19)
 
 
