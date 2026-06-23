@@ -71,19 +71,34 @@ pub(crate) fn kill_and_reap_child_on_drop(
 #[cfg(target_os = "linux")]
 mod tests {
     use super::*;
+    use crate::process::read_process_stat;
     use std::time::Duration;
 
-    fn process_state(pid: u32) -> Option<char> {
-        let content = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-        let after_comm = content.rsplit_once(')')?.1;
-        after_comm.split_whitespace().next()?.chars().next()
+    async fn process_identity(pid: u32) -> Option<(char, u64)> {
+        read_process_stat(pid)
+            .await
+            .map(|stat| (stat.state, stat.starttime))
     }
 
-    async fn wait_for_process_exit(pid: u32) {
+    async fn wait_for_process_starttime(pid: u32) -> u64 {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                if process_state(pid).is_none() {
-                    break;
+                if let Some((_, starttime)) = process_identity(pid).await {
+                    return starttime;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for pid {pid} to appear"))
+    }
+
+    async fn wait_for_process_exit(pid: u32, starttime: u64) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match process_identity(pid).await {
+                    Some((_, observed_starttime)) if observed_starttime == starttime => {}
+                    _ => break,
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -92,10 +107,10 @@ mod tests {
         .unwrap_or_else(|_| panic!("timed out waiting for pid {pid} to be reaped"));
     }
 
-    async fn wait_for_process_state(pid: u32, expected_state: char) {
+    async fn wait_for_process_state(pid: u32, starttime: u64, expected_state: char) {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                if process_state(pid) == Some(expected_state) {
+                if process_identity(pid).await == Some((expected_state, starttime)) {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -114,24 +129,26 @@ mod tests {
             .spawn()
             .unwrap();
         let pid = child.id().unwrap();
+        let starttime = wait_for_process_starttime(pid).await;
         let mut child = Some(child);
 
         kill_and_reap_child_on_drop("test-running-child", &mut child);
 
         assert!(child.is_none());
-        wait_for_process_exit(pid).await;
+        wait_for_process_exit(pid, starttime).await;
     }
 
     #[tokio::test]
     async fn drop_cleanup_reaps_already_exited_child() {
         let child = tokio::process::Command::new("true").spawn().unwrap();
         let pid = child.id().unwrap();
+        let starttime = wait_for_process_starttime(pid).await;
         let mut child = Some(child);
 
-        wait_for_process_state(pid, 'Z').await;
+        wait_for_process_state(pid, starttime, 'Z').await;
         kill_and_reap_child_on_drop("test-exited-child", &mut child);
 
         assert!(child.is_none());
-        wait_for_process_exit(pid).await;
+        wait_for_process_exit(pid, starttime).await;
     }
 }
