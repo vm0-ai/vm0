@@ -60,6 +60,10 @@
       "import": "./src/firewall-runtime.ts",
       "types": "./src/firewall-runtime.ts"
     },
+    "./firewalls/selection-resolver": {
+      "import": "./src/firewall-selection-resolver.ts",
+      "types": "./src/firewall-selection-resolver.ts"
+    },
     "./firewalls/*": {
       "import": "./src/firewalls/*.ts",
       "types": "./src/firewalls/*.ts"

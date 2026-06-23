@@ -7,20 +7,9 @@ import {
 } from "./firewall-types";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
-import { getConnectorFirewall, isFirewallConnectorType } from "./firewalls";
 
 export interface FirewallSelection {
   permissions: string[] | "all";
-}
-
-function resolveBuiltinFirewallConfig(name: string): FirewallConfig {
-  const trimmed = name.trim();
-  if (trimmed.includes("/") || !isFirewallConnectorType(trimmed)) {
-    throw new Error(
-      `Unsupported firewall "${name}": only built-in connector firewalls are supported`,
-    );
-  }
-  return getConnectorFirewall(trimmed);
 }
 
 const VALID_RULE_METHODS = new Set([
@@ -181,83 +170,56 @@ export function collectAndValidatePermissions(
 }
 
 /**
- * Resolve a firewall selections map to expanded configs.
- * Pure function: takes a map of firewall names → permission selections and returns
- * fully resolved ExpandedFirewallConfig[].
- *
- * Input:  Record<name, { permissions: string[] | "all" }>
- * Output: ExpandedFirewallConfig[]
- *
+ * Resolve one already-loaded firewall config against a permission selection.
  * Validates permission names, filters api_entries to only include selected permissions,
- * and drops entries with no remaining APIs.
- *
- * @param selections - Map of firewall names to permission selections
+ * and returns null when no api_entries remain.
  */
-export async function resolveFirewallSelections(
-  selections: Record<string, FirewallSelection>,
-): Promise<ExpandedFirewallConfig[]> {
-  const expanded: ExpandedFirewallConfig[] = [];
+export function resolveFirewallConfigSelection(
+  serviceConfig: FirewallConfig,
+  selection: FirewallSelection,
+): ExpandedFirewallConfig | null {
+  const availablePermissions = collectAndValidatePermissions(serviceConfig);
 
-  const entries = Object.entries(selections);
-  if (entries.length === 0) return expanded;
-
-  const resolvedConfigs = entries.map(([name]) => {
-    return resolveBuiltinFirewallConfig(name);
-  });
-
-  for (let i = 0; i < entries.length; i++) {
-    const [, selection] = entries[i]!;
-    const serviceConfig = resolvedConfigs[i]!;
-    const availablePermissions = collectAndValidatePermissions(serviceConfig);
-
-    // Validate selected permissions exist
-    if (selection.permissions !== "all") {
-      for (const name of selection.permissions) {
-        if (!availablePermissions.has(name)) {
-          const available = [...availablePermissions].join(", ");
-          throw new Error(
-            `Permission "${name}" does not exist in firewall "${serviceConfig.name}". Available: ${available}`,
-          );
-        }
+  if (selection.permissions !== "all") {
+    for (const name of selection.permissions) {
+      if (!availablePermissions.has(name)) {
+        const available = [...availablePermissions].join(", ");
+        throw new Error(
+          `Permission "${name}" does not exist in firewall "${serviceConfig.name}". Available: ${available}`,
+        );
       }
     }
-
-    // Filter api_entries: keep only selected permissions, drop empty entries
-    const selectedSet =
-      selection.permissions === "all" ? null : new Set(selection.permissions);
-
-    const filteredApis = serviceConfig.apis
-      .map((api) => {
-        return {
-          ...api,
-          permissions: selectedSet
-            ? (api.permissions ?? []).filter((p) => {
-                return selectedSet.has(p.name);
-              })
-            : api.permissions,
-        };
-      })
-      .filter((api) => {
-        // When user picked "all", keep every api — including
-        // empty-permissions ones where auth-only injection plus
-        // unknownPolicy fallback is the intended semantics.
-        if (selectedSet === null) return true;
-        return (api.permissions ?? []).length > 0;
-      });
-
-    // Drop firewall config entirely if no api_entries remain
-    if (filteredApis.length === 0) continue;
-
-    const entry: ExpandedFirewallConfig = {
-      name: serviceConfig.name,
-      apis: filteredApis,
-    };
-    if (serviceConfig.description !== undefined)
-      entry.description = serviceConfig.description;
-    if (serviceConfig.placeholders !== undefined)
-      entry.placeholders = serviceConfig.placeholders;
-    expanded.push(entry);
   }
 
-  return expanded;
+  const selectedSet =
+    selection.permissions === "all" ? null : new Set(selection.permissions);
+
+  const filteredApis = serviceConfig.apis
+    .map((api) => {
+      return {
+        ...api,
+        permissions: selectedSet
+          ? (api.permissions ?? []).filter((p) => {
+              return selectedSet.has(p.name);
+            })
+          : api.permissions,
+      };
+    })
+    .filter((api) => {
+      // When user picked "all", keep every api, including auth-only entries.
+      if (selectedSet === null) return true;
+      return (api.permissions ?? []).length > 0;
+    });
+
+  if (filteredApis.length === 0) return null;
+
+  const entry: ExpandedFirewallConfig = {
+    name: serviceConfig.name,
+    apis: filteredApis,
+  };
+  if (serviceConfig.description !== undefined)
+    entry.description = serviceConfig.description;
+  if (serviceConfig.placeholders !== undefined)
+    entry.placeholders = serviceConfig.placeholders;
+  return entry;
 }

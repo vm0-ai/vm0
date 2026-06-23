@@ -274,7 +274,6 @@ export {
   type FirewallTemplateReferences,
   type BasicAuthTemplateArg,
   type BasicAuthTemplateMatch,
-  resolveFirewallSelections,
   collectAndValidatePermissions,
   validateRule,
   matchFirewallPath,
