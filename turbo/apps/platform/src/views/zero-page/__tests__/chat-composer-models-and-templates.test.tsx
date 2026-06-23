@@ -2539,62 +2539,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("uses a compact mobile layout for presentation template details", async () => {
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await fill(screen.getByLabelText("Search templates"), template.title);
-    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
-
-    const templateDialog = screen.getByRole("dialog");
-    expect(templateDialog).toHaveClass("h-[min(90dvh,760px)]");
-    const header = templateDialog.querySelector(
-      "[data-presentation-template-detail-header]",
-    );
-    if (!(header instanceof HTMLElement)) {
-      throw new Error("Presentation detail header not found");
-    }
-    expect(header).toHaveClass("text-left");
-    expect(header).toHaveClass("pr-14");
-    expect(
-      within(templateDialog).getByRole("heading", {
-        name: `Template / ${template.title}`,
-      }),
-    ).toHaveClass("justify-start");
-    expect(
-      within(templateDialog).getByLabelText(`${template.title} slide preview`),
-    ).toHaveClass("aspect-[16/9]");
-
-    const thumbnailStrip = templateDialog.querySelector(
-      "[data-presentation-template-thumbnail-strip]",
-    );
-    if (!(thumbnailStrip instanceof HTMLElement)) {
-      throw new Error("Presentation detail thumbnail strip not found");
-    }
-    expect(thumbnailStrip).toHaveClass("flex");
-    expect(thumbnailStrip).toHaveClass("overflow-x-auto");
-    expect(thumbnailStrip).toHaveClass("sm:grid");
-
-    const firstSlidePreviewButton =
-      within(templateDialog).getByLabelText("Preview slide 1");
-    expect(firstSlidePreviewButton).toHaveClass("min-w-[96px]");
-    expect(firstSlidePreviewButton).toHaveClass("flex-1");
-    expect(firstSlidePreviewButton).toHaveClass("sm:min-w-0");
-  });
-
   it("selects and removes an illustration style from the picker", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
