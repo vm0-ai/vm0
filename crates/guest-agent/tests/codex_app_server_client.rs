@@ -670,7 +670,7 @@ async fn codex_app_server_drop_kills_open_child() -> Result<(), String> {
     let pid = client
         .process_id()
         .ok_or_else(|| "app-server child missing pid".to_string())?;
-    let process_group = ObservedProcessGroup::from_child_pid(pid)?;
+    let process_group = wait_for_child_process_group(pid).await?;
 
     drop(client);
     wait_for_process_group_exit(process_group).await
@@ -834,32 +834,33 @@ struct ObservedProcessGroup {
 }
 
 impl ObservedProcessGroup {
-    fn from_child_pid(pid: u32) -> Result<Self, String> {
+    fn from_child_pid(pid: u32) -> Result<Option<Self>, String> {
         let pgid = i32::try_from(pid).map_err(|_| format!("child pid {pid} exceeds i32"))?;
         let current_pgid = unsafe { libc::getpgrp() };
         if pgid <= 1 || pgid == current_pgid {
             return Err(format!("refusing to observe unsafe process group {pgid}"));
         }
         let leader_identity = linux_process_identity(pid)?;
+        let group_exists = process_group_exists(pgid)?;
         if let Some(identity) = leader_identity
             && identity.process_group_id != pgid
         {
-            return Err(format!(
-                "app-server child {pid} is in process group {}, expected {pgid}",
-                identity.process_group_id
-            ));
+            return Ok(None);
         }
-        if !process_group_exists(pgid)? {
-            return Err(format!(
-                "app-server child process group {pgid} was not running before drop"
-            ));
+        if !group_exists {
+            if leader_identity.is_none() {
+                return Err(format!(
+                    "app-server child process group {pgid} was not running before drop"
+                ));
+            }
+            return Ok(None);
         }
 
-        Ok(Self {
+        Ok(Some(Self {
             pgid,
             leader_pid: pid,
             leader_identity,
-        })
+        }))
     }
 }
 
@@ -867,6 +868,21 @@ impl ObservedProcessGroup {
 struct LinuxProcessIdentity {
     process_group_id: i32,
     start_time_ticks: u64,
+}
+
+async fn wait_for_child_process_group(pid: u32) -> Result<ObservedProcessGroup, String> {
+    let deadline = tokio::time::Instant::now() + CLIENT_TIMEOUT;
+    loop {
+        if let Some(process_group) = ObservedProcessGroup::from_child_pid(pid)? {
+            return Ok(process_group);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "app-server child {pid} did not become a running process-group leader"
+            ));
+        }
+        tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
+    }
 }
 
 async fn wait_for_process_group_exit(process_group: ObservedProcessGroup) -> Result<(), String> {
