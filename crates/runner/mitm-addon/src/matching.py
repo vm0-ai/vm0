@@ -11,6 +11,7 @@ parameterized hosts are meaningful only for firewall config bases.
 import ipaddress
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
@@ -324,15 +325,14 @@ class _CompiledApiIndex(NamedTuple):
     static_buckets: Mapping[tuple[str, str, tuple[str, ...]], tuple[_CompiledApiCandidate, ...]]
 
 
+@dataclass(frozen=True, init=False, slots=True)
 class CompiledFirewallSet:
-    __slots__ = ("_api_index", "firewalls")
-
     firewalls: tuple[_CompiledFirewall, ...]
     _api_index: _CompiledApiIndex
 
     def __init__(self, firewalls: tuple[_CompiledFirewall, ...]) -> None:
-        self.firewalls = firewalls
-        self._api_index = _compile_api_candidate_index(firewalls)
+        object.__setattr__(self, "firewalls", firewalls)
+        object.__setattr__(self, "_api_index", _compile_api_candidate_index(firewalls))
 
     def __bool__(self) -> bool:
         return bool(self.firewalls)
@@ -1626,12 +1626,13 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         elif permissions_present:
             has_malformed_rules = True
 
+        compiled_permissions_tuple = tuple(compiled_permissions)
         api_cores.append(
             _CompiledApiCore(
                 api_index,
                 base,
-                tuple(compiled_permissions),
-                _compile_rule_index(tuple(compiled_permissions)),
+                compiled_permissions_tuple,
+                _compile_rule_index(compiled_permissions_tuple),
                 base_malformed,
                 auth_malformed,
                 has_malformed_rules,
