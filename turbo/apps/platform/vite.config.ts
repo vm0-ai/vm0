@@ -22,6 +22,7 @@ const STATIC_ASSETS_BASE_URL =
     : "https://static.vm7.io");
 const FIREWALL_METADATA_DETAIL_CHUNK_NAME_PREFIX =
   "vm0-firewall-metadata-detail-";
+const FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION = "v1";
 const FIREWALL_METADATA_DETAIL_MODULE_ID_RE =
   /\/packages\/connectors\/src\/firewall-metadata\/details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
 const FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE =
@@ -50,7 +51,7 @@ function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
   if (!match) {
     return null;
   }
-  return `firewall-metadata/${match[1]}.generated.js`;
+  return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
 }
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
