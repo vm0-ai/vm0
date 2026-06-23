@@ -934,6 +934,7 @@ async def test_rejects_invalid_host_authority_before_firewall_auth(
     assert flow.metadata["firewall_error"] == expected_error
     assert flow.metadata["original_url"] == expected_original_url
     auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
 
 
 @pytest.mark.parametrize(
