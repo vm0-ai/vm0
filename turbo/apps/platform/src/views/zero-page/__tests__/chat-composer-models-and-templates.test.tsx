@@ -2294,7 +2294,12 @@ describe("chat composer templates", () => {
   });
 
   it("scrolls illustration thumbnails only after clicking a variant thumbnail", async () => {
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+      return item.previewImages.length >= 4;
+    });
+    if (!illustrationTemplate) {
+      throw new Error("Illustration template with four variants not found");
+    }
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();
     const rect = ({
@@ -2392,9 +2397,11 @@ describe("chat composer templates", () => {
       throw new Error("Illustration card not found");
     }
 
-    // Clicking the rightmost visible thumbnail reveals the next thumbnail.
+    // Clicking the rightmost visible thumbnail reveals the next two thumbnails.
+    const variant1Thumbnail = within(card).getByLabelText("Show variant 1");
     const variant2Thumbnail = within(card).getByLabelText("Show variant 2");
     const variant3Thumbnail = within(card).getByLabelText("Show variant 3");
+    const variant4Thumbnail = within(card).getByLabelText("Show variant 4");
     const thumbnailStrip = variant2Thumbnail.parentElement;
     if (!thumbnailStrip) {
       throw new Error("Illustration thumbnail strip not found");
@@ -2422,16 +2429,57 @@ describe("chat composer templates", () => {
         return rect({ left: 104, right: 152 });
       },
     });
+    Object.defineProperty(variant4Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 160, right: 208 });
+      },
+    });
     click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 56 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 112 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Move to the last thumbnail without scrolling the thumbnail strip, then
+    // click left to reveal the two thumbnails before the clicked one.
+    scrollTo.mockClear();
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 190 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
+    });
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 190 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+    Object.defineProperty(thumbnailStrip, "scrollLeft", {
+      configurable: true,
+      value: 112,
+      writable: true,
+    });
+    Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: -112, right: -64 });
+      },
+    });
+    Object.defineProperty(variant3Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 0, right: 48 });
+      },
+    });
+    click(variant3Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Clicking a left-clipped thumbnail nudges the strip back just enough.
     scrollTo.mockClear();
-    const variant1Thumbnail = within(card).getByLabelText("Show variant 1");
     Object.defineProperty(thumbnailStrip, "scrollLeft", {
       configurable: true,
       value: 64,

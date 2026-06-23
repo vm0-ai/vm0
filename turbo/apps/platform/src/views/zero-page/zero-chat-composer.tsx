@@ -4462,8 +4462,27 @@ function preloadIllustrationVariant(
   );
 }
 
+type IllustrationThumbnailScrollDirection = -1 | 1;
+
+function illustrationThumbnailScrollTarget(
+  node: HTMLElement,
+  direction: IllustrationThumbnailScrollDirection,
+): HTMLElement {
+  let target = node;
+  for (let i = 0; i < 2; i += 1) {
+    const sibling =
+      direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+    if (!(sibling instanceof HTMLElement)) {
+      break;
+    }
+    target = sibling;
+  }
+  return target;
+}
+
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
+  direction: IllustrationThumbnailScrollDirection,
 ): void {
   if (node === null) {
     return;
@@ -4477,21 +4496,20 @@ function scrollIllustrationThumbnailIntoView(
   }
 
   const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
-  const thumbnailRect = node.getBoundingClientRect();
+  const target = illustrationThumbnailScrollTarget(node, direction);
+  const targetRect = target.getBoundingClientRect();
 
-  const leftOverflow = thumbnailStripRect.left - thumbnailRect.left;
-  if (leftOverflow > 0) {
-    thumbnailStrip.scrollTo({
-      left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
-    });
+  if (direction < 0) {
+    const leftOverflow = thumbnailStripRect.left - targetRect.left;
+    if (leftOverflow > 0) {
+      thumbnailStrip.scrollTo({
+        left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+      });
+    }
     return;
   }
 
-  const nextThumbnail = node.nextElementSibling;
-  const rightTarget =
-    nextThumbnail instanceof HTMLElement ? nextThumbnail : node;
-  const rightTargetRect = rightTarget.getBoundingClientRect();
-  const rightOverflow = rightTargetRect.right - thumbnailStripRect.right;
+  const rightOverflow = targetRect.right - thumbnailStripRect.right;
   if (rightOverflow > 0) {
     thumbnailStrip.scrollTo({
       left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),
@@ -4579,7 +4597,10 @@ function IllustrationTemplateCard({
                     onVariantChange,
                   });
                   if (!active) {
-                    scrollIllustrationThumbnailIntoView(event.currentTarget);
+                    scrollIllustrationThumbnailIntoView(
+                      event.currentTarget,
+                      index > safeIndex ? 1 : -1,
+                    );
                   }
                 }}
               >
