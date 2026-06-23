@@ -895,6 +895,12 @@ async fn wait_for_process_group_exit(process_group: ObservedProcessGroup) -> Res
             unsafe {
                 libc::kill(-process_group.pgid, libc::SIGKILL);
             }
+            let cleanup_deadline = tokio::time::Instant::now() + CLIENT_TIMEOUT;
+            while !process_group_exited(process_group)?
+                && tokio::time::Instant::now() < cleanup_deadline
+            {
+                tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
+            }
             return Err(format!(
                 "process group {} for app-server child {} did not exit",
                 process_group.pgid, process_group.leader_pid
