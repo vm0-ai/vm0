@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.6...runner-rs-v0.129.7) (2026-06-23)
+
+
+### Bug Fixes
+
+* use resource permissions for Strava firewall ([#18700](https://github.com/vm0-ai/vm0/issues/18700)) ([045ae46](https://github.com/vm0-ai/vm0/commit/045ae462afcd25d23ce07e511289e89ad5fafe1b))
+
 ## [0.129.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.5...runner-rs-v0.129.6) (2026-06-23)
 
 
