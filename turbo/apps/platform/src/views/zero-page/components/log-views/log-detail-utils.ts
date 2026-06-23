@@ -1012,6 +1012,30 @@ function normalizeEventsForGrouping(events: AgentEvent[]): AgentEvent[] {
   return normalizedEvents;
 }
 
+function isUnambiguousCodexEventType(eventType: string | undefined): boolean {
+  return (
+    eventType === "thread.started" ||
+    eventType === "turn.started" ||
+    eventType === "turn.completed" ||
+    eventType === "turn.failed" ||
+    eventType === "turn.plan.updated" ||
+    eventType?.startsWith("item.") === true
+  );
+}
+
+function shouldNormalizeCodexEvents(
+  events: AgentEvent[],
+  framework: string | null | undefined,
+): boolean {
+  if (framework) {
+    return framework === "codex";
+  }
+
+  return events.some((event) => {
+    return isUnambiguousCodexEventType(getCodexEventType(event));
+  });
+}
+
 /**
  * Shape of task-related system event data (task_started, task_notification, task_progress).
  */
@@ -1557,6 +1581,7 @@ function processUserEvent(
  */
 export function groupEventsIntoMessages(
   events: AgentEvent[],
+  framework?: string | null,
 ): GroupedMessage[] {
   const sorted = [...events].sort((a, b) => {
     return a.sequenceNumber - b.sequenceNumber;
@@ -1579,7 +1604,11 @@ export function groupEventsIntoMessages(
     taskByToolUseId: new Map(),
   };
 
-  for (const event of normalizeEventsForGrouping(deduped)) {
+  const groupingEvents = shouldNormalizeCodexEvents(deduped, framework)
+    ? normalizeEventsForGrouping(deduped)
+    : deduped;
+
+  for (const event of groupingEvents) {
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {

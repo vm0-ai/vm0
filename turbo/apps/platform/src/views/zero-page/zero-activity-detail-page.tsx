@@ -360,7 +360,7 @@ function prepareRenderData(
   features: Record<FeatureSwitchKey, boolean> | undefined,
 ) {
   const events: AgentEvent[] = rawEvents ?? [];
-  const allMessages = groupEventsIntoMessages(events);
+  const allMessages = groupEventsIntoMessages(events, detail.framework);
   const visibleMessages = allMessages.filter((message, index) => {
     return isVisibleMessage(message, allMessages[index + 1], detail.framework);
   });

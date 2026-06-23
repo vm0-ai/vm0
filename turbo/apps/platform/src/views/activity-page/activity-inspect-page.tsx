@@ -130,12 +130,12 @@ function StepsTab({
 }) {
   const stepSearch = useGet(inspectStepSearch$);
   const setStepSearch = useSet(setInspectStepSearch$);
-  const { events, prompt, appendSystemPrompt } = prepared;
+  const { detail, events, prompt, appendSystemPrompt } = prepared;
   const showSystemPrompt = appendSystemPrompt.trim().length > 0;
 
-  const allMessages = groupEventsIntoMessages(events);
+  const allMessages = groupEventsIntoMessages(events, detail.framework);
   const visibleMessages = allMessages.filter((message, index) => {
-    return isVisibleMessage(message, allMessages[index + 1]);
+    return isVisibleMessage(message, allMessages[index + 1], detail.framework);
   });
   const messages = visibleMessages.filter((m) => {
     return groupedMessageMatchesSearch(m, stepSearch.trim());

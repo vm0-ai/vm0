@@ -521,6 +521,15 @@ function complexGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 12,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        message: "Non-Codex raw error should not render as Codex",
+      },
+      createdAt: "2026-03-10T16:00:12Z",
+    },
+    {
+      sequenceNumber: 13,
       eventType: "result",
       eventData: {
         type: "result",
@@ -1781,6 +1790,9 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Release automation still needs a deploy token."),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Non-Codex raw error should not render as Codex"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows edge-shaped grouped steps", async () => {
