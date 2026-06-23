@@ -4,7 +4,7 @@
 //! never reaches (default SIGTERM handler terminates its mock).
 //!
 //! This is the only coverage for the SigkillPending match arm and the
-//! `libc::kill(-pid, SIGKILL)` call in `cli.rs`.
+//! process-group SIGKILL escalation path in `cli`.
 //!
 //! See: https://github.com/vm0-ai/vm0/issues/10879
 
