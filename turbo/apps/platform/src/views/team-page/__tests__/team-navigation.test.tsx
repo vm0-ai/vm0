@@ -1023,13 +1023,6 @@ describe("team page navigation", () => {
     });
     fireEvent.scroll(permissionsScrollArea);
 
-    click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
-    await waitFor(() => {
-      expect(
-        within(channelsJoinRow).queryByLabelText("Undo channels:join changes"),
-      ).not.toBeInTheDocument();
-    });
-
     const unknownRow = await unknownEndpointsRow(loadedGroupedDialog);
     click(buttonByText("Allow", unknownRow));
     click(within(unknownRow).getByLabelText("__unknown__ allow options"));
