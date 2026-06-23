@@ -2924,6 +2924,7 @@ function TemplatePreviewFrames({
             }
             src={frameUrl}
             sandbox="allow-same-origin"
+            tabIndex={-1}
             className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
             onLoad={(event) => {
               revealTemplatePreviewFrameAfterPaint({
@@ -3546,6 +3547,7 @@ function TemplatePreviewPage({
               data-testid={`${item.title} detail HTML preview`}
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
+              tabIndex={-1}
               className="pointer-events-none aspect-[16/9] w-full border-0 bg-background"
             />
             <button
@@ -5207,6 +5209,7 @@ function SelectedPresentationTemplateChipPreview({
       title={`${item.title} selected template preview`}
       src={htmlPreview.frameUrl}
       sandbox="allow-same-origin"
+      tabIndex={-1}
       className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
     />
   ) : (

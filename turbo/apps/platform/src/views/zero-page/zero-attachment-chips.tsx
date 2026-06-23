@@ -745,6 +745,8 @@ function ArtifactDialogHtmlBody({
     publicAttachmentUrl(preview.url),
     presentationHtmlRefreshVersion,
   );
+  const isPresentationHtml =
+    preview.artifact?.artifactKind === "presentation-html";
 
   return (
     <div
@@ -753,10 +755,11 @@ function ArtifactDialogHtmlBody({
     >
       <AutoFocusedArtifactIframe
         focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
-        focusOnMount
+        focusOnMount={!isPresentationHtml}
         src={src}
         title={`${filename} preview`}
         sandbox="allow-same-origin allow-scripts"
+        tabIndex={isPresentationHtml ? -1 : undefined}
         scrolling="yes"
         className="block h-full w-full border-0 bg-background"
         data-testid="artifact-dialog-body-html"

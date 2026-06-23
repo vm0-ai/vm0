@@ -1646,6 +1646,7 @@ describe("chat composer templates", () => {
           screen.getByTestId(`${template.title} card HTML preview`),
         ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
       });
+      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
       const firstPreviewHtml = await htmlForFrame(currentPreviewFrame());
       expect(firstPreviewHtml).toContain("Slide one");
       expect(firstPreviewHtml).toContain("--accent:#FF7A1A");
@@ -2102,6 +2103,10 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByText("1 of 15")).toBeInTheDocument();
     });
+    const detailPreviewFrame = screen.getByTestId(
+      `${template.title} detail HTML preview`,
+    );
+    expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
