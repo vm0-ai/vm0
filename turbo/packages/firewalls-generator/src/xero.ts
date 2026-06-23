@@ -76,6 +76,36 @@ interface NarrowedRule {
   readonly rule: string;
 }
 
+const READ_METHODS = new Set(["GET", "HEAD"]);
+
+const LEGACY_BROAD_SCOPES = new Set([
+  "accounting.attachments",
+  "accounting.attachments.read",
+  "accounting.contacts",
+  "accounting.contacts.read",
+  "accounting.reports.read",
+  "accounting.settings",
+  "accounting.settings.read",
+  "accounting.transactions",
+  "accounting.transactions.read",
+  "assets",
+  "assets.read",
+  "files",
+  "files.read",
+  "payroll.employees",
+  "payroll.employees.read",
+  "payroll.payruns",
+  "payroll.payruns.read",
+  "payroll.payslip",
+  "payroll.payslip.read",
+  "payroll.settings",
+  "payroll.settings.read",
+  "payroll.timesheets",
+  "payroll.timesheets.read",
+  "projects",
+  "projects.read",
+]);
+
 const INCLUDED_SCOPELESS = new Map<string, IncludedScopelessEndpoint>([
   // Identity endpoints use openid scopes (not OAuth2) but still need
   // Bearer token auth. Required to retrieve tenant IDs before any
@@ -117,9 +147,105 @@ function narrowRuleToBasePath(
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
+interface XeroScopePriority {
+  readonly isGranular: boolean;
+  readonly segmentCount: number;
+}
+
 interface ParsedSpec {
   baseUrl: string;
   paths: Record<string, Record<string, XeroOperation>>;
+}
+
+function isReadScope(scope: string): boolean {
+  return scope.endsWith(".read");
+}
+
+function methodFromRule(rule: string): string {
+  const spaceIndex = rule.indexOf(" ");
+  if (spaceIndex === -1) {
+    throw new Error(`Malformed Xero rule: ${rule}`);
+  }
+  return rule.slice(0, spaceIndex);
+}
+
+function xeroScopePriority(scope: string): XeroScopePriority {
+  return {
+    isGranular: !LEGACY_BROAD_SCOPES.has(scope),
+    segmentCount: scope.split(".").length,
+  };
+}
+
+function compareXeroScopePriority(
+  left: XeroScopePriority,
+  right: XeroScopePriority,
+): number {
+  if (left.isGranular !== right.isGranular) {
+    return left.isGranular ? 1 : -1;
+  }
+  return left.segmentCount - right.segmentCount;
+}
+
+function pickMostSpecificScope(
+  scopes: readonly string[],
+  rule: string,
+): string {
+  const ranked = scopes
+    .map((scope) => {
+      return { scope, priority: xeroScopePriority(scope) };
+    })
+    .sort((left, right) => {
+      const priorityDifference = compareXeroScopePriority(
+        right.priority,
+        left.priority,
+      );
+      if (priorityDifference !== 0) return priorityDifference;
+      return left.scope.localeCompare(right.scope);
+    });
+
+  const first = ranked[0];
+  if (!first) {
+    throw new Error(`No Xero scopes available for ${rule}`);
+  }
+
+  const second = ranked[1];
+  if (
+    second &&
+    compareXeroScopePriority(first.priority, second.priority) === 0
+  ) {
+    throw new Error(
+      `Ambiguous Xero scope owner for ${rule}: ${scopes.join(", ")}`,
+    );
+  }
+
+  return first.scope;
+}
+
+export function pickPrimaryXeroScope(
+  scopes: readonly string[],
+  rule: string,
+): string {
+  const uniqueScopes = [...new Set(scopes)];
+  if (uniqueScopes.length === 0) {
+    throw new Error(`No Xero scopes available for ${rule}`);
+  }
+  if (uniqueScopes.length === 1) {
+    return uniqueScopes[0]!;
+  }
+
+  const method = methodFromRule(rule);
+  const readScopes = uniqueScopes.filter(isReadScope);
+  const nonReadScopes = uniqueScopes.filter((scope) => {
+    return !isReadScope(scope);
+  });
+  const candidates =
+    READ_METHODS.has(method) && readScopes.length > 0
+      ? readScopes
+      : nonReadScopes.length > 0
+        ? nonReadScopes
+        : readScopes;
+
+  return pickMostSpecificScope(candidates, rule);
 }
 
 function addRule(
@@ -139,6 +265,41 @@ function addRule(
     baseMap.set(baseUrl, ruleSet);
   }
   ruleSet.add(rule);
+}
+
+function assertUniqueHostRules(
+  hostGroups: Map<string, PermissionGroup[]>,
+): void {
+  const duplicates: string[] = [];
+  for (const [baseUrl, permissions] of hostGroups) {
+    const owners = new Map<string, string>();
+    for (const permission of permissions) {
+      for (const rule of permission.rules) {
+        const existing = owners.get(rule);
+        if (existing) {
+          duplicates.push(
+            `${baseUrl} ${rule}: ${existing}, ${permission.name}`,
+          );
+          continue;
+        }
+        owners.set(rule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Xero generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((a, b) => {
+            return a.localeCompare(b);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
 }
 
 function buildGroups(specs: ParsedSpec[]): {
@@ -190,12 +351,8 @@ function buildGroups(specs: ParsedSpec[]): {
           continue;
         }
 
-        // Add the rule under every listed scope. Xero lists both write
-        // and read-only scopes for read endpoints (OR semantics), so the
-        // rule must appear in both groups.
-        for (const scope of scopes) {
-          addRule(groups, scope, spec.baseUrl, rule);
-        }
+        const primaryScope = pickPrimaryXeroScope(scopes, rule);
+        addRule(groups, primaryScope, spec.baseUrl, rule);
       }
     }
   }
@@ -230,6 +387,8 @@ function buildGroups(specs: ParsedSpec[]): {
       hostGroups.set(baseUrl, permissions);
     }
   }
+
+  assertUniqueHostRules(hostGroups);
 
   return { hostGroups, scopeless: unknownScopeless };
 }
