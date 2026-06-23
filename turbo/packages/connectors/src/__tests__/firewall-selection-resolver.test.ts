@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveFirewallSelections } from "../firewall-selection-resolver";
+import { resolveFirewallSelections } from "@vm0/connectors/firewalls/selection-resolver";
 
 describe("resolveFirewallSelections", () => {
   it("should resolve builtin firewall with permissions: all", async () => {
@@ -30,6 +30,15 @@ describe("resolveFirewallSelections", () => {
     });
     expect(permNames).toContain("read");
     expect(permNames).toContain("write");
+  });
+
+  it("should trim builtin firewall names before resolution", async () => {
+    const expanded = await resolveFirewallSelections({
+      " brex ": { permissions: ["read"] },
+    });
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.name).toBe("brex");
   });
 
   it("should include placeholders and description when config has them", async () => {
