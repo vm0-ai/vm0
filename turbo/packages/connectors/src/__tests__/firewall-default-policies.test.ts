@@ -351,7 +351,7 @@ describe("permissionGrantsToFirewallPolicies", () => {
       permissionGrantsToFirewallPolicies([
         {
           connectorRef: "slack",
-          permission: "channels:write",
+          permission: "chat:write",
           action: "allow",
         },
         {
@@ -362,7 +362,7 @@ describe("permissionGrantsToFirewallPolicies", () => {
       ]),
     ).toStrictEqual({
       slack: {
-        policies: { "channels:write": "allow" },
+        policies: { "chat:write": "allow" },
         unknownPolicy: "deny",
       },
     });

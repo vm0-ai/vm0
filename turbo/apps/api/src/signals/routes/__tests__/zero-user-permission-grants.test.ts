@@ -35,7 +35,8 @@ const mocks = createZeroRouteMocks(context);
 
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const SLACK_CONNECTOR = "slack";
-const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_READ_PERMISSION = "conversations:read";
+const SLACK_HISTORY_PERMISSION = "conversations:history";
 const SLACK_WRITE_PERMISSION = "chat:write";
 
 async function seedMember(args: {
@@ -539,7 +540,7 @@ describe("zero user permission grants", () => {
         userId: fixture.userId,
         agentId,
         connectorRef: SLACK_CONNECTOR,
-        permission: "channels:history",
+        permission: SLACK_HISTORY_PERMISSION,
         action: "deny",
       },
       {
@@ -602,7 +603,7 @@ describe("zero user permission grants", () => {
         userId: fixture.userId,
         agentId,
         connectorRef: SLACK_CONNECTOR,
-        permission: "channels:history",
+        permission: SLACK_HISTORY_PERMISSION,
       }),
     ).resolves.toMatchObject({ action: "deny" });
     await expect(
@@ -734,7 +735,7 @@ describe("zero user permission grants", () => {
         userId: fixture.userId,
         agentId,
         connectorRef: SLACK_CONNECTOR,
-        permission: "channels:history",
+        permission: SLACK_HISTORY_PERMISSION,
         action: "deny",
       },
     ]);
@@ -776,7 +777,7 @@ describe("zero user permission grants", () => {
         userId: fixture.userId,
         agentId,
         connectorRef: SLACK_CONNECTOR,
-        permission: "channels:history",
+        permission: SLACK_HISTORY_PERMISSION,
       }),
     ).resolves.toBeNull();
   });
@@ -831,7 +832,7 @@ describe("zero user permission grants", () => {
         userId: fixture.userId,
         agentId,
         connectorRef: SLACK_CONNECTOR,
-        permission: "channels:history",
+        permission: SLACK_HISTORY_PERMISSION,
         action: "allow",
         expiresAt: checkedAt,
       },

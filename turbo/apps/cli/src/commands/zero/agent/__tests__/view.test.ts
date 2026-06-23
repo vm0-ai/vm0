@@ -48,7 +48,7 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "comp_abc123",
     connectorRef: "slack",
-    permission: "channels:read",
+    permission: "conversations:read",
     action: "allow",
     expiresAt: null,
     createdAt: "2025-01-01T00:00:00Z",
@@ -297,7 +297,7 @@ describe("zero agent view command", () => {
         ),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
-            permission: "channels:read",
+            permission: "conversations:read",
             action: "allow",
           }),
           makePermissionGrant({
