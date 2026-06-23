@@ -656,6 +656,10 @@ function normalizeCodexCommandEvent(
   return null;
 }
 
+function hasCodexToolItemId(item: CodexItem): boolean {
+  return Boolean(item.id?.trim());
+}
+
 function isCodexCommandExecutionError(item: CodexItem): boolean {
   if (item.status === "failed" || item.status === "declined") {
     return true;
@@ -717,6 +721,28 @@ function normalizeCodexFileReadEvent(
   return null;
 }
 
+function normalizeCodexToolItemEvent(
+  event: AgentEvent,
+  codexType: string,
+  item: CodexItem,
+): AgentEvent | null {
+  if (!hasCodexToolItemId(item)) {
+    return null;
+  }
+
+  const normalized =
+    item.type === "command_execution"
+      ? normalizeCodexCommandEvent(event, codexType, item)
+      : item.type === "file_read"
+        ? normalizeCodexFileReadEvent(event, codexType, item)
+        : normalizeCodexFileMutationEvent(event, codexType, item);
+
+  return (
+    normalized ??
+    makeCodexAssistantTextEvent(event, formatGenericCodexItem(codexType, item))
+  );
+}
+
 function normalizeCodexItemEvent(
   event: AgentEvent,
   codexType: string,
@@ -755,32 +781,14 @@ function normalizeCodexItemEvent(
           );
     }
     case "command_execution": {
-      return (
-        normalizeCodexCommandEvent(event, codexType, item) ??
-        makeCodexAssistantTextEvent(
-          event,
-          formatGenericCodexItem(codexType, item),
-        )
-      );
+      return normalizeCodexToolItemEvent(event, codexType, item);
     }
     case "file_edit":
     case "file_write": {
-      return (
-        normalizeCodexFileMutationEvent(event, codexType, item) ??
-        makeCodexAssistantTextEvent(
-          event,
-          formatGenericCodexItem(codexType, item),
-        )
-      );
+      return normalizeCodexToolItemEvent(event, codexType, item);
     }
     case "file_read": {
-      return (
-        normalizeCodexFileReadEvent(event, codexType, item) ??
-        makeCodexAssistantTextEvent(
-          event,
-          formatGenericCodexItem(codexType, item),
-        )
-      );
+      return normalizeCodexToolItemEvent(event, codexType, item);
     }
     case "file_change": {
       return codexType === "item.completed"
@@ -1313,10 +1321,10 @@ function processAssistantEvent(
   }
 
   // Create standalone todo card for each TodoWrite
-  for (const todoOp of todoWriteOps) {
+  for (const [todoIndex, todoOp] of todoWriteOps.entries()) {
     const todoMessage: GroupedMessage = {
       type: "todo",
-      sequenceNumber: event.sequenceNumber + 0.01,
+      sequenceNumber: event.sequenceNumber + (todoIndex + 1) / 1_000_000,
       createdAt: event.createdAt,
       todoState: Array.from(ctx.todoState.values()),
       eventData: {},

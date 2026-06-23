@@ -651,6 +651,19 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
                 ],
               },
             },
+            {
+              type: "tool_use",
+              id: "tool-second-todos",
+              name: "TodoWrite",
+              input: {
+                todos: [
+                  {
+                    content: "Queue release owner approval",
+                    status: "pending",
+                  },
+                ],
+              },
+            },
           ],
         },
       },
@@ -1153,6 +1166,44 @@ function codexFallbackActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 7,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          type: "command_execution",
+          command: "echo missing-id",
+        },
+      },
+      createdAt: "2026-03-10T15:30:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          aggregated_output: "missing id output",
+          exit_code: 0,
+        },
+      },
+      createdAt: "2026-03-10T15:30:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          id: " ",
+          type: "file_read",
+          path: "src/blank-id.ts",
+        },
+      },
+      createdAt: "2026-03-10T15:30:10Z",
+    },
+    {
+      sequenceNumber: 10,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
@@ -1165,19 +1216,19 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           output_tokens: 2,
         },
       },
-      createdAt: "2026-03-10T15:30:08Z",
+      createdAt: "2026-03-10T15:30:11Z",
     },
     {
-      sequenceNumber: 8,
+      sequenceNumber: 11,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
         message: "Codex failed with message-only detail.",
       },
-      createdAt: "2026-03-10T15:30:09Z",
+      createdAt: "2026-03-10T15:30:12Z",
     },
     {
-      sequenceNumber: 9,
+      sequenceNumber: 12,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1186,7 +1237,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           additional_details: "stdio closed",
         },
       },
-      createdAt: "2026-03-10T15:30:10Z",
+      createdAt: "2026-03-10T15:30:13Z",
     },
   ];
 }
@@ -1704,9 +1755,12 @@ describe("activity detail polling", () => {
       screen.getAllByText(/Ask release assistant to verify the deployment/u),
     ).not.toHaveLength(0);
     expect(
-      screen.getByText('{"value":"object todo content"}'),
-    ).toBeInTheDocument();
+      screen.getAllByText('{"value":"object todo content"}'),
+    ).not.toHaveLength(0);
     expect(screen.getAllByText("Recover release queue")).not.toHaveLength(0);
+    expect(
+      screen.getAllByText("Queue release owner approval"),
+    ).not.toHaveLength(0);
     expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
     expect(
       screen.getByText(
@@ -2361,6 +2415,9 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Read")).not.toHaveLength(0);
     expect(screen.getByText("src/edge.ts")).toBeInTheDocument();
     expect(screen.getByText("File read completed")).toBeInTheDocument();
+    expect(screen.queryByText("echo missing-id")).not.toBeInTheDocument();
+    expect(screen.queryByText("missing id output")).not.toBeInTheDocument();
+    expect(screen.queryByText("src/blank-id.ts")).not.toBeInTheDocument();
     expect(
       screen.getByText("Codex build failed before retry. (quota exhausted)"),
     ).toBeInTheDocument();
