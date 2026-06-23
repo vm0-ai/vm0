@@ -27,6 +27,8 @@ _ASYMMETRIC_ALGORITHM = "AWS4-ECDSA-P256-SHA256"
 _S3_SIGNING_NAMES = frozenset(("s3", "s3-outposts", "s3-object-lambda"))
 _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME = "s3express"
 _STREAMING_PAYLOAD_PREFIX = "STREAMING-"
+_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD"
+_SHA256_HEX_LENGTH = 64
 _CREDENTIAL_SCOPE_PARTS = 5
 _AUTH_HEADER_PARAM_NAMES = frozenset(("Credential", "SignedHeaders", "Signature"))
 _QUERY_SIGNING_PARAM_NAMES = frozenset(
@@ -47,6 +49,7 @@ _AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
 _PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+_LOWER_HEX_DIGITS = frozenset("0123456789abcdef")
 _HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
 _RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
@@ -485,31 +488,55 @@ def _normalize_header_value(value: str) -> str:
 
 
 def _payload_hash(headers: list[tuple[str, str]], body: bytes | None) -> str:
-    header_value = _unique_header_value(
-        headers,
-        "x-amz-content-sha256",
-        "AWS content hash header is ambiguous",
-    )
-    if header_value:
-        if header_value.startswith(_STREAMING_PAYLOAD_PREFIX):
-            raise AwsSigV4SigningError("AWS streaming payload signing is not supported")
+    header_value = _content_hash_header_value(headers)
+    if header_value is not None:
         return header_value
     return hashlib.sha256(body or b"").hexdigest()
 
 
 def _query_payload_hash(headers: list[tuple[str, str]], body: bytes | None, is_s3: bool) -> str:
+    header_value = _content_hash_header_value(headers)
+    if header_value is not None:
+        return header_value
+    if is_s3:
+        return _UNSIGNED_PAYLOAD
+    return hashlib.sha256(body or b"").hexdigest()
+
+
+def _content_hash_header_value(headers: list[tuple[str, str]]) -> str | None:
     header_value = _unique_header_value(
         headers,
         "x-amz-content-sha256",
         "AWS content hash header is ambiguous",
     )
-    if header_value:
-        if header_value.startswith(_STREAMING_PAYLOAD_PREFIX):
-            raise AwsSigV4SigningError("AWS streaming payload signing is not supported")
-        return header_value
-    if is_s3:
-        return "UNSIGNED-PAYLOAD"
-    return hashlib.sha256(body or b"").hexdigest()
+    if header_value is None:
+        return None
+    if _has_content_hash_invalid_text(header_value):
+        raise AwsSigV4SigningError("AWS content hash header contains invalid text")
+
+    normalized = _normalize_header_value(header_value)
+    if not normalized:
+        raise AwsSigV4SigningError("AWS content hash header is empty")
+    if normalized.startswith(_STREAMING_PAYLOAD_PREFIX):
+        raise AwsSigV4SigningError("AWS streaming payload signing is not supported")
+    if normalized == _UNSIGNED_PAYLOAD:
+        return normalized
+    if _is_sha256_hex_digest(normalized):
+        return normalized
+    raise AwsSigV4SigningError("Unsupported AWS content hash header")
+
+
+def _is_sha256_hex_digest(value: str) -> bool:
+    return len(value) == _SHA256_HEX_LENGTH and all(char in _LOWER_HEX_DIGITS for char in value)
+
+
+def _has_content_hash_invalid_text(value: str) -> bool:
+    return any(
+        ord(char) > _ASCII_DELETE
+        or (ord(char) <= _ASCII_CONTROL_MAX and char != "\t")
+        or ord(char) == _ASCII_DELETE
+        for char in value
+    )
 
 
 def _signature(

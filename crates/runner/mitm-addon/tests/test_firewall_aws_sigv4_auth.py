@@ -1333,6 +1333,45 @@ async def test_header_sigv4_with_duplicate_content_hash_fails_closed(
     assert "AWS content hash header is ambiguous" in flow.response.json()["message"]
 
 
+async def test_header_sigv4_with_empty_content_hash_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(_auth_response())
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            ("X-Amz-Content-Sha256", ""),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    _prepare_firewall_request(flow)
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "AWS content hash header is empty" in flow.response.json()["message"]
+
+
 async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, mitm_ctx):
     endpoint = FakeAuthEndpoint()
     endpoint.queue_json_response(_auth_response())

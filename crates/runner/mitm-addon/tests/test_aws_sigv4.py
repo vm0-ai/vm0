@@ -27,6 +27,21 @@ def _header_auth_headers() -> list[tuple[str, str]]:
     ]
 
 
+def _header_auth_headers_with_content_hash(value: str) -> list[tuple[str, str]]:
+    return [
+        (
+            "Authorization",
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+            "SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
+            "Signature=placeholder",
+        ),
+        ("X-Amz-Date", "20260101T000000Z"),
+        ("X-Amz-Content-Sha256", value),
+        ("Host", "sts.amazonaws.com"),
+    ]
+
+
 def _presigned_url(host: str) -> str:
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
@@ -265,6 +280,118 @@ def test_invalid_port_keeps_specific_signing_error() -> None:
             method="GET",
             url="https://sts.amazonaws.com:bad/",
             headers=_header_auth_headers(),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize("header_value", ["", " \t  "])
+def test_header_auth_empty_content_hash_header_raises_signing_error(
+    header_value: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS content hash header is empty"):
+        sign_request(
+            method="POST",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_content_hash(header_value),
+            body=b"hello",
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize("header_value", ["placeholder-hash", "A" * 64])
+def test_header_auth_invalid_content_hash_header_raises_signing_error(
+    header_value: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="Unsupported AWS content hash header"):
+        sign_request(
+            method="POST",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_content_hash(header_value),
+            body=b"hello",
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize(
+    "header_value",
+    [
+        "a" * 64 + "\n",
+        "UNSIGNED-PAYLOAD\r",
+        "a" * 64 + "\u00a0",
+        "\uff41" * 64,
+    ],
+)
+def test_header_auth_non_ascii_or_control_content_hash_header_raises_signing_error(
+    header_value: str,
+) -> None:
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match="AWS content hash header contains invalid text",
+    ):
+        sign_request(
+            method="POST",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_content_hash(header_value),
+            body=b"hello",
+            credentials=_credentials(),
+        )
+
+
+def test_header_auth_streaming_content_hash_header_raises_signing_error() -> None:
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match="AWS streaming payload signing is not supported",
+    ):
+        sign_request(
+            method="POST",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_content_hash(
+                "STREAMING-AWS4-HMAC-SHA256-PAYLOAD",
+            ),
+            body=b"hello",
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize("header_value", ["a" * 64, "UNSIGNED-PAYLOAD", " \t" + "a" * 64 + "\t "])
+def test_header_auth_supported_content_hash_header_signs(header_value: str) -> None:
+    _url, headers = sign_request(
+        method="POST",
+        url="https://sts.amazonaws.com/",
+        headers=_header_auth_headers_with_content_hash(header_value),
+        body=b"hello",
+        credentials=_credentials(),
+    )
+
+    authorization = {name.lower(): value for name, value in headers}["authorization"]
+    assert "Credential=AKIDEXAMPLE/" in authorization
+    assert "x-amz-content-sha256" in authorization
+
+
+def test_presigned_query_invalid_content_hash_header_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="Unsupported AWS content hash header"):
+        sign_request(
+            method="GET",
+            url=_presigned_url("sts.amazonaws.com"),
+            headers=[
+                ("Host", "sts.amazonaws.com"),
+                ("X-Amz-Content-Sha256", "placeholder-hash"),
+            ],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_presigned_query_empty_content_hash_header_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS content hash header is empty"):
+        sign_request(
+            method="GET",
+            url=_presigned_url("sts.amazonaws.com"),
+            headers=[
+                ("Host", "sts.amazonaws.com"),
+                ("X-Amz-Content-Sha256", ""),
+            ],
             body=None,
             credentials=_credentials(),
         )
