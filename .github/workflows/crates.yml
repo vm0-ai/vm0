@@ -79,9 +79,8 @@ jobs:
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
-      metal-host: ${{ steps.host.outputs.host }}
-      metal-job-ref: ${{ steps.host.outputs.job-ref }}
-      runner-image-job-ref: ${{ steps.host.outputs.image-job-ref }}
+      metal-job-ref: ${{ steps.runner-job-ref.outputs.job-ref }}
+      runner-image-job-ref: ${{ steps.runner-job-ref.outputs.image-job-ref }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -206,8 +205,8 @@ jobs:
           GUEST_WRITE_FILE_CHANGED: ${{ steps.detect.outputs.guest-write-file-changed }}
         run: .github/scripts/runner-image-context.sh crates-consumer
 
-      - name: Select metal host
-        id: host
+      - name: Select runner job refs
+        id: runner-job-ref
         env:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           EVENT_NAME: ${{ github.event_name }}
@@ -259,18 +258,65 @@ jobs:
           HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep . || true)
           NUM_HOSTS=$(echo "$HOSTS" | grep -c . || true)
           if [ "$NUM_HOSTS" -lt 1 ]; then
-            echo "No metal hosts configured, skipping host selection"
+            echo "No metal hosts configured, skipping runner job refs"
             exit 0
           fi
-          HASH=$(printf '%s' "$JOB_REF" | md5sum | cut -c1-8)
-          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
-          HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
           {
-            echo "host=${HOST}"
             echo "job-ref=${JOB_REF}"
             echo "image-job-ref=${IMAGE_JOB_REF}"
           } >> "$GITHUB_OUTPUT"
-          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF}, image-job-ref: ${IMAGE_JOB_REF})"
+          echo "Selected runner job refs: job-ref=${JOB_REF}, image-job-ref=${IMAGE_JOB_REF}"
+
+  runner-host-groups:
+    runs-on: ubuntu-latest
+    needs: [detect]
+    if: |
+      needs.detect.outputs.metal-job-ref != '' && (
+        needs.detect.outputs.crates-runner-consumer-needed == 'true' ||
+        needs.detect.outputs.ci-changed == 'true' ||
+        needs.detect.outputs.nbd-cow-changed == 'true'
+      )
+    timeout-minutes: 5
+    outputs:
+      # Keep cross-job architecture metadata sanitized. Jobs that need hosts
+      # resolve the host subset from matrix.id inside that job.
+      matrix: ${{ steps.groups.outputs.matrix }}
+      representative-group-id: ${{ steps.groups.outputs.representative-group-id }}
+      representative-target: ${{ steps.groups.outputs.representative-target }}
+      representative-cache-suffix: ${{ steps.groups.outputs.representative-cache-suffix }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve runner host architecture groups
+        id: groups
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        run: |
+          MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          GROUP_COUNT=$(jq -r 'length' <<<"$MATRIX")
+          if [ "$GROUP_COUNT" -lt 1 ]; then
+            echo "::error::No runner host architecture groups found"
+            exit 1
+          fi
+
+          REPRESENTATIVE=$(jq -c '.[0]' <<<"$MATRIX")
+          {
+            echo "matrix=${MATRIX}"
+            echo "representative-group-id=$(jq -r '.id' <<<"$REPRESENTATIVE")"
+            echo "representative-target=$(jq -r '.target' <<<"$REPRESENTATIVE")"
+            echo "representative-cache-suffix=$(jq -r '.cacheSuffix' <<<"$REPRESENTATIVE")"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Runner host architecture groups:"
+          jq . <<<"$MATRIX"
 
   check:
     runs-on: ubuntu-latest
@@ -379,15 +425,19 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
-    needs: [detect]
+    needs: [detect, runner-host-groups]
     if: |
       needs.detect.outputs.metal-job-ref != '' && (
         needs.detect.outputs.ci-changed == 'true' ||
         needs.detect.outputs.nbd-cow-changed == 'true'
       )
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-host-groups.outputs.matrix || '[]') }}
     timeout-minutes: 5
     env:
-      TARGET_TRIPLE: aarch64-unknown-linux-musl
+      TARGET_TRIPLE: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v7
 
@@ -395,10 +445,10 @@ jobs:
         with:
           workspaces: crates -> target
           # Separate key from runner-build to avoid cache reservation race (#9447)
-          shared-key: aarch64-musl-nbd
+          shared-key: ${{ matrix.cacheSuffix }}-nbd
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Cross-compile nbd-cow tests for ARM64
+      - name: Cross-compile nbd-cow tests for ${{ matrix.label }}
         run: |
           cd crates
           cargo test --no-run --release --target "$TARGET_TRIPLE" -p nbd-cow
@@ -413,14 +463,35 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select metal host
+        id: selected-host
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | grep -c . || true)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
+            exit 1
+          fi
+          HASH=$(printf '%s-%s' "$JOB_REF" "$RUNNER_HOST_GROUP_ID" | md5sum | cut -c1-8)
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(printf '%s\n' "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
+          echo "Selected $RUNNER_HOST_GROUP_ID metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
+
       - name: Run nbd-cow integration tests on metal
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ needs.detect.outputs.metal-host }}
+          HOST: ${{ steps.selected-host.outputs.host }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
-          REMOTE_BIN="/tmp/nbd-cow-test-${JOB_REF}"
+          REMOTE_BIN="/tmp/nbd-cow-test-${JOB_REF}-${RUNNER_HOST_GROUP_ID}"
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
           ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
@@ -430,13 +501,13 @@ jobs:
     permissions:
       actions: read
       contents: read
-    needs: [detect]
+    needs: [detect, runner-host-groups]
     if: |
       needs.detect.outputs.metal-job-ref != '' &&
       needs.detect.outputs.crates-runner-consumer-needed == 'true'
     timeout-minutes: 20
     outputs:
-      host: ${{ needs.detect.outputs.metal-host }}
+      host: ${{ steps.selected-host.outputs.host }}
       job-ref: ${{ needs.detect.outputs.metal-job-ref }}
       image-job-ref: ${{ needs.detect.outputs.runner-image-job-ref }}
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
@@ -445,6 +516,38 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Select representative metal host
+        id: selected-host
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ needs.runner-host-groups.outputs.representative-group-id }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | grep -c . || true)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
+            exit 1
+          fi
+          HASH=$(printf '%s-%s' "$JOB_REF" "$RUNNER_HOST_GROUP_ID" | md5sum | cut -c1-8)
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(printf '%s\n' "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          {
+            echo "host=${HOST}"
+            echo "hosts<<HOSTS"
+            echo "$HOSTS"
+            echo "HOSTS"
+          } >> "$GITHUB_OUTPUT"
+          echo "Selected representative metal host: ${HOST} (group ${RUNNER_HOST_GROUP_ID}, index ${HOST_INDEX}/${NUM_HOSTS})"
+
       - name: Wait for runner image manifest
         id: manifest
         env:
@@ -452,9 +555,63 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_REF: ${{ needs.detect.outputs.runner-image-job-ref }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          SELECTED_HOST: ${{ needs.detect.outputs.metal-host }}
-          TARGET: aarch64-unknown-linux-musl
+          # Target-specific manifests only contain hosts for that architecture group.
+          METAL_HOSTS: ${{ steps.selected-host.outputs.hosts }}
+          SELECTED_HOST: ${{ steps.selected-host.outputs.host }}
+          TARGET: ${{ needs.runner-host-groups.outputs.representative-target }}
+          PROFILE: vm0/default
+        run: .github/scripts/wait-runner-image.sh
+
+  runner-image-architecture-manifest:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    needs: [detect, runner-host-groups]
+    if: |
+      needs.detect.outputs.metal-job-ref != '' &&
+      needs.detect.outputs.crates-runner-consumer-needed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-host-groups.outputs.matrix || '[]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve metal hosts
+        id: hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        run: |
+          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if ! printf '%s\n' "$HOSTS" | grep -q .; then
+            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
+            exit 1
+          fi
+          {
+            echo "hosts<<HOSTS"
+            echo "$HOSTS"
+            echo "HOSTS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Wait for runner image manifest for ${{ matrix.label }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          JOB_REF: ${{ needs.detect.outputs.runner-image-job-ref }}
+          METAL_HOSTS: ${{ steps.hosts.outputs.hosts }}
+          TARGET: ${{ matrix.target }}
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
@@ -1784,7 +1941,9 @@ jobs:
       - check
       - api-contracts-rust-bindings
       - mitm-addon-test
+      - runner-host-groups
       - runner-build
+      - runner-image-architecture-manifest
       - runner-local-active-input-smoke
       - runner-benchmark
       - runner-exec
@@ -1834,7 +1993,9 @@ jobs:
           check_result "check" "${{ needs.check.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
+          check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
+          check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"
           check_result "runner-local-active-input-smoke" "${{ needs.runner-local-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
