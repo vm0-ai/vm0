@@ -16,6 +16,7 @@ import {
   IconAlertTriangle,
   IconClock,
   IconLoader2,
+  IconMail,
   IconPlus,
   IconTrash,
   IconUpload,
@@ -784,16 +785,19 @@ function TriggerRow({
     enabledLoadable.state === "loading" ||
     deleteLoadable.state === "loading" ||
     runLoadable.state === "loading";
+  const title =
+    trigger.kind === "schedule" ? trigger.scheduleSummary : "Gmail new message";
+  const TriggerIcon = trigger.kind === "schedule" ? IconClock : IconMail;
 
   return (
     <div className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5">
       <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
-        <IconClock size={13} stroke={1.5} />
+        <TriggerIcon size={13} stroke={1.5} />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
-            {trigger.scheduleSummary}
+            {title}
           </span>
           <span
             className={cn(

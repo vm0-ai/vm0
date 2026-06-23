@@ -5,15 +5,10 @@ import {
   enableAutomationTrigger,
   listAutomationTriggers,
   removeAutomationTrigger,
-  rotateAutomationTriggerSecret,
   showAutomationTrigger,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
-import {
-  printTriggerDetails,
-  printTriggersTable,
-  printWebhookSecret,
-} from "../trigger-display";
+import { printTriggerDetails, printTriggersTable } from "../trigger-display";
 import { addCommand } from "./add";
 import { updateCommand } from "./update";
 
@@ -125,32 +120,6 @@ Examples:
     }),
   );
 
-const rotateSecretCommand = new Command()
-  .name("rotate-secret")
-  .description("Rotate a webhook trigger's signing secret (shown once)")
-  .argument("<trigger>", "Webhook trigger ID")
-  .addHelpText(
-    "after",
-    `
-Examples:
-  zero automation trigger rotate-secret 22222222-2222-4222-8222-222222222222
-
-Notes:
-  - The previous secret stops working immediately; the new one is shown ONCE`,
-  )
-  .action(
-    withErrorHandler(async (id: string) => {
-      const { trigger, webhookSecret } =
-        await rotateAutomationTriggerSecret(id);
-
-      console.log(chalk.green(`✓ Trigger ${trigger.id} secret rotated`));
-
-      if (webhookSecret && trigger.kind === "webhook") {
-        printWebhookSecret(trigger.webhookUrl, webhookSecret);
-      }
-    }),
-  );
-
 export const triggerCommand = new Command()
   .name("trigger")
   .description("Manage an automation's triggers")
@@ -161,7 +130,6 @@ export const triggerCommand = new Command()
   .addCommand(rmCommand)
   .addCommand(enableCommand)
   .addCommand(disableCommand)
-  .addCommand(rotateSecretCommand)
   .addHelpText(
     "after",
     `
@@ -170,6 +138,5 @@ Examples:
   Update a schedule:  zero automation trigger update <trigger-id> --every 10m  (kind switches to match the flag)
   List triggers:      zero automation trigger list <automation>
   Inspect a trigger:  zero automation trigger show <trigger-id>
-  Pause one trigger:  zero automation trigger disable <trigger-id>
-  Rotate a secret:    zero automation trigger rotate-secret <trigger-id>`,
+  Pause one trigger:  zero automation trigger disable <trigger-id>`,
   );

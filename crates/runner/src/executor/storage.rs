@@ -156,14 +156,17 @@ pub(super) async fn download_storages(
     let download_env = guest_download_env(&run_id, &runtime_dir);
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd: &download_cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &download_env,
-            sudo: false,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &download_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &download_env,
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+            },
+            "storage-download",
+        )
         .await?;
 
     if !helper_exec_succeeded(&result) {

@@ -3,9 +3,13 @@ import type { ZeroWorkflowTriggerSummary } from "@vm0/api-contracts/contracts/ze
 import { formatRelativeTime } from "../../../../lib/domain/schedule-utils";
 import { formatDurationSeconds } from "../../automation/duration";
 
-function formatWorkflowTriggerSchedule(
+function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
+  if (trigger.kind === "event") {
+    return "Gmail new message";
+  }
+
   const { schedule } = trigger;
   switch (schedule.type) {
     case "cron":
@@ -31,9 +35,9 @@ export function printWorkflowTriggersTable(
     }),
   );
   const scheduleWidth = Math.max(
-    8,
+    7,
     ...triggers.map((trigger) => {
-      return formatWorkflowTriggerSchedule(trigger).length;
+      return formatWorkflowTriggerEntry(trigger).length;
     }),
   );
 
@@ -42,7 +46,7 @@ export function printWorkflowTriggersTable(
       [
         "ID".padEnd(idWidth),
         "STATUS".padEnd(8),
-        "SCHEDULE".padEnd(scheduleWidth),
+        "TRIGGER".padEnd(scheduleWidth),
         "NEXT RUN",
       ].join("  "),
     ),
@@ -56,7 +60,7 @@ export function printWorkflowTriggersTable(
       [
         trigger.id.padEnd(idWidth),
         status.padEnd(8 + (trigger.enabled ? 0 : 2)),
-        formatWorkflowTriggerSchedule(trigger).padEnd(scheduleWidth),
+        formatWorkflowTriggerEntry(trigger).padEnd(scheduleWidth),
         formatRunTime(trigger.nextRunAt),
       ].join("  "),
     );
@@ -77,9 +81,7 @@ export function printWorkflowTriggerDetails(
     console.log(`${"Workflow:".padEnd(14)}${options.workflowRef}`);
   }
   console.log(`${"Status:".padEnd(14)}${status}`);
-  console.log(
-    `${"Schedule:".padEnd(14)}${formatWorkflowTriggerSchedule(trigger)}`,
-  );
+  console.log(`${"Trigger:".padEnd(14)}${formatWorkflowTriggerEntry(trigger)}`);
   console.log(`${"Owner:".padEnd(14)}${trigger.ownerUserId}`);
   console.log(
     `${"Chat thread:".padEnd(14)}${trigger.chatThreadId ?? chalk.dim("-")}`,

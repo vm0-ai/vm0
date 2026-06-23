@@ -5,7 +5,7 @@ import { createAutomation, resolveCompose } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { requireTimezoneForLocalAtTime } from "./at-time-input";
 import { parseDurationSeconds } from "./duration";
-import { formatTriggerConfig, printWebhookSecret } from "./trigger-display";
+import { formatTriggerConfig } from "./trigger-display";
 
 interface CreateOptions {
   name: string;
@@ -15,28 +15,24 @@ interface CreateOptions {
   cron?: string;
   once?: string;
   loop?: string;
-  webhook?: boolean;
   timezone?: string;
 }
 
 /**
  * Build the optional first trigger from the inline sugar flags
- * (--cron / --once / --loop / --webhook, with optional --timezone).
+ * (--cron / --once / --loop, with optional --timezone).
  */
 function buildInlineTrigger(
   options: CreateOptions,
 ): CreateTriggerRequest | undefined {
-  const sugarCount = [
-    options.cron,
-    options.once,
-    options.loop,
-    options.webhook,
-  ].filter((value) => {
-    return value !== undefined;
-  }).length;
+  const sugarCount = [options.cron, options.once, options.loop].filter(
+    (value) => {
+      return value !== undefined;
+    },
+  ).length;
 
   if (sugarCount > 1) {
-    throw new Error("Use at most one of --cron, --once, --loop, --webhook");
+    throw new Error("Use at most one of --cron, --once, --loop");
   }
 
   if (options.timezone && !options.cron && !options.once) {
@@ -60,9 +56,6 @@ function buildInlineTrigger(
       intervalSeconds: parseDurationSeconds(options.loop),
     };
   }
-  if (options.webhook) {
-    return { kind: "webhook" };
-  }
   return undefined;
 }
 
@@ -82,7 +75,6 @@ export const createCommand = new Command()
     'Add a one-time trigger (e.g. "2026-06-10T09:00")',
   )
   .option("--loop <duration>", "Add a loop trigger (e.g. 15m, 1h, 90s)")
-  .option("--webhook", "Add a webhook trigger (prints URL + one-time secret)")
   .option("-z, --timezone <tz>", "IANA timezone for --cron / --once")
   .addHelpText(
     "after",
@@ -92,11 +84,9 @@ Examples:
   Daily at 9am:   zero automation create -n alerts --agent my-agent -p "..." --cron "0 9 * * *"
   One-time:       zero automation create -n alerts --agent my-agent -p "..." --once "2026-06-10T09:00" -z UTC
   Every 15 min:   zero automation create -n alerts --agent my-agent -p "..." --loop 15m
-  Webhook:        zero automation create -n alerts --agent my-agent -p "..." --webhook
 
 Notes:
-  - At most one of --cron, --once, --loop, --webhook; add more triggers later with: zero automation trigger add
-  - With --webhook, the signing secret is shown ONCE on creation — store it securely`,
+  - At most one of --cron, --once, --loop; add more triggers later with: zero automation trigger add`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
@@ -107,7 +97,7 @@ Notes:
         throw new Error(`Agent not found: ${options.agent}`);
       }
 
-      const { automation, webhookSecret } = await createAutomation({
+      const { automation } = await createAutomation({
         name: options.name,
         agentId: compose.id,
         instruction: options.prompt,
@@ -128,10 +118,6 @@ Notes:
             `  Trigger: ${createdTrigger.kind} ${formatTriggerConfig(createdTrigger)} (${createdTrigger.id})`,
           ),
         );
-      }
-
-      if (webhookSecret && createdTrigger?.kind === "webhook") {
-        printWebhookSecret(createdTrigger.webhookUrl, webhookSecret);
       }
 
       console.log();

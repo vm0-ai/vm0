@@ -107,8 +107,11 @@ describe("proxy middleware: public routes", () => {
     const request = new NextRequest("https://www.vm0.ai/en?from=signout", {
       method: "POST",
       headers: {
+        connection: "keep-alive",
         "content-type": "text/plain;charset=UTF-8",
         cookie: "__session=test",
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en?from=signout",
       },
       body: "payload",
     });
@@ -120,7 +123,14 @@ describe("proxy middleware: public routes", () => {
     expect(String(targetUrl)).toBe("https://so.vm0.ai/en?from=signout");
     expect(init?.method).toBe("POST");
     expect(init?.headers).toBeInstanceOf(Headers);
+    expect((init as RequestInit & { duplex?: string })?.duplex).toBe("half");
     const proxiedHeaders = init?.headers as Headers;
+    expect(proxiedHeaders.get("connection")).toBeNull();
+    expect(proxiedHeaders.get("content-length")).toBeNull();
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe(
+      "https://so.vm0.ai/en?from=signout",
+    );
     expect(proxiedHeaders.get("x-forwarded-host")).toBe("www.vm0.ai");
     expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
     expect(response).toBeDefined();
@@ -131,6 +141,38 @@ describe("proxy middleware: public routes", () => {
     expect(response.headers.get("x-so-frontend")).toBe("1");
     await expect(response.text()).resolves.toBe("proxied");
     expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("proxies bodyless so frontend POST requests without a request body stream", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    expect("body" in init).toBe(false);
+    expect((init as RequestInit & { duplex?: string }).duplex).toBeUndefined();
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://so.vm0.ai/en");
+    expect(response?.status).toBe(202);
   });
 
   it("does not proxy non-GET requests when so frontend forwarding is disabled", async () => {

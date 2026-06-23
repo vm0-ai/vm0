@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.171.0](https://github.com/vm0-ai/vm0/compare/api-v1.170.0...api-v1.171.0) (2026-06-23)
+
+
+### Features
+
+* add chat thread dev benchmark seed ([#18608](https://github.com/vm0-ai/vm0/issues/18608)) ([24ca7d1](https://github.com/vm0-ai/vm0/commit/24ca7d1ef5ee0fbb60b822091a969807a5b3a66a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.1
+    * @vm0/connectors bumped to 1.104.1
+    * @vm0/core bumped to 8.364.1
+    * @vm0/db bumped to 1.66.1
+
+## [1.170.0](https://github.com/vm0-ai/vm0/compare/api-v1.169.0...api-v1.170.0) (2026-06-23)
+
+
+### Features
+
+* add Gmail new message workflow trigger ([#18591](https://github.com/vm0-ai/vm0/issues/18591)) ([3ce1cb5](https://github.com/vm0-ai/vm0/commit/3ce1cb525fb8c01e81513383789e40646ed81c0b))
+
+
+### Refactoring
+
+* remove automation webhook triggers ([#18563](https://github.com/vm0-ai/vm0/issues/18563)) ([b4e8e96](https://github.com/vm0-ai/vm0/commit/b4e8e9640e7922c7ea2969c36584d719ecddd196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.0
+    * @vm0/connectors bumped to 1.104.0
+    * @vm0/core bumped to 8.364.0
+    * @vm0/db bumped to 1.66.0
+
 ## [1.169.0](https://github.com/vm0-ai/vm0/compare/api-v1.168.3...api-v1.169.0) (2026-06-22)
 
 

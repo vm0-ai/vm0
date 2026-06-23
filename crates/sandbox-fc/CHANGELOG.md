@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.37.55](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.54...sandbox-fc-v0.37.55) (2026-06-23)
+
+
+### Bug Fixes
+
+* make slow exec terminal warnings actionable ([#18619](https://github.com/vm0-ai/vm0/issues/18619)) ([ab0ce71](https://github.com/vm0-ai/vm0/commit/ab0ce71380d416da28156f15e80def1a24dd3bef))
+
+
+### Documentation
+
+* **sandbox-fc:** document create transaction lifecycle ([#18603](https://github.com/vm0-ai/vm0/issues/18603)) ([238c097](https://github.com/vm0-ai/vm0/commit/238c097be9a0911eb3c30edb0a52cd5bc743e77c))
+
+
+### Refactoring
+
+* centralize sandbox create stage timing metadata ([#18606](https://github.com/vm0-ai/vm0/issues/18606)) ([2cf73ce](https://github.com/vm0-ai/vm0/commit/2cf73ce5c01143c51ff79f3fde70d48470c30587))
+
 ## [0.37.54](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.53...sandbox-fc-v0.37.54) (2026-06-22)
 
 ## [0.37.53](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.52...sandbox-fc-v0.37.53) (2026-06-22)

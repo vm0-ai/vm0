@@ -22,6 +22,7 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod framework;
+mod process_group;
 mod termination;
 
 pub use codex_setup::setup_codex;
@@ -45,6 +46,7 @@ use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
+use process_group::ChildProcessGroup;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
@@ -382,7 +384,8 @@ async fn execute_cli_inner(
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
-    let pgid = child.id().map(|pid| pid as i32);
+    let process_group = ChildProcessGroup::from_group_leader_child_id(child.id());
+    let pgid = process_group.map(ChildProcessGroup::raw_pgid);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
 
@@ -486,8 +489,8 @@ async fn execute_cli_inner(
                             pgid,
                             Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if let Some(process_group) = process_group {
+                            process_group.sigterm();
                         }
                         termination_error = Some(error);
                         post_result_cleanup = None;
@@ -516,8 +519,8 @@ async fn execute_cli_inner(
                             pgid,
                             Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if let Some(process_group) = process_group {
+                            process_group.sigterm();
                         }
                         termination_error = Some(AgentError::Execution(format!(
                             "Claude stdin writer task failed: {error}"
@@ -755,10 +758,10 @@ async fn execute_cli_inner(
                 }
             }
             () = &mut termination_deadline, if termination_state.is_pending() && cli_status.is_none() => {
-                // `libc::kill` return value is intentionally discarded in
-                // both arms: ESRCH (child reaped since the is_pending()
-                // / is_none() check) is racy-but-harmless, and every
-                // other error would be unrecoverable from userspace.
+                // Process-group signal results are intentionally discarded in
+                // both arms: ESRCH (child reaped since the is_pending() /
+                // is_none() check) is racy-but-harmless, and every other
+                // error would be unrecoverable from userspace.
                 // The sigkill_grace deadline is the escalation path if
                 // the signal fails to take effect in time.
                 match termination_state {
@@ -818,7 +821,9 @@ async fn execute_cli_inner(
                                 pgid,
                                 grace,
                             );
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
+                            }
                         }
                         termination_state = TerminationState::SigkillPending { reason };
                         termination_deadline.as_mut().reset(
@@ -860,7 +865,9 @@ async fn execute_cli_inner(
                                 pgid,
                                 grace,
                             );
-                            unsafe { libc::kill(-pid, libc::SIGKILL); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigkill();
+                            }
                         }
                         post_result_cleanup = None;
                         termination_state = TerminationState::Done;
@@ -919,8 +926,8 @@ async fn execute_cli_inner(
                         pgid,
                         Duration::from_secs(env::post_result_sigkill_grace_secs()),
                     );
-                    if let Some(pid) = pgid {
-                        unsafe { libc::kill(-pid, libc::SIGTERM); }
+                    if let Some(process_group) = process_group {
+                        process_group.sigterm();
                     }
                     termination_error = Some(timeout_error);
                     post_result_cleanup = None;
@@ -959,8 +966,8 @@ async fn execute_cli_inner(
                                 pgid,
                                 Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(e);
                             post_result_cleanup = None;
@@ -992,8 +999,8 @@ async fn execute_cli_inner(
                                 pgid,
                                 Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(error);
                             post_result_cleanup = None;
@@ -1021,8 +1028,8 @@ async fn execute_cli_inner(
                                 pgid,
                                 Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(error);
                             post_result_cleanup = None;

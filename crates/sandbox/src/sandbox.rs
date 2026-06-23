@@ -204,6 +204,20 @@ pub trait Sandbox: Send + Sync + Any {
     /// truncation explicitly in [`ExecResult`].
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
 
+    /// Run [`exec`](Self::exec) with a stable low-cardinality label for
+    /// backend diagnostics.
+    ///
+    /// Labels must describe the operation type, not the raw command. Do not
+    /// include user input, environment values, request payloads, or any other
+    /// high-cardinality data.
+    async fn exec_with_diagnostic_label(
+        &self,
+        request: &ExecRequest<'_>,
+        _label: &'static str,
+    ) -> Result<ExecResult> {
+        self.exec(request).await
+    }
+
     /// Read a small file from the guest.
     ///
     /// The guest path must be non-empty and must not contain NUL bytes.
