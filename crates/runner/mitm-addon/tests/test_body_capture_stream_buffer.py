@@ -1,4 +1,4 @@
-"""Tests for body capture response stream-buffer contracts."""
+"""Tests for body capture request and response stream-buffer contracts."""
 
 import gzip
 
@@ -7,6 +7,7 @@ import pytest
 import flow_metadata_keys as metadata_keys
 from body_capture import add_capture_fields
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.stream_buffer_helpers import set_request_stream_buffer, set_response_stream_buffer
 
 
 class TestBodyCaptureStreamBuffer:
@@ -21,8 +22,7 @@ class TestBodyCaptureStreamBuffer:
             include_request_id=True,
         )
         body = b'{"streamed": true}'
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(body)
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {"truncated": False}
+        set_request_stream_buffer(flow, body)
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"streamed": true}'
@@ -37,8 +37,7 @@ class TestBodyCaptureStreamBuffer:
             request_content_type="text/plain",
             include_request_id=True,
         )
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(body)
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {"truncated": True}
+        set_request_stream_buffer(flow, body, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
@@ -53,8 +52,7 @@ class TestBodyCaptureStreamBuffer:
             request_content_type="application/octet-stream",
             include_request_id=True,
         )
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(body)
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {"truncated": True}
+        set_request_stream_buffer(flow, body, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body" not in entry
@@ -86,8 +84,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray()
-        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {"truncated": False}
+        set_request_stream_buffer(flow, b"")
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body" not in entry
@@ -154,8 +151,7 @@ class TestBodyCaptureStreamBuffer:
             response_body=b"should-be-ignored",
         )
         body = b'{"streamed": true}'
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, body)
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"streamed": true}'
@@ -171,8 +167,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray()
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, b"")
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -329,8 +324,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        set_response_stream_buffer(flow, body, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
@@ -344,8 +338,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/octet-stream",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, body)
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -361,8 +354,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/octet-stream",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        set_response_stream_buffer(flow, body, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -381,8 +373,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             response_encoding="gzip",
         )
-        flow.metadata["stream_buffer"] = bytearray(compressed)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, compressed)
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "ok"}'
@@ -400,8 +391,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             response_encoding="gzip",
         )
-        flow.metadata["stream_buffer"] = bytearray(compressed)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, compressed)
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -418,8 +408,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             response_encoding="gzip",
         )
-        flow.metadata["stream_buffer"] = bytearray(compressed)
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        set_response_stream_buffer(flow, compressed, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry

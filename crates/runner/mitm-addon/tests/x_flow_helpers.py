@@ -7,6 +7,7 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 from tests.flow_helpers import header_map
+from tests.stream_buffer_helpers import set_response_stream_buffer
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
 _JSON_RECURSION_FAILURE_DEPTH = 10_000
@@ -93,8 +94,7 @@ def make_x_usage_flow(
     flow.metadata["vm_sandbox_token"] = "test-token"
     flow.metadata["firewall_permission"] = permission
     flow.metadata["firewall_rule_match"] = rule
-    flow.metadata["stream_buffer"] = bytearray(body)
-    flow.metadata["stream_buffer_state"] = {"truncated": False}
+    set_response_stream_buffer(flow, body)
     return flow
 
 
