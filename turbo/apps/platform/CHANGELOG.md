@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.483.1](https://github.com/vm0-ai/vm0/compare/app-v0.483.0...app-v0.483.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* move template control after attach ([#18576](https://github.com/vm0-ai/vm0/issues/18576)) ([477150d](https://github.com/vm0-ai/vm0/commit/477150d146bf0559e052217a933f23742609a0b1))
+* update template preview navigation ([#18580](https://github.com/vm0-ai/vm0/issues/18580)) ([c0a733d](https://github.com/vm0-ai/vm0/commit/c0a733daaa3662c8abffe2aa3b86bbd4c736c4f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.1
+    * @vm0/connectors bumped to 1.104.1
+    * @vm0/core bumped to 8.364.1
+
 ## [0.483.0](https://github.com/vm0-ai/vm0/compare/app-v0.482.1...app-v0.483.0) (2026-06-23)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.40](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.39...vsock-host-v0.17.40) (2026-06-23)
+
+
+### Bug Fixes
+
+* make slow exec terminal warnings actionable ([#18619](https://github.com/vm0-ai/vm0/issues/18619)) ([ab0ce71](https://github.com/vm0-ai/vm0/commit/ab0ce71380d416da28156f15e80def1a24dd3bef))
+
 ## [0.17.39](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.38...vsock-host-v0.17.39) (2026-06-22)
 
 
