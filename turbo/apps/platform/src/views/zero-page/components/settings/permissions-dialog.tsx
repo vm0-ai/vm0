@@ -1475,9 +1475,9 @@ function LoadedPermissionsDrawerContent({
         >
           <div className="relative w-full">
             <IconSearch
-              size={14}
-              stroke={1.7}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={15}
+              stroke={1.5}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
             />
             <input
               value={search}
@@ -1486,7 +1486,7 @@ function LoadedPermissionsDrawerContent({
               }}
               aria-label="Find permissions"
               placeholder="Find permissions..."
-              className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/30"
+              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
             />
             {search && (
               <button
