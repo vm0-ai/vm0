@@ -555,7 +555,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
-        match sandbox.exec(&dmesg_req).await {
+        match sandbox
+            .exec_with_diagnostic_label(&dmesg_req, "oom-dmesg")
+            .await
+        {
             Ok(dmesg)
                 if helper_exec_succeeded(&dmesg)
                     && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) =>

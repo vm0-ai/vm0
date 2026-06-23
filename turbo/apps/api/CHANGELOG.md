@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.170.0](https://github.com/vm0-ai/vm0/compare/api-v1.169.0...api-v1.170.0) (2026-06-23)
+
+
+### Features
+
+* add Gmail new message workflow trigger ([#18591](https://github.com/vm0-ai/vm0/issues/18591)) ([3ce1cb5](https://github.com/vm0-ai/vm0/commit/3ce1cb525fb8c01e81513383789e40646ed81c0b))
+
+
+### Refactoring
+
+* remove automation webhook triggers ([#18563](https://github.com/vm0-ai/vm0/issues/18563)) ([b4e8e96](https://github.com/vm0-ai/vm0/commit/b4e8e9640e7922c7ea2969c36584d719ecddd196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.0
+    * @vm0/connectors bumped to 1.104.0
+    * @vm0/core bumped to 8.364.0
+    * @vm0/db bumped to 1.66.0
+
+## [1.169.0](https://github.com/vm0-ai/vm0/compare/api-v1.168.3...api-v1.169.0) (2026-06-22)
+
+
+### Features
+
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
+
+### Bug Fixes
+
+* respect timezone for once trigger atTime ([#18514](https://github.com/vm0-ai/vm0/issues/18514)) ([823fd8d](https://github.com/vm0-ai/vm0/commit/823fd8dfcdc3d552c5d9ec2874da587911b6c4e2))
+* update presentation R2 deck archives ([#18531](https://github.com/vm0-ai/vm0/issues/18531)) ([eeb8699](https://github.com/vm0-ai/vm0/commit/eeb86999675c9989cd8a59c1fd84ebb9f6d9495f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+    * @vm0/core bumped to 8.363.0
+    * @vm0/db bumped to 1.65.0
+
 ## [1.168.3](https://github.com/vm0-ai/vm0/compare/api-v1.168.2...api-v1.168.3) (2026-06-22)
 
 

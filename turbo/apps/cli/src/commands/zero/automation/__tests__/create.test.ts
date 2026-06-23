@@ -59,13 +59,16 @@ const cronTrigger = {
   updatedAt: "2026-06-01T00:00:00Z",
 };
 
-const webhookTrigger = {
+const onceTrigger = {
   id: TRIGGER_ID,
   automationId: AUTOMATION_ID,
   enabled: true,
-  kind: "webhook",
-  webhookToken: "whk_deadbeef",
-  webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
+  kind: "once",
+  atTime: "2026-06-10T01:00:00Z",
+  timezone: "Asia/Shanghai",
+  nextRunAt: "2026-06-10T01:00:00Z",
+  lastRunAt: null,
+  consecutiveFailures: 0,
   createdAt: "2026-06-01T00:00:00Z",
   updatedAt: "2026-06-01T00:00:00Z",
 };
@@ -187,6 +190,67 @@ describe("zero automation create command", () => {
     expect(logCalls).toContain("0 9 * * *");
   });
 
+  it("should create with an inline once trigger and timezone", async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+
+    server.use(
+      composeByNameHandler(),
+      http.post(
+        "http://localhost:3000/api/automations",
+        async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            { automation: baseAutomation([onceTrigger]) },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    await createCommand.parseAsync([
+      "node",
+      "cli",
+      "-n",
+      "alerts",
+      "--agent",
+      "my-agent",
+      "-p",
+      "Summarize alerts",
+      "--once",
+      "2026-06-10T09:00",
+      "--timezone",
+      "Asia/Shanghai",
+    ]);
+
+    expect(capturedBody?.trigger).toEqual({
+      kind: "once",
+      atTime: "2026-06-10T09:00",
+      timezone: "Asia/Shanghai",
+    });
+  });
+
+  it("should reject an inline local once trigger without --timezone", async () => {
+    await expect(async () => {
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "-n",
+        "alerts",
+        "--agent",
+        "my-agent",
+        "-p",
+        "Summarize alerts",
+        "--once",
+        "2026-06-10T09:00",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("requires --timezone"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("should create with an inline loop trigger parsing the duration", async () => {
     let capturedBody: Record<string, unknown> | undefined;
 
@@ -221,38 +285,6 @@ describe("zero automation create command", () => {
       kind: "loop",
       intervalSeconds: 900,
     });
-  });
-
-  it("should print the webhook URL and one-time secret with --webhook", async () => {
-    server.use(
-      composeByNameHandler(),
-      http.post("http://localhost:3000/api/automations", () => {
-        return HttpResponse.json(
-          {
-            automation: baseAutomation([webhookTrigger]),
-            webhookSecret: "whsec_supersecretvalue",
-          },
-          { status: 201 },
-        );
-      }),
-    );
-
-    await createCommand.parseAsync([
-      "node",
-      "cli",
-      "-n",
-      "alerts",
-      "--agent",
-      "my-agent",
-      "-p",
-      "Summarize alerts",
-      "--webhook",
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain(webhookTrigger.webhookUrl);
-    expect(logCalls).toContain("whsec_supersecretvalue");
-    expect(logCalls).toContain("shown only once");
   });
 
   it("should reject an invalid --loop duration", async () => {
@@ -290,14 +322,13 @@ describe("zero automation create command", () => {
         "poll",
         "--cron",
         "0 9 * * *",
-        "--webhook",
+        "--loop",
+        "15m",
       ]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Use at most one of --cron, --once, --loop, --webhook",
-      ),
+      expect.stringContaining("Use at most one of --cron, --once, --loop"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

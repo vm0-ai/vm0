@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.129.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.0...runner-rs-v0.129.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* classify claude output token limits ([#18579](https://github.com/vm0-ai/vm0/issues/18579)) ([2b43740](https://github.com/vm0-ai/vm0/commit/2b437408b03be9c6413705dd1b633cbc33a2a62a))
+* select single cloudflare firewall permission ([#18554](https://github.com/vm0-ai/vm0/issues/18554)) ([bf31571](https://github.com/vm0-ai/vm0/commit/bf31571649ef8dee8018214a255af036ddd5d775))
+
+## [0.129.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.128.0...runner-rs-v0.129.0) (2026-06-22)
+
+
+### Features
+
+* add youtube manifest firewall ([#18533](https://github.com/vm0-ai/vm0/issues/18533)) ([95239f6](https://github.com/vm0-ai/vm0/commit/95239f67dc35ab55b9fe400917317b93e91fed37))
+
+
+### Bug Fixes
+
+* separate Claude post-result cleanup lifecycle ([#18524](https://github.com/vm0-ai/vm0/issues/18524)) ([6dcad82](https://github.com/vm0-ai/vm0/commit/6dcad82ea6241cc2197e577867ba8bee00e13525))
+
+
+### Refactoring
+
+* centralize codex thread id contract ([#18499](https://github.com/vm0-ai/vm0/issues/18499)) ([9cecc84](https://github.com/vm0-ai/vm0/commit/9cecc8421f4073ce32b6529fff89049779a7c13e))
+
+
+### Performance Improvements
+
+* defer connector diagnostic catalog lookup ([#18504](https://github.com/vm0-ai/vm0/issues/18504)) ([d101ba7](https://github.com/vm0-ai/vm0/commit/d101ba7f70c40c2a097ccc68a3af9263258a6811))
+
 ## [0.128.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.127.1...runner-rs-v0.128.0) (2026-06-22)
 
 

@@ -433,6 +433,9 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// `prompt` decides which mock-claude test prefix runs:
 /// - `@hang-after-result` → SIGTERM path
 /// - `@hang-after-result-deaf` → SIGKILL escalation path
+/// - `@hang-after-result-then-event` → post-result quiet refresh path
+/// - `@hang-after-result-periodic-events` → post-result total cap path
+/// - `@hang-after-error-result` → error result followed by post-result cleanup
 /// - `@exit-after-result` → happy path (no signal ever fires)
 /// - `@fail-no-newline:<message>` → stderr EOF without trailing newline
 /// - `@fail-invalid-utf8` → stderr bytes that are not valid UTF-8
@@ -476,6 +479,7 @@ pub unsafe fn setup_env(
             "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
             sigkill_grace_secs.to_string(),
         );
+        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "60");
         // Derive run_id from the test binary's filename (which cargo
         // hashes per target) so the three reap test binaries running
         // concurrently don't collide on the run-scoped files that

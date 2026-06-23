@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import type { z } from "zod";
@@ -50,9 +50,7 @@ import {
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
@@ -104,15 +102,6 @@ type UpdateAutomationRequest = Omit<
   readonly description?: string | null;
   readonly appendSystemPrompt?: string | null;
 };
-type CreateWebhookAutomationRequest = {
-  readonly name: string;
-  readonly instruction: string;
-  readonly description?: string;
-  readonly appendSystemPrompt?: string;
-  readonly agentId: string;
-  readonly enabled?: boolean;
-  readonly chatThreadId?: string;
-};
 type DeployAutomationResponse = {
   readonly automation: AutomationView;
   readonly created: boolean;
@@ -123,17 +112,6 @@ type AutomationMutationResponse = {
 };
 type AutomationListResponse = {
   readonly automations: readonly AutomationView[];
-};
-type WebhookAutomationResponse = AutomationResponse & {
-  readonly webhookToken: string;
-  readonly webhookUrl: string;
-};
-type WebhookAutomationCreateResponse = {
-  readonly automation: WebhookAutomationResponse;
-  readonly secret: string;
-};
-type WebhookAutomationListResponse = {
-  readonly automations: readonly WebhookAutomationResponse[];
 };
 type AutomationResourceRef = {
   readonly id?: string;
@@ -234,10 +212,6 @@ type TimeTriggerResponse = Extract<
   AutomationTriggerResponse,
   { readonly kind: "cron" | "once" | "loop" }
 >;
-type WebhookTriggerResponse = Extract<
-  AutomationTriggerResponse,
-  { readonly kind: "webhook" }
->;
 
 function isTimeTrigger(
   trigger: AutomationTriggerResponse,
@@ -257,26 +231,8 @@ function timeTriggerFor(automation: AutomationResponse): TimeTriggerResponse {
   return trigger;
 }
 
-function webhookTriggerFor(
-  automation: AutomationResponse,
-): WebhookTriggerResponse {
-  const trigger = automation.triggers.find((item) => {
-    return item.kind === "webhook";
-  });
-  if (!trigger) {
-    throw new Error(`Automation ${automation.id} has no webhook trigger`);
-  }
-  return trigger;
-}
-
 function hasTimeTrigger(automation: AutomationResponse): boolean {
   return automation.triggers.some(isTimeTrigger);
-}
-
-function hasWebhookTrigger(automation: AutomationResponse): boolean {
-  return automation.triggers.some((trigger) => {
-    return trigger.kind === "webhook";
-  });
 }
 
 function automationViewFromResponse(
@@ -305,17 +261,6 @@ function automationViewFromResponse(
     chatThreadId: automation.chatThreadId,
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,
-  };
-}
-
-function webhookResponseFromAutomation(
-  automation: AutomationResponse,
-): WebhookAutomationResponse {
-  const trigger = webhookTriggerFor(automation);
-  return {
-    ...automation,
-    webhookToken: trigger.webhookToken,
-    webhookUrl: trigger.webhookUrl,
   };
 }
 
@@ -382,44 +327,6 @@ function contractCreateAutomationBodyUnchecked(
     createTimeTriggerRequest(body as DeployAutomationRequest) !== null
   ) {
     return contractCreateAutomationBody(body as CreateAutomationRequest);
-  }
-  return body as ContractCreateAutomationRequest;
-}
-
-function contractCreateWebhookAutomationBody(
-  body: CreateWebhookAutomationRequest,
-): ContractCreateAutomationRequest {
-  return {
-    name: body.name,
-    agentId: body.agentId,
-    instruction: body.instruction,
-    ...(body.description === undefined
-      ? {}
-      : { description: body.description }),
-    ...(body.appendSystemPrompt === undefined
-      ? {}
-      : { appendSystemPrompt: body.appendSystemPrompt }),
-    ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
-    ...(body.chatThreadId === undefined
-      ? {}
-      : { chatThreadId: body.chatThreadId }),
-    trigger: { kind: "webhook" },
-  };
-}
-
-function contractCreateWebhookAutomationBodyUnchecked(
-  body: unknown,
-): ContractCreateAutomationRequest {
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "instruction" in body &&
-    "name" in body &&
-    "agentId" in body
-  ) {
-    return contractCreateWebhookAutomationBody(
-      body as CreateWebhookAutomationRequest,
-    );
   }
   return body as ContractCreateAutomationRequest;
 }
@@ -759,22 +666,11 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
-    async enableAutomations(
-      actor: ApiTestUser,
-      options: { readonly webhookTriggers?: boolean } = {},
+    enableAutomations(
+      _actor: ApiTestUser,
+      _options: { readonly webhookTriggers?: boolean } = {},
     ): Promise<void> {
-      await accept(
-        setupApp({ context })(zeroFeatureSwitchesContract).update({
-          headers: authenticate(context, actor),
-          body: {
-            switches: {
-              [FeatureSwitchKey.AutomationWebhookTriggers]:
-                options.webhookTriggers ?? true,
-            },
-          },
-        }),
-        [200],
-      );
+      return Promise.resolve();
     },
 
     /**
@@ -1341,131 +1237,6 @@ export function createRunsAutomationsApi(context: TestContext) {
       return { status: response.status, body };
     },
 
-    async createWebhookAutomation(
-      actor: ApiTestUser,
-      body: CreateWebhookAutomationRequest,
-    ): Promise<WebhookAutomationCreateResponse> {
-      const response = await accept(
-        setupApp({ context })(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateWebhookAutomationBody(body),
-        }),
-        [201],
-      );
-      const secret = response.body.webhookSecret;
-      if (secret === undefined) {
-        throw new Error(
-          "Expected webhook automation creation to return secret",
-        );
-      }
-      return {
-        automation: webhookResponseFromAutomation(response.body.automation),
-        secret,
-      };
-    },
-
-    async requestCreateWebhookAutomationUnchecked(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(automationsMainContract).create({
-          headers: authenticate(context, actor),
-          body: contractCreateWebhookAutomationBodyUnchecked(body),
-        }),
-        statuses,
-      );
-    },
-
-    async listWebhookAutomations(
-      actor: ApiTestUser,
-    ): Promise<WebhookAutomationListResponse> {
-      const response = await accept(
-        setupApp({ context })(automationsMainContract).list({
-          headers: authenticate(context, actor),
-        }),
-        [200],
-      );
-      return {
-        automations: response.body.automations
-          .filter(hasWebhookTrigger)
-          .map(webhookResponseFromAutomation),
-      };
-    },
-
-    async requestListWebhookAutomations(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(automationsMainContract).list({
-          headers: authenticate(context, actor),
-        }),
-        statuses,
-      );
-    },
-
-    async deleteWebhookAutomation(
-      actor: ApiTestUser,
-      id: string,
-    ): Promise<void> {
-      await accept(
-        setupApp({ context })(automationsByRefContract).delete({
-          headers: authenticate(context, actor),
-          params: { ref: id },
-        }),
-        [204],
-      );
-    },
-
-    async requestDeleteWebhookAutomation(
-      actor: ApiTestUser | null,
-      id: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        setupApp({ context })(automationsByRefContract).delete({
-          headers: authenticate(context, actor),
-          params: { ref: id },
-        }),
-        statuses,
-      );
-    },
-
-    // Inbound signed webhook POST. The route verifies an HMAC over the exact
-    // bytes received, so this goes through a raw app request: the ts-rest
-    // client JSON-stringifies string bodies, which would double-encode the
-    // payload and break both the signature and the payload render into the
-    // run context (same pattern as the GitHub webhook helper in
-    // api-bdd-webhooks.ts).
-    async postAutomationWebhook(
-      token: string,
-      rawBody: string,
-      opts: {
-        readonly signature?: string;
-        readonly extraHeaders?: Record<string, string>;
-      } = {},
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(`/api/automations/webhooks/${token}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(opts.signature === undefined
-            ? {}
-            : { "x-vm0-signature-256": opts.signature }),
-          ...opts.extraHeaders,
-        },
-        body: rawBody,
-      });
-      const contentType = response.headers.get("content-type") ?? "";
-      const body: unknown = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-      return { status: response.status, body };
-    },
-
     async deployAutomation(
       actor: ApiTestUser,
       body: DeployAutomationRequest,
@@ -1670,12 +1441,4 @@ export function createRunsAutomationsApi(context: TestContext) {
 
 export function uniqueAutomationName(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
-}
-
-/**
- * HMAC-SHA256 signature (`sha256=<hex>`) over the raw inbound webhook body,
- * matching the `x-vm0-signature-256` header the automation webhook verifies.
- */
-export function signAutomationWebhook(secret: string, body: string): string {
-  return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }

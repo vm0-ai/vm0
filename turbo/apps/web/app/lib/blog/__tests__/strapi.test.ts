@@ -133,6 +133,42 @@ describe("blog/strapi", () => {
       await expect(getPostsFromStrapi("en")).rejects.toThrow();
     });
 
+    it("walks every Strapi page so older posts are not dropped", async () => {
+      const buildArticle = (id: number) => {
+        return {
+          id,
+          documentId: `doc-${id}`,
+          title: `Post ${id}`,
+          description: "desc",
+          slug: `post-${id}`,
+          createdAt: "2024-01-01T00:00:00.000Z",
+          updatedAt: "2024-01-01T00:00:00.000Z",
+          publishedAt: "2024-01-01T00:00:00.000Z",
+        };
+      };
+
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+          const url = new URL(request.url);
+          const page = Number(url.searchParams.get("pagination[page]") ?? "1");
+          const data =
+            page === 1 ? [buildArticle(1), buildArticle(2)] : [buildArticle(3)];
+          return HttpResponse.json({
+            data,
+            meta: { pagination: { page, pageSize: 2, pageCount: 2, total: 3 } },
+          });
+        }),
+      );
+
+      const posts = await getPostsFromStrapi("en");
+
+      expect(
+        posts.map((p) => {
+          return p.slug;
+        }),
+      ).toEqual(["post-1", "post-2", "post-3"]);
+    });
+
     it("uses default locale when not provided", async () => {
       let capturedLocale: string | null = null;
 

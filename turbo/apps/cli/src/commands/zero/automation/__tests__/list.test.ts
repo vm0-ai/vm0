@@ -42,16 +42,6 @@ const mockAutomation = {
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:00:00Z",
     },
-    {
-      id: "33333333-3333-4333-8333-333333333333",
-      automationId: AUTOMATION_ID,
-      enabled: true,
-      kind: "webhook",
-      webhookToken: "whk_deadbeef",
-      webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: "2026-06-01T00:00:00Z",
-    },
   ],
 };
 
@@ -90,7 +80,7 @@ describe("zero automation list command", () => {
     expect(logCalls).toContain(AUTOMATION_ID);
     expect(logCalls).toContain("my-agent");
     expect(logCalls).toContain("enabled");
-    expect(logCalls).toContain("cron, webhook");
+    expect(logCalls).toContain("cron");
   });
 
   it("should display empty state message when no automations", async () => {

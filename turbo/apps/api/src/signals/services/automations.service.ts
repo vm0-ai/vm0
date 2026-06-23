@@ -3,6 +3,7 @@ import type {
   CreateTriggerRequest,
   UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
+import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -18,12 +19,6 @@ import {
   DefaultInterpreter,
 } from "./automations/default-interpreter";
 import { calculateNextRun } from "./automations/time-trigger";
-import { encryptStoredSecretValue } from "./crypto.utils";
-import {
-  isChatThreadLinkable,
-  mintWebhookSecret,
-  mintWebhookToken,
-} from "./webhook-automations.service";
 import {
   loadAgentForDeploy,
   persistManualRunSideEffects,
@@ -38,7 +33,7 @@ import { generateAutomationDescription } from "./automations/describe";
  * Interpreter key persisted for natively-created automations (D1 on
  * #16847): the single default interpreter handles every kind, so new
  * automations stop pretending to be kind-specific. The old surfaces keep
- * writing "time"/"webhook" for now; nothing branches on the column.
+ * writing "time" for now; nothing branches on the column.
  */
 const DEFAULT_INTERPRETER_KIND = "default";
 
@@ -124,10 +119,9 @@ async function loadTriggers(
     .orderBy(asc(automationTriggers.createdAt), asc(automationTriggers.id));
 }
 
-/** Trigger insert values minus the automation linkage, plus the one-shot secret. */
+/** Trigger insert values minus the automation linkage. */
 interface ResolvedTriggerInsert {
   readonly values: Omit<typeof automationTriggers.$inferInsert, "automationId">;
-  readonly webhookSecret?: string;
 }
 
 type TriggerInsertResult =
@@ -156,9 +150,8 @@ async function nextCronOccurrence(
  * CHECK constraint requires each kind to carry exactly its own config columns,
  * so only the kind's fields are set. A new trigger is enabled; its first
  * `nextRunAt` follows the creation rules: a cron schedules only while the
- * automation is enabled, a one-time fire is its (future) instant, a loop is
- * due immediately, and a webhook has no time state — it mints the URL token
- * and the once-surfaced HMAC secret instead.
+ * automation is enabled, a one-time fire is its (future) instant, and a loop is
+ * due immediately.
  */
 async function resolveTriggerInsert(args: {
   readonly request: CreateTriggerRequest;
@@ -198,13 +191,11 @@ async function resolveTriggerInsert(args: {
         },
       };
     }
-    const atTime = new Date(request.atTime);
-    if (Number.isNaN(atTime.getTime())) {
-      return {
-        kind: "bad_request",
-        message: `Invalid atTime: ${request.atTime}`,
-      };
+    const atTimeResult = parseScheduledAtTime(request.atTime, timezone);
+    if (!atTimeResult.ok) {
+      return { kind: "bad_request", message: atTimeResult.message };
     }
+    const atTime = atTimeResult.date;
     if (atTime <= currentTime) {
       return {
         kind: "bad_request",
@@ -239,16 +230,8 @@ async function resolveTriggerInsert(args: {
     };
   }
 
-  const webhookToken = mintWebhookToken();
-  const secret = mintWebhookSecret();
-  const encryptedSecret = await encryptStoredSecretValue(secret);
-  return {
-    kind: "ok",
-    insert: {
-      values: { kind: "webhook", webhookToken, encryptedSecret, ...timestamps },
-      webhookSecret: secret,
-    },
-  };
+  const exhaustive: never = request;
+  return exhaustive;
 }
 
 interface CreateAutomationBody {
@@ -266,7 +249,6 @@ type CreateAutomationResult =
   | {
       readonly kind: "ok";
       readonly view: AutomationView;
-      readonly webhookSecret?: string;
     }
   | { readonly kind: "not_found"; readonly message: string }
   | { readonly kind: "bad_request"; readonly message: string };
@@ -293,6 +275,29 @@ async function isNameTaken(
     )
     .limit(1);
   return row !== undefined;
+}
+
+async function isChatThreadLinkable(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  const [thread] = await db
+    .select({
+      userId: chatThreads.userId,
+      agentComposeId: chatThreads.agentComposeId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .limit(1);
+  return (
+    thread !== undefined &&
+    thread.userId === args.userId &&
+    thread.agentComposeId === args.agentId
+  );
 }
 
 // The create transaction: link the supplied owned chat thread or create one
@@ -374,8 +379,7 @@ async function insertAutomationWithTrigger(
  * enforce the (agent, name, org, user) unique key up front, resolve the
  * chat-thread link (an owned existing thread or a server-created one — the
  * link is create-only), and persist the automation plus the optional sugar
- * trigger in one transaction. A webhook sugar trigger's signing secret is
- * returned exactly once. A write `command`.
+ * trigger in one transaction. A write `command`.
  */
 export const createAutomation$ = command(
   async (
@@ -492,9 +496,6 @@ export const createAutomation$ = command(
     return {
       kind: "ok",
       view,
-      ...(triggerInsert?.webhookSecret !== undefined
-        ? { webhookSecret: triggerInsert.webhookSecret }
-        : {}),
     };
   },
 );
@@ -772,8 +773,7 @@ function isTimeTriggerKind(kind: string): boolean {
  * own enabled flag, lastRunId, or failure counter) so the poller stops seeing
  * them: a loop trigger is always due by design, so a disabled automation that
  * left its rows scheduled would sit permanently due and starve the poller batch
- * (#17546). Re-enabling recomputes the next run. The inbound webhook dispatch
- * still also checks `automation.enabled && trigger.enabled`.
+ * (#17546). Re-enabling recomputes the next run.
  */
 export const setAutomationEnabled$ = command(
   async (
@@ -876,7 +876,6 @@ type TriggerMutationResult =
   | {
       readonly kind: "ok";
       readonly trigger: AutomationTriggerRow;
-      readonly webhookSecret?: string;
     }
   | { readonly kind: "not_found" }
   | { readonly kind: "ambiguous" }
@@ -884,8 +883,7 @@ type TriggerMutationResult =
 
 /**
  * Add a trigger to an automation (the same resolution backing the create-time
- * sugar). Multiple triggers of the same kind are allowed; a webhook trigger's
- * signing secret is returned exactly once.
+ * sugar). Multiple triggers of the same kind are allowed.
  */
 export const addTrigger$ = command(
   async (
@@ -936,9 +934,6 @@ export const addTrigger$ = command(
     return {
       kind: "ok",
       trigger,
-      ...(result.insert.webhookSecret !== undefined
-        ? { webhookSecret: result.insert.webhookSecret }
-        : {}),
     };
   },
 );
@@ -1110,8 +1105,7 @@ export const setTriggerEnabled$ = command(
  * among cron/once/loop. The row keeps its id, enabled flag, and lastRunId
  * history; `nextRunAt` is recomputed by the creation rules (a cron schedules
  * only while the automation is enabled) and the consecutive-failure counter
- * resets — the same revive semantics as enable. Webhook triggers carry no
- * schedule and are rejected.
+ * resets — the same revive semantics as enable.
  */
 export const updateTrigger$ = command(
   async (
@@ -1130,12 +1124,6 @@ export const updateTrigger$ = command(
     if (!owned) {
       return { kind: "not_found" };
     }
-    if (owned.trigger.kind === "webhook") {
-      return {
-        kind: "bad_request",
-        message: "Webhook triggers have no schedule to update",
-      };
-    }
 
     const currentTime = nowDate();
     const result = await resolveTriggerInsert({
@@ -1152,8 +1140,8 @@ export const updateTrigger$ = command(
     // The B4 CHECK constraint requires each kind to carry exactly its own
     // config columns, so the new kind's fields are set and the unused ones
     // are nulled explicitly (the timezone column is NOT NULL, default UTC —
-    // the same effective value a fresh loop insert gets). The enabled flag,
-    // lastRunId, and the webhook columns are untouched.
+    // the same effective value a fresh loop insert gets). The enabled flag and
+    // lastRunId are untouched.
     const [trigger] = await db
       .update(automationTriggers)
       .set({
@@ -1180,52 +1168,6 @@ export const updateTrigger$ = command(
     signal.throwIfAborted();
 
     return { kind: "ok", trigger };
-  },
-);
-
-/**
- * Rotate a webhook trigger's HMAC signing secret: mint a fresh secret, store
- * it encrypted, and return it exactly once. The URL token (identity) is
- * unchanged. Rejected for non-webhook triggers.
- */
-export const rotateTriggerSecret$ = command(
-  async (
-    { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly id: string;
-    },
-    signal: AbortSignal,
-  ): Promise<TriggerMutationResult> => {
-    const db = set(writeDb$);
-    const owned = await loadOwnedTrigger(db, args);
-    signal.throwIfAborted();
-    if (!owned) {
-      return { kind: "not_found" };
-    }
-    if (owned.trigger.kind !== "webhook") {
-      return {
-        kind: "bad_request",
-        message: "Only webhook triggers carry a signing secret",
-      };
-    }
-
-    const secret = mintWebhookSecret();
-    const encryptedSecret = await encryptStoredSecretValue(secret);
-    signal.throwIfAborted();
-
-    const [trigger] = await db
-      .update(automationTriggers)
-      .set({ encryptedSecret, updatedAt: nowDate() })
-      .where(eq(automationTriggers.id, owned.trigger.id))
-      .returning();
-    signal.throwIfAborted();
-    if (!trigger) {
-      return { kind: "not_found" };
-    }
-
-    return { kind: "ok", trigger, webhookSecret: secret };
   },
 );
 

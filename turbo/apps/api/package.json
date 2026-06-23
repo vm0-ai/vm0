@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.168.3",
+  "version": "1.170.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "dev": "bash scripts/dev.sh",
     "start": "tsx src/server.ts",
     "db:dev-seed": "dotenv -e .env.local -- tsx src/scripts/dev-seed.ts",
+    "db:dev-bench-seed": "dotenv -e .env.local -- tsx src/scripts/dev-bench-seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' && oxlint $(find src -type d -name __tests__) --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",

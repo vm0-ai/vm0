@@ -137,6 +137,14 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 /// unset or unparseable values use the compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
+/// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
+/// reports a final result, regardless of later post-result stdout events.
+///
+/// This is a tuning key: local execution may pass it through user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
+/// unset or unparseable values use the compiled default.
+pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
+
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
@@ -183,6 +191,7 @@ pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
     STUCK_TOOL_TIMEOUT_SECS_ENV,
     POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    POST_RESULT_TOTAL_CAP_SECS_ENV,
     POST_RESULT_SIGKILL_GRACE_SECS_ENV,
 ];
 
@@ -321,6 +330,9 @@ mod tests {
         assert!(is_guest_agent_tuning_env_key(STUCK_TOOL_TIMEOUT_SECS_ENV));
         assert!(is_guest_agent_tuning_env_key(
             POST_RESULT_SIGTERM_GRACE_SECS_ENV
+        ));
+        assert!(is_guest_agent_tuning_env_key(
+            POST_RESULT_TOTAL_CAP_SECS_ENV
         ));
         assert!(is_guest_agent_tuning_env_key(
             POST_RESULT_SIGKILL_GRACE_SECS_ENV

@@ -11,6 +11,9 @@ const STUCK_TOOL_DEAF_MARKER: &str = "@stuck-tool-deaf";
 const STUCK_TOOL_MARKER: &str = "@stuck-tool";
 const ORPHAN_PIPE_MARKER: &str = "@orphan-pipe";
 const HANG_AFTER_RESULT_DEAF_MARKER: &str = "@hang-after-result-deaf";
+const HANG_AFTER_RESULT_THEN_EVENT_MARKER: &str = "@hang-after-result-then-event";
+const HANG_AFTER_RESULT_PERIODIC_EVENTS_MARKER: &str = "@hang-after-result-periodic-events";
+const HANG_AFTER_ERROR_RESULT_MARKER: &str = "@hang-after-error-result";
 const EXIT_AFTER_RESULT_MARKER: &str = "@exit-after-result";
 const WRITE_ENV_JSON_MARKER: &str = "@write-env-json:";
 const HANG_AFTER_RESULT_MARKER: &str = "@hang-after-result";
@@ -27,6 +30,9 @@ pub(crate) enum MockScenario<'a> {
     StuckTool { deaf: bool, close_stdout: bool },
     OrphanPipe,
     HangAfterResult { deaf: bool },
+    HangAfterResultThenEvent,
+    HangAfterResultPeriodicEvents,
+    HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson(&'a str),
     Shell,
@@ -51,6 +57,9 @@ enum ScenarioKind {
     StuckTool { deaf: bool, close_stdout: bool },
     OrphanPipe,
     HangAfterResult { deaf: bool },
+    HangAfterResultThenEvent,
+    HangAfterResultPeriodicEvents,
+    HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson,
 }
@@ -133,6 +142,21 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         scenario_kind: ScenarioKind::HangAfterResult { deaf: true },
     },
     ScenarioRule {
+        marker: HANG_AFTER_RESULT_THEN_EVENT_MARKER,
+        match_kind: ScenarioMatchKind::Prefix,
+        scenario_kind: ScenarioKind::HangAfterResultThenEvent,
+    },
+    ScenarioRule {
+        marker: HANG_AFTER_RESULT_PERIODIC_EVENTS_MARKER,
+        match_kind: ScenarioMatchKind::Prefix,
+        scenario_kind: ScenarioKind::HangAfterResultPeriodicEvents,
+    },
+    ScenarioRule {
+        marker: HANG_AFTER_ERROR_RESULT_MARKER,
+        match_kind: ScenarioMatchKind::Prefix,
+        scenario_kind: ScenarioKind::HangAfterErrorResult,
+    },
+    ScenarioRule {
         marker: EXIT_AFTER_RESULT_MARKER,
         match_kind: ScenarioMatchKind::Prefix,
         scenario_kind: ScenarioKind::ExitAfterResult,
@@ -192,6 +216,15 @@ impl ScenarioKind {
             (Self::OrphanPipe, ScenarioMatch::Marker) => MockScenario::OrphanPipe,
             (Self::HangAfterResult { deaf }, ScenarioMatch::Marker) => {
                 MockScenario::HangAfterResult { deaf }
+            }
+            (Self::HangAfterResultThenEvent, ScenarioMatch::Marker) => {
+                MockScenario::HangAfterResultThenEvent
+            }
+            (Self::HangAfterResultPeriodicEvents, ScenarioMatch::Marker) => {
+                MockScenario::HangAfterResultPeriodicEvents
+            }
+            (Self::HangAfterErrorResult, ScenarioMatch::Marker) => {
+                MockScenario::HangAfterErrorResult
             }
             (Self::ExitAfterResult, ScenarioMatch::Marker) => MockScenario::ExitAfterResult,
             _ => return None,
@@ -312,6 +345,18 @@ mod tests {
                 "@hang-after-result-deaf",
                 MockScenario::HangAfterResult { deaf: true },
             ),
+            (
+                "@hang-after-result-then-event",
+                MockScenario::HangAfterResultThenEvent,
+            ),
+            (
+                "@hang-after-result-periodic-events",
+                MockScenario::HangAfterResultPeriodicEvents,
+            ),
+            (
+                "@hang-after-error-result",
+                MockScenario::HangAfterErrorResult,
+            ),
             ("@exit-after-result", MockScenario::ExitAfterResult),
             (
                 "@write-env-json:/tmp/env.json",
@@ -345,6 +390,14 @@ mod tests {
         assert!(marker_position(STUCK_TOOL_DEAF_MARKER) < marker_position(STUCK_TOOL_MARKER));
         assert!(
             marker_position(HANG_AFTER_RESULT_DEAF_MARKER)
+                < marker_position(HANG_AFTER_RESULT_MARKER)
+        );
+        assert!(
+            marker_position(HANG_AFTER_RESULT_THEN_EVENT_MARKER)
+                < marker_position(HANG_AFTER_RESULT_MARKER)
+        );
+        assert!(
+            marker_position(HANG_AFTER_RESULT_PERIODIC_EVENTS_MARKER)
                 < marker_position(HANG_AFTER_RESULT_MARKER)
         );
     }

@@ -29,7 +29,6 @@ type TimeTrigger = Extract<
 
 export type AutomationTriggerReadOnlyReason =
   | "multiple_triggers"
-  | "unsupported_trigger"
   | "no_trigger";
 
 export type PlatformAutomationView = Omit<
@@ -74,7 +73,7 @@ function triggerReadOnlyReason(
   if (automation.triggers.length > 1) {
     return "multiple_triggers";
   }
-  return timeTriggerOf(automation) ? null : "unsupported_trigger";
+  return null;
 }
 
 // The platform-local projection of an automation. It keeps the legacy flat time

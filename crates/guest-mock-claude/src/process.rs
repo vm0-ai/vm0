@@ -128,6 +128,13 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
         MockScenario::HangAfterResult { deaf } => {
             run_hang_after_result_scenario(output_format, deaf)
         }
+        MockScenario::HangAfterResultThenEvent => {
+            run_hang_after_result_then_event_scenario(output_format)
+        }
+        MockScenario::HangAfterResultPeriodicEvents => {
+            run_hang_after_result_periodic_events_scenario(output_format)
+        }
+        MockScenario::HangAfterErrorResult => run_hang_after_error_result_scenario(output_format),
         MockScenario::ExitAfterResult => {
             if output_format == "stream-json" {
                 emit_post_result_pair();
@@ -324,13 +331,18 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
 /// session history checkpoint file. Caller decides which post-result
 /// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
+    let _ = emit_result_pair(false, "Done.");
+}
+
+fn emit_result_pair(is_error: bool, result: &str) -> String {
     let session_id = generate_session_id();
     let mut transcript = JsonlTranscript::default();
     transcript.emit_value(init_event(&session_id, &["Bash"]));
-    transcript.emit_value(result_event(&session_id, false, "Done."));
+    transcript.emit_value(result_event(&session_id, is_error, result));
     transcript.write_session_history(&session_id);
 
     let _ = std::io::stdout().flush();
+    session_id
 }
 
 fn emit_stuck_tool_events() {
@@ -399,6 +411,43 @@ fn run_hang_after_result_scenario(output_format: &str, deaf: bool) -> ExitCode {
         }
         // Hang this process forever. guest-agent's post-result reap SIGTERMs
         // it within POST_RESULT_SIGTERM_GRACE_SECS unless SIGTERM is ignored.
+        hang_until_reaped();
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_hang_after_result_then_event_scenario(output_format: &str) -> ExitCode {
+    if output_format == "stream-json" {
+        let session_id = emit_result_pair(false, "Done.");
+        thread::sleep(Duration::from_millis(1_000));
+        let mut transcript = JsonlTranscript::default();
+        transcript.emit_value(assistant_text_event(&session_id, "post-result event"));
+        let _ = std::io::stdout().flush();
+        hang_until_reaped();
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_hang_after_result_periodic_events_scenario(output_format: &str) -> ExitCode {
+    if output_format == "stream-json" {
+        let session_id = emit_result_pair(false, "Done.");
+        let mut transcript = JsonlTranscript::default();
+        for index in 0..20 {
+            thread::sleep(Duration::from_millis(250));
+            transcript.emit_value(assistant_text_event(
+                &session_id,
+                &format!("post-result periodic event {index}"),
+            ));
+            let _ = std::io::stdout().flush();
+        }
+        hang_until_reaped();
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_hang_after_error_result_scenario(output_format: &str) -> ExitCode {
+    if output_format == "stream-json" {
+        let _ = emit_result_pair(true, "Mock Claude error.");
         hang_until_reaped();
     }
     ExitCode::SUCCESS

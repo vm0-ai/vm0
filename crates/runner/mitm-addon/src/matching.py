@@ -237,8 +237,8 @@ class _CompiledPermission(NamedTuple):
     rules: tuple[_CompiledRule, ...]
 
 
-class _CompiledApi(NamedTuple):
-    raw_api_entry: dict
+class _CompiledApiCore(NamedTuple):
+    raw_api_index: int
     base: _CompiledBase
     permissions: tuple[_CompiledPermission, ...]
     base_malformed: bool
@@ -247,10 +247,48 @@ class _CompiledApi(NamedTuple):
     has_malformed_rules: bool
 
 
-class _CompiledFirewall(NamedTuple):
+class _CompiledApi(NamedTuple):
+    raw_api_entry: dict
+    core: _CompiledApiCore
+
+    @property
+    def base(self) -> _CompiledBase:
+        return self.core.base
+
+    @property
+    def permissions(self) -> tuple[_CompiledPermission, ...]:
+        return self.core.permissions
+
+    @property
+    def base_malformed(self) -> bool:
+        return self.core.base_malformed
+
+    @property
+    def auth_malformed(self) -> bool:
+        return self.core.auth_malformed
+
+    @property
+    def has_malformed_rules(self) -> bool:
+        return self.core.has_malformed_rules
+
+
+class CompiledFirewallCore(NamedTuple):
     name: str
-    apis: tuple[_CompiledApi, ...]
+    api_cores: tuple[_CompiledApiCore, ...]
     name_malformed: bool
+
+
+class _CompiledFirewall(NamedTuple):
+    core: CompiledFirewallCore
+    apis: tuple[_CompiledApi, ...]
+
+    @property
+    def name(self) -> str:
+        return self.core.name
+
+    @property
+    def name_malformed(self) -> bool:
+        return self.core.name_malformed
 
 
 class CompiledFirewallSet(NamedTuple):
@@ -1303,6 +1341,122 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # no allow/deny resolved, malformed network policy resolves before malformed
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
+def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
+    """Compile one firewall into VM-independent matcher data."""
+    if not isinstance(fw_entry, dict):
+        return None
+
+    raw_name = fw_entry.get("name")
+    name_malformed = not isinstance(raw_name, str) or raw_name == ""
+    firewall_name = raw_name if isinstance(raw_name, str) else ""
+
+    raw_apis = fw_entry.get("apis", [])
+    if not isinstance(raw_apis, list):
+        return None
+
+    api_cores: list[_CompiledApiCore] = []
+    for api_index, api_entry in enumerate(raw_apis):
+        if not isinstance(api_entry, dict):
+            continue
+        raw_base = api_entry.get("base", "")
+        if not isinstance(raw_base, str):
+            continue
+        base = _compile_base(raw_base)
+        if base is None:
+            continue
+        base_malformed = (
+            base.has_query_or_fragment
+            or base.raw_syntax_malformed
+            or base.param_parse_malformed
+            or base.parts.host_malformed
+            or base.parts.has_userinfo
+            or base.parts.port_malformed
+            or not _compiled_base_params_are_valid(base)
+        )
+        auth_malformed = not _auth_config_is_valid(api_entry)
+
+        compiled_permissions: list[_CompiledPermission] = []
+        has_malformed_rules = name_malformed
+        seen_permission_names: set[str] = set()
+        permissions = api_entry.get("permissions")
+        permissions_present = "permissions" in api_entry
+        if isinstance(permissions, list):
+            for perm in permissions:
+                if not isinstance(perm, dict):
+                    has_malformed_rules = True
+                    continue
+                raw_name = perm.get("name")
+                if not isinstance(raw_name, str):
+                    has_malformed_rules = True
+                    continue
+                if raw_name in ("", "all"):
+                    has_malformed_rules = True
+                    continue
+                if raw_name in seen_permission_names:
+                    has_malformed_rules = True
+                    continue
+                seen_permission_names.add(raw_name)
+                raw_rules = perm.get("rules", [])
+                if not isinstance(raw_rules, list):
+                    raw_rules = []
+                    has_malformed_rules = True
+                if len(raw_rules) == 0:
+                    has_malformed_rules = True
+
+                compiled_rules: list[_CompiledRule] = []
+                for rule_str in raw_rules:
+                    if not isinstance(rule_str, str):
+                        has_malformed_rules = True
+                        continue
+                    rule = _compile_rule(rule_str)
+                    if rule is None:
+                        has_malformed_rules = True
+                        continue
+                    compiled_rules.append(rule)
+
+                compiled_permissions.append(_CompiledPermission(raw_name, tuple(compiled_rules)))
+        elif permissions_present:
+            has_malformed_rules = True
+
+        api_cores.append(
+            _CompiledApiCore(
+                api_index,
+                base,
+                tuple(compiled_permissions),
+                base_malformed,
+                auth_malformed,
+                has_malformed_rules,
+            )
+        )
+
+    if not api_cores:
+        return None
+    return CompiledFirewallCore(firewall_name, tuple(api_cores), name_malformed)
+
+
+def bind_compiled_firewall_core(
+    fw_entry: dict,
+    core: CompiledFirewallCore,
+) -> _CompiledFirewall | None:
+    """Bind VM-specific raw API entries to reusable compiled firewall core data."""
+    raw_apis = fw_entry.get("apis", [])
+    if not isinstance(raw_apis, list):
+        return None
+
+    compiled_apis: list[_CompiledApi] = []
+    for api_core in core.api_cores:
+        if api_core.raw_api_index >= len(raw_apis):
+            return None
+        api_entry = raw_apis[api_core.raw_api_index]
+        if not isinstance(api_entry, dict):
+            return None
+        compiled_apis.append(_CompiledApi(api_entry, api_core))
+
+    if not compiled_apis:
+        return None
+    return _CompiledFirewall(core, tuple(compiled_apis))
+
+
 def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
     """Compile firewall data and retain selected malformed state.
 
@@ -1313,98 +1467,12 @@ def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None
 
     compiled_firewalls: list[_CompiledFirewall] = []
     for fw_entry in vm_firewalls:
-        if not isinstance(fw_entry, dict):
+        core = compile_firewall_core(fw_entry)
+        if core is None or not isinstance(fw_entry, dict):
             continue
-
-        raw_name = fw_entry.get("name")
-        name_malformed = not isinstance(raw_name, str) or raw_name == ""
-        firewall_name = raw_name if isinstance(raw_name, str) else ""
-
-        raw_apis = fw_entry.get("apis", [])
-        if not isinstance(raw_apis, list):
-            continue
-
-        compiled_apis: list[_CompiledApi] = []
-        for api_entry in raw_apis:
-            if not isinstance(api_entry, dict):
-                continue
-            raw_base = api_entry.get("base", "")
-            if not isinstance(raw_base, str):
-                continue
-            base = _compile_base(raw_base)
-            if base is None:
-                continue
-            base_malformed = (
-                base.has_query_or_fragment
-                or base.raw_syntax_malformed
-                or base.param_parse_malformed
-                or base.parts.host_malformed
-                or base.parts.has_userinfo
-                or base.parts.port_malformed
-                or not _compiled_base_params_are_valid(base)
-            )
-            auth_malformed = not _auth_config_is_valid(api_entry)
-
-            compiled_permissions: list[_CompiledPermission] = []
-            has_malformed_rules = name_malformed
-            seen_permission_names: set[str] = set()
-            permissions = api_entry.get("permissions")
-            permissions_present = "permissions" in api_entry
-            if isinstance(permissions, list):
-                for perm in permissions:
-                    if not isinstance(perm, dict):
-                        has_malformed_rules = True
-                        continue
-                    raw_name = perm.get("name")
-                    if not isinstance(raw_name, str):
-                        has_malformed_rules = True
-                        continue
-                    if raw_name in ("", "all"):
-                        has_malformed_rules = True
-                        continue
-                    if raw_name in seen_permission_names:
-                        has_malformed_rules = True
-                        continue
-                    seen_permission_names.add(raw_name)
-                    raw_rules = perm.get("rules", [])
-                    if not isinstance(raw_rules, list):
-                        raw_rules = []
-                        has_malformed_rules = True
-                    if len(raw_rules) == 0:
-                        has_malformed_rules = True
-
-                    compiled_rules: list[_CompiledRule] = []
-                    for rule_str in raw_rules:
-                        if not isinstance(rule_str, str):
-                            has_malformed_rules = True
-                            continue
-                        rule = _compile_rule(rule_str)
-                        if rule is None:
-                            has_malformed_rules = True
-                            continue
-                        compiled_rules.append(rule)
-
-                    compiled_permissions.append(
-                        _CompiledPermission(raw_name, tuple(compiled_rules))
-                    )
-            elif permissions_present:
-                has_malformed_rules = True
-
-            compiled_apis.append(
-                _CompiledApi(
-                    api_entry,
-                    base,
-                    tuple(compiled_permissions),
-                    base_malformed,
-                    auth_malformed,
-                    has_malformed_rules,
-                )
-            )
-
-        if compiled_apis:
-            compiled_firewalls.append(
-                _CompiledFirewall(firewall_name, tuple(compiled_apis), name_malformed)
-            )
+        compiled_firewall = bind_compiled_firewall_core(fw_entry, core)
+        if compiled_firewall is not None:
+            compiled_firewalls.append(compiled_firewall)
 
     if not compiled_firewalls:
         return None

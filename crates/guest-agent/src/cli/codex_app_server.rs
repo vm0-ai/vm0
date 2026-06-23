@@ -21,7 +21,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-use super::{child_env, diagnostics};
+use super::{child_env, diagnostics, process_group::ChildProcessGroup};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
@@ -135,7 +135,7 @@ pub struct CodexAppServerClient {
     stdin: Option<ChildStdin>,
     stdout_reader: Option<BufReader<ChildStdout>>,
     process_id: Option<u32>,
-    process_group_id: Option<i32>,
+    process_group: Option<ChildProcessGroup>,
     wait_rx: Option<oneshot::Receiver<std::io::Result<ExitStatus>>>,
     stderr_handle: Option<JoinHandle<Vec<String>>>,
     stderr_tail: Vec<String>,
@@ -173,7 +173,7 @@ impl CodexAppServerClient {
 
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let process_id = child.id();
-        let process_group_id = process_id.map(|pid| pid as i32);
+        let process_group = ChildProcessGroup::from_group_leader_child_id(process_id);
         let stdin = child.stdin.take().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server stdin was not piped".to_string())
         })?;
@@ -194,7 +194,7 @@ impl CodexAppServerClient {
             stdin: Some(stdin),
             stdout_reader: Some(BufReader::new(stdout)),
             process_id,
-            process_group_id,
+            process_group,
             wait_rx: Some(wait_rx),
             stderr_handle: Some(stderr_handle),
             stderr_tail: Vec::new(),
@@ -349,9 +349,9 @@ impl CodexAppServerClient {
             self.try_finish_child_wait()?.is_some()
         };
         if self.wait_rx.is_some() && !child_exited {
-            self.signal_process_group(libc::SIGTERM);
+            self.sigterm_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                self.signal_process_group(libc::SIGKILL);
+                self.sigkill_process_group();
                 if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
                     return Err(CodexAppServerError::ShutdownTimeout);
                 }
@@ -593,7 +593,7 @@ impl CodexAppServerClient {
         self.mark_stream_unusable(message);
         self.close_io_handles();
         if self.process_group_signal_needed() {
-            self.signal_process_group(libc::SIGKILL);
+            self.sigkill_process_group();
         }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
@@ -606,7 +606,7 @@ impl CodexAppServerClient {
         self.mark_stream_unusable(message.clone());
         self.close_io_handles();
         if self.process_group_signal_needed() {
-            self.signal_process_group(libc::SIGKILL);
+            self.sigkill_process_group();
         }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
@@ -632,7 +632,7 @@ impl CodexAppServerClient {
             return;
         };
         if !stderr_handle.is_finished() {
-            self.signal_process_group(libc::SIGKILL);
+            self.sigkill_process_group();
         }
 
         let Some(stderr_handle) = self.stderr_handle.as_mut() else {
@@ -656,21 +656,21 @@ impl CodexAppServerClient {
         }
     }
 
-    fn signal_process_group(&mut self, signal: libc::c_int) {
-        if let Some(pgid) = self.process_group_id {
-            unsafe {
-                libc::kill(-pgid, signal);
-            }
-        } else if let Some(pid) = self.process_id {
-            unsafe {
-                libc::kill(pid as libc::pid_t, signal);
-            }
+    fn sigterm_process_group(&self) {
+        if let Some(process_group) = self.process_group {
+            process_group.sigterm();
+        }
+    }
+
+    fn sigkill_process_group(&self) {
+        if let Some(process_group) = self.process_group {
+            process_group.sigkill();
         }
     }
 
     fn clear_child_process_handles(&mut self) {
         self.process_id = None;
-        self.process_group_id = None;
+        self.process_group = None;
     }
 
     fn close_io_handles(&mut self) {
@@ -679,7 +679,7 @@ impl CodexAppServerClient {
     }
 
     fn kill_and_clear_child_process_handles(&mut self) {
-        self.signal_process_group(libc::SIGKILL);
+        self.sigkill_process_group();
         self.clear_child_process_handles();
     }
 
@@ -694,7 +694,7 @@ impl CodexAppServerClient {
     fn kill_unusable_stream_process_if_needed(&mut self) {
         let _ = self.try_finish_child_wait();
         if self.process_group_signal_needed() {
-            self.signal_process_group(libc::SIGKILL);
+            self.sigkill_process_group();
         }
         if self.wait_rx.is_none() {
             self.clear_child_process_handles();
@@ -708,7 +708,7 @@ impl Drop for CodexAppServerClient {
             self.close_io_handles();
             let _ = self.try_finish_child_wait();
             if self.process_group_signal_needed() {
-                self.signal_process_group(libc::SIGKILL);
+                self.sigkill_process_group();
             }
         }
         if let Some(stderr_handle) = self.stderr_handle.take() {

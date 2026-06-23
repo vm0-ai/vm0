@@ -62,10 +62,6 @@ export function automationToTimeString(
   if (s.triggerReadOnlyReason === "multiple_triggers") {
     return `${s.triggerCount} triggers`;
   }
-  if (s.triggerReadOnlyReason === "unsupported_trigger") {
-    const [kind] = s.triggerKinds;
-    return triggerKindLabel(kind);
-  }
   if (s.triggerReadOnlyReason === "no_trigger") {
     return "No trigger";
   }
@@ -90,24 +86,6 @@ export function automationToTimeString(
   }
 
   return "Upcoming";
-}
-
-function triggerKindLabel(
-  kind: PlatformAutomationView["triggerKinds"][number] | undefined,
-): string {
-  if (kind === "cron") {
-    return "Schedule";
-  }
-  if (kind === "once") {
-    return "Once";
-  }
-  if (kind === "loop") {
-    return "Loop";
-  }
-  if (kind === "webhook") {
-    return "Webhook";
-  }
-  return "No trigger";
 }
 
 function cronToTimeString(

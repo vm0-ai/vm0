@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.483.0](https://github.com/vm0-ai/vm0/compare/app-v0.482.1...app-v0.483.0) (2026-06-23)
+
+
+### Features
+
+* add Gmail new message workflow trigger ([#18591](https://github.com/vm0-ai/vm0/issues/18591)) ([3ce1cb5](https://github.com/vm0-ai/vm0/commit/3ce1cb525fb8c01e81513383789e40646ed81c0b))
+
+
+### Bug Fixes
+
+* remove presentation template eye control ([#18571](https://github.com/vm0-ai/vm0/issues/18571)) ([3335aa5](https://github.com/vm0-ai/vm0/commit/3335aa5d1a2aeb307cf02a0b311f3e4b952f6cd6))
+
+
+### Refactoring
+
+* remove automation webhook triggers ([#18563](https://github.com/vm0-ai/vm0/issues/18563)) ([b4e8e96](https://github.com/vm0-ai/vm0/commit/b4e8e9640e7922c7ea2969c36584d719ecddd196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.0
+    * @vm0/connectors bumped to 1.104.0
+    * @vm0/core bumped to 8.364.0
+
+## [0.482.1](https://github.com/vm0-ai/vm0/compare/app-v0.482.0...app-v0.482.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* use color swatch chat template icon ([#18541](https://github.com/vm0-ai/vm0/issues/18541)) ([19bcf16](https://github.com/vm0-ai/vm0/commit/19bcf16fccb76a9c866ad3c28e5eb1757566b01f))
+
+## [0.482.0](https://github.com/vm0-ai/vm0/compare/app-v0.481.1...app-v0.482.0) (2026-06-22)
+
+
+### Features
+
+* add presentation card theme picker ([#18454](https://github.com/vm0-ai/vm0/issues/18454)) ([6060078](https://github.com/vm0-ai/vm0/commit/60600789f2b3b0bcf048905672ca13fafb77e966))
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+    * @vm0/core bumped to 8.363.0
+
 ## [0.481.1](https://github.com/vm0-ai/vm0/compare/app-v0.481.0...app-v0.481.1) (2026-06-22)
 
 

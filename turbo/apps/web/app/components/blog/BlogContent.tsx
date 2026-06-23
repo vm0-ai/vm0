@@ -14,6 +14,8 @@ interface BlogContentProps {
   categories: string[];
 }
 
+const POSTS_PER_PAGE = 12;
+
 export function BlogContent({
   posts,
   featuredPost,
@@ -35,6 +37,32 @@ export function BlogContent({
     return !post.featured;
   });
 
+  const totalPages = Math.max(
+    1,
+    Math.ceil(regularPosts.length / POSTS_PER_PAGE),
+  );
+  const requestedPage = Number.parseInt(searchParams.get("page") ?? "1", 10);
+  const currentPage = Math.min(
+    Math.max(1, Number.isNaN(requestedPage) ? 1 : requestedPage),
+    totalPages,
+  );
+  const paginatedPosts = regularPosts.slice(
+    (currentPage - 1) * POSTS_PER_PAGE,
+    currentPage * POSTS_PER_PAGE,
+  );
+
+  const buildPageHref = (page: number) => {
+    const query = new URLSearchParams();
+    if (categoryFilter) {
+      query.set("category", categoryFilter);
+    }
+    if (page > 1) {
+      query.set("page", String(page));
+    }
+    const queryString = query.toString();
+    return queryString ? `/blog?${queryString}` : "/blog";
+  };
+
   return (
     <>
       <Particles />
@@ -50,7 +78,7 @@ export function BlogContent({
       </section>
 
       {/* Featured Post */}
-      {featuredPost && !categoryFilter && (
+      {featuredPost && !categoryFilter && currentPage === 1 && (
         <section className="section-spacing" style={{ paddingTop: 0 }}>
           <div className="container">
             <Link
@@ -135,7 +163,7 @@ export function BlogContent({
             </h2>
           )}
           <div className="blog-grid">
-            {regularPosts.map((post) => {
+            {paginatedPosts.map((post) => {
               return (
                 <Link
                   key={post.slug}
@@ -212,6 +240,56 @@ export function BlogContent({
               );
             })}
           </div>
+
+          {totalPages > 1 && (
+            <nav className="blog-pagination" aria-label={t("pagination")}>
+              {currentPage > 1 ? (
+                <Link
+                  href={buildPageHref(currentPage - 1)}
+                  className="pagination-btn"
+                  rel="prev"
+                >
+                  {t("previous")}
+                </Link>
+              ) : (
+                <span className="pagination-btn disabled" aria-disabled="true">
+                  {t("previous")}
+                </span>
+              )}
+
+              <div className="pagination-pages">
+                {Array.from({ length: totalPages }, (_, index) => {
+                  const page = index + 1;
+                  return (
+                    <Link
+                      key={page}
+                      href={buildPageHref(page)}
+                      className={`pagination-page ${
+                        page === currentPage ? "active" : ""
+                      }`}
+                      aria-current={page === currentPage ? "page" : undefined}
+                    >
+                      {page}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {currentPage < totalPages ? (
+                <Link
+                  href={buildPageHref(currentPage + 1)}
+                  className="pagination-btn"
+                  rel="next"
+                >
+                  {t("next")}
+                </Link>
+              ) : (
+                <span className="pagination-btn disabled" aria-disabled="true">
+                  {t("next")}
+                </span>
+              )}
+            </nav>
+          )}
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 /**
  * Tests for `zero automation trigger` commands
- * (add / update / list / show / rm / enable / disable / rotate-secret).
+ * (add / update / list / show / rm / enable / disable).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
  * principles:
@@ -54,13 +54,6 @@ const loopTrigger = {
   ...timeRuntime,
 };
 
-const webhookTrigger = {
-  ...triggerBase,
-  kind: "webhook",
-  webhookToken: "whk_deadbeef",
-  webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-};
-
 describe("zero automation trigger commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -82,7 +75,7 @@ describe("zero automation trigger commands", () => {
     mockConsoleError.mockClear();
   });
 
-  function captureAddTrigger(response: object, secret?: string) {
+  function captureAddTrigger(response: object) {
     const captured: { ref?: string; body?: Record<string, unknown> } = {};
     server.use(
       http.post(
@@ -90,10 +83,7 @@ describe("zero automation trigger commands", () => {
         async ({ request, params }) => {
           captured.ref = params.ref as string;
           captured.body = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json(
-            { trigger: response, webhookSecret: secret },
-            { status: 201 },
-          );
+          return HttpResponse.json({ trigger: response }, { status: 201 });
         },
       ),
     );
@@ -140,12 +130,53 @@ describe("zero automation trigger commands", () => {
         "once",
         "--at",
         "2026-06-10T09:00",
+        "--timezone",
+        "UTC",
       ]);
 
       expect(captured.body).toEqual({
         kind: "once",
         atTime: "2026-06-10T09:00",
+        timezone: "UTC",
       });
+    });
+
+    it("should add a once trigger with an explicit UTC instant without --timezone", async () => {
+      const captured = captureAddTrigger(onceTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        "alerts",
+        "once",
+        "--at",
+        "2026-06-10T09:00:00Z",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "once",
+        atTime: "2026-06-10T09:00:00Z",
+      });
+    });
+
+    it("should reject a local once trigger without --timezone", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          "alerts",
+          "once",
+          "--at",
+          "2026-06-10T09:00",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("requires --timezone"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should add a loop trigger parsing the --every duration", async () => {
@@ -165,28 +196,6 @@ describe("zero automation trigger commands", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toMatch(/Every:\s+15m/);
-    });
-
-    it("should add a webhook trigger and print URL + one-time secret", async () => {
-      const captured = captureAddTrigger(
-        webhookTrigger,
-        "whsec_supersecretvalue",
-      );
-
-      await triggerCommand.parseAsync([
-        "node",
-        "cli",
-        "add",
-        "alerts",
-        "webhook",
-      ]);
-
-      expect(captured.body).toEqual({ kind: "webhook" });
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(webhookTrigger.webhookUrl);
-      expect(logCalls).toContain("whsec_supersecretvalue");
-      expect(logCalls).toContain("shown only once");
     });
 
     it("should reject an invalid --every duration", async () => {
@@ -295,12 +304,33 @@ describe("zero automation trigger commands", () => {
         TRIGGER_ID,
         "--at",
         "2026-06-10T09:00",
+        "--timezone",
+        "UTC",
       ]);
 
       expect(captured.body).toEqual({
         kind: "once",
         atTime: "2026-06-10T09:00",
+        timezone: "UTC",
       });
+    });
+
+    it("should reject a local one-time schedule update without --timezone", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "update",
+          TRIGGER_ID,
+          "--at",
+          "2026-06-10T09:00",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("requires --timezone"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should update a loop interval parsing the --every duration", async () => {
@@ -361,7 +391,7 @@ describe("zero automation trigger commands", () => {
           ({ params }) => {
             expect(params.ref).toBe("alerts");
             return HttpResponse.json({
-              triggers: [cronTrigger, webhookTrigger],
+              triggers: [cronTrigger, loopTrigger],
             });
           },
         ),
@@ -372,8 +402,8 @@ describe("zero automation trigger commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("cron");
       expect(logCalls).toContain("0 9 * * *");
-      expect(logCalls).toContain("webhook");
-      expect(logCalls).toContain(webhookTrigger.webhookUrl);
+      expect(logCalls).toContain("loop");
+      expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain(TRIGGER_ID);
     });
 
@@ -467,67 +497,6 @@ describe("zero automation trigger commands", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(`Trigger ${TRIGGER_ID} disabled`);
-    });
-  });
-
-  describe("rotate-secret", () => {
-    it("should rotate a webhook trigger secret and print it once", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/automation-triggers/:id/rotate-secret",
-          () => {
-            return HttpResponse.json({
-              trigger: webhookTrigger,
-              webhookSecret: "whsec_rotatedvalue",
-            });
-          },
-        ),
-      );
-
-      await triggerCommand.parseAsync([
-        "node",
-        "cli",
-        "rotate-secret",
-        TRIGGER_ID,
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(`Trigger ${TRIGGER_ID} secret rotated`);
-      expect(logCalls).toContain("whsec_rotatedvalue");
-      expect(logCalls).toContain("shown only once");
-    });
-
-    it("should surface the non-webhook trigger error", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/automation-triggers/:id/rotate-secret",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Only webhook triggers have a secret",
-                  code: "BAD_REQUEST",
-                },
-              },
-              { status: 400 },
-            );
-          },
-        ),
-      );
-
-      await expect(async () => {
-        await triggerCommand.parseAsync([
-          "node",
-          "cli",
-          "rotate-secret",
-          TRIGGER_ID,
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Only webhook triggers have a secret"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 });

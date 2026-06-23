@@ -188,6 +188,15 @@ static POST_RESULT_SIGTERM_GRACE: LazyLock<u64> = LazyLock::new(|| {
     )
 });
 
+/// Absolute post-result cap. Unlike the quiet grace, this is fixed from the
+/// terminal result time and does not refresh on later stdout events.
+static POST_RESULT_TOTAL_CAP: LazyLock<u64> = LazyLock::new(|| {
+    u64_env_or(
+        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        constants::POST_RESULT_TOTAL_CAP_SECS,
+    )
+});
+
 /// Follow-up grace after SIGTERM before escalating to SIGKILL. Same
 /// override rationale as `POST_RESULT_SIGTERM_GRACE`.
 static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
@@ -521,6 +530,13 @@ pub fn stuck_tool_timeout_secs() -> u64 {
 /// also log a warning.
 pub fn post_result_sigterm_grace_secs() -> u64 {
     *POST_RESULT_SIGTERM_GRACE
+}
+/// Absolute cap after `type=result`, from `VM0_POST_RESULT_TOTAL_CAP_SECS`.
+///
+/// Unset or unparseable values use the compiled default; unparseable values
+/// also log a warning.
+pub fn post_result_total_cap_secs() -> u64 {
+    *POST_RESULT_TOTAL_CAP
 }
 /// Grace period before SIGKILL after SIGTERM, from
 /// `VM0_POST_RESULT_SIGKILL_GRACE_SECS`.

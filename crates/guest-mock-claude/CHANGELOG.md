@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.1...guest-mock-claude-v0.21.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* separate Claude post-result cleanup lifecycle ([#18524](https://github.com/vm0-ai/vm0/issues/18524)) ([6dcad82](https://github.com/vm0-ai/vm0/commit/6dcad82ea6241cc2197e577867ba8bee00e13525))
+
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.0...guest-mock-claude-v0.21.1) (2026-06-22)
 
 

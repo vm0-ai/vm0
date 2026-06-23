@@ -291,17 +291,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AutomationWebhookTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow webhook triggers on automations: creating them (API + CLI sugar), the inbound dispatch endpoint, and secret rotation. Webhook triggers are a NEW capability on top of the schedule-parity automation surface; while off, automations are feature-equivalent to legacy schedules (time triggers only).",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.AutomationMultiTrigger]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the resource-aware Automation trigger section in Apps/platform. While off, platform keeps the legacy single-time-trigger editing projection.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowGmailEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Gmail new-message workflow event triggers. Creating/enabling requires a connected Gmail connector and Pub/Sub watch setup; matched inbound messages run the linked workflow.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

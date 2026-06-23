@@ -1,10 +1,14 @@
 import { command } from "ccstate";
 import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
-import type {
-  ZeroWorkflowSchedule,
-  ZeroWorkflowTriggerSummary,
+import {
+  gmailNewMessageEventConfigSchema,
+  type GmailNewMessageEventConfig,
+  type ZeroWorkflowSchedule,
+  type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   zeroWorkflowTriggers,
@@ -31,6 +35,10 @@ import {
   loadVisibleWorkflowById,
   type WorkflowMember,
 } from "./zero-workflow-data.service";
+import {
+  ensureGmailWatchForUser,
+  gmailWorkflowEventTriggersEnabledForOwner,
+} from "./gmail-workflow-event.service";
 
 type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 
@@ -53,6 +61,16 @@ interface ScheduleColumns {
   readonly timezone: string;
 }
 
+function parseOnceAtTime(
+  schedule: Extract<ZeroWorkflowSchedule, { type: "once" }>,
+): Date {
+  const result = parseScheduledAtTime(schedule.atTime, schedule.timezone);
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+  return result.date;
+}
+
 function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
   if (schedule.type === "cron") {
     return {
@@ -68,7 +86,7 @@ function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
       scheduleType: "once",
       cronExpression: null,
       intervalSeconds: null,
-      atTime: new Date(schedule.atTime),
+      atTime: parseOnceAtTime(schedule),
       timezone: schedule.timezone,
     };
   }
@@ -97,7 +115,11 @@ function validateSchedule(
     return `Invalid timezone: ${schedule.timezone}`;
   }
   if (schedule.type === "once") {
-    if (new Date(schedule.atTime).getTime() <= now.getTime()) {
+    const atTime = parseScheduledAtTime(schedule.atTime, schedule.timezone);
+    if (!atTime.ok) {
+      return atTime.message;
+    }
+    if (atTime.date.getTime() <= now.getTime()) {
       return "Schedule atTime must be in the future";
     }
     return null;
@@ -131,7 +153,7 @@ function resolveNextRunAt(
     return calculateNextRun(schedule.cronExpression, schedule.timezone, now);
   }
   if (schedule.type === "once") {
-    return new Date(schedule.atTime);
+    return parseOnceAtTime(schedule);
   }
   return now;
 }
@@ -168,6 +190,21 @@ function rowToSchedule(row: TriggerRow): ZeroWorkflowSchedule {
 }
 
 function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
+  if (row.kind === "event" && row.eventType === "gmail-new-message") {
+    return {
+      id: row.id,
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: gmailNewMessageEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+      ownerUserId: row.ownerUserId,
+      enabled: row.enabled,
+      chatThreadId: row.chatThreadId,
+      nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
+      lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+    };
+  }
   const schedule = rowToSchedule(row);
   return {
     id: row.id,
@@ -180,6 +217,15 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
   };
+}
+
+function rowToPublicSummary(
+  row: TriggerRow,
+): ZeroWorkflowTriggerSummary | null {
+  if (row.kind === "event" && row.eventType !== "gmail-new-message") {
+    return null;
+  }
+  return rowToSummary(row);
 }
 
 interface UsableAgent {
@@ -254,7 +300,7 @@ async function loadTriggerRow(
 }
 
 /**
- * List the caller's own schedule triggers under a workflow. Detail pages show
+ * List the caller's own workflow triggers under a workflow. Detail pages show
  * only the triggers the caller owns, so this filters by `ownerUserId`.
  * Visibility of the workflow itself is the caller's responsibility (the workflow
  * must already be resolved as visible).
@@ -275,11 +321,13 @@ export async function loadWorkflowTriggers(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.workflowId, args.workflowId),
         eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.kind, "schedule"),
       ),
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
-  return rows.map(rowToSummary);
+  return rows.flatMap((row) => {
+    const summary = rowToPublicSummary(row);
+    return summary ? [summary] : [];
+  });
 }
 
 /**
@@ -438,9 +486,6 @@ export async function getWorkflowTrigger(
   if (!trigger) {
     return null;
   }
-  if (trigger.kind !== "schedule") {
-    return null;
-  }
   const visible = await loadVisibleWorkflowById(db, {
     orgId: args.orgId,
     member: args.member,
@@ -449,10 +494,10 @@ export async function getWorkflowTrigger(
   if (!visible) {
     return null;
   }
-  return rowToSummary(trigger);
+  return rowToPublicSummary(trigger);
 }
 
-interface CreateTriggerInput {
+interface CreateScheduleTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
@@ -460,9 +505,168 @@ interface CreateTriggerInput {
   readonly enabled: boolean;
 }
 
+interface CreateGmailEventTriggerInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: "gmail-new-message";
+  readonly eventConfig: GmailNewMessageEventConfig;
+  readonly enabled: boolean;
+}
+
+type CreateTriggerInput =
+  | CreateScheduleTriggerInput
+  | CreateGmailEventTriggerInput;
+
+function triggerCreateInputIsSchedule(
+  args: CreateTriggerInput,
+): args is CreateScheduleTriggerInput {
+  return "schedule" in args;
+}
+
+async function ensureAgentGmailConnector(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<void> {
+  await db
+    .insert(userConnectors)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      connectorType: "gmail",
+    })
+    .onConflictDoNothing({
+      target: [
+        userConnectors.orgId,
+        userConnectors.userId,
+        userConnectors.agentId,
+        userConnectors.connectorType,
+      ],
+    });
+}
+
+async function insertGmailEventTrigger(
+  db: Db,
+  args: {
+    readonly input: CreateGmailEventTriggerInput;
+    readonly workflowId: string;
+    readonly agentId: string;
+    readonly currentTime: Date;
+  },
+): Promise<ZeroWorkflowTriggerSummary> {
+  return await db.transaction(async (tx) => {
+    await ensureAgentGmailConnector(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      agentId: args.agentId,
+    });
+
+    const [thread] = await tx
+      .insert(chatThreads)
+      .values({
+        userId: args.input.member.userId,
+        agentComposeId: args.agentId,
+        title: "Gmail new message",
+        lastMessageAt: args.currentTime,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to create trigger chat thread");
+    }
+
+    const [row] = await tx
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: args.input.orgId,
+        workflowId: args.workflowId,
+        ownerUserId: args.input.member.userId,
+        kind: "event",
+        eventType: args.input.eventType,
+        eventConfig: args.input.eventConfig,
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: args.input.enabled,
+        chatThreadId: thread.id,
+        nextRunAt: null,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+    if (!row) {
+      throw new Error("Failed to create workflow trigger");
+    }
+    return rowToSummary(row);
+  });
+}
+
+async function insertScheduleTrigger(
+  db: Db,
+  args: {
+    readonly input: CreateScheduleTriggerInput;
+    readonly workflowId: string;
+    readonly agentId: string;
+    readonly columns: ScheduleColumns;
+    readonly nextRunAt: Date | null;
+    readonly currentTime: Date;
+  },
+): Promise<ZeroWorkflowTriggerSummary> {
+  return await db.transaction(async (tx) => {
+    const [thread] = await tx
+      .insert(chatThreads)
+      .values({
+        userId: args.input.member.userId,
+        agentComposeId: args.agentId,
+        title: summarizeSchedule(args.input.schedule),
+        lastMessageAt: args.currentTime,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to create trigger chat thread");
+    }
+
+    const [row] = await tx
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: args.input.orgId,
+        workflowId: args.workflowId,
+        ownerUserId: args.input.member.userId,
+        kind: "schedule",
+        eventType: null,
+        eventConfig: null,
+        scheduleType: args.columns.scheduleType,
+        cronExpression: args.columns.cronExpression,
+        intervalSeconds: args.columns.intervalSeconds,
+        atTime: args.columns.atTime,
+        timezone: args.columns.timezone,
+        enabled: args.input.enabled,
+        chatThreadId: thread.id,
+        nextRunAt: args.nextRunAt,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+    if (!row) {
+      throw new Error("Failed to create workflow trigger");
+    }
+    return rowToSummary(row);
+  });
+}
+
 export const createWorkflowTrigger$ = command(
   async (
-    { set },
+    { get, set },
     args: CreateTriggerInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -498,6 +702,42 @@ export const createWorkflowTrigger$ = command(
       };
     }
 
+    if (!triggerCreateInputIsSchedule(args)) {
+      const featureEnabled = await get(
+        gmailWorkflowEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Gmail workflow event triggers are not enabled",
+        };
+      }
+
+      const watchResult = await ensureGmailWatchForUser({
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.member.userId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watchResult.kind !== "ok") {
+        return { kind: "bad-request", message: watchResult.message };
+      }
+
+      const summary = await insertGmailEventTrigger(writeDb, {
+        input: args,
+        workflowId: workflow.id,
+        agentId: agent.id,
+        currentTime: nowDate(),
+      });
+      signal.throwIfAborted();
+      return { kind: "ok", summary };
+    }
+
     const now = nowDate();
     const scheduleError = validateSchedule(args.schedule, now);
     if (scheduleError) {
@@ -507,46 +747,13 @@ export const createWorkflowTrigger$ = command(
     const cols = scheduleToColumns(args.schedule);
     const nextRunAt = resolveNextRunAt(args.schedule, args.enabled, now);
 
-    const summary = await writeDb.transaction(async (tx) => {
-      const [thread] = await tx
-        .insert(chatThreads)
-        .values({
-          userId: args.member.userId,
-          agentComposeId: agent.id,
-          title: summarizeSchedule(args.schedule),
-          lastMessageAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning({ id: chatThreads.id });
-      if (!thread) {
-        throw new Error("Failed to create trigger chat thread");
-      }
-
-      const [row] = await tx
-        .insert(zeroWorkflowTriggers)
-        .values({
-          orgId: args.orgId,
-          workflowId: workflow.id,
-          ownerUserId: args.member.userId,
-          kind: "schedule",
-          eventType: null,
-          scheduleType: cols.scheduleType,
-          cronExpression: cols.cronExpression,
-          intervalSeconds: cols.intervalSeconds,
-          atTime: cols.atTime,
-          timezone: cols.timezone,
-          enabled: args.enabled,
-          chatThreadId: thread.id,
-          nextRunAt,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
-      if (!row) {
-        throw new Error("Failed to create workflow trigger");
-      }
-      return rowToSummary(row);
+    const summary = await insertScheduleTrigger(writeDb, {
+      input: args,
+      workflowId: workflow.id,
+      agentId: agent.id,
+      columns: cols,
+      nextRunAt,
+      currentTime: now,
     });
     signal.throwIfAborted();
     return { kind: "ok", summary };
@@ -572,7 +779,7 @@ async function loadOwnedTrigger(
   if (!trigger) {
     return { kind: "not-found" };
   }
-  if (trigger.kind !== "schedule") {
+  if (trigger.kind === "event" && trigger.eventType !== "gmail-new-message") {
     return { kind: "not-found" };
   }
   const visible = await loadVisibleWorkflowById(db, {
@@ -596,7 +803,8 @@ interface UpdateTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly triggerId: string;
-  readonly schedule: ZeroWorkflowSchedule;
+  readonly schedule?: ZeroWorkflowSchedule;
+  readonly eventConfig?: GmailNewMessageEventConfig;
 }
 
 export const updateWorkflowTrigger$ = command(
@@ -617,6 +825,31 @@ export const updateWorkflowTrigger$ = command(
     }
     const { trigger } = owned;
 
+    if (trigger.kind === "event") {
+      if (args.eventConfig === undefined) {
+        return {
+          kind: "bad-request",
+          message: "eventConfig is required for Gmail event triggers",
+        };
+      }
+      const [row] = await writeDb
+        .update(zeroWorkflowTriggers)
+        .set({ eventConfig: args.eventConfig, updatedAt: nowDate() })
+        .where(eq(zeroWorkflowTriggers.id, trigger.id))
+        .returning();
+      signal.throwIfAborted();
+      if (!row) {
+        throw new Error("Failed to update workflow trigger");
+      }
+      return { kind: "ok", summary: rowToSummary(row) };
+    }
+
+    if (args.schedule === undefined) {
+      return {
+        kind: "bad-request",
+        message: "schedule is required for schedule triggers",
+      };
+    }
     const now = nowDate();
     const scheduleError = validateSchedule(args.schedule, now);
     if (scheduleError) {
@@ -675,7 +908,7 @@ export const deleteWorkflowTrigger$ = command(
 
 export const enableWorkflowTrigger$ = command(
   async (
-    { set },
+    { get, set },
     args: TriggerActionInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -716,7 +949,50 @@ export const enableWorkflowTrigger$ = command(
     }
 
     const now = nowDate();
-    const nextRunAt = resolveNextRunAt(rowToSchedule(trigger), true, now);
+    const nextRunAt =
+      trigger.kind === "schedule"
+        ? resolveNextRunAt(rowToSchedule(trigger), true, now)
+        : trigger.nextRunAt;
+    if (trigger.kind === "event") {
+      const featureEnabled = await get(
+        gmailWorkflowEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Gmail workflow event triggers are not enabled",
+        };
+      }
+
+      const agentId = await loadTriggerWorkflowAgentId(writeDb, {
+        orgId: args.orgId,
+        workflowId: trigger.workflowId,
+      });
+      signal.throwIfAborted();
+      if (agentId === null) {
+        return { kind: "not-found" };
+      }
+      const watchResult = await ensureGmailWatchForUser({
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.member.userId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watchResult.kind !== "ok") {
+        return { kind: "bad-request", message: watchResult.message };
+      }
+      await ensureAgentGmailConnector(writeDb, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        agentId,
+      });
+      signal.throwIfAborted();
+    }
     const [row] = await writeDb
       .update(zeroWorkflowTriggers)
       .set({ enabled: true, nextRunAt, consecutiveFailures: 0, updatedAt: now })
@@ -743,9 +1019,11 @@ export const disableWorkflowTrigger$ = command(
       return owned;
     }
     const now = nowDate();
+    const nextRunAt =
+      owned.trigger.kind === "schedule" ? null : owned.trigger.nextRunAt;
     const [row] = await writeDb
       .update(zeroWorkflowTriggers)
-      .set({ enabled: false, nextRunAt: null, updatedAt: now })
+      .set({ enabled: false, nextRunAt, updatedAt: now })
       .where(eq(zeroWorkflowTriggers.id, owned.trigger.id))
       .returning();
     signal.throwIfAborted();

@@ -69,10 +69,10 @@ if MANIFEST_PATH="${TMPDIR}/manifest.json" \
   TARGET=aarch64-unknown-linux-musl \
   PROFILE=vm0/default \
   METAL_HOSTS=dev-1 \
-  "$MANIFEST" validate >/tmp/manifest-test.out 2>/tmp/manifest-test.err; then
+  "$MANIFEST" validate >"${TMPDIR}/manifest-test.out" 2>"${TMPDIR}/manifest-test.err"; then
   fail "expected wrong HEAD_SHA to fail"
 fi
-grep -q "headSha mismatch" /tmp/manifest-test.err || fail "expected headSha mismatch"
+grep -q "headSha mismatch" "${TMPDIR}/manifest-test.err" || fail "expected headSha mismatch"
 
 if MANIFEST_PATH="${TMPDIR}/manifest.json" \
   HEAD_SHA=abc \
@@ -80,9 +80,31 @@ if MANIFEST_PATH="${TMPDIR}/manifest.json" \
   TARGET=aarch64-unknown-linux-musl \
   PROFILE=vm0/default \
   METAL_HOSTS=dev-3 \
-  "$MANIFEST" validate >/tmp/manifest-test.out 2>/tmp/manifest-test.err; then
+  "$MANIFEST" validate >"${TMPDIR}/manifest-test.out" 2>"${TMPDIR}/manifest-test.err"; then
   fail "expected missing host to fail"
 fi
-grep -q "manifest missing rootfsHash for dev-3" /tmp/manifest-test.err || fail "expected missing host message"
+grep -q "manifest missing rootfsHash for dev-3" "${TMPDIR}/manifest-test.err" || fail "expected missing host message"
+
+if MANIFEST_PATH="${TMPDIR}/manifest.json" \
+  HEAD_SHA=abc \
+  JOB_REF=pr-123 \
+  TARGET=x86_64-unknown-linux-musl \
+  PROFILE=vm0/default \
+  METAL_HOSTS=dev-1 \
+  "$MANIFEST" validate >"${TMPDIR}/manifest-test.out" 2>"${TMPDIR}/manifest-test.err"; then
+  fail "expected target mismatch to fail"
+fi
+grep -q "target mismatch: aarch64-unknown-linux-musl != x86_64-unknown-linux-musl" "${TMPDIR}/manifest-test.err" || fail "expected target mismatch"
+
+if MANIFEST_PATH="${TMPDIR}/manifest.json" \
+  HEAD_SHA=abc \
+  JOB_REF=pr-123 \
+  TARGET=powerpc-unknown-linux-musl \
+  PROFILE=vm0/default \
+  METAL_HOSTS=dev-1 \
+  "$MANIFEST" validate >"${TMPDIR}/manifest-test.out" 2>"${TMPDIR}/manifest-test.err"; then
+  fail "expected unsupported target to fail"
+fi
+grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/manifest-test.err" || fail "expected unsupported target message"
 
 echo "runner-image-manifest-test: ok"

@@ -4,14 +4,24 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { connectors } from "@vm0/db/schema/connector";
+import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
+import { secrets } from "@vm0/db/schema/secret";
+import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
+import { mockOptionalEnv } from "../../../lib/env";
+import { mockNow, now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { encryptStoredSecretValue } from "../../services/crypto.utils";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -40,6 +50,8 @@ function detailClient() {
 }
 
 const WORKFLOW_NAME = "trigger-workflow";
+const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
+const GMAIL_EMAIL = "workflow-user@example.com";
 
 function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
@@ -83,9 +95,76 @@ async function seedAgentWithWorkflow(
   return { agentId, workflowId };
 }
 
+async function enableGmailWorkflowTriggers(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.WorkflowGmailEventTriggers]: true },
+    });
+}
+
+async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
+  const db = store.set(writeDb$);
+  const [connector] = await db
+    .insert(connectors)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "gmail",
+      authMethod: "oauth",
+      externalEmail: GMAIL_EMAIL,
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      oauthScopes: JSON.stringify([
+        "https://www.googleapis.com/auth/gmail.modify",
+      ]),
+    })
+    .returning({ id: connectors.id });
+  if (!connector) {
+    throw new Error("Expected Gmail connector to be created");
+  }
+
+  await db.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GMAIL_ACCESS_TOKEN",
+    encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
+    type: "connector",
+  });
+  return connector.id;
+}
+
+function configureGmailWatchMock(historyId = "100"): void {
+  mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
+  server.use(
+    http.post(
+      "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+      async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer gmail-access-token",
+        );
+        await expect(request.json()).resolves.toStrictEqual({
+          topicName: GMAIL_TOPIC_NAME,
+        });
+        return HttpResponse.json({
+          historyId,
+          expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+        });
+      },
+    ),
+  );
+}
+
 describe("zero workflow triggers", () => {
-  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
-    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
+  const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
+    const db = store.set(writeDb$);
+    await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+    await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
+    await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
   async function setupFixture(): Promise<{
@@ -131,7 +210,60 @@ describe("zero workflow triggers", () => {
     });
     expect(created.body.chatThreadId).toBeTruthy();
     expect(created.body.nextRunAt).toBeTruthy();
+    expect(created.body.kind).toBe("schedule");
+    if (created.body.kind !== "schedule") {
+      throw new Error("Expected a schedule trigger");
+    }
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
+  });
+
+  it("creates and updates one-time schedules from local atTime and timezone", async () => {
+    mockNow(Date.parse("2026-06-22T07:50:00.000Z"));
+    const { workflowId } = await setupFixture();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: "2026-06-22T15:55:00",
+            timezone: "Asia/Shanghai",
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body.schedule).toStrictEqual({
+      type: "once",
+      atTime: "2026-06-22T07:55:00.000Z",
+      timezone: "Asia/Shanghai",
+    });
+    expect(created.body.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
+
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: "2026-06-22T16:05:00",
+            timezone: "Asia/Shanghai",
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.schedule).toStrictEqual({
+      type: "once",
+      atTime: "2026-06-22T08:05:00.000Z",
+      timezone: "Asia/Shanghai",
+    });
+    expect(updated.body.nextRunAt).toBe("2026-06-22T08:05:00.000Z");
   });
 
   it("rejects creation on a workflow the caller cannot see", async () => {
@@ -230,6 +362,138 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
+  it("rejects Gmail event triggers before the feature is enabled", async () => {
+    const { workflowId } = await setupFixture();
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Gmail workflow event triggers are not enabled",
+    );
+  });
+
+  it("requires a connected Gmail account for Gmail event triggers", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
+    await enableGmailWorkflowTriggers(fixture);
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Connect Gmail before adding a Gmail event trigger",
+    );
+  });
+
+  it("creates Gmail event triggers with a watch and agent connector grant", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
+    await enableGmailWorkflowTriggers(fixture);
+    const connectorId = await seedGmailConnector(fixture);
+    configureGmailWatchMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: { subject: { contains: "invoice" } },
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: {
+        provider: "gmail",
+        event: "new_message",
+        match: { subject: { contains: "invoice" } },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+    expect(created.body.chatThreadId).toBeTruthy();
+
+    const db = store.set(writeDb$);
+    const watches = await db
+      .select()
+      .from(gmailWatchStates)
+      .where(eq(gmailWatchStates.connectorId, connectorId));
+    expect(watches).toHaveLength(1);
+    expect(watches[0]).toMatchObject({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      emailAddress: GMAIL_EMAIL,
+      topicName: GMAIL_TOPIC_NAME,
+      lastHistoryId: "100",
+      needsRewatch: false,
+    });
+
+    const grants = await db
+      .select({ connectorType: userConnectors.connectorType })
+      .from(userConnectors)
+      .where(
+        and(
+          eq(userConnectors.orgId, fixture.orgId),
+          eq(userConnectors.userId, fixture.userId),
+          eq(userConnectors.agentId, agentId),
+        ),
+      );
+    expect(grants).toStrictEqual([{ connectorType: "gmail" }]);
+
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: { from: { contains: "billing@example.com" } },
+          },
+        },
+      }),
+      [200],
+    );
+    expect(updated.body.kind).toBe("event");
+    if (updated.body.kind !== "event") {
+      throw new Error("Expected a Gmail event trigger");
+    }
+    expect(updated.body.eventConfig.match).toStrictEqual({
+      from: { contains: "billing@example.com" },
+    });
+  });
+
   it("returns created triggers from list and workflow detail", async () => {
     const { workflowId } = await setupFixture();
 
@@ -256,7 +520,12 @@ describe("zero workflow triggers", () => {
       [200],
     );
     expect(listed.body).toHaveLength(1);
-    expect(listed.body[0]?.schedule.type).toBe("once");
+    const [listedTrigger] = listed.body;
+    expect(listedTrigger?.kind).toBe("schedule");
+    if (listedTrigger?.kind !== "schedule") {
+      throw new Error("Expected a schedule trigger");
+    }
+    expect(listedTrigger.schedule.type).toBe("once");
 
     const detail = await accept(
       detailClient().get({

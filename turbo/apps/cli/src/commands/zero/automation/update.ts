@@ -7,6 +7,7 @@ import {
   updateAutomationTrigger,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { requireTimezoneForLocalAtTime } from "./at-time-input";
 import { parseDurationSeconds } from "./duration";
 import { formatTriggerConfig } from "./trigger-display";
 
@@ -51,6 +52,7 @@ function buildTimingUpdate(
     };
   }
   if (options.once) {
+    requireTimezoneForLocalAtTime(options.once, options.timezone, "--once");
     return { kind: "once", atTime: options.once, timezone: options.timezone };
   }
   if (options.loop) {
@@ -102,14 +104,12 @@ Notes:
         );
       }
 
-      // Resolve the single time trigger up front so a missing/ambiguous
-      // trigger fails before any field is patched.
+      // Resolve the single trigger up front so a missing/ambiguous trigger
+      // fails before any field is patched.
       let timeTriggerId: string | undefined;
       if (timing) {
         const automation = await showAutomation(ref);
-        const timeTriggers = automation.triggers.filter((trigger) => {
-          return trigger.kind !== "webhook";
-        });
+        const timeTriggers = automation.triggers;
         const [first] = timeTriggers;
         if (!first) {
           throw new Error(

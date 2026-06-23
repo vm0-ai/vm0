@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.0...ably-subscriber-v1.0.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* separate ably attach resume state from channel serial ([#18508](https://github.com/vm0-ai/vm0/issues/18508)) ([e04534e](https://github.com/vm0-ai/vm0/commit/e04534ea758a735ecfccfe6f7501d419b28ae2b7))
+
 ## [1.0.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.23...ably-subscriber-v1.0.0) (2026-06-19)
 
 

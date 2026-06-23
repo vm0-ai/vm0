@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.20.32](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.31...guest-download-v0.20.32) (2026-06-23)
+
+
+### Documentation
+
+* explain guest-download scheduling harness ([#18564](https://github.com/vm0-ai/vm0/issues/18564)) ([6bf5d56](https://github.com/vm0-ai/vm0/commit/6bf5d5606c3e325857114fa489c76df3093d08e2))
+
+## [0.20.31](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.30...guest-download-v0.20.31) (2026-06-22)
+
 ## [0.20.30](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.29...guest-download-v0.20.30) (2026-06-19)
 
 ## [0.20.29](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.28...guest-download-v0.20.29) (2026-06-18)

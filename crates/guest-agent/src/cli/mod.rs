@@ -22,11 +22,12 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod framework;
+mod process_group;
 mod termination;
 
 pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
-pub use framework::ClaudeResultSummary;
+pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
 use crate::active_input::{ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -45,11 +46,12 @@ use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
+use process_group::ChildProcessGroup;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
-use termination::{TerminationReason, TerminationState};
+use termination::{PostResultCleanupState, TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 
@@ -193,6 +195,11 @@ pub struct CliExecutionResult {
     /// Claude Code's final result metadata, when a terminal result event was
     /// observed. Codex uses its own event schema and leaves this unset.
     pub claude_result: Option<ClaudeResultSummary>,
+
+    /// Claude Code result that armed post-result cleanup, when cleanup was
+    /// armed. This is intentionally separate from `claude_result` because late
+    /// drained stdout may contain another result event after cleanup starts.
+    pub post_result_cleanup_result: Option<ClaudeResultSummary>,
 
     /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
     /// stdout JSONL.
@@ -377,7 +384,8 @@ async fn execute_cli_inner(
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
-    let pgid = child.id().map(|pid| pid as i32);
+    let process_group = ChildProcessGroup::from_group_leader_child_id(child.id());
+    let pgid = process_group.map(ChildProcessGroup::raw_pgid);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
 
@@ -450,6 +458,8 @@ async fn execute_cli_inner(
     let mut last_read_event_at: Option<Instant> = None;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
+    let mut post_result_cleanup_result = None;
+    let mut post_result_cleanup = None;
     let mut failure_diagnostic = None;
     let mut session_metadata_capture = events::SessionMetadataCapture::new();
     let event_result: Result<(), AgentError> = loop {
@@ -477,12 +487,13 @@ async fn execute_cli_inner(
                             TerminationReason::InitialPromptStdin,
                             CliTerminationSignal::Sigterm,
                             pgid,
-                            env::post_result_sigkill_grace_secs(),
+                            Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if let Some(process_group) = process_group {
+                            process_group.sigterm();
                         }
                         termination_error = Some(error);
+                        post_result_cleanup = None;
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -506,14 +517,15 @@ async fn execute_cli_inner(
                             TerminationReason::InitialPromptStdin,
                             CliTerminationSignal::Sigterm,
                             pgid,
-                            env::post_result_sigkill_grace_secs(),
+                            Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if let Some(process_group) = process_group {
+                            process_group.sigterm();
                         }
                         termination_error = Some(AgentError::Execution(format!(
                             "Claude stdin writer task failed: {error}"
                         )));
+                        post_result_cleanup = None;
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -574,6 +586,8 @@ async fn execute_cli_inner(
                                 }
                             }
 
+                            let post_result_cleanup_was_armed = post_result_cleanup.is_some();
+
                             let _ = log_file.write_all(line.as_bytes()).await;
                             let _ = log_file.write_all(b"\n").await;
 
@@ -594,7 +608,8 @@ async fn execute_cli_inner(
                             session_metadata_capture.capture_event(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
-                                claude_result = Some(ClaudeResultSummary::from_event(&event));
+                                let result_summary = ClaudeResultSummary::from_event(&event);
+                                claude_result = Some(result_summary);
                                 if let Some(diagnostic) =
                                     events::masked_claude_failure_diagnostic(&event, masker)
                                 {
@@ -627,15 +642,22 @@ async fn execute_cli_inner(
                                     && termination_state
                                         .should_arm_post_result(cli_status.is_some())
                                 {
-                                    termination_state = TerminationState::SigtermPending {
-                                        reason: TerminationReason::PostResult,
-                                    };
-                                    termination_deadline.as_mut().reset(
-                                        tokio::time::Instant::now()
-                                            + Duration::from_secs(
-                                                env::post_result_sigterm_grace_secs(),
-                                            ),
+                                    let now = tokio::time::Instant::now();
+                                    let cleanup = PostResultCleanupState::arm(
+                                        now,
+                                        Duration::from_secs(
+                                            env::post_result_sigterm_grace_secs(),
+                                        ),
+                                        Duration::from_secs(env::post_result_total_cap_secs()),
                                     );
+                                    if let Some(next_deadline) = cleanup.next_deadline() {
+                                        termination_state = TerminationState::SigtermPending {
+                                            reason: TerminationReason::PostResult,
+                                        };
+                                        termination_deadline.as_mut().reset(next_deadline);
+                                        post_result_cleanup = Some(cleanup);
+                                        post_result_cleanup_result = Some(result_summary);
+                                    }
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
@@ -660,6 +682,23 @@ async fn execute_cli_inner(
                                     candidate,
                                 ) {
                                     failure_diagnostic = Some(selected);
+                                }
+                            }
+                            if post_result_cleanup_was_armed
+                                && matches!(
+                                    termination_state,
+                                    TerminationState::SigtermPending {
+                                        reason: TerminationReason::PostResult
+                                    }
+                                )
+                                && let Some(cleanup) = post_result_cleanup.as_mut()
+                            {
+                                let next_deadline = cleanup.record_meaningful_event(
+                                    tokio::time::Instant::now(),
+                                    Duration::from_secs(env::post_result_sigterm_grace_secs()),
+                                );
+                                if let Some(next_deadline) = next_deadline {
+                                    termination_deadline.as_mut().reset(next_deadline);
                                 }
                             }
                             // Prepare event payload (mask secrets, add seq) and enqueue
@@ -706,6 +745,7 @@ async fn execute_cli_inner(
                         // SIGTERM). Park the termination FSM so it can't
                         // re-arm on any late `type=result` event.
                         termination_state = TerminationState::Done;
+                        post_result_cleanup = None;
                         if stdout_eof {
                             break Ok(());
                         }
@@ -718,26 +758,60 @@ async fn execute_cli_inner(
                 }
             }
             () = &mut termination_deadline, if termination_state.is_pending() && cli_status.is_none() => {
-                // `libc::kill` return value is intentionally discarded in
-                // both arms: ESRCH (child reaped since the is_pending()
-                // / is_none() check) is racy-but-harmless, and every
-                // other error would be unrecoverable from userspace.
+                // Process-group signal results are intentionally discarded in
+                // both arms: ESRCH (child reaped since the is_pending() /
+                // is_none() check) is racy-but-harmless, and every other
+                // error would be unrecoverable from userspace.
                 // The sigkill_grace deadline is the escalation path if
                 // the signal fails to take effect in time.
                 match termination_state {
                     TerminationState::SigtermPending { reason } => {
-                        let grace = env::post_result_sigterm_grace_secs();
+                        let now = tokio::time::Instant::now();
+                        let cleanup_timeout =
+                            (reason == TerminationReason::PostResult)
+                                .then(|| {
+                                    post_result_cleanup
+                                        .as_mut()
+                                        .and_then(|cleanup| cleanup.mark_signal_sent(now))
+                                })
+                                .flatten();
+                        let grace = cleanup_timeout
+                            .map(|timeout| timeout.elapsed)
+                            .unwrap_or_else(|| {
+                                Duration::from_secs(env::post_result_sigterm_grace_secs())
+                            });
                         if let Some(pid) = pgid {
                             if reason == TerminationReason::PostResult {
-                                log_warn!(
-                                    LOG_TAG,
-                                    "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
-                                );
+                                if let Some(timeout) = cleanup_timeout {
+                                    let trigger = timeout.trigger.label();
+                                    let elapsed_ms = timeout.elapsed.as_millis();
+                                    let quiet_ms = timeout.quiet_for.as_millis();
+                                    let meaningful_events = timeout.meaningful_event_count;
+                                    let detail = format!(
+                                        "trigger={trigger} signal=sigterm elapsed_ms={elapsed_ms} quiet_ms={quiet_ms} meaningful_events={meaningful_events}"
+                                    );
+                                    log_warn!(
+                                        LOG_TAG,
+                                        "Post-result cleanup {trigger} reached after {elapsed_ms}ms (quiet {quiet_ms}ms, meaningful events {meaningful_events}), SIGTERM pgid={pid}"
+                                    );
+                                    record_sandbox_op(
+                                        "post_result_cleanup_terminated",
+                                        timeout.elapsed,
+                                        true,
+                                        Some(&detail),
+                                    );
+                                } else {
+                                    log_warn!(
+                                        LOG_TAG,
+                                        "Post-result cleanup deadline fired without state, SIGTERM pgid={pid}"
+                                    );
+                                }
                             } else {
                                 log_warn!(
                                     LOG_TAG,
-                                    "CLI still running after {} sigterm grace {grace}s, SIGTERM pgid={pid}",
-                                    reason.label()
+                                    "CLI still running after {} sigterm grace {}ms, SIGTERM pgid={pid}",
+                                    reason.label(),
+                                    grace.as_millis()
                                 );
                             }
                             record_cli_termination_signal(
@@ -747,7 +821,9 @@ async fn execute_cli_inner(
                                 pgid,
                                 grace,
                             );
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
+                            }
                         }
                         termination_state = TerminationState::SigkillPending { reason };
                         termination_deadline.as_mut().reset(
@@ -756,13 +832,32 @@ async fn execute_cli_inner(
                         );
                     }
                     TerminationState::SigkillPending { reason } => {
-                        let grace = env::post_result_sigkill_grace_secs();
+                        let grace = Duration::from_secs(env::post_result_sigkill_grace_secs());
+                        let now = tokio::time::Instant::now();
                         if let Some(pid) = pgid {
                             log_warn!(
                                 LOG_TAG,
-                                "CLI did not exit after {} SIGTERM+{grace}s, SIGKILL pgid={pid}",
-                                reason.label()
+                                "CLI did not exit after {} SIGTERM+{}ms, SIGKILL pgid={pid}",
+                                reason.label(),
+                                grace.as_millis()
                             );
+                            if reason == TerminationReason::PostResult
+                                && let Some(cleanup) = post_result_cleanup
+                            {
+                                let elapsed = cleanup.elapsed(now);
+                                let quiet_ms = cleanup.quiet_for(now).as_millis();
+                                let meaningful_events = cleanup.meaningful_event_count();
+                                let elapsed_ms = elapsed.as_millis();
+                                let detail = format!(
+                                    "trigger=sigkill_escalation signal=sigkill elapsed_ms={elapsed_ms} quiet_ms={quiet_ms} meaningful_events={meaningful_events}"
+                                );
+                                record_sandbox_op(
+                                    "post_result_cleanup_terminated",
+                                    elapsed,
+                                    true,
+                                    Some(&detail),
+                                );
+                            }
                             record_cli_termination_signal(
                                 &mut cli_termination,
                                 reason,
@@ -770,8 +865,11 @@ async fn execute_cli_inner(
                                 pgid,
                                 grace,
                             );
-                            unsafe { libc::kill(-pid, libc::SIGKILL); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigkill();
+                            }
                         }
+                        post_result_cleanup = None;
                         termination_state = TerminationState::Done;
                     }
                     // Unreachable by the is_pending() guard. Log in
@@ -826,12 +924,13 @@ async fn execute_cli_inner(
                         TerminationReason::StuckTool,
                         CliTerminationSignal::Sigterm,
                         pgid,
-                        env::post_result_sigkill_grace_secs(),
+                        Duration::from_secs(env::post_result_sigkill_grace_secs()),
                     );
-                    if let Some(pid) = pgid {
-                        unsafe { libc::kill(-pid, libc::SIGTERM); }
+                    if let Some(process_group) = process_group {
+                        process_group.sigterm();
                     }
                     termination_error = Some(timeout_error);
+                    post_result_cleanup = None;
                     termination_state = TerminationState::SigkillPending {
                         reason: TerminationReason::StuckTool,
                     };
@@ -865,12 +964,13 @@ async fn execute_cli_inner(
                                 TerminationReason::HeartbeatError,
                                 CliTerminationSignal::Sigterm,
                                 pgid,
-                                env::post_result_sigkill_grace_secs(),
+                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(e);
+                            post_result_cleanup = None;
                             termination_state = TerminationState::SigkillPending {
                                 reason: TerminationReason::HeartbeatError,
                             };
@@ -897,12 +997,13 @@ async fn execute_cli_inner(
                                 TerminationReason::HeartbeatPanic,
                                 CliTerminationSignal::Sigterm,
                                 pgid,
-                                env::post_result_sigkill_grace_secs(),
+                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(error);
+                            post_result_cleanup = None;
                             termination_state = TerminationState::SigkillPending {
                                 reason: TerminationReason::HeartbeatPanic,
                             };
@@ -925,12 +1026,13 @@ async fn execute_cli_inner(
                                 TerminationReason::HeartbeatPanic,
                                 CliTerminationSignal::Sigterm,
                                 pgid,
-                                env::post_result_sigkill_grace_secs(),
+                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
                             );
-                            if let Some(pid) = pgid {
-                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            if let Some(process_group) = process_group {
+                                process_group.sigterm();
                             }
                             termination_error = Some(error);
+                            post_result_cleanup = None;
                             termination_state = TerminationState::SigkillPending {
                                 reason: TerminationReason::HeartbeatPanic,
                             };
@@ -1069,6 +1171,7 @@ async fn execute_cli_inner(
         stderr_lines: masked_stderr_lines,
         last_event_sequence,
         claude_result,
+        post_result_cleanup_result,
         failure_diagnostic,
         control_error: termination_error,
         cli_termination,
@@ -1080,13 +1183,13 @@ fn record_cli_termination_signal(
     reason: TerminationReason,
     signal: CliTerminationSignal,
     pgid: Option<i32>,
-    grace_secs: u64,
+    grace: Duration,
 ) {
     let diagnostic = cli_termination
         .take()
         .unwrap_or_else(|| CliTerminationDiagnostic::new(diagnostic_termination_reason(reason)));
-    *cli_termination =
-        Some(diagnostic.record_signal(signal, pgid, Some(grace_secs.saturating_mul(1000))));
+    let grace_ms = u64::try_from(grace.as_millis()).unwrap_or(u64::MAX);
+    *cli_termination = Some(diagnostic.record_signal(signal, pgid, Some(grace_ms)));
 }
 
 fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTerminationReason {
@@ -1174,6 +1277,7 @@ mod tests {
     use agent_diagnostics::{
         CliTerminationReason, CliTerminationSignal, FailureDetailSource, FailureReason,
     };
+    use std::time::Duration;
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
@@ -1217,7 +1321,7 @@ mod tests {
             TerminationReason::InitialPromptStdin,
             CliTerminationSignal::Sigterm,
             Some(42),
-            1,
+            Duration::from_secs(1),
         );
 
         let first = diagnostic.expect("diagnostic after SIGTERM");
@@ -1233,7 +1337,7 @@ mod tests {
             TerminationReason::InitialPromptStdin,
             CliTerminationSignal::Sigkill,
             Some(42),
-            2,
+            Duration::from_secs(2),
         );
 
         let escalated = diagnostic.expect("diagnostic after SIGKILL");

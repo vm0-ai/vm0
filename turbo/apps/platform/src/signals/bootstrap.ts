@@ -63,6 +63,7 @@ import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
+import { initTemplateCardThemeIds$ } from "./zero-page/zero-chat-composer.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
@@ -396,6 +397,7 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
     set(initTheme$);
+    set(initTemplateCardThemeIds$);
     set(setRootSignal$, signal);
 
     set(setupLoggers$);

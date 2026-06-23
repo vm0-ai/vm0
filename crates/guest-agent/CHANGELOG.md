@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.40.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.1...guest-agent-v0.40.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* classify claude output token limits ([#18579](https://github.com/vm0-ai/vm0/issues/18579)) ([2b43740](https://github.com/vm0-ai/vm0/commit/2b437408b03be9c6413705dd1b633cbc33a2a62a))
+
+
+### Refactoring
+
+* centralize guest-agent process group signaling ([#18567](https://github.com/vm0-ai/vm0/issues/18567)) ([ba20395](https://github.com/vm0-ai/vm0/commit/ba20395de33b867bdcd2799254a5d1b31ef58573))
+
+## [0.40.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.0...guest-agent-v0.40.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* separate Claude post-result cleanup lifecycle ([#18524](https://github.com/vm0-ai/vm0/issues/18524)) ([6dcad82](https://github.com/vm0-ai/vm0/commit/6dcad82ea6241cc2197e577867ba8bee00e13525))
+
+
+### Refactoring
+
+* centralize codex thread id contract ([#18499](https://github.com/vm0-ai/vm0/issues/18499)) ([9cecc84](https://github.com/vm0-ai/vm0/commit/9cecc8421f4073ce32b6529fff89049779a7c13e))
+
 ## [0.40.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.39.3...guest-agent-v0.40.0) (2026-06-22)
 
 

@@ -3403,6 +3403,27 @@
       "when": 1782117610152,
       "tag": "0485_remap_youtube_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1782127959554,
+      "tag": "0486_clear_google_permission_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1782183679737,
+      "tag": "0487_lyrical_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1782187145276,
+      "tag": "0488_pink_sphinx",
+      "breakpoints": true
     }
   ]
 }

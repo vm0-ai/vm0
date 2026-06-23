@@ -1,5 +1,42 @@
 # Changelog
 
+## [9.202.0](https://github.com/vm0-ai/vm0/compare/cli-v9.201.1...cli-v9.202.0) (2026-06-23)
+
+
+### Features
+
+* add Gmail new message workflow trigger ([#18591](https://github.com/vm0-ai/vm0/issues/18591)) ([3ce1cb5](https://github.com/vm0-ai/vm0/commit/3ce1cb525fb8c01e81513383789e40646ed81c0b))
+
+
+### Refactoring
+
+* remove automation webhook triggers ([#18563](https://github.com/vm0-ai/vm0/issues/18563)) ([b4e8e96](https://github.com/vm0-ai/vm0/commit/b4e8e9640e7922c7ea2969c36584d719ecddd196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.109.0
+    * @vm0/connectors bumped to 1.104.0
+    * @vm0/core bumped to 8.364.0
+
+## [9.201.1](https://github.com/vm0-ai/vm0/compare/cli-v9.201.0...cli-v9.201.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* respect timezone for once trigger atTime ([#18514](https://github.com/vm0-ai/vm0/issues/18514)) ([823fd8d](https://github.com/vm0-ai/vm0/commit/823fd8dfcdc3d552c5d9ec2874da587911b6c4e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+    * @vm0/core bumped to 8.363.0
+
 ## [9.201.0](https://github.com/vm0-ai/vm0/compare/cli-v9.200.4...cli-v9.201.0) (2026-06-22)
 
 

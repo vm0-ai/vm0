@@ -226,6 +226,11 @@ async fn execute(
                 );
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 (cli_exit_code, 1, msg, false, Some(diagnostic), false)
+            } else if preserves_successful_post_result_cleanup(
+                env::Framework::from_env(),
+                &cli_result,
+            ) {
+                (cli_exit_code, 0, String::new(), false, None, true)
             } else if cli_exit_code != 0 {
                 let failure_message = cli_failure_message(
                     cli_exit_code,
@@ -332,9 +337,28 @@ fn is_claude_zero_turn_result(
 ) -> bool {
     matches!(framework, env::Framework::ClaudeCode)
         && cli_result.exit_code == 0
+        && cli_result.claude_result.is_some_and(|result| {
+            result.status == cli::ClaudeResultStatus::Success && result.num_turns == Some(0)
+        })
+}
+
+fn preserves_successful_post_result_cleanup(
+    framework: env::Framework,
+    cli_result: &cli::CliExecutionResult,
+) -> bool {
+    matches!(framework, env::Framework::ClaudeCode)
+        && cli_result.control_error.is_none()
+        && cli_result.exit_code != 0
         && cli_result
-            .claude_result
-            .is_some_and(|result| result.num_turns == Some(0))
+            .post_result_cleanup_result
+            .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
+        && cli_result
+            .cli_termination
+            .as_ref()
+            .is_some_and(|termination| {
+                termination.reason == agent_diagnostics::CliTerminationReason::PostResultReap
+                    && termination.observed_exit_code == Some(cli_result.exit_code)
+            })
 }
 
 fn with_cli_termination(
@@ -409,6 +433,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::ProviderOverloaded);
     }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_output_token_limit_error(&normalized)
+    {
+        return Some(FailureReason::OutputTokenLimit);
+    }
     if matches!(framework, AgentFramework::Codex)
         && (normalized.contains("invalid_api_key")
             || normalized.contains("incorrect api key provided"))
@@ -461,6 +490,18 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
             starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
         })
     })
+}
+
+fn is_claude_output_token_limit_error(normalized: &str) -> bool {
+    let response_exceeded = normalized.contains("response exceeded")
+        || normalized.contains("response has exceeded")
+        || normalized.contains("response exceeds");
+    let output_token_limit = normalized.contains("output token maximum")
+        || normalized.contains("output token limit")
+        || normalized.contains("maximum output token")
+        || normalized.contains("max output token")
+        || normalized.contains("claude_code_max_output_tokens");
+    response_exceeded && output_token_limit
 }
 
 fn claude_529_error_detail(detail: &str) -> Option<&str> {
@@ -779,7 +820,7 @@ async fn complete_execution(
         exit_code = 1;
     }
 
-    if cli_exit_code == 0 && exit_code == 0 {
+    if exit_code == 0 {
         log_info!(LOG_TAG, "✓ Execution complete ({}s)", cli_elapsed.as_secs());
     } else {
         log_info!(LOG_TAG, "✗ Execution failed ({}s)", cli_elapsed.as_secs());
@@ -791,7 +832,7 @@ async fn complete_execution(
     // pass runs from the top-level shutdown path after telemetry producers
     // stop, so it can safely catch checkpoint and `/complete` logs.
     let agent_type = env::Framework::from_env().agent_type();
-    if should_create_success_checkpoint(cli_exit_code, exit_code) && http.has_api() {
+    if should_create_success_checkpoint(exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -854,7 +895,7 @@ async fn complete_execution(
             }
         }
     } else {
-        if cli_exit_code == 0 && exit_code == 0 {
+        if exit_code == 0 {
             log_info!(LOG_TAG, "{agent_type} completed successfully");
         } else if state.skip_recovery_checkpoint_for_no_history {
             log_info!(
@@ -943,8 +984,8 @@ async fn stop_heartbeat(handle: tokio::task::JoinHandle<()>) {
     }
 }
 
-fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool {
-    cli_exit_code == 0 && exit_code == 0
+fn should_create_success_checkpoint(exit_code: i32) -> bool {
+    exit_code == 0
 }
 
 fn setup_working_dir(path: impl AsRef<Path>) -> std::io::Result<()> {
@@ -1438,6 +1479,78 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_claude_output_token_limit() {
+        for message in [
+            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+            "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+            "API Error: Claude's response exceeded the maximum output tokens for this model.",
+            "API Error: Claude's response exceeded the maximum output token limit for this model.",
+            "API Error: Claude's response exceeds the output token limit for this model.",
+            "API Error: Claude's response has exceeded the max output token budget.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+            assert_eq!(
+                reason,
+                Some(FailureReason::OutputTokenLimit),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_output_token_limit_diagnostic() {
+        let message = "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::OutputTokenLimit)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_claude_output_token_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_unrelated_claude_output_token_limit_text() {
+        for message in [
+            "API Error: Claude's context window exceeded the available token budget.",
+            "API Error: Claude's response used 32000 tokens before the request completed.",
+            "Set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable to configure responses.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+            assert_eq!(reason, None, "message: {message}");
+        }
+    }
+
+    #[test]
     fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
@@ -1874,7 +1987,11 @@ mod tests {
             exit_code: 0,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
-            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+            claude_result: Some(cli::ClaudeResultSummary {
+                num_turns: Some(0),
+                status: cli::ClaudeResultStatus::Success,
+            }),
+            post_result_cleanup_result: None,
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
@@ -1883,7 +2000,11 @@ mod tests {
             exit_code: 0,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
-            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(1) }),
+            claude_result: Some(cli::ClaudeResultSummary {
+                num_turns: Some(1),
+                status: cli::ClaudeResultStatus::Success,
+            }),
+            post_result_cleanup_result: None,
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
@@ -1892,7 +2013,24 @@ mod tests {
             exit_code: 1,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
-            claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+            claude_result: Some(cli::ClaudeResultSummary {
+                num_turns: Some(0),
+                status: cli::ClaudeResultStatus::Success,
+            }),
+            post_result_cleanup_result: None,
+            failure_diagnostic: None,
+            control_error: None,
+            cli_termination: None,
+        };
+        let unknown_zero_turn = cli::CliExecutionResult {
+            exit_code: 0,
+            stderr_lines: Vec::new(),
+            last_event_sequence: None,
+            claude_result: Some(cli::ClaudeResultSummary {
+                num_turns: Some(0),
+                status: cli::ClaudeResultStatus::Unknown,
+            }),
+            post_result_cleanup_result: None,
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
@@ -1914,6 +2052,90 @@ mod tests {
             env::Framework::ClaudeCode,
             &failed_zero_turn,
         ));
+        assert!(!is_claude_zero_turn_result(
+            env::Framework::ClaudeCode,
+            &unknown_zero_turn,
+        ));
+    }
+
+    #[test]
+    fn successful_post_result_cleanup_preserves_semantic_success_only_for_narrow_case() {
+        let success_result = cli::ClaudeResultSummary {
+            num_turns: Some(1),
+            status: cli::ClaudeResultStatus::Success,
+        };
+        let make_result =
+            |claude_result: cli::ClaudeResultSummary,
+             cleanup_result: cli::ClaudeResultSummary,
+             termination_reason: agent_diagnostics::CliTerminationReason| {
+                let termination = CliTerminationDiagnostic::new(termination_reason)
+                    .record_signal(
+                        agent_diagnostics::CliTerminationSignal::Sigterm,
+                        Some(42),
+                        Some(1_000),
+                    )
+                    .with_observed_exit_code(143);
+                cli::CliExecutionResult {
+                    exit_code: 143,
+                    stderr_lines: Vec::new(),
+                    last_event_sequence: None,
+                    claude_result: Some(claude_result),
+                    post_result_cleanup_result: Some(cleanup_result),
+                    failure_diagnostic: None,
+                    control_error: None,
+                    cli_termination: Some(termination),
+                }
+            };
+        let successful_cleanup = make_result(
+            success_result,
+            success_result,
+            agent_diagnostics::CliTerminationReason::PostResultReap,
+        );
+
+        assert!(preserves_successful_post_result_cleanup(
+            env::Framework::ClaudeCode,
+            &successful_cleanup,
+        ));
+        assert!(!preserves_successful_post_result_cleanup(
+            env::Framework::Codex,
+            &successful_cleanup,
+        ));
+
+        let late_error_result_after_successful_cleanup = make_result(
+            cli::ClaudeResultSummary {
+                num_turns: Some(1),
+                status: cli::ClaudeResultStatus::Error,
+            },
+            success_result,
+            agent_diagnostics::CliTerminationReason::PostResultReap,
+        );
+        assert!(preserves_successful_post_result_cleanup(
+            env::Framework::ClaudeCode,
+            &late_error_result_after_successful_cleanup,
+        ));
+
+        let error_cleanup = make_result(
+            success_result,
+            cli::ClaudeResultSummary {
+                num_turns: Some(1),
+                status: cli::ClaudeResultStatus::Error,
+            },
+            agent_diagnostics::CliTerminationReason::PostResultReap,
+        );
+        assert!(!preserves_successful_post_result_cleanup(
+            env::Framework::ClaudeCode,
+            &error_cleanup,
+        ));
+
+        let stronger_termination = make_result(
+            success_result,
+            success_result,
+            agent_diagnostics::CliTerminationReason::StuckToolWatchdog,
+        );
+        assert!(!preserves_successful_post_result_cleanup(
+            env::Framework::ClaudeCode,
+            &stronger_termination,
+        ));
     }
 
     #[test]
@@ -1934,10 +2156,9 @@ mod tests {
     }
 
     #[test]
-    fn success_checkpoint_requires_cli_and_run_success() {
-        assert!(should_create_success_checkpoint(0, 0));
-        assert!(!should_create_success_checkpoint(0, 1));
-        assert!(!should_create_success_checkpoint(1, 1));
+    fn success_checkpoint_follows_semantic_run_success() {
+        assert!(should_create_success_checkpoint(0));
+        assert!(!should_create_success_checkpoint(1));
     }
 
     #[test]
