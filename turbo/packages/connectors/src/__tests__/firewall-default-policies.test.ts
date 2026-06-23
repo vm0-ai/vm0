@@ -76,8 +76,8 @@ describe("getDefaultFirewallPolicies", () => {
 
     expect(policy.policies["dns-firewall.read"]).toBe("allow");
     expect(policy.policies["dns-firewall.write"]).toBe("deny");
-    expect(policy.policies["account-waf.read"]).toBe("allow");
-    expect(policy.policies["account-waf.write"]).toBe("deny");
+    expect(policy.policies["account-rulesets.read"]).toBe("allow");
+    expect(policy.policies["account-rulesets.write"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
 
