@@ -31,11 +31,11 @@ import {
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
 
-// ── Scope descriptions (from docs.slack.dev/reference/scopes/) ──────────
+// ── Permission descriptions ──────────────────────────────────────────────
 
 /**
- * Official Slack scope descriptions sourced from docs.slack.dev.
- * Used to enrich the generated firewall config with human-readable text.
+ * Official Slack scope descriptions sourced from docs.slack.dev plus
+ * vm0-owned aggregate permission descriptions for shared Slack routes.
  */
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   // Admin
@@ -798,6 +798,7 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
 
 const DEFAULT_ALLOWED: string[] = [
   "bookmarks:read",
+  "conversations.connect:read",
   "conversations:history",
   "conversations:read",
   "emoji:read",

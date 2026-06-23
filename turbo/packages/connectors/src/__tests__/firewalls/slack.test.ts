@@ -115,6 +115,6 @@ describe("slack firewall", () => {
     expect(policies["conversations:write"]).toBe("deny");
     expect(policies["conversations:write.invites"]).toBe("deny");
     expect(policies["conversations:write.topic"]).toBe("deny");
-    expect(policies["conversations.connect:read"]).toBe("deny");
+    expect(policies["conversations.connect:read"]).toBe("allow");
   });
 });
