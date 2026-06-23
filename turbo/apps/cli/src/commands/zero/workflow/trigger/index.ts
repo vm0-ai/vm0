@@ -22,8 +22,13 @@ import {
   printWorkflowTriggerDetails,
   printWorkflowTriggersTable,
 } from "./display";
+import {
+  buildGmailNewMessageEventConfig,
+  hasGmailTriggerOptions,
+  type GmailTriggerOptions,
+} from "./gmail-config";
 
-interface AddOptions {
+interface AddOptions extends GmailTriggerOptions {
   readonly expr?: string;
   readonly at?: string;
   readonly every?: string;
@@ -45,6 +50,8 @@ interface WorkflowRefOptions {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
+const EVENT_KINDS = ["gmail-new-message"] as const;
+const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
   "Provide exactly one of --expr (cron), --at (once), --every (loop)";
 
@@ -206,9 +213,44 @@ function buildSchedule(
       };
     default:
       throw new Error(
-        `Unknown trigger kind: "${kind}". Use one of: ${SCHEDULE_KINDS.join(", ")}`,
+        `Unknown trigger kind: "${kind}". Use one of: ${TRIGGER_KINDS.join(", ")}`,
       );
   }
+}
+
+function hasScheduleAddOptions(options: AddOptions): boolean {
+  return (
+    options.expr !== undefined ||
+    options.at !== undefined ||
+    options.every !== undefined ||
+    options.timezone !== undefined
+  );
+}
+
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  if (kind === "gmail-new-message") {
+    if (hasScheduleAddOptions(options)) {
+      throw new Error(
+        "--expr, --at, --every, and --timezone only apply to schedule triggers",
+      );
+    }
+    return {
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: buildGmailNewMessageEventConfig(options),
+    };
+  }
+
+  if (hasGmailTriggerOptions(options)) {
+    throw new Error(
+      "Gmail match flags and --config only apply to gmail-new-message triggers",
+    );
+  }
+
+  return { schedule: buildSchedule(kind, options) };
 }
 
 function buildUpdate(options: UpdateOptions): ZeroWorkflowTriggerUpdateRequest {
@@ -261,13 +303,42 @@ async function resolveWorkflowId(
 
 const addCommand = new Command()
   .name("add")
-  .description("Add a schedule trigger to a workflow")
+  .description("Add a trigger to a workflow")
   .argument("<workflow>", "Workflow ID or name")
-  .argument("<kind>", `Trigger kind: ${SCHEDULE_KINDS.join(" | ")}`)
+  .argument("<kind>", `Trigger type: ${TRIGGER_KINDS.join(" | ")}`)
   .option("--expr <expression>", 'Cron expression for kind "cron"')
   .option("--at <iso-time>", 'Fire time for kind "once"')
   .option("--every <duration>", 'Interval for kind "loop" (e.g. 15m, 1h, 90s)')
   .option("-z, --timezone <tz>", "IANA timezone for cron/once (default: UTC)")
+  .option("--config <path>", "Path to a Gmail new message trigger config JSON")
+  .option("--from-contains <text>", "Require the From header to contain text")
+  .option(
+    "--from-not-contains <text>",
+    "Require the From header not to contain text",
+  )
+  .option(
+    "--subject-contains <text>",
+    "Require the Subject header to contain text",
+  )
+  .option(
+    "--subject-not-contains <text>",
+    "Require the Subject header not to contain text",
+  )
+  .option("--body-contains <text>", "Require the message body to contain text")
+  .option(
+    "--body-not-contains <text>",
+    "Require the message body not to contain text",
+  )
+  .option("--to-contains <text>", "Require the To header to contain text")
+  .option(
+    "--to-not-contains <text>",
+    "Require the To header not to contain text",
+  )
+  .option("--cc-contains <text>", "Require the Cc header to contain text")
+  .option(
+    "--cc-not-contains <text>",
+    "Require the Cc header not to contain text",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -276,21 +347,27 @@ Examples:
   zero workflow trigger add tell-a-joke cron --expr "0 9 * * *" -z Asia/Shanghai
   zero workflow trigger add tell-a-joke once --at "2026-06-10T09:00" -z Asia/Shanghai
   zero workflow trigger add tell-a-joke loop --every 15m
+  zero workflow trigger add triage gmail-new-message --from-contains "@example.com"
+  zero workflow trigger add triage gmail-new-message --config ./gmail-trigger.json
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID, then all visible workflows
+  - Gmail triggers match all inbound messages when no text match rules are provided
   - Use the workflow ID when a name is ambiguous`,
   )
   .action(
     withErrorHandler(
       async (workflowRef: string, kind: string, options: AddOptions) => {
-        if (options.timezone && kind !== "cron" && kind !== "once") {
+        if (
+          options.timezone &&
+          kind !== "cron" &&
+          kind !== "once" &&
+          kind !== "gmail-new-message"
+        ) {
           throw new Error("--timezone only applies to cron and once triggers");
         }
         const workflowId = await resolveWorkflowId(workflowRef, options);
-        const body: ZeroWorkflowTriggerCreateRequest = {
-          schedule: buildSchedule(kind, options),
-        };
+        const body = buildCreateRequest(kind, options);
         const trigger = await createWorkflowTrigger(workflowId, body);
 
         console.log(
@@ -329,7 +406,7 @@ Examples:
 const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List a workflow's schedule triggers")
+  .description("List a workflow's triggers")
   .argument("<workflow>", "Workflow ID or name")
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
@@ -421,7 +498,7 @@ const runCommand = new Command()
 
 export const triggerCommand = new Command()
   .name("trigger")
-  .description("Manage a workflow's schedule triggers")
+  .description("Manage a workflow's triggers")
   .addCommand(addCommand)
   .addCommand(updateCommand)
   .addCommand(listCommand)

@@ -20,8 +20,39 @@ const STATIC_ASSETS_BASE_URL =
   process.env.VERCEL_ENV === "production"
     ? "https://static.vm0.io"
     : "https://static.vm7.io");
+const FIREWALL_METADATA_DETAIL_CHUNK_NAME_PREFIX =
+  "vm0-firewall-metadata-detail-";
+const FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION = "v1";
+const FIREWALL_METADATA_DETAIL_MODULE_ID_RE =
+  /\/packages\/connectors\/src\/firewall-metadata\/details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
+const FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE =
+  /^vm0-firewall-metadata-detail-([a-z0-9][a-z0-9-]*)\.generated$/;
 
 process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
+
+function normalizedModuleId(id: string): string {
+  const queryIndex = id.indexOf("?");
+  const pathname = queryIndex === -1 ? id : id.slice(0, queryIndex);
+  return pathname.replaceAll("\\", "/");
+}
+
+function firewallMetadataDetailChunkName(moduleId: string): string | null {
+  const match = FIREWALL_METADATA_DETAIL_MODULE_ID_RE.exec(
+    normalizedModuleId(moduleId),
+  );
+  if (!match) {
+    return null;
+  }
+  return `${FIREWALL_METADATA_DETAIL_CHUNK_NAME_PREFIX}${match[1]}.generated`;
+}
+
+function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
+  const match = FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE.exec(chunkName);
+  if (!match) {
+    return null;
+  }
+  return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
+}
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   if (url.protocol !== "https:") {
@@ -131,5 +162,30 @@ export default defineConfig({
     outDir: "dist",
     // Generate source maps for Sentry (uploaded and removed by plugin)
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
+    rolldownOptions: {
+      output: {
+        // Stable metadata chunk URLs must also keep stable import contracts.
+        minifyInternalExports: false,
+        chunkFileNames(chunkInfo) {
+          return (
+            firewallMetadataDetailChunkFileName(chunkInfo.name) ??
+            "assets/[name]-[hash].js"
+          );
+        },
+        codeSplitting: {
+          groups: [
+            {
+              name(moduleId) {
+                return firewallMetadataDetailChunkName(moduleId);
+              },
+              test(moduleId) {
+                return firewallMetadataDetailChunkName(moduleId) !== null;
+              },
+              priority: 10,
+            },
+          ],
+        },
+      },
+    },
   },
 });

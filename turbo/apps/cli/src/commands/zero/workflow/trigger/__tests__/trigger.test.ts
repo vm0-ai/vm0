@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { triggerCommand } from "../index";
@@ -74,6 +77,23 @@ const loopTrigger = {
   scheduleSummary: "Every 900s",
 };
 
+const gmailTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "gmail-new-message",
+  eventConfig: {
+    provider: "gmail",
+    event: "new_message",
+    match: {
+      from: { contains: "@acme.com" },
+      subject: { contains: "invoice" },
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 describe("zero workflow trigger commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -82,6 +102,7 @@ describe("zero workflow trigger commands", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const tempDirs: string[] = [];
 
   beforeEach(() => {
     chalk.level = 0;
@@ -93,8 +114,19 @@ describe("zero workflow trigger commands", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
     vi.unstubAllEnvs();
   });
+
+  function writeGmailConfig(config: object): string {
+    const dir = mkdtempSync(join(tmpdir(), "vm0-gmail-trigger-"));
+    tempDirs.push(dir);
+    const path = join(dir, "gmail-trigger.json");
+    writeFileSync(path, JSON.stringify(config), "utf-8");
+    return path;
+  }
 
   function captureCreateTrigger(response: object) {
     const captured: { workflowId?: string; body?: Record<string, unknown> } =
@@ -204,6 +236,135 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
+    it("should add a Gmail new message trigger without match rules", async () => {
+      const captured = captureCreateTrigger({
+        ...gmailTrigger,
+        eventConfig: { provider: "gmail", event: "new_message" },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "gmail-new-message",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: { provider: "gmail", event: "new_message" },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Gmail new message");
+      expect(logCalls).toContain("all inbound messages");
+    });
+
+    it("should add a Gmail new message trigger with text match flags", async () => {
+      const captured = captureCreateTrigger(gmailTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "gmail-new-message",
+        "--from-contains",
+        "@acme.com",
+        "--subject-contains",
+        "invoice",
+        "--body-not-contains",
+        "unsubscribe",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            from: { contains: "@acme.com" },
+            subject: { contains: "invoice" },
+            body: { doesNotContain: "unsubscribe" },
+          },
+        },
+      });
+    });
+
+    it("should add a Gmail new message trigger from a config file", async () => {
+      const configPath = writeGmailConfig({
+        match: {
+          from: { containsAny: ["@acme.com", "@example.com"] },
+          subject: { doesNotContainAny: ["newsletter", "promo"] },
+        },
+      });
+      const captured = captureCreateTrigger(gmailTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "gmail-new-message",
+        "--config",
+        configPath,
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            from: { containsAny: ["@acme.com", "@example.com"] },
+            subject: { doesNotContainAny: ["newsletter", "promo"] },
+          },
+        },
+      });
+    });
+
+    it.each([
+      {
+        field: "hasAttachment",
+        config: { match: { hasAttachment: true } },
+      },
+      {
+        field: "labels",
+        config: { match: { labels: { includeAny: ["INBOX"] } } },
+      },
+      {
+        field: "snippet",
+        config: { match: { snippet: { contains: "preview" } } },
+      },
+    ])(
+      "should reject unsupported Gmail config match field $field",
+      async ({ field, config }) => {
+        const configPath = writeGmailConfig(config);
+
+        await expect(async () => {
+          await triggerCommand.parseAsync([
+            "node",
+            "cli",
+            "add",
+            WORKFLOW_ID,
+            "gmail-new-message",
+            "--config",
+            configPath,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            `Unsupported Gmail trigger match field "${field}"`,
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
     it("should reject an unknown trigger kind", async () => {
       await expect(async () => {
         await triggerCommand.parseAsync([
@@ -217,6 +378,46 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Unknown trigger kind: "webhook"'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject Gmail match flags on schedule triggers", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "cron",
+          "--expr",
+          "0 9 * * *",
+          "--from-contains",
+          "@acme.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("only apply to gmail-new-message triggers"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject empty Gmail text match flags", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "gmail-new-message",
+          "--from-contains",
+          "",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("from contains must be non-empty"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -293,7 +494,7 @@ describe("zero workflow trigger commands", () => {
           "http://localhost:3000/api/zero/workflows/:workflowId/triggers",
           ({ params }) => {
             expect(params.workflowId).toBe(WORKFLOW_ID);
-            return HttpResponse.json([cronTrigger, loopTrigger]);
+            return HttpResponse.json([cronTrigger, loopTrigger, gmailTrigger]);
           },
         ),
       );
@@ -304,6 +505,8 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain(TRIGGER_ID);
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain("every 15m");
+      expect(logCalls).toContain("Gmail new message");
+      expect(logCalls).toContain('from contains "@acme.com"');
     });
 
     it("should display an empty state with an add hint", async () => {
@@ -331,7 +534,7 @@ describe("zero workflow trigger commands", () => {
           "http://localhost:3000/api/zero/workflow-triggers/:id",
           ({ params }) => {
             expect(params.id).toBe(TRIGGER_ID);
-            return HttpResponse.json(loopTrigger);
+            return HttpResponse.json(gmailTrigger);
           },
         ),
       );
@@ -340,7 +543,8 @@ describe("zero workflow trigger commands", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(TRIGGER_ID);
-      expect(logCalls).toContain("every 15m");
+      expect(logCalls).toContain("Gmail new message");
+      expect(logCalls).toContain('subject contains "invoice"');
       expect(logCalls).toContain(THREAD_ID);
     });
   });
