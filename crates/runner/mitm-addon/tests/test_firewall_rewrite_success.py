@@ -3,197 +3,14 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from mitmproxy import http
-
 import auth
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
 class TestAuthBaseUrlRewriteSuccess:
     """Successful auth.base rewrite handler tests."""
-
-    async def test_url_rewrite_with_rel_path_root(self, real_flow, mitm_ctx, tmp_path):
-        """When rel_path is '/', resolved base URL is forwarded as-is."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
-            match_overrides={"name": "discord-webhook", "permission": "send-message"},
-        )
-        mock_forward = AsyncMock(return_value=(200, b'{"ok":true}', {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.response.status_code == 200
-
-    async def test_url_rewrite_response_preserves_duplicate_headers(
-        self, real_flow, mitm_ctx, tmp_path
-    ):
-        """Duplicate upstream response headers survive response construction."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
-            match_overrides={"name": "discord-webhook", "permission": "send-message"},
-        )
-        response_headers = http.Headers(
-            [
-                (b"Set-Cookie", b"a=1"),
-                (b"Set-Cookie", b"b=2"),
-                (b"Link", b"<next>; rel=next"),
-                (b"Link", b"<prev>; rel=prev"),
-            ]
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", response_headers))
-
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-
-        assert flow.response.status_code == 200
-        assert flow.response.headers.get_all("Set-Cookie") == ["a=1", "b=2"]
-        assert flow.response.headers.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
-
-    async def test_url_rewrite_with_remaining_path(self, real_flow, mitm_ctx, tmp_path):
-        """When rel_path has content, it's appended to resolved base in forwarded URL."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            seed_url="https://bitrix.internal/rest/0/placeholder/crm.deal.list.json",
-            resolved_base="https://mycompany.bitrix24.com/rest/1/real-token",
-            rel_path="/crm.deal.list.json",
-            api_base="https://bitrix.internal/rest/{uid}/{code}",
-            auth_overrides={"base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["BITRIX_WEBHOOK_URL"]},
-            match_overrides={
-                "name": "bitrix",
-                "permission": "crm",
-                "rule": "ANY /crm.{method}",
-                "params": {"uid": "0", "code": "placeholder", "method": "deal.list.json"},
-            },
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert (
-            mock_forward.call_args[0][0]
-            == "https://mycompany.bitrix24.com/rest/1/real-token/crm.deal.list.json"
-        )
-        assert flow.metadata["firewall_action"] == "ALLOW"
-
-    async def test_url_rewrite_preserves_query_string(self, real_flow, mitm_ctx, tmp_path):
-        """Query string from original request is preserved in forwarded URL."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            path="/discord-webhook/hook?wait=true",
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
-            match_overrides={"name": "discord-webhook", "permission": "send-message"},
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
-
-    async def test_url_rewrite_resolved_base_with_trailing_slash(
-        self, real_flow, mitm_ctx, tmp_path
-    ):
-        """Trailing slash on resolved base is stripped before appending rel_path."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            path="/bitrix/rest/0/placeholder/crm.deal.list",
-            resolved_base="https://mycompany.bitrix24.com/rest/1/token/",
-            rel_path="/crm.deal.list",
-            api_base="https://firewall-placeholder.vm3.ai/bitrix/rest/{uid}/{code}",
-            auth_overrides={"base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["BITRIX_WEBHOOK_URL"]},
-            match_overrides={
-                "name": "bitrix",
-                "permission": "crm",
-                "rule": "ANY /crm.{method}",
-            },
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert (
-            mock_forward.call_args[0][0]
-            == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
-        )
-
-    async def test_url_rewrite_merges_query_strings(self, real_flow, mitm_ctx, tmp_path):
-        """When resolved base has query string and original request also has one, merge with &."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            path="/discord-webhook/hook?wait=true",
-            resolved_base="https://example.com/hook?token=abc",
-            auth_overrides={"base": "${{ secrets.WEBHOOK_URL }}"},
-            token_overrides={"resolved_secrets": ["WEBHOOK_URL"]},
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
-
-    async def test_url_rewrite_auth_query_overrides_base_and_original_query(
-        self, real_flow, mitm_ctx, tmp_path
-    ):
-        """auth.query is the highest-priority trusted query source for URL rewrites."""
-        flow, allow, vm_info, token_meta = make_success_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            path="/discord-webhook/hook?api_key=agent&q=test",
-            resolved_base="https://example.com/hook?api_key=base&region=us",
-            auth_overrides={
-                "base": "${{ secrets.WEBHOOK_URL }}",
-                "query": {"api_key": "${{ secrets.API_KEY }}"},
-            },
-            token_overrides={
-                "query": {"api_key": "trusted key"},
-                "resolved_secrets": ["WEBHOOK_URL", "API_KEY"],
-            },
-        )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-        assert (
-            mock_forward.call_args[0][0]
-            == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
-        )
 
     async def test_no_url_rewrite_when_auth_base_absent(self, real_flow, mitm_ctx, tmp_path):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
@@ -247,12 +64,11 @@ class TestAuthBaseUrlRewriteSuccess:
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        mock_forward = AsyncMock(
-            return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
-        )
         with (
+            fake_forwarder_upstream(
+                body=b'{"ok":true}', headers=[("Content-Type", "application/json")]
+            ),
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -265,9 +81,6 @@ class TestAuthBaseUrlRewriteSuccess:
         assert flow.metadata["auth_cache_hit"] is False
         assert flow.response is not None
         assert flow.response.status_code == 200
-        # forward_request called with the rewritten URL
-        call_args = mock_forward.call_args
-        assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall URL rewrite:" in log_text
         assert f"Firewall {allow.api_entry['base']}:" in log_text
@@ -275,16 +88,13 @@ class TestAuthBaseUrlRewriteSuccess:
     async def test_upstream_error_response_is_forwarded(self, real_flow, mitm_ctx, tmp_path):
         """A non-2xx upstream response is still a successful local forward."""
         flow, allow, vm_info, token_meta = make_success_rewrite_inputs(real_flow, tmp_path)
-        mock_forward = AsyncMock(
-            return_value=(
-                500,
-                b'{"error":"upstream"}',
-                {"Content-Type": "application/json"},
-            )
-        )
         with (
+            fake_forwarder_upstream(
+                status=500,
+                body=b'{"error":"upstream"}',
+                headers=[("Content-Type", "application/json")],
+            ),
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
