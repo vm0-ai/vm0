@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.40.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.1...guest-agent-v0.40.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* classify claude output token limits ([#18579](https://github.com/vm0-ai/vm0/issues/18579)) ([2b43740](https://github.com/vm0-ai/vm0/commit/2b437408b03be9c6413705dd1b633cbc33a2a62a))
+
+
+### Refactoring
+
+* centralize guest-agent process group signaling ([#18567](https://github.com/vm0-ai/vm0/issues/18567)) ([ba20395](https://github.com/vm0-ai/vm0/commit/ba20395de33b867bdcd2799254a5d1b31ef58573))
+
 ## [0.40.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.0...guest-agent-v0.40.1) (2026-06-22)
 
 
