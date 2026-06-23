@@ -75,7 +75,14 @@ emit_groups() {
 }
 
 emit_matrix() {
-  emit_groups | jq -c 'map(del(.hosts))'
+  emit_groups | jq -c 'map({
+    id,
+    label,
+    target,
+    unameM,
+    cacheSuffix,
+    assetSuffix
+  })'
 }
 
 emit_has_groups() {
