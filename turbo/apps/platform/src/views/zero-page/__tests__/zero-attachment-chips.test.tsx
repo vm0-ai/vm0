@@ -262,6 +262,18 @@ describe("zero attachment chips", () => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
 
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = zoomStage.querySelector<HTMLElement>(
+      ".react-transform-component",
+    );
+    if (!zoomContent) {
+      throw new Error("Zoomable image content not found");
+    }
+    expect(zoomContent.style.height).toBe("");
+    expect(zoomContent.style.width).toBe("");
+    expect(zoomContent.style.maxHeight).toBe("100%");
+    expect(zoomContent.style.maxWidth).toBe("100%");
+
     click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
       expect(screen.getByText("115%")).toBeInTheDocument();
