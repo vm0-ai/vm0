@@ -45,11 +45,15 @@ import {
   permissionDraftInitialPolicyKey,
   permissionDraftMetadataKey,
   resolvePermissionDraftExpiration,
+  resolvePermissionDraftGroupExpiration,
   resolvePermissionDraftListPolicy,
   resolvePermissionDraftPolicy,
   resolvePermissionDraftUnknownPolicy,
   setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
+  setPermissionDraftGroupAllowExpiration,
+  setPermissionDraftGroupAllowPolicy,
+  setPermissionDraftGroupPolicy,
   setPermissionDraftPolicy,
   setPermissionDraftUnknownExpiration,
   setPermissionDraftUnknownPolicy,
@@ -74,6 +78,7 @@ import {
   IconCheck,
   IconBan,
   IconChevronRight,
+  IconCircleHalf2,
   IconClock,
   IconChevronDown,
   IconLoader2,
@@ -552,6 +557,19 @@ function PermissionAllowDurationStatic({ label }: { label: string }) {
   );
 }
 
+// Non-interactive state read-out shown in the leading slot when a group's
+// permissions resolve to a mix of allow and deny. It occupies the same slot as
+// the duration dropdown (they are mutually exclusive), so the Allow / Deny
+// controls stay aligned in their columns across the header and the rows.
+function PermissionGroupMixedBadge() {
+  return (
+    <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
+      <IconCircleHalf2 size={12} className="shrink-0" />
+      <span>Mixed</span>
+    </span>
+  );
+}
+
 function PermissionGrantPolicyControl({
   permission,
   policy,
@@ -621,6 +639,7 @@ function PermissionGrantPolicyControl({
               }}
             />
           )}
+          {policy === "mixed" && <PermissionGroupMixedBadge />}
           <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
             <button
               type="button"
@@ -690,6 +709,85 @@ function ShowMorePermissions({
   );
 }
 
+function PermissionGroupHeader({
+  context,
+  draft,
+  category,
+  permissions,
+  expanded,
+  readOnly,
+  saving,
+  onToggle,
+  onGroupAllow,
+  onGroupDeny,
+  onGroupAllowDuration,
+}: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
+  category: string;
+  permissions: ConnectorPermission[];
+  expanded: boolean;
+  readOnly?: boolean;
+  saving: boolean;
+  onToggle: () => void;
+  onGroupAllow: () => void;
+  onGroupDeny: () => void;
+  onGroupAllowDuration: (expiresIn: UserPermissionGrantExpiresIn) => void;
+}) {
+  const policy = resolvePermissionDraftListPolicy({
+    context,
+    draft,
+    permissions,
+  });
+  const selected = resolvePermissionDraftGroupExpiration({
+    context,
+    draft,
+    category,
+    permissions,
+  });
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
+      >
+        <IconChevronRight
+          size={14}
+          stroke={2}
+          className={`transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+        {category} ({permissions.length})
+      </button>
+      {!readOnly && (
+        <div className="ml-auto">
+          <PermissionGrantPolicyControl
+            permission={category}
+            policy={policy}
+            grant={undefined}
+            selected={selected}
+            allowAlwaysActive={selected === undefined}
+            showCurrentExpirationStatus={false}
+            saving={saving}
+            onAllowClick={onGroupAllow}
+            onClearExpiration={() => {
+              // Denying a group already clears its own expiration.
+            }}
+            onAllowDurationChange={onGroupAllowDuration}
+            onPolicyChange={(nextPolicy) => {
+              if (nextPolicy === "deny") {
+                onGroupDeny();
+                return;
+              }
+              onGroupAllow();
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PermissionRows({
   context,
   draft,
@@ -701,6 +799,9 @@ function PermissionRows({
   readOnly,
   saving,
   onToggleGroup,
+  onGroupAllow,
+  onGroupDeny,
+  onGroupAllowDuration,
   onPolicyChange,
   onGrantExpirationChange,
   onClearInheritedExpiration,
@@ -716,6 +817,13 @@ function PermissionRows({
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
+  onGroupAllow: (category: string, permissions: ConnectorPermission[]) => void;
+  onGroupDeny: (category: string, permissions: ConnectorPermission[]) => void;
+  onGroupAllowDuration: (
+    category: string,
+    permissions: ConnectorPermission[],
+    expiresIn: UserPermissionGrantExpiresIn,
+  ) => void;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
   onGrantExpirationChange: (
     permission: string,
@@ -737,22 +845,31 @@ function PermissionRows({
           {groupIdx > 0 && (
             <div className="mx-3 border-t border-border/40 my-1" />
           )}
-          <div className="flex items-center px-3 py-2">
-            <button
-              type="button"
-              onClick={() => {
-                onToggleGroup(group.category);
-              }}
-              className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
-            >
-              <IconChevronRight
-                size={14}
-                stroke={2}
-                className={`transition-transform ${expanded ? "rotate-90" : ""}`}
-              />
-              {group.category} ({group.permissions.length})
-            </button>
-          </div>
+          <PermissionGroupHeader
+            context={context}
+            draft={draft}
+            category={group.category}
+            permissions={group.permissions}
+            expanded={expanded}
+            readOnly={readOnly}
+            saving={saving}
+            onToggle={() => {
+              onToggleGroup(group.category);
+            }}
+            onGroupAllow={() => {
+              onGroupAllow(group.category, group.permissions);
+            }}
+            onGroupDeny={() => {
+              onGroupDeny(group.category, group.permissions);
+            }}
+            onGroupAllowDuration={(expiresIn) => {
+              onGroupAllowDuration(
+                group.category,
+                group.permissions,
+                expiresIn,
+              );
+            }}
+          />
           {expanded &&
             visiblePermissions.map((perm, idx) => {
               return (
@@ -1073,6 +1190,49 @@ function LoadedPermissionsDrawerContent({
     });
   };
 
+  const handleGroupAllow = (
+    category: string,
+    groupPermissions: ConnectorPermission[],
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftGroupAllowPolicy({
+        draft: current,
+        category,
+        permissions: groupPermissions,
+      });
+    });
+  };
+
+  const handleGroupDeny = (
+    category: string,
+    groupPermissions: ConnectorPermission[],
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftGroupPolicy({
+        draft: current,
+        category,
+        permissions: groupPermissions,
+        policy: "deny",
+      });
+    });
+  };
+
+  const handleGroupAllowDuration = (
+    category: string,
+    groupPermissions: ConnectorPermission[],
+    expiresIn: UserPermissionGrantExpiresIn,
+  ) => {
+    setDraft(stateKey, (current) => {
+      return setPermissionDraftGroupAllowExpiration({
+        draft: current,
+        category,
+        permissions: groupPermissions,
+        explicitGrants: effectiveExplicitGrants,
+        expiresIn,
+      });
+    });
+  };
+
   const handleResetConnector = () => {
     setDraft(stateKey, (current) => {
       return stagePermissionDraftConnectorRestore({ draft: current });
@@ -1216,6 +1376,9 @@ function LoadedPermissionsDrawerContent({
               readOnly={readOnly}
               saving={saving}
               onToggleGroup={handleToggleGroup}
+              onGroupAllow={handleGroupAllow}
+              onGroupDeny={handleGroupDeny}
+              onGroupAllowDuration={handleGroupAllowDuration}
               onPolicyChange={handlePolicyChange}
               onGrantExpirationChange={handleGrantExpirationChange}
               onClearInheritedExpiration={handleClearInheritedExpiration}
