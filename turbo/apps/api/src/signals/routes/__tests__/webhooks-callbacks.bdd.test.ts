@@ -3742,16 +3742,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
     await flushWaitUntilForTest();
+    const firstCleanupS3Prefix = commandInput(
+      context.mocks.s3.send.mock.calls[s3CallCountBeforeCleanup]?.[0],
+    ).Prefix;
     expect(
-      context.mocks.s3.send.mock.calls
-        .slice(s3CallCountBeforeCleanup)
-        .some(([command]) => {
-          const prefix = commandInput(command).Prefix;
-          return (
-            typeof prefix === "string" &&
-            prefix.startsWith(`${orgOf(doomed)}/artifact/`)
-          );
-        }),
+      typeof firstCleanupS3Prefix === "string" &&
+        firstCleanupS3Prefix.startsWith(`${orgOf(doomed)}/artifact/`),
     ).toBeTruthy();
 
     await waitForExpectation(() => {
