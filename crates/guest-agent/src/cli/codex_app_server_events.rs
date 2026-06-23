@@ -120,7 +120,7 @@ fn map_thread_started(
 ) -> Result<Value, CodexAppServerEventError> {
     let params = required_params(notification)?;
     let thread = required_object_field(params, &notification.method, "thread")?;
-    let thread_id = required_string_field(thread, &notification.method, "thread.id")?;
+    let thread_id = required_non_empty_string_field(thread, &notification.method, "thread.id")?;
 
     Ok(json!({
         "type": "thread.started",
@@ -136,7 +136,8 @@ fn map_turn(
     let params_object = params
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
-    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let thread_id =
+        required_non_empty_string_field(params_object, &notification.method, "threadId")?;
     let turn = required_object_field(params, &notification.method, "turn")?;
     let status = required_turn_status_field(turn, &notification.method, "turn.status")?;
     if event_type == "turn.started" && status != TurnStatus::InProgress {
@@ -163,7 +164,8 @@ fn map_turn_completed(
     let params_object = params
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
-    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let thread_id =
+        required_non_empty_string_field(params_object, &notification.method, "threadId")?;
     let turn = required_object_field(params, &notification.method, "turn")?;
     let status = required_turn_status_field(turn, &notification.method, "turn.status")?;
     if status == TurnStatus::InProgress {
@@ -200,8 +202,9 @@ fn map_turn_plan_updated(
     let params_object = params
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
-    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
-    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let thread_id =
+        required_non_empty_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_non_empty_string_field(params_object, &notification.method, "turnId")?;
     let explanation =
         optional_nullable_string_field(params_object, &notification.method, "explanation")?;
     let plan = params_object
@@ -245,8 +248,9 @@ fn map_item(
     let params_object = params
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
-    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
-    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let thread_id =
+        required_non_empty_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_non_empty_string_field(params_object, &notification.method, "turnId")?;
     let item = required_object_field(params, &notification.method, "item")?;
     let timestamp =
         required_number_field(params_object, &notification.method, input_timestamp_field)?;
@@ -272,8 +276,9 @@ fn map_error(notification: &ServerNotification) -> Result<Value, CodexAppServerE
     let params_object = params
         .as_object()
         .ok_or_else(|| invalid_field(notification, "params"))?;
-    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
-    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let thread_id =
+        required_non_empty_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_non_empty_string_field(params_object, &notification.method, "turnId")?;
     let will_retry = required_bool_field(params_object, &notification.method, "willRetry")?;
     let error = required_object_field(params, &notification.method, "error")?;
     let message = required_string_field(error, &notification.method, "error.message")?;
@@ -318,7 +323,7 @@ fn normalize_turn_with_status(
     status: TurnStatus,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = Map::new();
-    let id = required_string_field(turn, method, "turn.id")?;
+    let id = required_non_empty_string_field(turn, method, "turn.id")?;
     normalized.insert("id".to_string(), Value::String(id.to_string()));
 
     normalized.insert(
@@ -1817,6 +1822,23 @@ mod tests {
     }
 
     #[test]
+    fn thread_started_empty_thread_id_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "thread/started".to_string(),
+            params: Some(json!({"thread": {"id": " "}})),
+        })
+        .expect_err("empty thread id should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "thread/started".to_string(),
+                field: "thread.id"
+            }
+        );
+    }
+
+    #[test]
     fn item_notification_missing_required_timestamp_returns_error() {
         let error = notification_to_codex_event(&ServerNotification {
             method: "item/completed".to_string(),
@@ -1841,6 +1863,56 @@ mod tests {
                 field: "completedAtMs"
             }
         );
+    }
+
+    #[test]
+    fn item_notification_empty_thread_or_turn_id_returns_error() {
+        for (field, params) in [
+            (
+                "threadId",
+                json!({
+                    "threadId": "",
+                    "turnId": "turn-1",
+                    "completedAtMs": 42,
+                    "item": {
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "hello",
+                        "phase": null,
+                        "memoryCitation": null
+                    }
+                }),
+            ),
+            (
+                "turnId",
+                json!({
+                    "threadId": "thread-1",
+                    "turnId": " ",
+                    "completedAtMs": 42,
+                    "item": {
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "hello",
+                        "phase": null,
+                        "memoryCitation": null
+                    }
+                }),
+            ),
+        ] {
+            let error = notification_to_codex_event(&ServerNotification {
+                method: "item/completed".to_string(),
+                params: Some(params),
+            })
+            .expect_err("empty item notification id should fail");
+
+            assert_eq!(
+                error,
+                CodexAppServerEventError::InvalidField {
+                    method: "item/completed".to_string(),
+                    field
+                }
+            );
+        }
     }
 
     #[test]
@@ -1873,6 +1945,35 @@ mod tests {
             CodexAppServerEventError::InvalidField {
                 method: "item/started".to_string(),
                 field: "item.id"
+            }
+        );
+    }
+
+    #[test]
+    fn turn_notification_empty_turn_id_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "turn/completed".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "",
+                    "items": [],
+                    "itemsView": {"type": "complete"},
+                    "status": "completed",
+                    "error": null,
+                    "startedAt": 1,
+                    "completedAt": 2,
+                    "durationMs": 1000
+                }
+            })),
+        })
+        .expect_err("empty turn id should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/completed".to_string(),
+                field: "turn.id"
             }
         );
     }
