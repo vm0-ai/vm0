@@ -177,7 +177,6 @@ async function queryAxiomDirectWithCursor<T>(
       apl,
       cursor: options.cursor,
     }),
-    cache: "no-store",
     signal: AbortSignal.timeout(AXIOM_QUERY_TIMEOUT_MS),
   });
 
