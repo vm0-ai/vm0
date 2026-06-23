@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.129.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.5...runner-rs-v0.129.6) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate Slack firewall route owners ([#18675](https://github.com/vm0-ai/vm0/issues/18675)) ([fdccc38](https://github.com/vm0-ai/vm0/commit/fdccc38bbd5b6cacac21926e233dec8f649e087b))
+* **mitm-addon:** ignore invalid utf-8 flush markers ([#18690](https://github.com/vm0-ai/vm0/issues/18690)) ([cf9dcb9](https://github.com/vm0-ai/vm0/commit/cf9dcb90d42a0285e2dc49a5f53e4dcedaf05fc3))
+* reject malformed AWS SigV4 content hash headers ([#18688](https://github.com/vm0-ai/vm0/issues/18688)) ([4407c3a](https://github.com/vm0-ai/vm0/commit/4407c3aa349fbf252e16d07f0972f62c6341b5c5))
+
+
+### Refactoring
+
+* **runner:** clarify new sandbox test helpers ([#18689](https://github.com/vm0-ai/vm0/issues/18689)) ([b84bc44](https://github.com/vm0-ai/vm0/commit/b84bc44da78ab4c01bb09cb1234b93feb41b14bc))
+
 ## [0.129.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.4...runner-rs-v0.129.5) (2026-06-23)
 
 

@@ -3299,8 +3299,11 @@ function TemplatePreviewPage({
 
   return (
     <>
-      <DialogHeader className="shrink-0 border-b border-border py-4 pl-5 pr-16">
-        <DialogTitle className="flex min-w-0 items-center gap-2 text-base leading-none">
+      <DialogHeader
+        data-presentation-template-detail-header=""
+        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+      >
+        <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
             type="button"
             className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3309,16 +3312,16 @@ function TemplatePreviewPage({
             Template
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="block min-w-0 flex-1 truncate leading-none">
+          <span className="block min-w-0 truncate leading-none">
             {item.title}
           </span>
         </DialogTitle>
       </DialogHeader>
       <div
         ref={loadDetailHtmlPreviewAfterMount}
-        className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
+        className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
       >
-        <div className="rounded-lg border border-border bg-background p-3">
+        <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
             aria-label={`${item.title} slide preview`}
@@ -3388,7 +3391,7 @@ function TemplatePreviewPage({
             ) : null}
           </div>
           <div
-            className="mt-3 grid grid-cols-8 gap-1.5"
+            className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
             onKeyDown={handleDetailSlideKeyDown}
           >
             {Array.from(
@@ -3451,7 +3454,7 @@ function TemplatePreviewPage({
                 <p className="px-1 text-xs font-medium text-muted-foreground">
                   Multi-accent
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {multiAccentThemes.map((theme) => {
                     const active = theme.id === selectedTheme.id;
                     return (
@@ -3464,7 +3467,7 @@ function TemplatePreviewPage({
                           selectDetailTheme(theme);
                         }}
                         className={cn(
-                          "relative h-11 overflow-hidden rounded-lg border bg-background p-1 transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "relative h-7 w-14 overflow-hidden rounded-lg border bg-background transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           active
                             ? "border-ring ring-1 ring-ring"
                             : "border-border hover:border-muted-foreground/60",
@@ -3492,7 +3495,7 @@ function TemplatePreviewPage({
                 <p className="px-1 text-xs font-medium text-muted-foreground">
                   Single-accent
                 </p>
-                <div className="grid grid-cols-8 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {singleAccentThemes.map((theme) => {
                     const active = theme.id === selectedTheme.id;
                     const swatches = presentationTemplateThemeAccentSwatches(
@@ -3509,7 +3512,7 @@ function TemplatePreviewPage({
                           selectDetailTheme(theme);
                         }}
                         className={cn(
-                          "relative h-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "relative h-7 w-7 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           active
                             ? "border-ring ring-1 ring-ring"
                             : "border-border hover:border-muted-foreground/60",
@@ -4403,7 +4406,9 @@ function TemplatePickerDialog({
     // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
     // 36px (size-9) close button within the 50px header.
     "[&>button[aria-label=Close]]:top-[7px]",
-    isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
+    isPreviewing
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
+      : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
   const filteredPptItems = presentationItems.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
