@@ -69,7 +69,7 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
         .spawn();
     let result = match result {
         Ok(mut child) => {
-            let process_group = ChildProcessGroup::from_child_id(child.id());
+            let process_group = ChildProcessGroup::from_group_leader_child_id(child.id());
             let mut process_group_guard = ProcessGroupKillGuard::new(process_group);
             let stderr = child.stderr.take();
             let stderr_handle = tokio::spawn(async move {

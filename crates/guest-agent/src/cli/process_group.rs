@@ -11,7 +11,7 @@ pub(super) struct ChildProcessGroup {
 }
 
 impl ChildProcessGroup {
-    pub(super) fn from_child_id(child_id: Option<u32>) -> Option<Self> {
+    pub(super) fn from_group_leader_child_id(child_id: Option<u32>) -> Option<Self> {
         child_id.and_then(Self::from_raw_child_id)
     }
 
@@ -110,7 +110,7 @@ mod tests {
         let overflowing_child_id = (i32::MAX as u32).saturating_add(1);
 
         assert_eq!(
-            ChildProcessGroup::from_child_id(Some(overflowing_child_id)),
+            ChildProcessGroup::from_group_leader_child_id(Some(overflowing_child_id)),
             None
         );
     }

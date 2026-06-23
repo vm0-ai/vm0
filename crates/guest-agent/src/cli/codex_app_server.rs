@@ -173,7 +173,7 @@ impl CodexAppServerClient {
 
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let process_id = child.id();
-        let process_group = ChildProcessGroup::from_child_id(process_id);
+        let process_group = ChildProcessGroup::from_group_leader_child_id(process_id);
         let stdin = child.stdin.take().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server stdin was not piped".to_string())
         })?;

@@ -384,7 +384,7 @@ async fn execute_cli_inner(
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
-    let process_group = ChildProcessGroup::from_child_id(child.id());
+    let process_group = ChildProcessGroup::from_group_leader_child_id(child.id());
     let pgid = process_group.map(ChildProcessGroup::raw_pgid);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
