@@ -12,6 +12,7 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
   createScrollSignals,
+  type PrependScrollCompensationToken,
   type ScrollStepDirection,
 } from "../auto-scroll.ts";
 import {
@@ -1767,8 +1768,14 @@ function createChatThreadMessagePipeline({
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   dataSource: ChatThreadDataSource;
-  recordScrollHeightForPrepend$: Command<void, []>;
-  clearScrollHeightForPrepend$: Command<void, []>;
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >;
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >;
   awayFromBottom$: Computed<boolean>;
 }) {
   const pagedMessages = createPagedMessages(threadId, threadData$, dataSource);
@@ -1976,8 +1983,14 @@ function createLatestRunStatus(
 }
 
 function createLoadHistoryWithPrependScroll(
-  recordScrollHeightForPrepend$: Command<void, []>,
-  clearScrollHeightForPrepend$: Command<void, []>,
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >,
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >,
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
   loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
 ) {
@@ -1987,7 +2000,7 @@ function createLoadHistoryWithPrependScroll(
     );
     signal.throwIfAborted();
 
-    set(recordScrollHeightForPrepend$);
+    const compensationToken = set(recordScrollHeightForPrepend$);
     const result = await set(loadHistory$, signal);
     signal.throwIfAborted();
     const renderedMessageCountAfter = renderedMessageCount(
@@ -1995,7 +2008,7 @@ function createLoadHistoryWithPrependScroll(
     );
     signal.throwIfAborted();
     if (renderedMessageCountAfter === renderedMessageCountBefore) {
-      set(clearScrollHeightForPrepend$);
+      set(clearScrollHeightForPrepend$, compensationToken);
     }
     return result;
   });
@@ -2010,15 +2023,21 @@ function renderedMessageCount(
 }
 
 function createLoadMoreRenderedChatGroupsWithPrependScroll(
-  recordScrollHeightForPrepend$: Command<void, []>,
-  clearScrollHeightForPrepend$: Command<void, []>,
+  recordScrollHeightForPrepend$: Command<
+    PrependScrollCompensationToken | null,
+    []
+  >,
+  clearScrollHeightForPrepend$: Command<
+    void,
+    [PrependScrollCompensationToken | null | undefined]
+  >,
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
   return command(async ({ set }, signal: AbortSignal) => {
-    set(recordScrollHeightForPrepend$);
+    const compensationToken = set(recordScrollHeightForPrepend$);
     const didPrepend = await set(loadMoreRenderedChatGroups$, signal);
     if (!didPrepend) {
-      set(clearScrollHeightForPrepend$);
+      set(clearScrollHeightForPrepend$, compensationToken);
     }
     return didPrepend;
   });

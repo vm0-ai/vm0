@@ -8,6 +8,13 @@ const USER_INPUT_WINDOW_MS = 200;
 const KEY_SCROLL_STEP_PX = 72;
 
 export type ScrollStepDirection = "up" | "down";
+export type PrependScrollCompensationToken = symbol;
+
+interface PendingPrependScrollRecord {
+  readonly token: PrependScrollCompensationToken;
+  scrollHeight: number;
+  scrollTop: number;
+}
 
 // Persists a user's last non-bottom scroll position across container
 // re-binds (e.g. when switching between parallel chat threads). Keyed by
@@ -64,11 +71,10 @@ function scrollInfo(el: HTMLElement) {
 interface RestoreState {
   pendingRestorePosition: number | null;
   suppressNextScrollToBottom: boolean;
-  // Snapshot taken just before prepending older messages. The ResizeObserver
-  // detects the resulting height increase and restores scrollTop to the latest
-  // known top plus the height delta. Using an absolute target keeps the anchor
-  // stable even if layout code adjusts scrollTop before the observer runs.
-  pendingPrependScrollHeight: number | null;
+  // Snapshots taken just before prepending older messages. Each async caller
+  // owns a token so a no-op clear from one path cannot discard another path's
+  // pending compensation.
+  pendingPrependScrollRecords: PendingPrependScrollRecord[];
   suppressNextResizeScrollToBottom: boolean;
 }
 
@@ -179,11 +185,11 @@ function buildResizeHandler(ctx: ScrollHandlerContext) {
       }
       return;
     }
-    if (restoreState.pendingPrependScrollHeight !== null) {
-      const delta = el.scrollHeight - restoreState.pendingPrependScrollHeight;
-      restoreState.pendingPrependScrollHeight = null;
+    const prependRecord = restoreState.pendingPrependScrollRecords.shift();
+    if (prependRecord) {
+      const delta = el.scrollHeight - prependRecord.scrollHeight;
       if (delta > 0) {
-        el.scrollTop = ctx.lastKnownScrollTop.v + delta;
+        el.scrollTop = prependRecord.scrollTop + delta;
         const distanceFromBottom =
           el.scrollHeight - el.scrollTop - el.clientHeight;
         const awayFromBottom = distanceFromBottom > AT_BOTTOM_THRESHOLD;
@@ -201,6 +207,10 @@ function buildResizeHandler(ctx: ScrollHandlerContext) {
           `delta=${delta}`,
           scrollInfo(el),
         );
+      }
+      for (const pendingRecord of restoreState.pendingPrependScrollRecords) {
+        pendingRecord.scrollHeight = el.scrollHeight;
+        pendingRecord.scrollTop = el.scrollTop;
       }
       return;
     }
@@ -290,18 +300,37 @@ function createRecordScrollHeightForPrependCommand(
 ) {
   return command(({ get }) => {
     const el = get(deps.internalScrollContainer$);
-    if (el) {
-      deps.restoreState.pendingPrependScrollHeight = el.scrollHeight;
-      deps.lastKnownScrollTop.v = el.scrollTop;
-      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    if (!el) {
+      return null;
     }
+    const token = Symbol("prepend-scroll-compensation");
+    deps.restoreState.pendingPrependScrollRecords.push({
+      token,
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    });
+    deps.lastKnownScrollTop.v = el.scrollTop;
+    L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    return token;
   });
 }
 
 function createClearScrollHeightForPrependCommand(restoreState: RestoreState) {
-  return command(() => {
-    restoreState.pendingPrependScrollHeight = null;
-  });
+  return command(
+    (_ctx, token: PrependScrollCompensationToken | null | undefined) => {
+      if (!token) {
+        return;
+      }
+      const index = restoreState.pendingPrependScrollRecords.findIndex(
+        (record) => {
+          return record.token === token;
+        },
+      );
+      if (index >= 0) {
+        restoreState.pendingPrependScrollRecords.splice(index, 1);
+      }
+    },
+  );
 }
 
 interface ScrollToTopCommandDeps {
@@ -381,7 +410,7 @@ export function createScrollSignals(id?: string) {
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
-    pendingPrependScrollHeight: null,
+    pendingPrependScrollRecords: [],
     suppressNextResizeScrollToBottom: false,
   };
   const lastKnownScrollTop = { v: 0 };

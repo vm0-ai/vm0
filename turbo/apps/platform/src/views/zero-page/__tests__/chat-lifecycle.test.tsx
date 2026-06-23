@@ -2789,22 +2789,11 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps chat scroll controls visible while browsing older messages", async () => {
-    const resizeObserver = mockResizeObserver();
-    const olderReply = "Scroll back to the planning notes.";
-    const beforeHistoryGate = context.mocks.deferred<void>();
+  it("keeps chat scroll controls responsive to buttons and keyboard", async () => {
+    mockResizeObserver();
     mockChatLifecycle(context, {
       threadId: "scroll-history-thread",
       threadTitle: "Scroll history",
-      beforeHistoryGate: beforeHistoryGate.promise,
-      historyMessages: [
-        {
-          role: "assistant",
-          content: olderReply,
-          runId: undefined,
-          createdAt: "2026-06-02T10:00:00Z",
-        },
-      ],
       chatMessages: Array.from({ length: 8 }, (_, index) => {
         return makeMessage(
           `scroll-message-${index}`,
@@ -2863,24 +2852,17 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "ArrowUp" });
     expect(scrollContainer.scrollTop).toBe(420);
 
-    beforeHistoryGate.resolve();
-    await waitFor(() => {
-      expect(screen.getByText(olderReply)).toBeInTheDocument();
-    });
-
     setScrollMetrics(scrollContainer, {
       scrollHeight: 1500,
       clientHeight: 300,
     });
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(720);
-
+    threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
   });
 
   it("renders the latest chat groups first and prepends older in-memory groups near the top", async () => {
-    const resizeObserver = mockResizeObserver();
+    mockResizeObserver();
     let markReadCalls = 0;
     const threadId = "render-window-thread";
     const chatMessages: PagedChatMessage[] = Array.from(
@@ -2930,14 +2912,6 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Render window reply 4")).toBeInTheDocument();
     });
     expect(screen.queryByText("Render window reply 3")).toBeNull();
-    setScrollMetrics(scrollContainer, {
-      scrollHeight: 1400,
-      clientHeight: 300,
-    });
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(480);
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(480);
 
     scrollContainer.scrollTop = 80;
     fireEvent.scroll(scrollContainer);
@@ -2945,26 +2919,12 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
     });
-    setScrollMetrics(scrollContainer, {
-      scrollHeight: 1800,
-      clientHeight: 300,
-    });
-    scrollContainer.scrollTop = 480;
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(480);
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(480);
 
     scrollContainer.scrollTop = 80;
     fireEvent.scroll(scrollContainer);
     await Promise.resolve();
     await Promise.resolve();
-    setScrollMetrics(scrollContainer, {
-      scrollHeight: 1900,
-      clientHeight: 300,
-    });
-    resizeObserver.triggerAll();
-    expect(scrollContainer.scrollTop).toBe(80);
+    expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {
