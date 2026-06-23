@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   FIREWALL_PERMISSION_METADATA_SUMMARIES,
+  getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
+} from "../firewall-metadata";
+import type {
+  FirewallPermissionCategoryMetadata,
+  FirewallPermissionDetailMetadata,
 } from "../firewall-metadata";
 
 function compareStrings(a: string, b: string): number {
@@ -45,6 +50,17 @@ async function loadDetail(type: string) {
   return detail!;
 }
 
+async function loadCategorizedDetail(type: string): Promise<{
+  detail: FirewallPermissionDetailMetadata;
+  categories: FirewallPermissionCategoryMetadata;
+}> {
+  const detail = await loadDetail(type);
+  if (detail.categories === undefined) {
+    throw new Error(`Expected firewall category metadata for ${type}`);
+  }
+  return { detail, categories: detail.categories };
+}
+
 describe("firewall categories", () => {
   it("tracks categorized connectors in generated summaries", () => {
     expect(CATEGORIZED_CONNECTORS).toStrictEqual(
@@ -54,7 +70,10 @@ describe("firewall categories", () => {
 
   it("does not emit categories for selected uncategorized connectors", async () => {
     for (const connector of UNCATEGORIZED_CONNECTORS) {
-      const summary = FIREWALL_PERMISSION_METADATA_SUMMARIES[connector];
+      const summary = getFirewallPermissionSummary(connector);
+      if (summary === null) {
+        throw new Error(`Expected firewall metadata summary for ${connector}`);
+      }
       const detail = await loadDetail(connector);
 
       expect(summary.hasCategories).toBe(false);
@@ -65,14 +84,13 @@ describe("firewall categories", () => {
   for (const connector of CATEGORIZED_CONNECTORS) {
     describe(connector, () => {
       it("has category metadata", async () => {
-        const detail = await loadDetail(connector);
+        const { categories } = await loadCategorizedDetail(connector);
 
-        expect(detail.categories).toBeDefined();
+        expect(categories).toBeDefined();
       });
 
       it("has a category for every metadata permission", async () => {
-        const detail = await loadDetail(connector);
-        const categories = detail.categories!;
+        const { detail, categories } = await loadCategorizedDetail(connector);
         const categorized = new Set(Object.keys(categories.categories));
 
         const missing = detail.permissions
@@ -86,8 +104,7 @@ describe("firewall categories", () => {
       });
 
       it("does not have orphan category keys", async () => {
-        const detail = await loadDetail(connector);
-        const categories = detail.categories!;
+        const { detail, categories } = await loadCategorizedDetail(connector);
         const permissionNames = new Set(
           detail.permissions.map((permission) => {
             return permission.name;
@@ -101,8 +118,7 @@ describe("firewall categories", () => {
       });
 
       it("has displayOrder covering every category used", async () => {
-        const detail = await loadDetail(connector);
-        const categories = detail.categories!;
+        const { categories } = await loadCategorizedDetail(connector);
         const usedCategories = new Set(Object.values(categories.categories));
         const orderedCategories = new Set(categories.displayOrder);
 
@@ -113,8 +129,7 @@ describe("firewall categories", () => {
       });
 
       it("has at least one permission in each displayOrder category", async () => {
-        const detail = await loadDetail(connector);
-        const categories = detail.categories!;
+        const { categories } = await loadCategorizedDetail(connector);
         const categoryCounts = new Map<string, number>();
         for (const category of Object.values(categories.categories)) {
           categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);

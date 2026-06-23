@@ -148,6 +148,57 @@ function moduleSpecifiers(source: string): string[] {
   ];
 }
 
+function hasExportModifier(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) {
+    return false;
+  }
+  return (
+    ts.getModifiers(node)?.some((modifier) => {
+      return modifier.kind === ts.SyntaxKind.ExportKeyword;
+    }) ?? false
+  );
+}
+
+function exportedIdentifierNames(source: string): string[] {
+  const names: string[] = [];
+  for (const statement of parseSource(source).statements) {
+    if (ts.isExportDeclaration(statement)) {
+      const clause = statement.exportClause;
+      if (clause !== undefined && ts.isNamedExports(clause)) {
+        for (const element of clause.elements) {
+          names.push(element.name.text);
+        }
+      }
+      continue;
+    }
+
+    if (ts.isFunctionDeclaration(statement) && hasExportModifier(statement)) {
+      if (statement.name !== undefined) {
+        names.push(statement.name.text);
+      }
+      continue;
+    }
+
+    if (
+      (ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement)) &&
+      hasExportModifier(statement)
+    ) {
+      names.push(statement.name.text);
+      continue;
+    }
+
+    if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) {
+          names.push(declaration.name.text);
+        }
+      }
+    }
+  }
+  return names;
+}
+
 describe("firewall runtime loader", () => {
   it("keeps the runtime loader behind an explicit package subpath", () => {
     const packageJson = JSON.parse(
@@ -208,6 +259,24 @@ describe("firewall runtime loader", () => {
   });
 
   it("keeps metadata category helpers out of the eager runtime entrypoint", () => {
+    const defaultEntrypointSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewalls/index.ts"),
+      "utf-8",
+    );
+    const removedExports = [
+      "ConnectorCategories",
+      "CONNECTOR_CATEGORIES",
+      "getBuiltinConnectorDisplayName",
+      "getPermissionCategories",
+      "groupPermissionsByCategory",
+      "PermissionGroup",
+    ];
+
+    expect(
+      exportedIdentifierNames(defaultEntrypointSource).filter((name) => {
+        return removedExports.includes(name);
+      }),
+    ).toStrictEqual([]);
     expect(defaultFirewallEntrypoint).not.toHaveProperty(
       "getBuiltinConnectorDisplayName",
     );
