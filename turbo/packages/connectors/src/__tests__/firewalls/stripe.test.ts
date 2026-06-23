@@ -73,6 +73,26 @@ describe("stripe firewall", () => {
     ]);
   });
 
+  it("assigns one permission owner to every runtime route", () => {
+    const duplicates: string[] = [];
+    for (const api of getConnectorFirewall("stripe").apis) {
+      const owners = new Map<string, string>();
+      for (const permission of api.permissions ?? []) {
+        for (const rule of permission.rules) {
+          const key = `${api.base} ${rule}`;
+          const existing = owners.get(key);
+          if (existing) {
+            duplicates.push(`${key}: ${existing}, ${permission.name}`);
+            continue;
+          }
+          owners.set(key, permission.name);
+        }
+      }
+    }
+
+    expect(duplicates).toStrictEqual([]);
+  });
+
   it("exposes official Stripe permission names for representative resources", () => {
     expectStripeRule("customer_read", "GET /v1/customers");
     expectStripeRule("customer_write", "POST /v1/customers");
@@ -173,52 +193,40 @@ describe("stripe firewall", () => {
     );
   });
 
-  it("maps legacy ambiguous Stripe unions into multiple resource permissions", () => {
+  it("maps legacy ambiguous Stripe unions to single resource owners", () => {
     expectStripeRule(
       "external_account_write",
-      "POST /v1/accounts/{account}/external_accounts",
-    );
-    expectStripeRule(
-      "card_write",
-      "POST /v1/accounts/{account}/external_accounts",
-    );
-    expectStripeRule(
-      "bank_account_write",
       "POST /v1/accounts/{account}/external_accounts",
     );
     expectStripeMatches("POST", "/v1/accounts/acct_123/external_accounts", [
-      "bank_account_write",
-      "card_write",
       "external_account_write",
     ]);
 
-    expectStripeRule("source_write", "POST /v1/customers/{customer}/cards");
-    expectStripeRule("card_write", "POST /v1/customers/{customer}/cards");
     expectStripeRule(
-      "payment_source_write",
-      "POST /v1/customers/{customer}/cards",
+      "external_account_read",
+      "GET /v1/accounts/{account}/external_accounts/{id}",
     );
+    expectStripeMatches(
+      "GET",
+      "/v1/accounts/acct_123/external_accounts/ba_123",
+      ["external_account_read"],
+    );
+
+    expectStripeRule("source_write", "POST /v1/customers/{customer}/cards");
     expectStripeMatches("POST", "/v1/customers/cus_123/cards", [
-      "account_write",
-      "bank_account_write",
-      "card_write",
-      "payment_source_write",
       "source_write",
+    ]);
+
+    expectStripeRule("source_read", "GET /v1/customers/{customer}/sources");
+    expectStripeMatches("GET", "/v1/customers/cus_123/sources", [
+      "source_read",
     ]);
 
     expectStripeRule(
       "source_read",
       "GET /v1/customers/{customer}/sources/{id}",
     );
-    expectStripeRule(
-      "connected_account_read",
-      "GET /v1/customers/{customer}/sources/{id}",
-    );
     expectStripeMatches("GET", "/v1/customers/cus_123/sources/src_123", [
-      "bank_account_read",
-      "card_read",
-      "connected_account_read",
-      "payment_source_read",
       "source_read",
     ]);
   });
@@ -248,7 +256,7 @@ describe("stripe firewall", () => {
     );
   });
 
-  it("reports generated mapping coverage with legacy ambiguous overrides", () => {
+  it("reports generated mapping coverage with legacy single-owner overrides", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {
       return count + (api.permissions?.length ?? 0);
@@ -261,7 +269,7 @@ describe("stripe firewall", () => {
     expect(stripeGenerationStats.legacyAmbiguousMappedOperations).toBe(16);
     expect(stripeGenerationStats.unmappedOperations).toBe(0);
     expect(stripeGenerationStats.ambiguousOperations).toBe(0);
-    expect(stripeGenerationStats.permissionCount).toBe(236);
+    expect(stripeGenerationStats.permissionCount).toBe(231);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
   });
 
@@ -315,7 +323,7 @@ describe("stripe firewall", () => {
     expect([...stripeDefaultAllowed].sort()).toStrictEqual(
       readOnlyPermissions.sort(),
     );
-    expect(stripeDefaultAllowed).toHaveLength(125);
+    expect(stripeDefaultAllowed).toHaveLength(122);
     expect(stripeDefaultAllowed).toContain("customer_read");
     expect(stripeDefaultAllowed).toContain("charge_read");
     expect(stripeDefaultAllowed).toContain("invoice_read");
