@@ -63,19 +63,6 @@ impl SandboxCreateStage {
 
     const COUNT: usize = Self::ALL.len();
 
-    fn index(self) -> usize {
-        match self {
-            Self::CowPoolAcquire => 0,
-            Self::WorkspaceDirRename => 1,
-            Self::WorkspaceDrivePrepare => 2,
-            Self::WorkspaceSeedSparseCopy => 3,
-            Self::WorkspaceFreshFormat => 4,
-            Self::SockDirPrepare => 5,
-            Self::NetnsAcquire => 6,
-            Self::NbdCowCreate => 7,
-        }
-    }
-
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::CowPoolAcquire => "cow_pool_acquire",
@@ -118,13 +105,57 @@ impl Default for SandboxCreateStageDurations {
 
 impl SandboxCreateStageDurations {
     fn set(&mut self, stage: SandboxCreateStage, duration: Duration) {
-        if let Some(slot) = self.values.get_mut(stage.index()) {
-            *slot = Some(duration);
-        }
+        *self.slot_mut(stage) = Some(duration);
     }
 
     fn get(&self, stage: SandboxCreateStage) -> Option<Duration> {
-        self.values.get(stage.index()).copied().flatten()
+        *self.slot(stage)
+    }
+
+    fn slot(&self, stage: SandboxCreateStage) -> &Option<Duration> {
+        let [
+            cow_pool_acquire,
+            workspace_dir_rename,
+            workspace_drive_prepare,
+            workspace_seed_sparse_copy,
+            workspace_fresh_format,
+            sock_dir_prepare,
+            netns_acquire,
+            nbd_cow_create,
+        ] = &self.values;
+        match stage {
+            SandboxCreateStage::CowPoolAcquire => cow_pool_acquire,
+            SandboxCreateStage::WorkspaceDirRename => workspace_dir_rename,
+            SandboxCreateStage::WorkspaceDrivePrepare => workspace_drive_prepare,
+            SandboxCreateStage::WorkspaceSeedSparseCopy => workspace_seed_sparse_copy,
+            SandboxCreateStage::WorkspaceFreshFormat => workspace_fresh_format,
+            SandboxCreateStage::SockDirPrepare => sock_dir_prepare,
+            SandboxCreateStage::NetnsAcquire => netns_acquire,
+            SandboxCreateStage::NbdCowCreate => nbd_cow_create,
+        }
+    }
+
+    fn slot_mut(&mut self, stage: SandboxCreateStage) -> &mut Option<Duration> {
+        let [
+            cow_pool_acquire,
+            workspace_dir_rename,
+            workspace_drive_prepare,
+            workspace_seed_sparse_copy,
+            workspace_fresh_format,
+            sock_dir_prepare,
+            netns_acquire,
+            nbd_cow_create,
+        ] = &mut self.values;
+        match stage {
+            SandboxCreateStage::CowPoolAcquire => cow_pool_acquire,
+            SandboxCreateStage::WorkspaceDirRename => workspace_dir_rename,
+            SandboxCreateStage::WorkspaceDrivePrepare => workspace_drive_prepare,
+            SandboxCreateStage::WorkspaceSeedSparseCopy => workspace_seed_sparse_copy,
+            SandboxCreateStage::WorkspaceFreshFormat => workspace_fresh_format,
+            SandboxCreateStage::SockDirPrepare => sock_dir_prepare,
+            SandboxCreateStage::NetnsAcquire => netns_acquire,
+            SandboxCreateStage::NbdCowCreate => nbd_cow_create,
+        }
     }
 }
 
