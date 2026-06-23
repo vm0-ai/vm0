@@ -1472,6 +1472,38 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
+  it("places the template control immediately after attach", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+
+    await waitFor(() => {
+      const controls = Array.from(
+        composer.querySelectorAll(
+          [
+            'button[aria-label="Attach"]',
+            'button[aria-label="Template"]',
+            'button[aria-label="Connectors"]',
+          ].join(","),
+        ),
+      ).map((button) => {
+        return button.getAttribute("aria-label");
+      });
+
+      expect(controls).toEqual(["Attach", "Template", "Connectors"]);
+    });
+  });
+
   it("opens the template picker without focusing the tabs on small screens", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
