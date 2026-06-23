@@ -273,7 +273,21 @@ assert_contains "$out" "turbo-runner-consumer-needed=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
 assert_contains "$out" "current-runner-image-needed=false"
 
-out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 "$CONTEXT" artifact-name)
-assert_contains "$out" "artifact-name=runner-image-manifest-abc-pr-123"
+assert_fails "artifact-name requires TARGET" \
+  HEAD_SHA=abc \
+  JOB_REF=pr-123 \
+  "$CONTEXT" artifact-name
+
+assert_fails "artifact-name rejects unsupported TARGET" \
+  HEAD_SHA=abc \
+  JOB_REF=pr-123 \
+  TARGET=powerpc-unknown-linux-musl \
+  "$CONTEXT" artifact-name
+
+out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=aarch64-unknown-linux-musl "$CONTEXT" artifact-name)
+assert_contains "$out" "artifact-name=runner-image-manifest-aarch64-unknown-linux-musl-abc-pr-123"
+
+out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=x86_64-unknown-linux-musl "$CONTEXT" artifact-name)
+assert_contains "$out" "artifact-name=runner-image-manifest-x86_64-unknown-linux-musl-abc-pr-123"
 
 echo "runner-image-context-test: ok"
