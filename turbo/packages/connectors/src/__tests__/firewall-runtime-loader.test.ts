@@ -199,6 +199,33 @@ function exportedIdentifierNames(source: string): string[] {
   return names;
 }
 
+function exportedIdentifierNamesFromModule(
+  source: string,
+  moduleSpecifier: string,
+): string[] {
+  const names: string[] = [];
+  for (const statement of parseSource(source).statements) {
+    if (!ts.isExportDeclaration(statement)) {
+      continue;
+    }
+
+    if (stringLiteralText(statement.moduleSpecifier) !== moduleSpecifier) {
+      continue;
+    }
+
+    const clause = statement.exportClause;
+    if (clause === undefined || ts.isNamespaceExport(clause)) {
+      names.push("*");
+      continue;
+    }
+
+    for (const element of clause.elements) {
+      names.push(element.name.text);
+    }
+  }
+  return names;
+}
+
 describe("firewall runtime loader", () => {
   it("keeps the runtime loader behind an explicit package subpath", () => {
     const packageJson = JSON.parse(
@@ -277,6 +304,18 @@ describe("firewall runtime loader", () => {
         return removedExports.includes(name);
       }),
     ).toStrictEqual([]);
+    expect(
+      exportedIdentifierNamesFromModule(
+        defaultEntrypointSource,
+        "../firewall-metadata",
+      ).sort(compareStrings),
+    ).toStrictEqual(
+      [
+        "FirewallPermissionGrant",
+        "FirewallPermissionGrantAction",
+        "permissionGrantsToFirewallPolicies",
+      ].sort(compareStrings),
+    );
     expect(defaultFirewallEntrypoint).not.toHaveProperty(
       "getBuiltinConnectorDisplayName",
     );
