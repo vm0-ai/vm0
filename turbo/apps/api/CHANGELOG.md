@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.173.0](https://github.com/vm0-ai/vm0/compare/api-v1.172.1...api-v1.173.0) (2026-06-23)
+
+
+### Features
+
+* add OpenRouter MiMo and Hy3 models ([#18706](https://github.com/vm0-ai/vm0/issues/18706)) ([6e5137c](https://github.com/vm0-ai/vm0/commit/6e5137c5a77e544afd6fb86d5fe89df623030b69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.111.0
+    * @vm0/connectors bumped to 1.105.2
+    * @vm0/core bumped to 8.365.2
+    * @vm0/db bumped to 1.68.0
+
 ## [1.172.1](https://github.com/vm0-ai/vm0/compare/api-v1.172.0...api-v1.172.1) (2026-06-23)
 
 

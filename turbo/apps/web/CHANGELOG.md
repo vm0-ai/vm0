@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.439.0](https://github.com/vm0-ai/vm0/compare/web-v12.438.1...web-v12.439.0) (2026-06-23)
+
+
+### Features
+
+* add OpenRouter MiMo and Hy3 models ([#18706](https://github.com/vm0-ai/vm0/issues/18706)) ([6e5137c](https://github.com/vm0-ai/vm0/commit/6e5137c5a77e544afd6fb86d5fe89df623030b69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.111.0
+    * @vm0/core bumped to 8.365.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.105.2
+
 ## [12.438.1](https://github.com/vm0-ai/vm0/compare/web-v12.438.0...web-v12.438.1) (2026-06-23)
 
 

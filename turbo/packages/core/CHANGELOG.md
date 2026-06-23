@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.365.2](https://github.com/vm0-ai/vm0/compare/core-v8.365.1...core-v8.365.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* regenerate presentation template card previews ([#18709](https://github.com/vm0-ai/vm0/issues/18709)) ([c2bb1fa](https://github.com/vm0-ai/vm0/commit/c2bb1fa331a0df01f132d4f246c31a83f545f176))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.111.0
+    * @vm0/connectors bumped to 1.105.2
+
 ## [8.365.1](https://github.com/vm0-ai/vm0/compare/core-v8.365.0...core-v8.365.1) (2026-06-23)
 
 
