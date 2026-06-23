@@ -1,7 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import {
+  createCustomConnectorActionBlock,
   createConnectorActionBlock,
+  parseCustomConnectorProposalUrl,
   parseConnectorAuthorizeUrl,
+  type CustomConnectorActionBlock,
   type ConnectorActionBlock,
 } from "./connector-action-block.ts";
 import {
@@ -43,6 +46,7 @@ export type BodyRenderBlock =
       };
     }
   | ConnectorActionBlock
+  | CustomConnectorActionBlock
   | PermissionActionBlock;
 
 type ChatAttachmentKind = BodyPreviewKind;
@@ -688,7 +692,11 @@ function extractActionUrlFromLine(line: string): string | null {
 function createActionBlockFromLine(
   line: string,
   id: (type: BodyRenderBlock["type"]) => string,
-): ConnectorActionBlock | PermissionActionBlock | null {
+):
+  | ConnectorActionBlock
+  | CustomConnectorActionBlock
+  | PermissionActionBlock
+  | null {
   const url = extractActionUrlFromLine(line);
   if (!url) {
     return null;
@@ -697,6 +705,14 @@ function createActionBlockFromLine(
   const connectorAction = parseConnectorAuthorizeUrl(url);
   if (connectorAction) {
     return createConnectorActionBlock(id("connector-action"), connectorAction);
+  }
+
+  const customConnectorAction = parseCustomConnectorProposalUrl(url);
+  if (customConnectorAction) {
+    return createCustomConnectorActionBlock(
+      id("custom-connector-action"),
+      customConnectorAction,
+    );
   }
 
   const permissionAction = parsePermissionActionUrl(url);

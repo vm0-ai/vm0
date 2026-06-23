@@ -1432,6 +1432,84 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("saves a connector proposal with values and authorizes the requested agent", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Proposal Agent",
+    });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorProposals]: true,
+    });
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Proposal API",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.subdomain}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "proposal-secret" },
+        { key: "subdomain", kind: "variable", value: "acme" },
+      ],
+      agentId: agent.agentId,
+    });
+
+    expect(saved.authorizedAgentId).toBe(agent.agentId);
+    expect(saved.connector).toMatchObject({
+      displayName: "BDD Proposal API",
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["api_key", "subdomain"],
+    });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([saved.connector.id]);
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "subdomain"],
+    });
+    expectNoVisibleSecret(listed, "proposal-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {
     const bdd = createBddApi(context);
     const noOrgActor = bdd.user({ orgId: null });

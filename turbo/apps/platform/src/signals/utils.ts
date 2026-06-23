@@ -172,6 +172,25 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
   }
 }
 
+const base64UrlPattern = /^[A-Za-z0-9_-]*$/;
+
+export function jsonParseBase64UrlOr<T>(value: string, fallback: T): T {
+  if (!base64UrlPattern.test(value) || value.length % 4 === 1) {
+    return fallback;
+  }
+
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
+  const raw = atob(padded);
+  const bytes = Uint8Array.from(raw, (char) => {
+    return char.charCodeAt(0);
+  });
+  return jsonParseOr(new TextDecoder().decode(bytes), fallback);
+}
+
 /**
  * Best-effort wrapper: await `p` and swallow non-abort errors.
  * Use for prefetch or fire-and-forget operations where failure is acceptable.

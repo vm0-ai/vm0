@@ -1246,15 +1246,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "").toUpperCase()}`;
-    const customApis = inlineFirewallApis(claim.firewalls, slug);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S_SECRET`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis[0]?.base).toBe(
       "https://{hostWildcard1}.internal.example.com/api/",
     );
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
-    expect(claim.networkPolicies?.[slug]?.unknownPolicy).toBe("allow");
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected the custom claim to carry encrypted secrets");
@@ -1281,6 +1282,106 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("injects proposed custom connector fields into headers, query, and host templates", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorProposals]: true,
+    });
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Proposed Runtime",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.subdomain}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "runtime-proposal-secret" },
+        { key: "subdomain", kind: "variable", value: "acme" },
+      ],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the proposed custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const variableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.base).toBe(`https://acme.${rand}.test/v1/`);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(customApis[0]?.auth?.query?.tenant).toBe(
+      `\${{ secrets.${variableKey} }}`,
+    );
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${variableKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer runtime-proposal-secret",
+    });
+    expect(resolved.body.query).toStrictEqual({ tenant: "acme" });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
@@ -1298,9 +1399,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       value: "user-subdomain",
     });
 
-    // Custom connector prefixes are contract-validated as literal URLs, so
-    // `${{ vars.* }}` templates are not API-constructible there; the var
-    // boundary is asserted on the built-in zendesk firewall base instead.
+    // Built-in connector-owned vars must not leak into custom connector bases.
     const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
@@ -1320,7 +1419,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const customApis = inlineFirewallApis(claim.firewalls, slug);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);

@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   AutomationMultiTrigger = "automationMultiTrigger",
   GoalWorkflows = "goalWorkflows",
   MobileSingleLineComposer = "mobileSingleLineComposer",
+  CustomConnectorProposals = "customConnectorProposals",
 }

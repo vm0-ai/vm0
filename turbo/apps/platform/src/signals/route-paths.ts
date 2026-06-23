@@ -19,6 +19,7 @@ export const ROUTES = {
   works: "/works",
   ideas: "/ideas",
   connectors: "/connectors",
+  customConnectorProposal: "/connectors/custom/proposal",
   directedConnect: "/connectors/:type/connect",
   directedAuthorize: "/connectors/:type/authorize",
   settings: "/settings",

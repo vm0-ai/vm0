@@ -1,34 +1,34 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
-  createCustomConnector$,
   serialiseCustomConnector,
+  updateCustomConnectorDefinition$,
 } from "../services/zero-custom-connector.service";
-import { isBadRequestResponse } from "../../lib/error";
 import type { RouteEntry } from "../route";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Only org admins can create custom connectors",
+      message: "Only org admins can update custom connectors",
       code: "FORBIDDEN",
     }),
   }),
 });
 
-const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired;
   }
 
+  const params = get(pathParamsOf(zeroCustomConnectorByIdContract.update));
   const bodyResult = await get(
-    bodyResultOf(zeroCustomConnectorsContract.create),
+    bodyResultOf(zeroCustomConnectorByIdContract.update),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -36,28 +36,30 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    createCustomConnector$,
-    { orgId: auth.orgId, userId: auth.userId, input: bodyResult.data },
+    updateCustomConnectorDefinition$,
+    {
+      orgId: auth.orgId,
+      id: params.id,
+      input: bodyResult.data,
+    },
     signal,
   );
   signal.throwIfAborted();
-
-  if (isBadRequestResponse(result)) {
+  if ("status" in result) {
     return result;
   }
-
   return {
-    status: 201 as const,
+    status: 200 as const,
     body: serialiseCustomConnector({ row: result, valueMarkers: [] }),
   };
 });
 
-export const zeroCustomConnectorsCreateRoutes: readonly RouteEntry[] = [
+export const zeroCustomConnectorsUpdateRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorsContract.create,
+    route: zeroCustomConnectorByIdContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      createInner$,
+      updateInner$,
     ),
   },
 ];
