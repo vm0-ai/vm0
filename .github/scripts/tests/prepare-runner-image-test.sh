@@ -36,6 +36,17 @@ if JOB_REF=pr-123 \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH= \
+  "$PREPARE" >"${TMPDIR}/arch-empty.out" 2>"${TMPDIR}/arch-empty.err"; then
+  fail "expected empty expected remote arch to fail"
+fi
+grep -q "EXPECTED_REMOTE_ARCH is empty" "${TMPDIR}/arch-empty.err" || fail "expected empty expected remote arch message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
   EXPECTED_REMOTE_ARCH=x86_64 \
   "$PREPARE" >"${TMPDIR}/arch-mismatch.out" 2>"${TMPDIR}/arch-mismatch.err"; then
   fail "expected expected remote arch mismatch to fail"

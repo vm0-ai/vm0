@@ -24,7 +24,14 @@ BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
 TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
 DERIVED_EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
-EXPECTED_REMOTE_ARCH="${EXPECTED_REMOTE_ARCH:-$DERIVED_EXPECTED_REMOTE_ARCH}"
+if [ "${EXPECTED_REMOTE_ARCH+x}" = "x" ]; then
+  if [ -z "$EXPECTED_REMOTE_ARCH" ]; then
+    echo "EXPECTED_REMOTE_ARCH is empty" >&2
+    exit 2
+  fi
+else
+  EXPECTED_REMOTE_ARCH="$DERIVED_EXPECTED_REMOTE_ARCH"
+fi
 if [ "$EXPECTED_REMOTE_ARCH" != "$DERIVED_EXPECTED_REMOTE_ARCH" ]; then
   echo "EXPECTED_REMOTE_ARCH mismatch: ${TARGET_TRIPLE} maps to ${DERIVED_EXPECTED_REMOTE_ARCH}, got ${EXPECTED_REMOTE_ARCH}" >&2
   exit 2
