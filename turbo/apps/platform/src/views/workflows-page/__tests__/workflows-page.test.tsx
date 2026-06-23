@@ -1,7 +1,9 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  zeroWorkflowTriggersContract,
+  type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowUpdateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
@@ -21,25 +23,60 @@ const CURRENT_USER_ID = "test-user-123";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000101";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
+const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
+
+type WorkflowScheduleTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "schedule" }
+>;
+type WorkflowGmailNewMessageTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
-  return [
-    {
-      id: "workflow-trigger-weekday-brief",
-      kind: "schedule",
-      schedule: {
-        type: "cron",
-        cronExpression: "0 9 * * 1-5",
-        timezone: "UTC",
-      },
-      scheduleSummary: "Weekdays at 9:00 AM",
-      ownerUserId: CURRENT_USER_ID,
-      enabled: true,
-      chatThreadId: "thread_weekday_brief",
-      nextRunAt: "2026-06-19T01:00:00.000Z",
-      lastRunAt: "2026-06-18T01:00:00.000Z",
+  return [weekdayWorkflowTrigger()];
+}
+
+function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
+  return {
+    id: "workflow-trigger-weekday-brief",
+    kind: "schedule",
+    schedule: {
+      type: "cron",
+      cronExpression: "0 9 * * 1-5",
+      timezone: "UTC",
     },
-  ];
+    scheduleSummary: "Weekdays at 9:00 AM",
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_weekday_brief",
+    nextRunAt: "2026-06-19T01:00:00.000Z",
+    lastRunAt: "2026-06-18T01:00:00.000Z",
+  };
+}
+
+function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
+  return {
+    id: GMAIL_TRIGGER_ID,
+    kind: "event",
+    eventType: "gmail-new-message",
+    eventConfig: {
+      provider: "gmail",
+      event: "new_message",
+      match: {
+        from: { contains: "@acme.com" },
+        subject: { doesNotContain: "newsletter" },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_gmail_new_message",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
 }
 
 function salesResearch(): ZeroWorkflowDetailResponse {
@@ -181,6 +218,24 @@ function mockWorkflowApis(
   );
 }
 
+function mockCreateWorkflowTrigger(
+  onCreate: (body: ZeroWorkflowTriggerCreateRequest) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.create,
+    ({ body, respond }) => {
+      onCreate(body);
+      if (body.kind !== "event") {
+        return respond(201, weekdayWorkflowTrigger());
+      }
+      return respond(201, {
+        ...gmailWorkflowTrigger(),
+        eventConfig: body.eventConfig,
+      });
+    },
+  );
+}
+
 describe("workflows index page", () => {
   it("shows every visible workflow with its agent and links into the detail page", async () => {
     mockWorkflowApis([salesResearch(), opsPlaybook()]);
@@ -234,6 +289,73 @@ describe("workflow detail page", () => {
       expect(
         screen.getByText('{ "risk": "low", "tone": "direct" }'),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("renders Gmail new message trigger match summaries", async () => {
+    const workflow = {
+      ...salesResearch(),
+      triggers: [...workflowTriggers(), gmailWorkflowTrigger()],
+    };
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText(/from contains "@acme.com"/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/subject does not contain "newsletter"/),
+    ).toBeInTheDocument();
+  });
+
+  it("creates a Gmail new message trigger with text match rules", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+    const createTriggerForm = screen.getByRole("form", {
+      name: "Create Gmail new message trigger",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("From contains"),
+      "@acme.com",
+    );
+    await fill(
+      within(createTriggerForm).getByLabelText("Subject does not contain"),
+      "newsletter",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            from: { contains: "@acme.com" },
+            subject: { doesNotContain: "newsletter" },
+          },
+        },
+      });
     });
   });
 

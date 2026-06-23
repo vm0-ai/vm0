@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
+  type GmailNewMessageEventConfig,
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -316,6 +317,33 @@ export const createWorkflowScheduleTrigger$ = command(
       client.create({
         params: { workflowId: input.workflowId },
         body: { schedule: input.schedule },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGmailNewMessageTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: input.eventConfig,
+        },
         fetchOptions: { signal },
       }),
       [201],
