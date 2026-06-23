@@ -543,6 +543,14 @@ function normalizeCodexItemEvent(
             formatGenericCodexItem(codexType, item),
           );
     }
+    case "plan": {
+      return item.text
+        ? makeCodexAssistantTextEvent(event, `[plan] ${item.text}`)
+        : makeCodexAssistantTextEvent(
+            event,
+            formatGenericCodexItem(codexType, item),
+          );
+    }
     case "command_execution": {
       return (
         normalizeCodexCommandEvent(event, codexType, item) ??

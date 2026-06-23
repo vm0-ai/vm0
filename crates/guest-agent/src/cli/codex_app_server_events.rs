@@ -281,6 +281,7 @@ fn normalize_item(
     let item_type = required_string_field(item, method, "item.type")?;
     match item_type {
         "agentMessage" => normalize_agent_message(item, method).map(Some),
+        "plan" => normalize_plan(item, method).map(Some),
         "reasoning" => normalize_reasoning(item, method).map(Some),
         "commandExecution" => normalize_command_execution(item, method).map(Some),
         "fileChange" => normalize_file_change_item(item, method).map(Some),
@@ -293,6 +294,16 @@ fn normalize_agent_message(
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = base_item(item, method, "agent_message")?;
+    let text = required_string_field(item, method, "item.text")?;
+    normalized.insert("text".to_string(), Value::String(text.to_string()));
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_plan(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "plan")?;
     let text = required_string_field(item, method, "item.text")?;
     normalized.insert("text".to_string(), Value::String(text.to_string()));
     Ok(Value::Object(normalized))
@@ -807,6 +818,38 @@ mod tests {
         assert_eq!(
             event.pointer("/item/text").and_then(Value::as_str),
             Some("")
+        );
+    }
+
+    #[test]
+    fn plan_completed_maps_to_visible_plan_item() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "plan",
+                    "id": "plan-1",
+                    "text": "1. Inspect logs\n2. Patch retry"
+                }
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "item.completed",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "completed_at_ms": 42,
+                "item": {
+                    "id": "plan-1",
+                    "type": "plan",
+                    "text": "1. Inspect logs\n2. Patch retry"
+                }
+            })
         );
     }
 

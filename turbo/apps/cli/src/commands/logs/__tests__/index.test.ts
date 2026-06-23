@@ -836,6 +836,41 @@ describe("logs command", () => {
       expect(logCalls).toContain("README.md");
     });
 
+    it("should render plan items as text", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "plan_1",
+                      type: "plan",
+                      text: "1. Inspect logs\n2. Patch retry",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[plan] 1. Inspect logs");
+      expect(logCalls).toContain("2. Patch retry");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(

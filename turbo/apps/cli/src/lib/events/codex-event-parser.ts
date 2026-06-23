@@ -48,7 +48,7 @@ interface CodexItem {
   exit_code?: number;
   output?: string;
   aggregated_output?: string;
-  // For agent_message
+  // For agent_message, plan, and reasoning
   text?: string;
   // For file operations
   path?: string;
@@ -175,6 +175,13 @@ export class CodexEventParser {
 
     if (itemType === "agent_message" && item.text) {
       return { type: "text", timestamp: new Date(), data: { text: item.text } };
+    }
+    if (itemType === "plan" && item.text) {
+      return {
+        type: "text",
+        timestamp: new Date(),
+        data: { text: `[plan] ${item.text}` },
+      };
     }
     if (itemType === "command_execution") {
       return this.parseCommandExecution(event);

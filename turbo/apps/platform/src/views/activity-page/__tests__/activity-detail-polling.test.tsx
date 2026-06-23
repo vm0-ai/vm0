@@ -786,6 +786,19 @@ function codexActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 4,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "plan-1",
+          type: "plan",
+          text: "1. Inspect logs\n2. Patch retry",
+        },
+      },
+      createdAt: "2026-03-10T15:00:05Z",
+    },
+    {
+      sequenceNumber: 5,
       eventType: "item.started",
       eventData: {
         type: "item.started",
@@ -795,10 +808,10 @@ function codexActivityEvents(): AgentEvent[] {
           command: "pnpm test --filter billing-worker",
         },
       },
-      createdAt: "2026-03-10T15:00:05Z",
+      createdAt: "2026-03-10T15:00:06Z",
     },
     {
-      sequenceNumber: 5,
+      sequenceNumber: 6,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -811,10 +824,10 @@ function codexActivityEvents(): AgentEvent[] {
             "billing worker failed\nstack line 1\nstack line 2\nstack line 3\nstack line 4",
         },
       },
-      createdAt: "2026-03-10T15:00:06Z",
+      createdAt: "2026-03-10T15:00:07Z",
     },
     {
-      sequenceNumber: 6,
+      sequenceNumber: 7,
       eventType: "item.started",
       eventData: {
         type: "item.started",
@@ -824,10 +837,10 @@ function codexActivityEvents(): AgentEvent[] {
           path: "src/billing/worker.ts",
         },
       },
-      createdAt: "2026-03-10T15:00:07Z",
+      createdAt: "2026-03-10T15:00:08Z",
     },
     {
-      sequenceNumber: 7,
+      sequenceNumber: 8,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -837,10 +850,10 @@ function codexActivityEvents(): AgentEvent[] {
           output: "export const worker = true;",
         },
       },
-      createdAt: "2026-03-10T15:00:08Z",
+      createdAt: "2026-03-10T15:00:09Z",
     },
     {
-      sequenceNumber: 8,
+      sequenceNumber: 9,
       eventType: "item.started",
       eventData: {
         type: "item.started",
@@ -850,10 +863,10 @@ function codexActivityEvents(): AgentEvent[] {
           path: "src/billing/worker.ts",
         },
       },
-      createdAt: "2026-03-10T15:00:09Z",
+      createdAt: "2026-03-10T15:00:10Z",
     },
     {
-      sequenceNumber: 9,
+      sequenceNumber: 10,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -863,10 +876,10 @@ function codexActivityEvents(): AgentEvent[] {
           diff: "- old retry\n+ new retry",
         },
       },
-      createdAt: "2026-03-10T15:00:10Z",
+      createdAt: "2026-03-10T15:00:11Z",
     },
     {
-      sequenceNumber: 10,
+      sequenceNumber: 11,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -879,10 +892,10 @@ function codexActivityEvents(): AgentEvent[] {
           ],
         },
       },
-      createdAt: "2026-03-10T15:00:11Z",
+      createdAt: "2026-03-10T15:00:12Z",
     },
     {
-      sequenceNumber: 11,
+      sequenceNumber: 12,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -893,10 +906,10 @@ function codexActivityEvents(): AgentEvent[] {
           title: "Unknown codex item surfaced",
         },
       },
-      createdAt: "2026-03-10T15:00:12Z",
+      createdAt: "2026-03-10T15:00:13Z",
     },
     {
-      sequenceNumber: 12,
+      sequenceNumber: 13,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -907,7 +920,7 @@ function codexActivityEvents(): AgentEvent[] {
           reasoning_output_tokens: 4,
         },
       },
-      createdAt: "2026-03-10T15:00:13Z",
+      createdAt: "2026-03-10T15:00:14Z",
     },
   ];
 }
@@ -1836,6 +1849,15 @@ describe("activity detail polling", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText("[thinking] Follow the failed retry through the logs."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName.toLowerCase() === "p" &&
+          element?.textContent?.includes("[plan] 1. Inspect logs") === true &&
+          element.textContent.includes("2. Patch retry")
+        );
+      }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
