@@ -97,6 +97,7 @@ pub(super) async fn run_rootfs_script(
         .wait()
         .await
         .map_err(|e| RunnerError::Internal(format!("wait for {label}: {e}")))?;
+    process.child = None;
     if status.success() {
         process.pgid = None;
     }

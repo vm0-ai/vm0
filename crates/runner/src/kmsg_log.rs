@@ -36,9 +36,14 @@ impl KmsgHandle {
     /// Stop the kmsg monitor and wait for cleanup.
     pub async fn stop(mut self) {
         self.cancel.cancel();
-        if let Some(ref mut child) = self.child {
+        let child_reaped = if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
-            let _ = child.wait().await;
+            child.wait().await.is_ok()
+        } else {
+            false
+        };
+        if child_reaped {
+            self.child = None;
         }
         let _ = (&mut self.task).await;
         info!("kmsg monitor stopped");
