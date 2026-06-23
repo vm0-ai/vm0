@@ -825,6 +825,25 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "", "missing_authority", "https://api.github.com/repos"),
         (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
         (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
+        (
+            443,
+            "api.github.com:\uff14\uff14\uff13",
+            "invalid_authority",
+            "https://api.github.com/repos",
+        ),
+        (
+            443,
+            "api.github.com:\u0664\u0664\u0663",
+            "invalid_authority",
+            "https://api.github.com/repos",
+        ),
+        (
+            443,
+            "api.github.com:\u0967\u0968\u0969",
+            "invalid_authority",
+            "https://api.github.com/repos",
+        ),
+        (443, "api.github.com:" + ("9" * 128), "invalid_authority", "https://api.github.com/repos"),
         (443, "api.github.com..", "invalid_authority", "https://api.github.com/repos"),
         (443, "api%2egithub.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "b%C3%BCcher.example", "invalid_authority", "https://api.github.com/repos"),
@@ -858,6 +877,12 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "a\u0663\u0664.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "1\u0663.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "!\u0663!.example", "invalid_authority", "https://api.github.com/repos"),
+        (
+            443,
+            "[2001:db8::1]:\uff14\uff14\uff13",
+            "invalid_authority",
+            "https://api.github.com/repos",
+        ),
         (443, "[::1]junk", "invalid_authority", "https://api.github.com/repos"),
         (443, "[fe80::1%25eth0]", "invalid_authority", "https://api.github.com/repos"),
         (
