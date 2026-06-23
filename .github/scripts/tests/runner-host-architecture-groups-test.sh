@@ -58,6 +58,9 @@ assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
+out=$(run_clean X86_64_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS" has-groups)
+[ "$out" = "true" ] || fail "expected x86_64 has-groups=true, got: ${out}"
+
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1' X86_64_METAL_RUNNER_HOSTS='x86-1,x86-2' "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","hosts":"x86-1,x86-2","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
