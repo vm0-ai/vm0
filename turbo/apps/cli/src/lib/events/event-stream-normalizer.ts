@@ -50,7 +50,14 @@ export class EventStreamNormalizer {
     }
 
     if (eventType === "turn.failed") {
+      const pendingCodexError = this.pendingCodexError;
       this.pendingCodexError = null;
+      if (
+        pendingCodexError &&
+        shouldPreferPendingCodexError(pendingCodexError, parsed)
+      ) {
+        return [pendingCodexError];
+      }
       return parsed ? [parsed] : [];
     }
 
@@ -69,4 +76,36 @@ export class EventStreamNormalizer {
     this.pendingCodexError = null;
     return output;
   }
+}
+
+function shouldPreferPendingCodexError(
+  pendingCodexError: ParsedEvent,
+  turnFailedEvent: ParsedEvent | null,
+): boolean {
+  const pendingResult = getResultText(pendingCodexError);
+  const turnFailedResult = getResultText(turnFailedEvent);
+  if (!turnFailedResult) {
+    return pendingResult !== null;
+  }
+  return (
+    pendingResult !== null &&
+    !isGenericCodexFailureResult(pendingResult) &&
+    isGenericCodexFailureResult(turnFailedResult)
+  );
+}
+
+function getResultText(event: ParsedEvent | null): string | null {
+  const result = event?.data.result;
+  if (typeof result !== "string") {
+    return null;
+  }
+  return result.trim() || null;
+}
+
+function isGenericCodexFailureResult(result: string): boolean {
+  return (
+    result === "Turn failed" ||
+    result === "Unknown error" ||
+    result === "Codex error"
+  );
 }

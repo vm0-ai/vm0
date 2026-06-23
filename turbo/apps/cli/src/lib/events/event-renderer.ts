@@ -312,6 +312,10 @@ export class EventRenderer {
       );
     } else {
       console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
+      const errorText = EventRenderer.formatResultMessage(event.data.result);
+      if (errorText) {
+        console.log(`  Error: ${chalk.red(errorText)}`);
+      }
     }
 
     const durationMs = Number(event.data.durationMs || 0);
@@ -352,5 +356,15 @@ export class EventRenderer {
     }
     // For "latest" or other formats, show as-is
     return version;
+  }
+
+  private static formatResultMessage(value: unknown): string | null {
+    if (typeof value === "string") {
+      return value.trim() || null;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return null;
   }
 }
