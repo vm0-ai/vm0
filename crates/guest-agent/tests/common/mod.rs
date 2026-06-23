@@ -463,6 +463,11 @@ pub unsafe fn setup_env(
     sigterm_grace_secs: u64,
     sigkill_grace_secs: u64,
 ) -> Result<(), String> {
+    std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
+    // Create any host-owned test mountpoint before setting VM0_PROMPT. Some
+    // tests intentionally use multi-MiB prompts, and subprocesses such as sudo
+    // inherit the process environment.
+    ensure_canonical_workspace_for_test()?;
     unsafe {
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
@@ -499,8 +504,6 @@ pub unsafe fn setup_env(
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
     }
-    std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
-    ensure_canonical_workspace_for_test()?;
     std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
     Ok(())
 }
