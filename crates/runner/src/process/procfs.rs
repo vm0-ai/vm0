@@ -29,7 +29,7 @@ pub(super) async fn read_ppid(pid: u32) -> Option<u32> {
     parse_process_ppid(&content)
 }
 
-/// Parse process facts from `/proc/{pid}/stat` content.
+/// Return the fields after the `/proc/{pid}/stat` comm field.
 ///
 /// Format: `pid (comm) state ppid pgrp ...`
 /// The comm field may contain spaces and parentheses, so we find the
@@ -45,6 +45,7 @@ fn parse_process_ppid(content: &str) -> Option<u32> {
     fields.next()?.parse().ok()
 }
 
+/// Parse process facts from `/proc/{pid}/stat` content.
 fn parse_process_stat(content: &str) -> Option<ProcessStat> {
     let mut fields = stat_fields_after_comm(content)?;
 
