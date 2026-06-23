@@ -1757,6 +1757,18 @@ describe("chat composer templates", () => {
     expect(
       screen.getByLabelText(`Select card theme Prism for ${template.title}`),
     ).toHaveAttribute("aria-pressed", "true");
+    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
+    if (!prismCardPreview) {
+      throw new Error("Prism card preview not found");
+    }
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} card image preview`),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
+      );
+    });
     expect(
       jsonParseOr<Record<string, string>>(
         context.store.get(presentationTemplateThemeIdBySlugRaw$) ?? "{}",
@@ -1776,6 +1788,14 @@ describe("chat composer templates", () => {
     expect(
       within(templateDialog).getByLabelText("Select style Prism"),
     ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(templateDialog).getByTestId(
+        `${template.title} detail image preview`,
+      ),
+    ).toHaveAttribute(
+      "src",
+      r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
+    );
 
     const templateButton = queryAllByRoleFast("button", templateDialog).find(
       (candidate) => {
