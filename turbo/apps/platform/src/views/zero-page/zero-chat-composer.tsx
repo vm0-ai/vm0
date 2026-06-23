@@ -3299,8 +3299,11 @@ function TemplatePreviewPage({
 
   return (
     <>
-      <DialogHeader className="shrink-0 border-b border-border py-4 pl-5 pr-16">
-        <DialogTitle className="flex min-w-0 items-center gap-2 text-base leading-none">
+      <DialogHeader
+        data-presentation-template-detail-header=""
+        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+      >
+        <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
             type="button"
             className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3316,9 +3319,9 @@ function TemplatePreviewPage({
       </DialogHeader>
       <div
         ref={loadDetailHtmlPreviewAfterMount}
-        className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
+        className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
       >
-        <div className="rounded-lg border border-border bg-background p-3">
+        <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
             aria-label={`${item.title} slide preview`}
@@ -3388,7 +3391,8 @@ function TemplatePreviewPage({
             ) : null}
           </div>
           <div
-            className="mt-3 grid grid-cols-8 gap-1.5"
+            data-presentation-template-thumbnail-strip=""
+            className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] sm:grid sm:grid-cols-6 sm:gap-1.5 sm:overflow-visible sm:pb-0 md:grid-cols-8"
             onKeyDown={handleDetailSlideKeyDown}
           >
             {Array.from(
@@ -3415,7 +3419,7 @@ function TemplatePreviewPage({
                     selectDetailSlide(slideIndex);
                   }}
                   className={cn(
-                    "relative aspect-[16/9] overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative aspect-[16/9] min-w-[96px] flex-1 snap-start overflow-hidden rounded-md border bg-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-0",
                     active
                       ? "border-ring ring-1 ring-ring"
                       : "border-border hover:border-muted-foreground/50",
@@ -4403,7 +4407,9 @@ function TemplatePickerDialog({
     // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
     // 36px (size-9) close button within the 50px header.
     "[&>button[aria-label=Close]]:top-[7px]",
-    isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
+    isPreviewing
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
+      : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
   const filteredPptItems = presentationItems.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
