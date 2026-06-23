@@ -591,7 +591,11 @@ fn shallow_generic_value(value: &Value) -> Option<Value> {
             if values.len() > MAX_GENERIC_COLLECTION_ITEMS {
                 return None;
             }
-            let values = values.iter().filter_map(shallow_generic_value).collect();
+            let values = values
+                .iter()
+                .filter(|value| is_scalar_json_value(value))
+                .cloned()
+                .collect();
             Some(Value::Array(values))
         }
         Value::Object(fields) => {
@@ -610,6 +614,13 @@ fn shallow_generic_value(value: &Value) -> Option<Value> {
             Some(Value::Object(output))
         }
     }
+}
+
+fn is_scalar_json_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+    )
 }
 
 fn required_params_object(
@@ -1322,6 +1333,51 @@ mod tests {
         assert_eq!(event["item"]["duration_ms"], 50);
         assert_eq!(event["item"]["arguments"], json!({"owner": "vm0-ai"}));
         assert_eq!(event["item"]["large"], json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn generic_completed_item_keeps_only_bounded_shallow_values() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "dynamicToolCall",
+                    "id": "tool-1",
+                    "status": "completed",
+                    "contentItems": [
+                        "kept",
+                        {"nested": "dropped"},
+                        ["also", "dropped"],
+                        7
+                    ],
+                    "arguments": {
+                        "query": "kept",
+                        "nested": {"ignored": true},
+                        "items": ["ignored"]
+                    },
+                    "tooManyItems": [
+                        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                        11, 12, 13, 14, 15, 16, 17
+                    ],
+                    "tooManyFields": {
+                        "a": 1, "b": 2, "c": 3, "d": 4, "e": 5,
+                        "f": 6, "g": 7, "h": 8, "i": 9, "j": 10,
+                        "k": 11, "l": 12, "m": 13, "n": 14, "o": 15,
+                        "p": 16, "q": 17, "r": 18, "s": 19, "t": 20,
+                        "u": 21, "v": 22, "w": 23, "x": 24, "y": 25
+                    }
+                }
+            }),
+        );
+
+        assert_eq!(event["item"]["type"], "dynamic_tool_call");
+        assert_eq!(event["item"]["content_items"], json!(["kept", 7]));
+        assert_eq!(event["item"]["arguments"], json!({"query": "kept"}));
+        assert!(event["item"].get("too_many_items").is_none());
+        assert!(event["item"].get("too_many_fields").is_none());
     }
 
     #[test]
