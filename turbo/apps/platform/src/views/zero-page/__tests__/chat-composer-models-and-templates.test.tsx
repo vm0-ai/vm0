@@ -1500,7 +1500,7 @@ describe("chat composer templates", () => {
         return button.getAttribute("aria-label");
       });
 
-      expect(controls).toEqual(["Attach", "Template", "Connectors"]);
+      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
     });
   });
 
