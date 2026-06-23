@@ -207,11 +207,15 @@ fn codex_structured_turn_error(event: &Value) -> Option<&Value> {
 fn codex_turn_failed_message(error: Option<&Value>, turn_error: Option<&Value>) -> String {
     let top_level_message = codex_error_message(error);
     let top_level_primary_message = codex_error_primary_message(error);
+    let turn_error_message = codex_error_message(turn_error);
+    let turn_error_is_specific = turn_error_message
+        .as_deref()
+        .is_some_and(|message| !is_generic_codex_failure_diagnostic(message));
     let top_level_should_yield = top_level_primary_message
         .as_deref()
         .map(is_generic_codex_failure_diagnostic)
-        .unwrap_or(true);
-    let turn_error_message = codex_error_message(turn_error);
+        .unwrap_or(true)
+        && turn_error_is_specific;
 
     match (top_level_message, turn_error_message) {
         (Some(_), Some(turn_error_message)) if top_level_should_yield => turn_error_message,
@@ -1075,6 +1079,30 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "nested turn failure (quota exhausted)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_keeps_top_level_details_when_nested_message_is_generic() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "additionalDetails": "wrapper-level detail"
+            },
+            "turn": {
+                "error": {
+                    "message": "turn failed"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "wrapper-level detail".to_string(),
                 failure_reason: None,
             })
         );
