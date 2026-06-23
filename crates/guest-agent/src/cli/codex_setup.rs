@@ -16,7 +16,10 @@ use crate::env;
 use crate::error::AgentError;
 use crate::masker::SecretMasker;
 
-use super::{child_env, diagnostics};
+use super::{
+    child_env, diagnostics,
+    process_group::{ChildProcessGroup, ProcessGroupKillGuard},
+};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -66,8 +69,8 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
         .spawn();
     let result = match result {
         Ok(mut child) => {
-            let pgid = child.id().map(|pid| pid as i32);
-            let mut process_group = SetupProcessGroupGuard::new(pgid);
+            let process_group = ChildProcessGroup::from_child_id(child.id());
+            let mut process_group_guard = ProcessGroupKillGuard::new(process_group);
             let stderr = child.stderr.take();
             let stderr_handle = tokio::spawn(async move {
                 match stderr {
@@ -82,8 +85,9 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
 
             match child.wait().await {
                 Ok(status) => {
-                    let stderr_lines = drain_setup_stderr_after_wait(stderr_handle, pgid).await;
-                    process_group.disarm();
+                    let stderr_lines =
+                        drain_setup_stderr_after_wait(stderr_handle, process_group).await;
+                    process_group_guard.disarm();
                     Ok((status, stderr_lines))
                 }
                 Err(e) => {
@@ -123,48 +127,23 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     Ok(())
 }
 
-struct SetupProcessGroupGuard {
-    pgid: Option<i32>,
-}
-
-impl SetupProcessGroupGuard {
-    fn new(pgid: Option<i32>) -> Self {
-        Self { pgid }
-    }
-
-    fn disarm(&mut self) {
-        self.pgid = None;
-    }
-}
-
-impl Drop for SetupProcessGroupGuard {
-    fn drop(&mut self) {
-        if let Some(pid) = self.pgid {
-            unsafe {
-                libc::kill(-pid, libc::SIGKILL);
-            }
-        }
-    }
-}
-
 async fn drain_setup_stderr_after_wait(
     mut stderr_handle: tokio::task::JoinHandle<Vec<String>>,
-    pgid: Option<i32>,
+    process_group: Option<ChildProcessGroup>,
 ) -> Vec<String> {
     if !stderr_handle.is_finished() {
         tokio::task::yield_now().await;
     }
 
     if !stderr_handle.is_finished()
-        && let Some(pid) = pgid
+        && let Some(process_group) = process_group
     {
+        let pgid = process_group.raw_pgid();
         log_warn!(
             LOG_TAG,
-            "codex login stderr still open after exit, SIGKILL pgid={pid}"
+            "codex login stderr still open after exit, SIGKILL pgid={pgid}"
         );
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
+        process_group.sigkill();
     }
 
     let stderr_timeout =
