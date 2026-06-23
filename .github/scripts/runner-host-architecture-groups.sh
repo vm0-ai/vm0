@@ -84,13 +84,16 @@ validate_host_entries() {
 
 validate_unique_hosts() {
   local groups=$1
-  local duplicate
-  duplicate=$(jq -r '.[].hosts | split(",")[]' <<<"$groups" | LC_ALL=C sort | uniq -d)
-  duplicate=${duplicate%%$'\n'*}
-  if [ -n "$duplicate" ]; then
-    echo "duplicate runner host configured: ${duplicate}" >&2
-    return 2
-  fi
+  local host host_key
+  declare -A seen_hosts=()
+  while IFS= read -r host; do
+    host_key=${host,,}
+    if [ -n "${seen_hosts[$host_key]+x}" ]; then
+      echo "duplicate runner host configured: ${host}" >&2
+      return 2
+    fi
+    seen_hosts[$host_key]=1
+  done < <(jq -r '.[].hosts | split(",")[]' <<<"$groups")
 }
 
 emit_groups() {

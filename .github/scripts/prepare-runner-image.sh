@@ -42,18 +42,19 @@ if [ "${#HOSTS[@]}" -lt 1 ]; then
   echo "METAL_HOSTS is empty" >&2
   exit 1
 fi
+declare -A seen_hosts=()
 for host in "${HOSTS[@]}"; do
   if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
     echo "invalid METAL_HOSTS entry: ${host}" >&2
     exit 2
   fi
+  host_key=${host,,}
+  if [ -n "${seen_hosts[$host_key]+x}" ]; then
+    echo "duplicate METAL_HOSTS entry: ${host}" >&2
+    exit 2
+  fi
+  seen_hosts[$host_key]=1
 done
-duplicate_host=$(printf '%s\n' "${HOSTS[@]}" | LC_ALL=C sort | uniq -d)
-duplicate_host=${duplicate_host%%$'\n'*}
-if [ -n "$duplicate_host" ]; then
-  echo "duplicate METAL_HOSTS entry: ${duplicate_host}" >&2
-  exit 2
-fi
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 

@@ -88,6 +88,17 @@ grep -q "duplicate METAL_HOSTS entry: dev-1" "${TMPDIR}/duplicate-hosts.err" || 
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
+  METAL_HOSTS='Dev-1, dev-1' \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/duplicate-hosts-case.out" 2>"${TMPDIR}/duplicate-hosts-case.err"; then
+  fail "expected case-insensitive duplicate metal hosts to fail"
+fi
+grep -q "duplicate METAL_HOSTS entry: dev-1" "${TMPDIR}/duplicate-hosts-case.err" || fail "expected case-insensitive duplicate metal hosts message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \

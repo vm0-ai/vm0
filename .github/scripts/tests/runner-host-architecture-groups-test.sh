@@ -108,10 +108,20 @@ if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/du
 fi
 grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-group.err" || fail "expected duplicate host in one group message"
 
+if run_clean AWS_METAL_RUNNER_HOSTS='Arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-case.out" 2>"${TMPDIR}/duplicate-case.err"; then
+  fail "expected case-insensitive duplicate host in one group to fail"
+fi
+grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-case.err" || fail "expected case-insensitive duplicate host message"
+
 if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross.out" 2>"${TMPDIR}/duplicate-cross.err"; then
   fail "expected duplicate host across groups to fail"
 fi
 grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross.err" || fail "expected duplicate host across groups message"
+
+if run_clean AWS_METAL_RUNNER_HOSTS='Shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross-case.out" 2>"${TMPDIR}/duplicate-cross-case.err"; then
+  fail "expected case-insensitive duplicate host across groups to fail"
+fi
+grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross-case.err" || fail "expected case-insensitive duplicate host across groups message"
 
 if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" has-groups >"${TMPDIR}/duplicate-has-groups.out" 2>"${TMPDIR}/duplicate-has-groups.err"; then
   fail "expected duplicate host has-groups to fail"
