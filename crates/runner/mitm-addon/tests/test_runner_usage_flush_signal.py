@@ -232,6 +232,20 @@ class TestRunnerUsageFlushSignal:
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
 
+    def test_jsonl_flush_request_ignores_invalid_utf8_marker(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        runner_usage_flush_files.jsonl_flush_request_path.write_bytes(b"\xff")
+
+        with (
+            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(mitm_addon, "flush_log_path") as flush_log_path,
+        ):
+            mitm_addon._flush_jsonl_for_runner_request()
+
+        flush_log_path.assert_not_called()
+        assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
     def test_jsonl_flush_failure_writes_pending_state(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):

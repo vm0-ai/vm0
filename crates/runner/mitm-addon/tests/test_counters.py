@@ -218,6 +218,13 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() is None
 
+    def test_read_usage_flush_request_id_ignores_invalid_utf8_marker(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_bytes(b"\xff")
+
+        assert usage.read_usage_flush_request_id() is None
+
     @pytest.mark.parametrize(
         "marker",
         [

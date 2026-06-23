@@ -399,8 +399,8 @@ def _flush_jsonl_for_runner_request() -> None:
 def _read_jsonl_flush_request() -> tuple[str, str] | None:
     marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
     try:
-        marker = json.loads(marker_path.read_text())
-    except (OSError, json.JSONDecodeError):
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
     if not isinstance(marker, dict):
