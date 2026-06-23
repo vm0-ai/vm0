@@ -348,6 +348,21 @@ impl ControlStreamState {
                     *gate = ControlStreamGate::Locked;
                     drop(gate);
                     let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
+                    if !active.load(Ordering::Acquire) {
+                        self.release_locked_gate(&mut gate);
+                        return Err(ControlStreamLockError::Inactive);
+                    }
+                    match &*gate {
+                        ControlStreamGate::Failed(message) => {
+                            return Err(ControlStreamLockError::SinkError(message.clone()));
+                        }
+                        ControlStreamGate::Available => {
+                            *gate = ControlStreamGate::Locked;
+                        }
+                        ControlStreamGate::Locked => {}
+                    }
+                    drop(gate);
                     return Ok(ControlStreamGuard {
                         stream,
                         _gate: ControlStreamGateGuard { state: self },
@@ -386,6 +401,13 @@ impl ControlStreamState {
         }
         self.ready.notify_all();
     }
+
+    fn release_locked_gate(&self, gate: &mut ControlStreamGate) {
+        if matches!(*gate, ControlStreamGate::Locked) {
+            *gate = ControlStreamGate::Available;
+        }
+        self.ready.notify_one();
+    }
 }
 
 impl std::ops::Deref for ControlStreamGuard<'_> {
@@ -405,9 +427,6 @@ impl std::ops::DerefMut for ControlStreamGuard<'_> {
 impl Drop for ControlStreamGateGuard<'_> {
     fn drop(&mut self) {
         let mut gate = self.state.gate.lock().unwrap_or_else(|e| e.into_inner());
-        if matches!(*gate, ControlStreamGate::Locked) {
-            *gate = ControlStreamGate::Available;
-        }
-        self.state.ready.notify_one();
+        self.state.release_locked_gate(&mut gate);
     }
 }
