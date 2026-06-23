@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::child_cleanup::kill_and_reap_child_on_drop;
 use crate::network_log_drain::{
     NetworkLogDrainProducer, NetworkLogDrainRequest, run_drainable_line_reader,
 };
@@ -85,9 +86,7 @@ impl Drop for KmsgHandle {
     /// (e.g., factory creation failure). Harmless if `stop()` already ran —
     /// `start_kill` on an exited child is a no-op.
     fn drop(&mut self) {
-        if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-        }
+        kill_and_reap_child_on_drop("dmesg", &mut self.child);
         self.cancel.cancel();
         self.task.abort();
     }

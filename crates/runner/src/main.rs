@@ -1,6 +1,7 @@
 mod active_input;
 mod axiom_layer;
 mod ca;
+mod child_cleanup;
 mod cmd;
 mod config;
 mod deps;

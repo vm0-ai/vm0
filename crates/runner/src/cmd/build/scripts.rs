@@ -70,7 +70,7 @@ pub(super) fn rootfs_script_command(script: &Path) -> tokio::process::Command {
 }
 
 struct RootfsScriptProcess {
-    child: tokio::process::Child,
+    child: Option<tokio::process::Child>,
     pgid: Option<nix::unistd::Pid>,
 }
 
@@ -79,6 +79,7 @@ impl Drop for RootfsScriptProcess {
         if let Some(pgid) = self.pgid {
             let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
         }
+        crate::child_cleanup::kill_and_reap_child_on_drop("rootfs script", &mut self.child);
     }
 }
 
@@ -90,10 +91,17 @@ pub(super) async fn run_rootfs_script(
         .spawn()
         .map_err(|e| RunnerError::Internal(format!("spawn {label}: {e}")))?;
     let pgid = child.id().map(|pid| nix::unistd::Pid::from_raw(pid as i32));
-    let mut process = RootfsScriptProcess { child, pgid };
+    let mut process = RootfsScriptProcess {
+        child: Some(child),
+        pgid,
+    };
 
-    let status = process
-        .child
+    let Some(child) = process.child.as_mut() else {
+        return Err(RunnerError::Internal(
+            "rootfs script child was missing".into(),
+        ));
+    };
+    let status = child
         .wait()
         .await
         .map_err(|e| RunnerError::Internal(format!("wait for {label}: {e}")))?;
