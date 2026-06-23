@@ -1179,8 +1179,9 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventData: {
         type: "item.started",
         item: {
-          type: "command_execution",
-          command: "echo missing-id",
+          id: "write-failed",
+          type: "file_write",
+          path: "src/problem.ts",
         },
       },
       createdAt: "2026-03-10T15:30:08Z",
@@ -1191,9 +1192,10 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventData: {
         type: "item.completed",
         item: {
-          type: "command_execution",
-          aggregated_output: "missing id output",
-          exit_code: 0,
+          id: "write-failed",
+          type: "file_write",
+          status: "failed",
+          output: "write failed: stale generation",
         },
       },
       createdAt: "2026-03-10T15:30:09Z",
@@ -1204,15 +1206,67 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventData: {
         type: "item.started",
         item: {
-          id: " ",
+          id: "read-declined",
           type: "file_read",
-          path: "src/blank-id.ts",
+          path: "src/private.ts",
         },
       },
       createdAt: "2026-03-10T15:30:10Z",
     },
     {
       sequenceNumber: 10,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "read-declined",
+          type: "file_read",
+          status: "declined",
+          output: "read declined by policy",
+        },
+      },
+      createdAt: "2026-03-10T15:30:11Z",
+    },
+    {
+      sequenceNumber: 11,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          type: "command_execution",
+          command: "echo missing-id",
+        },
+      },
+      createdAt: "2026-03-10T15:30:12Z",
+    },
+    {
+      sequenceNumber: 12,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          aggregated_output: "missing id output",
+          exit_code: 0,
+        },
+      },
+      createdAt: "2026-03-10T15:30:13Z",
+    },
+    {
+      sequenceNumber: 13,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          id: " ",
+          type: "file_read",
+          path: "src/blank-id.ts",
+        },
+      },
+      createdAt: "2026-03-10T15:30:14Z",
+    },
+    {
+      sequenceNumber: 14,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
@@ -1228,19 +1282,19 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           output_tokens: 2,
         },
       },
-      createdAt: "2026-03-10T15:30:11Z",
+      createdAt: "2026-03-10T15:30:15Z",
     },
     {
-      sequenceNumber: 11,
+      sequenceNumber: 15,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
         message: "Codex failed with message-only detail.",
       },
-      createdAt: "2026-03-10T15:30:12Z",
+      createdAt: "2026-03-10T15:30:16Z",
     },
     {
-      sequenceNumber: 12,
+      sequenceNumber: 16,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1250,10 +1304,10 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           additional_details: "stdio closed",
         },
       },
-      createdAt: "2026-03-10T15:30:13Z",
+      createdAt: "2026-03-10T15:30:17Z",
     },
     {
-      sequenceNumber: 13,
+      sequenceNumber: 17,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1263,47 +1317,47 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           additional_details: "refresh token expired",
         },
       },
-      createdAt: "2026-03-10T15:30:14Z",
+      createdAt: "2026-03-10T15:30:18Z",
     },
     {
-      sequenceNumber: 14,
+      sequenceNumber: 18,
       eventType: "error",
       eventData: {
         type: "error",
         message: "API connection failed",
       },
-      createdAt: "2026-03-10T15:30:15Z",
+      createdAt: "2026-03-10T15:30:19Z",
     },
     {
-      sequenceNumber: 15,
+      sequenceNumber: 19,
       eventType: "warning",
       eventData: {
         type: "warning",
         message: "cleanup in progress",
       },
-      createdAt: "2026-03-10T15:30:16Z",
+      createdAt: "2026-03-10T15:30:20Z",
     },
     {
-      sequenceNumber: 16,
+      sequenceNumber: 20,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
         error: "Rate limit exceeded",
       },
-      createdAt: "2026-03-10T15:30:17Z",
+      createdAt: "2026-03-10T15:30:21Z",
     },
     {
-      sequenceNumber: 17,
+      sequenceNumber: 21,
       eventType: "error",
       eventData: {
         type: "error",
         turn_id: "turn-a",
         message: "Previous turn lost connection",
       },
-      createdAt: "2026-03-10T15:30:18Z",
+      createdAt: "2026-03-10T15:30:22Z",
     },
     {
-      sequenceNumber: 18,
+      sequenceNumber: 22,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -1314,17 +1368,17 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           text: "New turn started work",
         },
       },
-      createdAt: "2026-03-10T15:30:19Z",
+      createdAt: "2026-03-10T15:30:23Z",
     },
     {
-      sequenceNumber: 19,
+      sequenceNumber: 23,
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
         turn: { id: "turn-b" },
         error: "New turn quota failed",
       },
-      createdAt: "2026-03-10T15:30:20Z",
+      createdAt: "2026-03-10T15:30:24Z",
     },
   ];
 }
@@ -2505,6 +2559,12 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Read")).not.toHaveLength(0);
     expect(screen.getByText("src/edge.ts")).toBeInTheDocument();
     expect(screen.getByText("File read completed")).toBeInTheDocument();
+    expect(screen.getByText("src/problem.ts")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("write failed: stale generation"),
+    ).not.toHaveLength(0);
+    expect(screen.getByText("src/private.ts")).toBeInTheDocument();
+    expect(screen.getAllByText("read declined by policy")).not.toHaveLength(0);
     expect(screen.queryByText("echo missing-id")).not.toBeInTheDocument();
     expect(screen.queryByText("missing id output")).not.toBeInTheDocument();
     expect(screen.queryByText("src/blank-id.ts")).not.toBeInTheDocument();

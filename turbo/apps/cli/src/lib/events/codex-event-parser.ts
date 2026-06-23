@@ -260,7 +260,7 @@ export class CodexEventParser {
         data: {
           toolUseId,
           result: output,
-          isError: isCommandExecutionError(item),
+          isError: isCodexItemError(item),
         },
       };
     }
@@ -292,13 +292,17 @@ export class CodexEventParser {
     }
 
     if (eventType === "item.completed") {
+      const isError = isCodexItemError(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
           toolUseId,
-          result: getStringField(item, "diff") ?? "File operation completed",
-          isError: false,
+          result:
+            getStringField(item, "diff") ??
+            getStringField(item, "output") ??
+            (isError ? "File operation failed" : "File operation completed"),
+          isError,
         },
       };
     }
@@ -329,13 +333,16 @@ export class CodexEventParser {
     }
 
     if (eventType === "item.completed") {
+      const isError = isCodexItemError(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
           toolUseId,
-          result: "File read completed",
-          isError: false,
+          result:
+            (isError ? getStringField(item, "output") : undefined) ??
+            (isError ? "File read failed" : "File read completed"),
+          isError,
         },
       };
     }
@@ -406,7 +413,7 @@ export class CodexEventParser {
   }
 }
 
-function isCommandExecutionError(item: Record<string, unknown>): boolean {
+function isCodexItemError(item: Record<string, unknown>): boolean {
   const status = getStringField(item, "status");
   if (status === "failed" || status === "declined") {
     return true;

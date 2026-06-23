@@ -1850,6 +1850,87 @@ describe("logs command", () => {
       expect(logCalls).toContain("/workspace/package.json");
     });
 
+    it("should mark failed file operation statuses as errors", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "edit_1",
+                      type: "file_edit",
+                      path: "/workspace/src/main.ts",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "edit_1",
+                      type: "file_edit",
+                      path: "/workspace/src/main.ts",
+                      status: "failed",
+                      output: "edit failed: stale file",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "read_1",
+                      type: "file_read",
+                      path: "/workspace/private.txt",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read_1",
+                      type: "file_read",
+                      path: "/workspace/private.txt",
+                      status: "declined",
+                      output: "read declined by policy",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("/workspace/src/main.ts");
+      expect(logCalls).toContain("edit failed: stale file");
+      expect(logCalls).toContain("/workspace/private.txt");
+      expect(logCalls).toContain("read declined by policy");
+      expect(countOccurrences(logCalls, "✗")).toBe(2);
+    });
+
     it("should render reasoning items with [thinking] prefix", async () => {
       server.use(
         http.get(

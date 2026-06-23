@@ -708,7 +708,7 @@ function normalizeCodexCommandEvent(
       event,
       item,
       content: item.aggregated_output ?? item.output ?? "",
-      isError: isCodexCommandExecutionError(item),
+      isError: isCodexItemError(item),
     });
   }
 
@@ -719,7 +719,7 @@ function hasCodexToolItemId(item: CodexItem): boolean {
   return Boolean(item.id?.trim());
 }
 
-function isCodexCommandExecutionError(item: CodexItem): boolean {
+function isCodexItemError(item: CodexItem): boolean {
   if (item.status === "failed" || item.status === "declined") {
     return true;
   }
@@ -745,10 +745,15 @@ function normalizeCodexFileMutationEvent(
   }
 
   if (codexType === "item.completed") {
+    const isError = isCodexItemError(item);
     return makeCodexToolResultEvent({
       event,
       item,
-      content: item.diff ?? "File operation completed",
+      content:
+        item.diff ??
+        item.output ??
+        (isError ? "File operation failed" : "File operation completed"),
+      isError,
     });
   }
 
@@ -770,10 +775,13 @@ function normalizeCodexFileReadEvent(
   }
 
   if (codexType === "item.completed") {
+    const isError = isCodexItemError(item);
     return makeCodexToolResultEvent({
       event,
       item,
-      content: item.output ?? "File read completed",
+      content:
+        item.output ?? (isError ? "File read failed" : "File read completed"),
+      isError,
     });
   }
 
