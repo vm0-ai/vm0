@@ -9,6 +9,23 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+const EXPECTED_CATEGORIZED_CONNECTORS = [
+  "clerk",
+  "cloudflare",
+  "gmail",
+  "google-analytics",
+  "google-calendar",
+  "google-cloud",
+  "google-drive",
+  "google-meet",
+  "google-search-console",
+  "google-sheets",
+  "slack",
+  "stripe",
+  "vercel",
+  "youtube",
+] as const;
+
 const CATEGORIZED_CONNECTORS = Object.entries(
   FIREWALL_PERMISSION_METADATA_SUMMARIES,
 )
@@ -30,9 +47,9 @@ async function loadDetail(type: string) {
 
 describe("firewall categories", () => {
   it("tracks categorized connectors in generated summaries", () => {
-    expect(CATEGORIZED_CONNECTORS.length).toBeGreaterThan(0);
-    expect(CATEGORIZED_CONNECTORS).toContain("gmail");
-    expect(CATEGORIZED_CONNECTORS).toContain("slack");
+    expect(CATEGORIZED_CONNECTORS).toStrictEqual(
+      [...EXPECTED_CATEGORIZED_CONNECTORS].sort(compareStrings),
+    );
   });
 
   it("does not emit categories for selected uncategorized connectors", async () => {
