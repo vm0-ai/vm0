@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.5...guest-agent-v0.40.6) (2026-06-23)
+
+
+### Bug Fixes
+
+* preserve codex app-server failure diagnostics ([#18682](https://github.com/vm0-ai/vm0/issues/18682)) ([b84ddfa](https://github.com/vm0-ai/vm0/commit/b84ddfa3eccf095c11e0ebd75a8e55ee743ead11))
+
 ## [0.40.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.4...guest-agent-v0.40.5) (2026-06-23)
 
 ## [0.40.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.3...guest-agent-v0.40.4) (2026-06-23)

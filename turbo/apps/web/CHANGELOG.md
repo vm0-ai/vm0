@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.438.1](https://github.com/vm0-ai/vm0/compare/web-v12.438.0...web-v12.438.1) (2026-06-23)
+
+
+### Refactoring
+
+* decouple workflow triggers from automation api ([#18695](https://github.com/vm0-ai/vm0/issues/18695)) ([39ca57a](https://github.com/vm0-ai/vm0/commit/39ca57a33caea773aeba1eca4d243cadaf10fae1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.1
+    * @vm0/core bumped to 8.365.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.105.1
+
 ## [12.438.0](https://github.com/vm0-ai/vm0/compare/web-v12.437.3...web-v12.438.0) (2026-06-23)
 
 

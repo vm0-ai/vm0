@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.45](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.44...nbd-cow-v0.4.45) (2026-06-23)
+
+
+### Documentation
+
+* document pooled nbd cow lifecycle ([#18687](https://github.com/vm0-ai/vm0/issues/18687)) ([4256f9e](https://github.com/vm0-ai/vm0/commit/4256f9e41ddb5efa46e15ce6879b098412462a26))
+
 ## [0.4.44](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.43...nbd-cow-v0.4.44) (2026-06-23)
 
 
