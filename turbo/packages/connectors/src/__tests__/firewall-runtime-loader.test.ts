@@ -226,6 +226,14 @@ function exportedIdentifierNamesFromModule(
   return names;
 }
 
+function expectNoGeneratedRuntimeImports(source: string): void {
+  for (const specifier of moduleSpecifiers(source)) {
+    expect(specifier).not.toMatch(
+      /^\.{1,2}\/(?:[^/]+\/)*[a-z0-9][a-z0-9-]*\.generated$/,
+    );
+  }
+}
+
 describe("firewall runtime loader", () => {
   it("keeps the runtime loader behind an explicit package subpath", () => {
     const packageJson = JSON.parse(
@@ -246,6 +254,29 @@ describe("firewall runtime loader", () => {
     expect(rootEntrypoint).not.toContain("firewalls/runtime");
   });
 
+  it("keeps selection resolution behind an explicit runtime package subpath", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+
+    expect(packageJson.exports["./firewalls/selection-resolver"]).toStrictEqual(
+      {
+        import: "./src/firewall-selection-resolver.ts",
+        types: "./src/firewall-selection-resolver.ts",
+      },
+    );
+    expect(moduleSpecifiers(rootEntrypoint)).not.toContain(
+      "./firewalls/selection-resolver",
+    );
+  });
+
   it("keeps runtime firewalls out of the package root entrypoint", () => {
     const rootEntrypoint = fs.readFileSync(
       path.resolve(import.meta.dirname, "../index.ts"),
@@ -256,6 +287,37 @@ describe("firewall runtime loader", () => {
     for (const specifier of rootSpecifiers) {
       expect(specifier).not.toMatch(/^\.\/firewalls(?:\/|$)/);
     }
+  });
+
+  it("keeps firewall expander independent from runtime catalog loaders", () => {
+    const expanderSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-expander.ts"),
+      "utf-8",
+    );
+
+    expect(dynamicImportSpecifiers(expanderSource)).toStrictEqual([]);
+    for (const specifier of moduleSpecifiers(expanderSource)) {
+      expect(specifier).not.toMatch(/^\.{1,2}\/firewalls(?:\/|$)/);
+      expect(specifier).not.toBe("./firewall-runtime");
+    }
+    expectNoGeneratedRuntimeImports(expanderSource);
+  });
+
+  it("keeps root contract entrypoints from exporting runtime selection resolution", () => {
+    const apiContractsRoot = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../api-contracts/src/contracts/index.ts",
+      ),
+      "utf-8",
+    );
+    const coreRoot = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../../core/src/index.ts"),
+      "utf-8",
+    );
+
+    expect(apiContractsRoot).not.toContain("resolveFirewallSelections");
+    expect(coreRoot).not.toContain("resolveFirewallSelections");
   });
 
   it("keeps all-catalog access behind an explicit package subpath", () => {
@@ -350,10 +412,28 @@ describe("firewall runtime loader", () => {
     for (const source of [runtimeSource, helperSource]) {
       expect(source).not.toContain("./index");
       expect(source).not.toContain("@vm0/connectors/firewalls");
-      for (const specifier of staticValueModuleSpecifiers(source)) {
-        expect(specifier).not.toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);
-      }
     }
+    expectNoGeneratedRuntimeImports(helperSource);
+  });
+
+  it("keeps selection resolver on the lazy runtime boundary", () => {
+    const resolverSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-selection-resolver.ts"),
+      "utf-8",
+    );
+
+    expect(
+      staticValueModuleSpecifiers(resolverSource).sort(compareStrings),
+    ).toStrictEqual(["./firewall-expander", "./firewall-runtime"]);
+    expect(dynamicImportSpecifiers(resolverSource)).toStrictEqual([]);
+    for (const specifier of moduleSpecifiers(resolverSource)) {
+      expect(specifier).not.toBe(".");
+      expect(specifier).not.toBe("./index");
+      expect(specifier).not.toMatch(/^\.{1,2}\/firewalls(?:\/|$)/);
+      expect(specifier).not.toBe("@vm0/connectors/firewalls");
+      expect(specifier).not.toBe("@vm0/connectors/firewalls/all");
+    }
+    expectNoGeneratedRuntimeImports(resolverSource);
   });
 
   it("uses literal dynamic imports in the generated runtime loader", () => {

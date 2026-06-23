@@ -8,126 +8,112 @@ import {
 } from "../firewall-types";
 import {
   collectAndValidatePermissions,
-  resolveFirewallSelections,
+  resolveFirewallConfigSelection,
   validateRule,
 } from "../firewall-expander";
 import type { FirewallConfig } from "../firewall-types";
 
-describe("resolveFirewallSelections", () => {
-  it("should resolve builtin firewall with permissions: all", async () => {
-    const expanded = await resolveFirewallSelections({
-      slack: { permissions: "all" },
-    });
-
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("slack");
-    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
-    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => {
-      return p.name;
-    });
-    expect(permNames).toContain("admin");
-    expect(permNames).toContain("admin.analytics:read");
-  });
-
-  it("should resolve firewall with specific permissions", async () => {
-    const expanded = await resolveFirewallSelections({
-      slack: { permissions: ["admin", "admin.analytics:read"] },
-    });
-
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(2);
-    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => {
-      return p.name;
-    });
-    expect(permNames).toContain("admin");
-    expect(permNames).toContain("admin.analytics:read");
-  });
-
-  it("should include placeholders and description when config has them", async () => {
-    const expanded = await resolveFirewallSelections({
-      slack: { permissions: "all" },
-    });
-
-    expect(expanded[0]!.placeholders).toMatchObject({
-      SLACK_TOKEN: "xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf",
-    });
-    expect(expanded[0]!.description).toBe("Slack API");
-  });
-
-  it("should resolve multiple builtin firewalls", async () => {
-    const expanded = await resolveFirewallSelections({
-      slack: { permissions: "all" },
-      "slack-webhook": { permissions: "all" },
-    });
-
-    expect(expanded).toHaveLength(2);
-    const names = expanded.map((s) => {
-      return s.name;
-    });
-    expect(names).toContain("slack");
-    expect(names).toContain("slack-webhook");
-  });
-
-  it("should return empty array for empty selections", async () => {
-    const expanded = await resolveFirewallSelections({});
-    expect(expanded).toEqual([]);
-  });
-
-  it("should throw for non-existent permission name", async () => {
-    await expect(
-      resolveFirewallSelections({
-        slack: { permissions: ["does-not-exist"] },
-      }),
-    ).rejects.toThrow(
-      'Permission "does-not-exist" does not exist in firewall "slack"',
-    );
-  });
-
-  it("should reject non-builtin firewall names", async () => {
-    await expect(
-      resolveFirewallSelections({
-        "custom-git": { permissions: "all" },
-      }),
-    ).rejects.toThrow(
-      'Unsupported firewall "custom-git": only built-in connector firewalls are supported',
-    );
-  });
-
-  it("should reject GitHub URL firewall refs", async () => {
-    await expect(
-      resolveFirewallSelections({
-        "https://github.com/acme/firewalls/tree/main/my-firewall": {
-          permissions: "all",
+describe("firewall expander helpers", () => {
+  it("resolveFirewallConfigSelection filters selected permissions", () => {
+    const config: FirewallConfig = {
+      name: "mixed",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "read", rules: ["GET /files"] },
+            { name: "write", rules: ["POST /files"] },
+          ],
         },
-      }),
-    ).rejects.toThrow(
-      'Unsupported firewall "https://github.com/acme/firewalls/tree/main/my-firewall": only built-in connector firewalls are supported',
+        {
+          base: "https://uploads.example.com",
+          auth: { headers: {} },
+          permissions: [],
+        },
+      ],
+    };
+
+    const resolved = resolveFirewallConfigSelection(config, {
+      permissions: ["read"],
+    });
+
+    expect(resolved).toStrictEqual({
+      name: "mixed",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /files"] }],
+        },
+      ],
+    });
+  });
+
+  it("resolveFirewallConfigSelection keeps all api entries and metadata", () => {
+    const config: FirewallConfig = {
+      name: "metadata",
+      description: "Metadata test",
+      placeholders: { TOKEN: "secret" },
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /files"] }],
+        },
+        {
+          base: "https://uploads.example.com",
+          auth: { headers: {} },
+          permissions: [],
+        },
+      ],
+    };
+
+    const resolved = resolveFirewallConfigSelection(config, {
+      permissions: "all",
+    });
+
+    expect(resolved).toStrictEqual(config);
+  });
+
+  it("resolveFirewallConfigSelection returns null when no api entries remain", () => {
+    const config: FirewallConfig = {
+      name: "empty-selection",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /files"] }],
+        },
+      ],
+    };
+
+    const resolved = resolveFirewallConfigSelection(config, {
+      permissions: [],
+    });
+
+    expect(resolved).toBeNull();
+  });
+
+  it("resolveFirewallConfigSelection rejects missing permission names", () => {
+    const config: FirewallConfig = {
+      name: "missing-permission",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /files"] }],
+        },
+      ],
+    };
+
+    expect(() => {
+      return resolveFirewallConfigSelection(config, {
+        permissions: ["write"],
+      });
+    }).toThrow(
+      'Permission "write" does not exist in firewall "missing-permission". Available: read',
     );
-  });
-
-  it("should filter permissions and keep only selected ones", async () => {
-    const expanded = await resolveFirewallSelections({
-      slack: { permissions: ["admin"] },
-    });
-
-    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("admin");
-  });
-
-  it("should keep all api_entries when shared permission is selected", async () => {
-    const expanded = await resolveFirewallSelections({
-      gmail: { permissions: ["messages.send"] },
-    });
-
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.apis.length).toBeGreaterThan(1);
-    for (const api of expanded[0]!.apis) {
-      expect(
-        api.permissions?.map((p) => {
-          return p.name;
-        }),
-      ).toEqual(["messages.send"]);
-    }
   });
 
   it("collectAndValidatePermissions accepts mixed empty and non-empty apis", () => {
@@ -311,22 +297,6 @@ describe("resolveFirewallSelections", () => {
       expect(() => {
         return collectAndValidatePermissions(config);
       }).not.toThrow();
-    }
-  });
-
-  it("should retain api entries with empty permissions when user picks all", async () => {
-    // Regression for the filter bug: api entries configured as
-    // `permissions: []` rely on base URL match + unknownPolicy fallback.
-    // Dropping them would make the firewall inject no auth headers.
-    const expanded = await resolveFirewallSelections({
-      "slack-webhook": { permissions: "all" },
-    });
-
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("slack-webhook");
-    expect(expanded[0]!.apis).toHaveLength(1);
-    for (const api of expanded[0]!.apis) {
-      expect(api.permissions ?? []).toEqual([]);
     }
   });
 });

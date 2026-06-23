@@ -763,7 +763,6 @@ export {
 } from "@vm0/connectors/firewall-types";
 
 export {
-  resolveFirewallSelections,
   collectAndValidatePermissions,
   validateRule,
   type FirewallSelection,
