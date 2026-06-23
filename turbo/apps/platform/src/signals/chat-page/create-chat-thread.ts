@@ -1780,7 +1780,7 @@ function createChatThreadMessagePipeline({
 
   const loadHistory$ = createLoadHistoryWithPrependScroll(
     recordScrollHeightForPrepend$,
-    pagedMessages.groupedChatMessages$,
+    clearScrollHeightForPrepend$,
     renderedMessages.renderedGroupedChatMessages$,
     pagedMessages.loadHistory$,
   );
@@ -1977,22 +1977,36 @@ function createLatestRunStatus(
 
 function createLoadHistoryWithPrependScroll(
   recordScrollHeightForPrepend$: Command<void, []>,
-  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  clearScrollHeightForPrepend$: Command<void, []>,
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
   loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
 ) {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    const [groups, renderedGroups] = await Promise.all([
-      get(groupedChatMessages$),
-      get(renderedGroupedChatMessages$),
-    ]);
+    const renderedMessageCountBefore = renderedMessageCount(
+      await get(renderedGroupedChatMessages$),
+    );
     signal.throwIfAborted();
 
-    if (groups.length === renderedGroups.length) {
-      set(recordScrollHeightForPrepend$);
+    set(recordScrollHeightForPrepend$);
+    const result = await set(loadHistory$, signal);
+    signal.throwIfAborted();
+    const renderedMessageCountAfter = renderedMessageCount(
+      await get(renderedGroupedChatMessages$),
+    );
+    signal.throwIfAborted();
+    if (renderedMessageCountAfter === renderedMessageCountBefore) {
+      set(clearScrollHeightForPrepend$);
     }
-    return await set(loadHistory$, signal);
+    return result;
   });
+}
+
+function renderedMessageCount(
+  groups: readonly GroupedChatMessageGroup[],
+): number {
+  return groups.reduce((count, group) => {
+    return count + group.messages.length;
+  }, 0);
 }
 
 function createLoadMoreRenderedChatGroupsWithPrependScroll(
