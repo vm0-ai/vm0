@@ -107,13 +107,22 @@ const createTriggerInner$ = command(
 
     const result = await set(
       createWorkflowTrigger$,
-      {
-        orgId: auth.orgId,
-        member: memberFromAuth(auth),
-        workflowId: params.workflowId,
-        schedule: bodyResult.data.schedule,
-        enabled: bodyResult.data.enabled ?? true,
-      },
+      "schedule" in bodyResult.data
+        ? {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            workflowId: params.workflowId,
+            schedule: bodyResult.data.schedule,
+            enabled: bodyResult.data.enabled ?? true,
+          }
+        : {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            workflowId: params.workflowId,
+            eventType: bodyResult.data.eventType,
+            eventConfig: bodyResult.data.eventConfig,
+            enabled: bodyResult.data.enabled ?? true,
+          },
       signal,
     );
     signal.throwIfAborted();
@@ -154,12 +163,19 @@ const updateTriggerInner$ = command(
 
     const result = await set(
       updateWorkflowTrigger$,
-      {
-        orgId: auth.orgId,
-        member: memberFromAuth(auth),
-        triggerId: params.id,
-        schedule: bodyResult.data.schedule,
-      },
+      "schedule" in bodyResult.data
+        ? {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            triggerId: params.id,
+            schedule: bodyResult.data.schedule,
+          }
+        : {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            triggerId: params.id,
+            eventConfig: bodyResult.data.eventConfig,
+          },
       signal,
     );
     signal.throwIfAborted();
