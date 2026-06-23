@@ -13,37 +13,31 @@ WITH permission_remaps(old_permission, new_permission) AS (
     ('payment_source_read', 'source_read'),
     ('payment_source_write', 'source_write')
 ),
-migrated_grants AS (
+active_deny_grants AS (
   SELECT
     grant_row.org_id,
     grant_row.user_id,
     grant_row.agent_id,
     grant_row.connector_ref,
-    permission_remaps.new_permission AS permission,
-    grant_row.action,
-    grant_row.expires_at
+    permission_remaps.new_permission AS permission
   FROM user_permission_grants AS grant_row
   INNER JOIN permission_remaps
     ON permission_remaps.old_permission = grant_row.permission
   WHERE grant_row.connector_ref = 'stripe'
+    AND grant_row.action = 'deny'
+    AND (
+      grant_row.expires_at IS NULL
+      OR grant_row.expires_at > NOW()
+    )
 ),
-folded_grants AS (
+folded_denies AS (
   SELECT
     org_id,
     user_id,
     agent_id,
     connector_ref,
-    permission,
-    CASE
-      WHEN BOOL_OR(action = 'deny') THEN 'deny'
-      ELSE 'allow'
-    END AS action,
-    CASE
-      WHEN BOOL_OR(action = 'deny') THEN NULL
-      WHEN BOOL_OR(expires_at IS NULL) THEN NULL
-      ELSE MAX(expires_at)
-    END AS expires_at
-  FROM migrated_grants
+    permission
+  FROM active_deny_grants
   GROUP BY org_id, user_id, agent_id, connector_ref, permission
 )
 INSERT INTO user_permission_grants (
@@ -52,8 +46,7 @@ INSERT INTO user_permission_grants (
   agent_id,
   connector_ref,
   permission,
-  action,
-  expires_at
+  action
 )
 SELECT
   org_id,
@@ -61,42 +54,15 @@ SELECT
   agent_id,
   connector_ref,
   permission,
-  action,
-  expires_at
-FROM folded_grants
+  'deny'
+FROM folded_denies
 ON CONFLICT (org_id, user_id, agent_id, connector_ref, permission) DO UPDATE
 SET
-  action = CASE
-    WHEN user_permission_grants.action = 'deny'
-      OR EXCLUDED.action = 'deny'
-      THEN 'deny'
-    ELSE 'allow'
-  END,
-  expires_at = CASE
-    WHEN user_permission_grants.action = 'deny'
-      OR EXCLUDED.action = 'deny'
-      THEN NULL
-    WHEN user_permission_grants.expires_at IS NULL
-      OR EXCLUDED.expires_at IS NULL
-      THEN NULL
-    ELSE GREATEST(user_permission_grants.expires_at, EXCLUDED.expires_at)
-  END,
+  action = 'deny',
+  expires_at = NULL,
   updated_at = NOW()
-WHERE user_permission_grants.action IS DISTINCT FROM CASE
-    WHEN user_permission_grants.action = 'deny'
-      OR EXCLUDED.action = 'deny'
-      THEN 'deny'
-    ELSE 'allow'
-  END
-  OR user_permission_grants.expires_at IS DISTINCT FROM CASE
-    WHEN user_permission_grants.action = 'deny'
-      OR EXCLUDED.action = 'deny'
-      THEN NULL
-    WHEN user_permission_grants.expires_at IS NULL
-      OR EXCLUDED.expires_at IS NULL
-      THEN NULL
-    ELSE GREATEST(user_permission_grants.expires_at, EXCLUDED.expires_at)
-  END;
+WHERE user_permission_grants.action IS DISTINCT FROM 'deny'
+  OR user_permission_grants.expires_at IS NOT NULL;
 
 DELETE FROM user_permission_grants
 WHERE connector_ref = 'stripe'
