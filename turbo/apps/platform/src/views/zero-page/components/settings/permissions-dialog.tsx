@@ -525,7 +525,9 @@ function PermissionAllowDurationDropdown({
               onSelect={() => {
                 onSelect(option.value);
               }}
+              className="flex items-center justify-between gap-4"
             >
+              {option.label}
               <MenuItemCheck
                 active={isDurationMenuOptionActive({
                   allowAlwaysActive,
@@ -533,7 +535,6 @@ function PermissionAllowDurationDropdown({
                   value: option.value,
                 })}
               />
-              {option.label}
             </DropdownMenuItem>
           );
         })}
