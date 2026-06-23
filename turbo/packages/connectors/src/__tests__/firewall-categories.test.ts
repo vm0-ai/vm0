@@ -44,10 +44,14 @@ const CATEGORIZED_CONNECTORS = Object.entries(
 
 const UNCATEGORIZED_CONNECTORS = ["linear", "notion"] as const;
 
-async function loadDetail(type: string) {
+async function loadDetail(
+  type: string,
+): Promise<FirewallPermissionDetailMetadata> {
   const detail = await loadFirewallPermissionMetadata(type);
-  expect(detail).not.toBeNull();
-  return detail!;
+  if (detail === null) {
+    throw new Error(`Expected firewall metadata detail for ${type}`);
+  }
+  return detail;
 }
 
 async function loadCategorizedDetail(type: string): Promise<{
