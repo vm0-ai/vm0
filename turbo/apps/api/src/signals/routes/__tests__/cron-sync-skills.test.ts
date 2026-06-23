@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -14,13 +14,17 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
-import { getSkillStorageName } from "@vm0/core/storage-names";
+import {
+  getSkillStorageName,
+  SYSTEM_ORG_ID,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { getSeedSkillNames, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { skills } from "@vm0/db/schema/skill";
-import { storages } from "@vm0/db/schema/storage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { createStore, command } from "ccstate";
-import { eq, inArray, like } from "drizzle-orm";
+import { eq, inArray, like, sql } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -36,6 +40,7 @@ const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const TEST_SKILL_PREFIX = "api-test-skill";
 const ALL_SEED_SKILL_NAMES = getSeedSkillNames();
+const STALE_PRESEEDED_COMMIT_SHA = "0".repeat(40);
 
 interface MockSkillEntry {
   readonly name: string;
@@ -43,6 +48,22 @@ interface MockSkillEntry {
     readonly path: string;
     readonly content: string;
   }[];
+}
+
+interface MockSkillVersion {
+  readonly name: string;
+  readonly url: string;
+  readonly fullPath: string;
+  readonly storageName: string;
+  readonly versionHash: string;
+  readonly s3Prefix: string;
+  readonly s3Key: string;
+  readonly size: number;
+  readonly fileCount: number;
+  readonly frontmatter: {
+    readonly name: string;
+    readonly description: string;
+  };
 }
 
 const EXTRA_SKILLS = {
@@ -140,6 +161,136 @@ const setAllSkillsCommitSha$ = command(
   },
 );
 
+const seedCurrentSkillVersions$ = command(
+  async (
+    { set },
+    entries: readonly MockSkillEntry[],
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (entries.length === 0) {
+      return;
+    }
+
+    const db = set(writeDb$);
+    const versions = entries.map((entry) => {
+      return buildMockSkillVersion(entry);
+    });
+    const storageRows = await db
+      .insert(storages)
+      .values(
+        versions.map((version) => {
+          return {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            name: version.storageName,
+            type: "volume",
+            s3Prefix: version.s3Prefix,
+            size: version.size,
+            fileCount: version.fileCount,
+          };
+        }),
+      )
+      .onConflictDoUpdate({
+        target: [storages.orgId, storages.userId, storages.name, storages.type],
+        set: {
+          s3Prefix: sql`excluded.s3_prefix`,
+          size: sql`excluded.size`,
+          fileCount: sql`excluded.file_count`,
+        },
+      })
+      .returning({ id: storages.id, name: storages.name });
+    signal.throwIfAborted();
+
+    const storageIdsByName = new Map(
+      storageRows.map((row) => {
+        return [row.name, row.id];
+      }),
+    );
+
+    await db
+      .insert(storageVersions)
+      .values(
+        versions.map((version) => {
+          const storageId = storageIdsByName.get(version.storageName);
+          if (!storageId) {
+            throw new Error(`Missing storage for ${version.name}`);
+          }
+          return {
+            id: version.versionHash,
+            storageId,
+            s3Key: version.s3Key,
+            size: version.size,
+            fileCount: version.fileCount,
+            message: "Preseeded by cron sync skills route test",
+            createdBy: "system",
+          };
+        }),
+      )
+      .onConflictDoUpdate({
+        target: storageVersions.id,
+        set: {
+          storageId: sql`excluded.storage_id`,
+          s3Key: sql`excluded.s3_key`,
+          size: sql`excluded.size`,
+          fileCount: sql`excluded.file_count`,
+        },
+      });
+    signal.throwIfAborted();
+
+    await Promise.all(
+      versions.map((version) => {
+        const storageId = storageIdsByName.get(version.storageName);
+        if (!storageId) {
+          throw new Error(`Missing storage for ${version.name}`);
+        }
+        return db
+          .update(storages)
+          .set({ headVersionId: version.versionHash })
+          .where(eq(storages.id, storageId));
+      }),
+    );
+    signal.throwIfAborted();
+
+    await db
+      .insert(skills)
+      .values(
+        versions.map((version) => {
+          const storageId = storageIdsByName.get(version.storageName);
+          if (!storageId) {
+            throw new Error(`Missing storage for ${version.name}`);
+          }
+          return {
+            url: version.url,
+            name: version.name,
+            fullPath: version.fullPath,
+            storageId,
+            versionHash: version.versionHash,
+            commitSha: STALE_PRESEEDED_COMMIT_SHA,
+            frontmatter: version.frontmatter,
+            s3Key: version.s3Key,
+            size: version.size,
+            fileCount: version.fileCount,
+          };
+        }),
+      )
+      .onConflictDoUpdate({
+        target: skills.url,
+        set: {
+          name: sql`excluded.name`,
+          fullPath: sql`excluded.full_path`,
+          storageId: sql`excluded.storage_id`,
+          versionHash: sql`excluded.version_hash`,
+          commitSha: sql`excluded.commit_sha`,
+          frontmatter: sql`excluded.frontmatter`,
+          s3Key: sql`excluded.s3_key`,
+          size: sql`excluded.size`,
+          fileCount: sql`excluded.file_count`,
+        },
+      });
+    signal.throwIfAborted();
+  },
+);
+
 function apiClient() {
   return setupApp({ context })(cronSyncSkillsContract);
 }
@@ -221,6 +372,53 @@ function seedSkillEntries(): MockSkillEntry[] {
 
 function createFullTarball(extras: readonly MockSkillEntry[]): Buffer {
   return createMockTarball([...seedSkillEntries(), ...extras]);
+}
+
+function buildMockSkillVersion(skill: MockSkillEntry): MockSkillVersion {
+  const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skill.name}`;
+  const storageName = getSkillStorageName(fullPath);
+  const versionHash = computeMockSkillVersionHash(skill);
+  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+  const s3Key = `${s3Prefix}/${versionHash}`;
+  return {
+    name: skill.name,
+    url: testSkillUrl(skill.name),
+    fullPath,
+    storageName,
+    versionHash,
+    s3Prefix,
+    s3Key,
+    size: skill.files.reduce((sum, file) => {
+      return sum + Buffer.byteLength(file.content);
+    }, 0),
+    fileCount: skill.files.length,
+    frontmatter: {
+      name: skill.name,
+      description: `${skill.name} skill`,
+    },
+  };
+}
+
+function computeMockSkillVersionHash(skill: MockSkillEntry): string {
+  const fileEntries = skill.files
+    .map((file) => {
+      const hash = createHash("sha256").update(file.content).digest("hex");
+      return `${file.path}:${hash}`;
+    })
+    .sort();
+  return createHash("sha256")
+    .update(
+      `system-skill:${testSkillUrl(skill.name)}\n${fileEntries.join("\n")}`,
+    )
+    .digest("hex");
+}
+
+async function seedCurrentSeedSkillVersions(): Promise<void> {
+  await store.set(
+    seedCurrentSkillVersions$,
+    seedSkillEntries(),
+    context.signal,
+  );
 }
 
 function setupGitRefsHandler(commitSha: string): void {
@@ -385,6 +583,7 @@ describe("GET /api/cron/sync-skills", () => {
 
   it("syncs new skills from the repository tarball", async () => {
     const commitSha = newCommitSha();
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       commitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
@@ -422,6 +621,7 @@ describe("GET /api/cron/sync-skills", () => {
       type: "volume",
       headVersionId: expect.any(String),
     });
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
   });
 
   it("excludes repository directories without a SKILL.md file", async () => {
@@ -430,6 +630,7 @@ describe("GET /api/cron/sync-skills", () => {
       name: `${TEST_SKILL_PREFIX}-no-skill-md`,
       files: [{ path: "README.md", content: "Not a skill." }],
     };
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       commitSha,
       createFullTarball([
@@ -470,6 +671,7 @@ describe("GET /api/cron/sync-skills", () => {
         },
       ],
     };
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       commitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, badSkill]),
@@ -491,6 +693,7 @@ describe("GET /api/cron/sync-skills", () => {
 
   it("only uploads changed skills during incremental sync", async () => {
     const firstCommitSha = newCommitSha();
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       firstCommitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
@@ -544,6 +747,7 @@ describe("GET /api/cron/sync-skills", () => {
 
   it("removes skills deleted from the source repository and cleans S3 objects", async () => {
     const firstCommitSha = newCommitSha();
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       firstCommitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
@@ -584,6 +788,7 @@ describe("GET /api/cron/sync-skills", () => {
 
   it("keeps DB orphan removal when S3 cleanup fails", async () => {
     const firstCommitSha = newCommitSha();
+    await seedCurrentSeedSkillVersions();
     setupMswHandlers(
       firstCommitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
