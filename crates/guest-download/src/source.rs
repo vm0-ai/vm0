@@ -26,9 +26,9 @@ static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
         .new_agent()
 });
 
-/// Open the archive byte stream. HTTP is the production path today; `file://`
-/// is used by the runner-side storage cache to feed host-staged tarballs that
-/// were pushed into the guest over vsock.
+/// Open the archive byte stream. HTTP/HTTPS URLs use the direct remote-fetch
+/// path; `file://` URLs are the runner storage-cache path for guest-local
+/// tarballs staged over vsock.
 pub(crate) fn open_archive(url: &str) -> Result<ArchiveSource, DownloadError> {
     if let Some(path) = url.strip_prefix("file://") {
         log_info!(LOG_TAG, "Reading local archive");
