@@ -381,3 +381,17 @@ def test_presigned_query_invalid_content_hash_header_raises_signing_error() -> N
             body=None,
             credentials=_credentials(),
         )
+
+
+def test_presigned_query_empty_content_hash_header_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS content hash header is empty"):
+        sign_request(
+            method="GET",
+            url=_presigned_url("sts.amazonaws.com"),
+            headers=[
+                ("Host", "sts.amazonaws.com"),
+                ("X-Amz-Content-Sha256", ""),
+            ],
+            body=None,
+            credentials=_credentials(),
+        )
