@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES,
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "../presentation-template-items";
@@ -284,6 +285,32 @@ describe("presentation template items", () => {
         /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.jpg$/u,
       );
       expect(item.cardPreviewImage, item.slug).not.toContain("/cdn-cgi/image/");
+    }
+  });
+
+  it("defines themed first-slide card preview assets for picker thumbnails", () => {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
+      expect(item.cardPreviewImagesByTheme, item.slug).toBeDefined();
+      if (!item.cardPreviewImagesByTheme) {
+        throw new Error(`missing themed card previews for ${item.slug}`);
+      }
+
+      expect(Object.keys(item.cardPreviewImagesByTheme).sort()).toEqual(
+        [...PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES].sort(),
+      );
+      for (const themeId of PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES) {
+        const url = item.cardPreviewImagesByTheme[themeId];
+        expect(url, `${item.slug}:${themeId}`).toMatch(
+          /^https:\/\/cdn\.vm0\.io\/artifacts\/.+-480x270\.jpg$/u,
+        );
+        expect(url, `${item.slug}:${themeId}`).not.toContain("/cdn-cgi/image/");
+      }
+
+      const defaultThemeId =
+        item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
+      expect(item.cardPreviewImage, item.slug).toBe(
+        item.cardPreviewImagesByTheme[defaultThemeId],
+      );
     }
   });
 
