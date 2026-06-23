@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
+use std::io::{self, IoSlice, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
@@ -629,11 +629,39 @@ async fn write_path_batch(
     }
 }
 
-fn append_lines(path: &Path, lines: &[String]) -> std::io::Result<()> {
+fn append_lines(path: &Path, lines: &[String]) -> io::Result<()> {
     let mut file = crate::log_file::open_append(path, false)?;
-    for line in lines {
-        file.write_all(line.as_bytes())?;
+
+    match lines {
+        [] => Ok(()),
+        [line] => file.write_all(line.as_bytes()),
+        _ => write_lines_vectored(&mut file, lines),
     }
+}
+
+fn write_lines_vectored(writer: &mut impl Write, lines: &[String]) -> io::Result<()> {
+    let mut bufs: Vec<IoSlice<'_>> = lines
+        .iter()
+        .map(|line| IoSlice::new(line.as_bytes()))
+        .collect();
+    let mut bufs = &mut bufs[..];
+
+    while !bufs.is_empty() {
+        let written = match writer.write_vectored(bufs) {
+            Ok(written) => written,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "failed to write network log batch",
+            ));
+        }
+
+        IoSlice::advance_slices(&mut bufs, written);
+    }
+
     Ok(())
 }
 
