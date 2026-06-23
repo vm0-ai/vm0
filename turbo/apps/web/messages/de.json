@@ -5566,6 +5566,274 @@
         "routingNotes": "Auf VM0 Managed wird GLM-5.1 über OpenRouter mit der Upstream-ID `z-ai/glm-5.1` geroutet. Mit einem Z.AI-API-Schlüssel spricht es direkt mit dem Anthropic-kompatiblen Endpunkt von `api.z.ai`. GLM-5.2 ist jetzt das Standardmodell des Z.AI-Providers.",
         "vm0Notes": "VM0 setzt für den Z.AI-Provider ein API-Timeout von 50 Minuten, damit lange Denkschritte zuverlässig abschließen, und kombiniert das 1M-Token-Kontextfenster mit dokumentlastigen Agenten, die diesen Raum brauchen."
       },
+      "mimo-v2-5": {
+        "name": "MiMo-V2.5",
+        "pageTitle": "MiMo-V2.5 auf VM0. Xiaomis langkontextuelles Omnimodal-Modell",
+        "tagline": "Xiaomis über OpenRouter gehostetes Omnimodal-Modell auf VM0. 1M-Token-Kontext, Text-/Bild-/Audio-/Video-Eingabe und kostensparende x0,1-VM0-Managed-Preise.",
+        "cardIntro": "Xiaomis 1M-Kontext-Omnimodal-Modell auf VM0. OpenRouter-Routing mit x0,1 VM0 Managed.",
+        "metaTitle": "MiMo-V2.5 auf VM0: Preise, Kontext & multimodale Agent-Aufgaben",
+        "metaDescription": "MiMo-V2.5 auf VM0. Xiaomis OpenRouter-Modell mit 1M-Token-Kontext, multimodaler Eingabe, x0,1 Credit-Kosten und OpenRouter-BYOK.",
+        "summary": "MiMo-V2.5 bringt Xiaomis langkontextuelles Omnimodal-Modell über OpenRouter in VM0. Es ist die Low-Cost-Option mit der breitesten Eingabe im Built-in-Katalog: Text, Bilder, Audio und Video bei einem Kontextfenster von 1M Tokens.\n\nNutze es für kostensensible Agenten, die gemischte Medien zusammen mit Text oder Code prüfen müssen. Es ist keine dedizierte Coding-Route wie Moonshot und keine direkte Z.AI-Route wie GLM; behalte Sonnet oder Kimi in Reserve, wenn Tool-Routing-Qualität entscheidend ist.",
+        "releaseDate": "Juni 2026",
+        "familyPosition": "Xiaomis allgemeines Omnimodal-Modell, über VM0 Managed via OpenRouter verfügbar.",
+        "background": [
+          "MiMo-V2.5 ist Xiaomis natives Omnimodal-Modell auf OpenRouter. VM0 stellt es als kanonisches Modell `mimo-v2.5` bereit und routet Built-in-Läufe zur Upstream-ID `xiaomi/mimo-v2.5`.",
+          "Das Modell kombiniert ein 1M-Token-Kontextfenster mit Unterstützung für Text-, Bild-, Audio- und Videoeingaben. Das macht es praktisch, wenn ein Agent medienlastige Evidenz neben normalem Text lesen muss.",
+          "Auf VM0 Managed liegt es bei x0,1 Credits. Teams mit direkter Anbieterabrechnung können einen OpenRouter-API-Key mit derselben Upstream-ID verwenden."
+        ],
+        "architecture": "MiMo-V2.5 wird auf VM0 über das Anthropic-kompatible OpenRouter-Gateway mit der Upstream-ID `xiaomi/mimo-v2.5` bereitgestellt.",
+        "specs": [
+          {
+            "label": "Familie",
+            "value": "Xiaomi MiMo"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Bild, Audio, Video, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachig"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "Bis zu 1M Tokens"
+          },
+          {
+            "label": "Prompt-Caching",
+            "value": "Cache-Reads unterstützt"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "Juni 2026"
+          }
+        ],
+        "benchmarksNote": "VM0 behandelt MiMo-V2.5 als günstige multimodale Option. Öffentliche Rankings ändern sich schnell; diese Seite fokussiert Routing, Modalitäten, Kontext und Preis.",
+        "benchmarks": [
+          {
+            "name": "Kontextfenster",
+            "score": "1M Tokens",
+            "note": "OpenRouter-Metadaten"
+          },
+          {
+            "name": "Kostenstufe",
+            "score": "x0,1 Credits",
+            "note": "VM0 Managed"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Multimodale Abdeckung",
+            "body": "MiMo-V2.5 ist die günstige Route, um Text-, Bild-, Audio- und Videoeingaben in einem Agent-Schritt zu kombinieren."
+          },
+          {
+            "title": "Großer Kontext",
+            "body": "Das 1M-Token-Fenster gibt Agenten Raum für lange Dokumente, Transkripte und Begleitdateien ohne aggressives Chunking."
+          },
+          {
+            "title": "Routing",
+            "body": "VM0 Managed routet über OpenRouter mit `xiaomi/mimo-v2.5`. OpenRouter-BYOK-Nutzer können dasselbe Upstream-Modell direkt wählen."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "Mixed-Media-Recherche",
+            "body": "Nutze MiMo-V2.5, wenn ein Agent Screenshots, Clips, Transkripte und Notizen gemeinsam prüfen soll, bevor er ein strukturiertes Briefing schreibt."
+          },
+          {
+            "title": "Günstige multimodale Triage",
+            "body": "Führe erste Klassifikation über medienlastige Supportfälle oder QA-Artefakte zu x0,1 Credits aus und eskaliere nur die harten Fälle."
+          },
+          {
+            "title": "Langkontext-Dokumentprüfung",
+            "body": "Lade lange Quellen mit Bildern oder Medienbezügen und frage nach übergreifenden Befunden, ohne sofort auf ein Premium-Modell zu wechseln."
+          }
+        ],
+        "avoidFor": "Vermeide MiMo-V2.5, wenn du stärkstes Claude-artiges Tool-Routing brauchst oder wenn ein text-only Workflow mit einem schmaleren Modell günstiger gelöst ist.",
+        "comparisons": [
+          {
+            "vs": "GLM-5.2",
+            "body": "Beide bieten 1M Kontext über VM0 Managed. GLM-5.2 ist die Z.AI-Langkontext-Route; MiMo-V2.5 ergänzt Bild-, Audio- und Videoeingaben über OpenRouter."
+          },
+          {
+            "vs": "Kimi K2.7 Code",
+            "body": "Kimi ist die stärkere coding-fokussierte Moonshot-Route. MiMo-V2.5 gewinnt, wenn breite multimodale Eingabe und größerer 1M-Kontext wichtiger sind."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet bleibt der sicherere Premium-Default für Tool-Routing und schwieriges Reasoning. MiMo-V2.5 ist die günstigere multimodale Explorationsroute."
+          },
+          {
+            "vs": "Hy3 Preview",
+            "body": "Hy3 Preview ist günstiger und text-only mit 256K Kontext. MiMo-V2.5 passt besser, wenn Bild, Audio, Video oder ein 1M-Fenster nötig sind."
+          }
+        ],
+        "verdict": "Wähle MiMo-V2.5, wenn ein günstiger Agent 1M Kontext und multimodale Eingaben über OpenRouter braucht.",
+        "faqs": [
+          {
+            "q": "Ist MiMo-V2.5 über VM0 Managed verfügbar?",
+            "a": "Ja. VM0 Managed routet MiMo-V2.5 über OpenRouter mit der Upstream-ID `xiaomi/mimo-v2.5`."
+          },
+          {
+            "q": "Kann ich meinen eigenen OpenRouter-Key nutzen?",
+            "a": "Ja. Wähle den OpenRouter-Provider und nutze die Upstream-Modell-ID `xiaomi/mimo-v2.5`."
+          },
+          {
+            "q": "Unterstützt MiMo-V2.5 Bildeingabe?",
+            "a": "Ja. OpenRouter listet Text, Bild, Audio und Video als unterstützte Eingabemodalitäten für MiMo-V2.5."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "hy3-preview",
+            "reason": "Günstigere text-only OpenRouter-Route"
+          },
+          {
+            "slug": "glm-5-2",
+            "reason": "Z.AI-Langkontext-Route"
+          },
+          {
+            "slug": "kimi-k2-7-code",
+            "reason": "Code-fokussierte multimodale Route"
+          }
+        ],
+        "routingNotes": "Auf VM0 Managed wird MiMo-V2.5 über OpenRouter mit der Upstream-ID `xiaomi/mimo-v2.5` geroutet. OpenRouter BYOK nutzt dieselbe ID.",
+        "vm0Notes": "MiMo-V2.5 kostet x0,1 Credits auf VM0 Managed und ist die Low-Cost-Option mit der breitesten Eingabe im Built-in-Reasoning-Katalog."
+      },
+      "hy3-preview": {
+        "name": "Hy3 Preview",
+        "pageTitle": "Hy3 Preview auf VM0. Tencents günstiges Reasoning-Preview",
+        "tagline": "Tencents text-only OpenRouter-Preview-Modell auf VM0. 256K Kontext, konfigurierbares Reasoning und kostensparende x0,1 VM0 Managed.",
+        "cardIntro": "Tencents günstiges OpenRouter-Preview-Modell. Text- und Code-Agenten mit 256K Kontext bei x0,1 VM0 Managed.",
+        "metaTitle": "Hy3 Preview auf VM0: Preise, Kontext & beste Agent-Aufgaben",
+        "metaDescription": "Hy3 Preview auf VM0. Tencents OpenRouter-Modell mit 256K-Token-Kontext, x0,1 Credit-Kosten, Prompt-Cache-Reads und OpenRouter-BYOK.",
+        "summary": "Hy3 Preview ist Tencents effizientes Textmodell, das VM0 über OpenRouter bereitstellt. Es bietet ein 256K-Token-Kontextfenster und einen sehr niedrigen Anbieterpreis, wodurch es für volumenstarke Text- und Code-Workflows nützlich ist, in denen Sonnet-Qualität nicht erforderlich ist.\n\nNutze es für budgetbewusstes Routing, Zusammenfassungen, Extraktion und erste Code-Reviews. Beachte, dass es ein Preview-Modell und text-only ist; es sollte daher nicht der Default für Vision-Aufgaben oder hochkritisches Reasoning sein.",
+        "releaseDate": "Juni 2026",
+        "familyPosition": "Tencent-Preview-Modell, über VM0 Managed via OpenRouter verfügbar.",
+        "background": [
+          "Hy3 Preview ist ein Tencent-Modell auf OpenRouter. VM0 stellt es als kanonisches Modell `hy3-preview` bereit und routet Built-in-Läufe zu `tencent/hy3-preview`.",
+          "Das Modell fokussiert effizientes Text-Reasoning mit einem 256K-Token-Kontextfenster. Es unterstützt OpenRouter-Reasoning-Steuerung und Prompt-Cache-Reads.",
+          "Auf VM0 Managed liegt es bei x0,1 Credits. Teams können auch einen OpenRouter-API-Key verwenden und die Upstream-ID direkt wählen."
+        ],
+        "architecture": "Hy3 Preview wird auf VM0 über das Anthropic-kompatible OpenRouter-Gateway mit der Upstream-ID `tencent/hy3-preview` bereitgestellt.",
+        "specs": [
+          {
+            "label": "Familie",
+            "value": "Tencent Hy3"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachig"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "Bis zu 256K Tokens"
+          },
+          {
+            "label": "Prompt-Caching",
+            "value": "Cache-Reads unterstützt"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "Juni 2026"
+          }
+        ],
+        "benchmarksNote": "Hy3 Preview ist als günstige Textroute positioniert. Da sich Preview-Verhalten ändern kann, fokussiert VM0 hier den operativen Fit statt feste Leaderboard-Aussagen.",
+        "benchmarks": [
+          {
+            "name": "Kontextfenster",
+            "score": "256K Tokens",
+            "note": "OpenRouter-Metadaten"
+          },
+          {
+            "name": "Kostenstufe",
+            "score": "x0,1 Credits",
+            "note": "VM0 Managed"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Text-Durchsatz",
+            "body": "Hy3 Preview eignet sich am besten für wiederholte textlastige Schritte, bei denen Kostenkontrolle wichtiger ist als maximale Reasoning-Tiefe."
+          },
+          {
+            "title": "Preview-Verhalten",
+            "body": "Behandle es als Modell für A/B-Tests auf echten Workflows. Kritische Langläufer sollten auf bewährteren Routen bleiben, bis das Aufgabenprofil validiert ist."
+          },
+          {
+            "title": "Routing",
+            "body": "VM0 Managed routet über OpenRouter mit `tencent/hy3-preview`. OpenRouter-BYOK-Nutzer können dasselbe Upstream-Modell direkt wählen."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "Volumenstarke Zusammenfassung",
+            "body": "Nutze Hy3 Preview für wiederholte Zusammenfassungen, Ticket-Digests und das Verdichten interner Notizen, wenn x0,1 Credits das Volumen wirtschaftlich halten."
+          },
+          {
+            "title": "Extraktion und Klassifikation",
+            "body": "Führe strukturierte Extraktion oder Triage über Text-Batches aus, bevor uneindeutige Fälle an Sonnet oder Opus eskaliert werden."
+          },
+          {
+            "title": "Budget-Code-Review",
+            "body": "Nutze es für erste Code-Reviews oder Diff-Erklärungen, wenn breite Abdeckung zählt und die Befunde downstream geprüft werden."
+          }
+        ],
+        "avoidFor": "Vermeide Hy3 Preview für Bild-, Audio- oder Videoeingaben und für Workflows, in denen Preview-Modellvarianz nicht akzeptabel ist.",
+        "comparisons": [
+          {
+            "vs": "MiMo-V2.5",
+            "body": "MiMo-V2.5 hat 1M Kontext und multimodale Eingaben. Hy3 Preview ist schmaler, text-only und auf effizientes Text-Reasoning ausgerichtet."
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 hat das größere 1M-Fenster und eine Z.AI-Route. Hy3 Preview ist die günstigere Tencent/OpenRouter-Option für Standard-Langkontext-Text."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "Beide sind kostensparende Text-/Code-Routen. DeepSeek V4 Pro ist das etabliertere Cost-first-Modell in VM0; Hy3 Preview ist nützlich für Tencent/OpenRouter-A/B-Tests."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet ist der stärkere Default für verlässliches Tool-Use und Reasoning. Hy3 Preview ist eine Budget-Route für weniger riskante Textarbeit."
+          }
+        ],
+        "verdict": "Wähle Hy3 Preview für günstige OpenRouter-Textworkloads, die Preview-Modellverhalten tolerieren können.",
+        "faqs": [
+          {
+            "q": "Ist Hy3 Preview über VM0 Managed verfügbar?",
+            "a": "Ja. VM0 Managed routet Hy3 Preview über OpenRouter mit der Upstream-ID `tencent/hy3-preview`."
+          },
+          {
+            "q": "Unterstützt Hy3 Preview Bildeingabe?",
+            "a": "Nein. OpenRouter listet Hy3 Preview mit Texteingabe und Textausgabe."
+          },
+          {
+            "q": "Kann ich meinen eigenen OpenRouter-Key nutzen?",
+            "a": "Ja. Wähle den OpenRouter-Provider und nutze die Upstream-Modell-ID `tencent/hy3-preview`."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "mimo-v2-5",
+            "reason": "Multimodale OpenRouter-Route mit 1M Kontext"
+          },
+          {
+            "slug": "glm-5-2",
+            "reason": "Größere Z.AI-Langkontext-Route"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Etablierte Cost-first-Text-/Code-Route"
+          }
+        ],
+        "routingNotes": "Auf VM0 Managed wird Hy3 Preview über OpenRouter mit der Upstream-ID `tencent/hy3-preview` geroutet. OpenRouter BYOK nutzt dieselbe ID.",
+        "vm0Notes": "Hy3 Preview kostet x0,1 Credits auf VM0 Managed und ist für risikoarme, volumenstarke Text-Workflows gedacht."
+      },
       "gpt-5-4-mini": {
         "name": "GPT-5.4 Mini",
         "pageTitle": "GPT-5.4 Mini on VM0. The cost-saving GPT-5",

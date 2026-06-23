@@ -3459,6 +3459,13 @@
       "when": 1782211744871,
       "tag": "0493_remap_strava_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 494,
+      "version": "7",
+      "when": 1782218487662,
+      "tag": "0494_add_mimo_hy3_model_support",
+      "breakpoints": true
     }
   ]
 }

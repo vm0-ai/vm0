@@ -114,6 +114,18 @@ describe("buildVm0ApiKeys", () => {
           model: "z-ai/glm-5.1",
           vendor: "openrouter",
         }),
+        expect.objectContaining({
+          apiKey: "dev-openrouter-key",
+          label: "dev-seed",
+          model: "xiaomi/mimo-v2.5",
+          vendor: "openrouter",
+        }),
+        expect.objectContaining({
+          apiKey: "dev-openrouter-key",
+          label: "dev-seed",
+          model: "tencent/hy3-preview",
+          vendor: "openrouter",
+        }),
       ]),
     );
     expect(

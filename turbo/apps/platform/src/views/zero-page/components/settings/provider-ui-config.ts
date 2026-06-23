@@ -55,6 +55,8 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "MiniMax-M3": "minimax-api-key",
     "glm-5.2": "zai-api-key",
     "glm-5.1": "zai-api-key",
+    "mimo-v2.5": "openrouter-api-key",
+    "hy3-preview": "openrouter-api-key",
     "gpt-5.5": "openai-api-key",
     "gpt-5.4": "openai-api-key",
     "gpt-5.4-mini": "openai-api-key",

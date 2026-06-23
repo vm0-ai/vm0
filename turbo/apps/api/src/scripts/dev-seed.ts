@@ -259,6 +259,18 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.26), 1_000_000],
     ["tokens.cache_creation", usd(1.4), 1_000_000],
   ]),
+  ...usageGroup("model", "mimo-v2.5", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+    ["tokens.cache_read", usd(0.0028), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+  ...usageGroup("model", "hy3-preview", [
+    ["tokens.input", usd(0.063), 1_000_000],
+    ["tokens.output", usd(0.21), 1_000_000],
+    ["tokens.cache_read", usd(0.021), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
   ...usageGroup("model", "MiniMax-M3", [
     ["tokens.input", usd(0.6), 1_000_000],
     ["tokens.output", usd(2.4), 1_000_000],
