@@ -212,7 +212,8 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
     # The billing payload cannot prove this negative side effect: the decoder
     # fails closed, so a regression that decodes non-refinement request bodies
     # could still emit `user.read`. Keep this addon-owned call-site spy to guard
-    # the resource boundary fixed in #15705/#17256.
+    # the resource boundary from #15705; #17256 moved the spy off mitmproxy
+    # internals.
     with patch(
         "usage.providers.connectors.x.billing_body.decode_request_body_for_billing"
     ) as decode_request_body:
