@@ -12,14 +12,12 @@ import {
   listZeroUserPermissionGrants,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
-import {
-  isFirewallConnectorType,
-  getConnectorFirewall,
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { policyIcon } from "../../lib/utils/format-utils";
+import {
+  loadConnectorPermissionInfos,
+  type ConnectorPermissionInfo,
+} from "./shared/firewall-permissions";
 
 /**
  * Detect if running inside a zero sandbox (agent runtime).
@@ -49,47 +47,38 @@ function formatConnectorIdentity(connector: {
   return identity;
 }
 
-function printConnectorPermissions(
-  type: string,
-  resolvedPolicies: FirewallPolicies | null,
-): void {
-  if (!isFirewallConnectorType(type)) return;
+function printConnectorPermissions(info: ConnectorPermissionInfo): void {
+  if (!info.hasPermissions) return;
 
-  const refPolicy = resolvedPolicies?.[type];
-  if (!refPolicy) {
+  if (!info.hasPolicyEntry) {
     console.log(chalk.dim("    full access — no permission rules configured"));
     return;
   }
 
-  const config = getConnectorFirewall(type);
-  const permissions = config.apis.flatMap((a) => {
-    return a.permissions ?? [];
-  });
-
   if (
-    permissions.length === 0 &&
-    Object.keys(refPolicy.policies).length === 0
+    info.permissions.length === 0 &&
+    (!info.policies || Object.keys(info.policies).length === 0)
   ) {
-    const unknownIcon = policyIcon(refPolicy.unknownPolicy ?? "allow");
+    const unknownIcon = policyIcon(info.unknownPolicy);
     console.log(`    ${unknownIcon} unknown endpoints`);
     return;
   }
 
   const nameWidth = Math.max(
     "unknown endpoints".length,
-    ...permissions.map((p) => {
+    ...info.permissions.map((p) => {
       return p.name.length;
     }),
   );
 
-  for (const perm of permissions) {
-    const policy = refPolicy.policies[perm.name] ?? "deny";
+  for (const perm of info.permissions) {
+    const policy = info.policies?.[perm.name] ?? "deny";
     const icon = policyIcon(policy);
     const desc = perm.description ?? "";
     console.log(`    ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`);
   }
 
-  const unknownIcon = policyIcon(refPolicy.unknownPolicy ?? "allow");
+  const unknownIcon = policyIcon(info.unknownPolicy);
   console.log(
     `    ${unknownIcon} ${"unknown endpoints".padEnd(nameWidth)}  Endpoints not matching any rule`,
   );
@@ -129,14 +118,24 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
       if (identities.length === 0) return;
 
-      let resolvedPolicies: FirewallPolicies | null = null;
+      let permissionInfoByType = new Map<string, ConnectorPermissionInfo>();
       const permissionDataAvailable =
         grantsResult.status === "fulfilled" &&
         enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
-        resolvedPolicies = resolveFirewallPolicies(
-          permissionGrantsToFirewallPolicies(grantsResult.value),
-          enabledResult.value,
+        const permissionInfos = await loadConnectorPermissionInfos({
+          displayTypes: identities.map((connector) => {
+            return connector.type;
+          }),
+          defaultPolicyTypes: enabledResult.value,
+          storedPolicies: permissionGrantsToFirewallPolicies(
+            grantsResult.value,
+          ),
+        });
+        permissionInfoByType = new Map(
+          permissionInfos.map((info) => {
+            return [info.type, info];
+          }),
         );
       }
 
@@ -147,7 +146,10 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
         console.log(`  ${connector.type.padEnd(14)}${identity}`);
 
         if (permissionDataAvailable) {
-          printConnectorPermissions(connector.type, resolvedPolicies);
+          const info = permissionInfoByType.get(connector.type);
+          if (info) {
+            printConnectorPermissions(info);
+          }
         }
       }
     } else {

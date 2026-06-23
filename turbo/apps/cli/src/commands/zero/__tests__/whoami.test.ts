@@ -519,7 +519,7 @@ describe("zero whoami command", () => {
         }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
-            permission: "conversations:read",
+            permission: "admin.conversations:read",
             action: "allow",
           }),
           makePermissionGrant({

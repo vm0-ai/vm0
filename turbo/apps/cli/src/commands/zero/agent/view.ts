@@ -8,73 +8,14 @@ import {
   listZeroConnectors,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import {
-  isFirewallConnectorType,
-  getConnectorFirewall,
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
-import type {
-  FirewallPolicies,
-  FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
-
-interface ConnectorPermissionInfo {
-  type: string;
-  hasPermissions: boolean;
-  permissions: Array<{ name: string; description?: string }>;
-  policies: Record<string, FirewallPolicyValue> | null;
-  unknownPolicy: FirewallPolicyValue;
-  allowed: number;
-  total: number;
-}
-
-function getConnectorPermissionInfo(
-  type: string,
-  resolvedPolicies: FirewallPolicies | null,
-): ConnectorPermissionInfo {
-  if (!isFirewallConnectorType(type)) {
-    return {
-      type,
-      hasPermissions: false,
-      permissions: [],
-      policies: null,
-      unknownPolicy: "allow",
-      allowed: 0,
-      total: 0,
-    };
-  }
-
-  const refPolicy = resolvedPolicies?.[type];
-  const policies =
-    refPolicy && Object.keys(refPolicy.policies).length > 0
-      ? refPolicy.policies
-      : null;
-  const config = getConnectorFirewall(type);
-  const permissions = config.apis.flatMap((a) => {
-    return a.permissions ?? [];
-  });
-  const total = permissions.length;
-  const allowed = policies
-    ? permissions.filter((p) => {
-        return policies[p.name] === "allow";
-      }).length
-    : 0;
-
-  const unknownPolicy = refPolicy?.unknownPolicy ?? "allow";
-  return {
-    type,
-    hasPermissions: true,
-    permissions,
-    policies,
-    unknownPolicy,
-    allowed,
-    total,
-  };
-}
+import {
+  loadConnectorPermissionInfos,
+  type ConnectorPermissionInfo,
+} from "../shared/firewall-permissions";
 
 function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   if (!info.policies) {
@@ -183,18 +124,15 @@ Examples:
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
 
-        const permissionPolicies = options.permissions
+        const storedPolicies = options.permissions
           ? permissionGrantsToFirewallPolicies(
               await listZeroUserPermissionGrants(agent.agentId),
             )
           : null;
-        const resolvedPolicies = resolveFirewallPolicies(
-          permissionPolicies,
-          connectorTypes,
-        );
-
-        const connectorInfos = connectorTypes.map((type) => {
-          return getConnectorPermissionInfo(type, resolvedPolicies);
+        const connectorInfos = await loadConnectorPermissionInfos({
+          displayTypes: connectorTypes,
+          defaultPolicyTypes: connectorTypes,
+          storedPolicies,
         });
 
         if (connectorInfos.length > 0) {
