@@ -4,6 +4,7 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
+  GmailNewMessageEventConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
@@ -34,6 +35,7 @@ import { agents$, currentAgentId$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  createWorkflowGmailNewMessageTrigger$,
   createWorkflowScheduleTrigger$,
   currentWorkflowId$,
   deleteWorkflow$,
@@ -68,6 +70,21 @@ const FIELD_CLASS =
 const TRIGGER_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const TRIGGER_TIMEZONE = "UTC";
+
+type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
+type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
+type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+
+const GMAIL_TEXT_FIELDS: readonly {
+  readonly field: GmailTextField;
+  readonly label: string;
+}[] = [
+  { field: "from", label: "From" },
+  { field: "subject", label: "Subject" },
+  { field: "body", label: "Body" },
+  { field: "to", label: "To" },
+  { field: "cc", label: "Cc" },
+];
 
 export function WorkflowDetailPage() {
   const workflowId = useGet(currentWorkflowId$);
@@ -640,6 +657,87 @@ function buildTriggerSchedule(
       };
 }
 
+function formTextValue(form: FormData, name: string): string | undefined {
+  const value = form.get(name);
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildGmailNewMessageEventConfig(
+  form: FormData,
+): GmailNewMessageEventConfig {
+  const match: GmailMatchRules = {};
+  for (const { field } of GMAIL_TEXT_FIELDS) {
+    const contains = formTextValue(form, `${field}Contains`);
+    const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
+    if (contains || doesNotContain) {
+      const matcher: { contains?: string; doesNotContain?: string } = {};
+      if (contains) {
+        matcher.contains = contains;
+      }
+      if (doesNotContain) {
+        matcher.doesNotContain = doesNotContain;
+      }
+      match[field] = matcher;
+    }
+  }
+  return Object.keys(match).length > 0
+    ? { provider: "gmail", event: "new_message", match }
+    : { provider: "gmail", event: "new_message" };
+}
+
+function quote(value: string): string {
+  return `"${value}"`;
+}
+
+function quoteList(values: readonly string[]): string {
+  return values.map(quote).join(", ");
+}
+
+function textMatcherParts(
+  field: GmailTextField,
+  matcher: GmailTextMatcher,
+): string[] {
+  const parts: string[] = [];
+  if (matcher.contains) {
+    parts.push(`${field} contains ${quote(matcher.contains)}`);
+  }
+  if (matcher.containsAny) {
+    parts.push(`${field} contains any of ${quoteList(matcher.containsAny)}`);
+  }
+  if (matcher.doesNotContain) {
+    parts.push(`${field} does not contain ${quote(matcher.doesNotContain)}`);
+  }
+  if (matcher.doesNotContainAny) {
+    parts.push(
+      `${field} does not contain any of ${quoteList(matcher.doesNotContainAny)}`,
+    );
+  }
+  return parts;
+}
+
+function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
+  const match = config.match;
+  if (!match) {
+    return "all inbound messages";
+  }
+
+  const parts: string[] = [];
+  for (const { field } of GMAIL_TEXT_FIELDS) {
+    const matcher = match[field];
+    if (matcher) {
+      parts.push(...textMatcherParts(field, matcher));
+    }
+  }
+  if (match.snippet || match.labels || match.hasAttachment !== undefined) {
+    parts.push("custom match rules");
+  }
+  return parts.length > 0 ? parts.join("; ") : "all inbound messages";
+}
+
 function TriggersSection({
   detail,
 }: {
@@ -681,8 +779,21 @@ function TriggersSection({
 }
 
 function CreateTriggerForm({ workflowId }: { readonly workflowId: string }) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/60 p-3">
+      <CreateScheduleTriggerForm workflowId={workflowId} />
+      <CreateGmailNewMessageTriggerForm workflowId={workflowId} />
+    </div>
+  );
+}
+
+function CreateScheduleTriggerForm({
+  workflowId,
+}: {
+  readonly workflowId: string;
+}) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createTrigger] = useLoadableSet(
+  const [createLoadable, createScheduleTrigger] = useLoadableSet(
     createWorkflowScheduleTrigger$,
   );
   const creating = createLoadable.state === "loading";
@@ -690,7 +801,6 @@ function CreateTriggerForm({ workflowId }: { readonly workflowId: string }) {
   return (
     <form
       aria-label="Create schedule trigger"
-      className="flex flex-col gap-1.5 border-b border-border/60 p-3 sm:flex-row sm:items-center"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -706,62 +816,140 @@ function CreateTriggerForm({ workflowId }: { readonly workflowId: string }) {
           return;
         }
         detach(
-          createTrigger({ workflowId, schedule }, pageSignal),
+          createScheduleTrigger({ workflowId, schedule }, pageSignal),
           Reason.DomCallback,
         );
       }}
     >
-      <select
-        name="scheduleType"
-        aria-label="Schedule type"
-        defaultValue="cron"
-        disabled={creating}
-        className={TRIGGER_FIELD_CLASS}
-      >
-        <option value="cron">Repeat (cron)</option>
-        <option value="loop">Loop (interval)</option>
-        <option value="once">Once</option>
-      </select>
-      <input
-        name="cronExpression"
-        aria-label="Cron expression"
-        defaultValue="0 9 * * *"
-        disabled={creating}
-        placeholder="cron, e.g. 0 9 * * *"
-        className={TRIGGER_FIELD_CLASS}
-      />
-      <input
-        name="intervalSeconds"
-        aria-label="Interval seconds"
-        type="number"
-        min="1"
-        defaultValue="3600"
-        disabled={creating}
-        placeholder="loop interval seconds"
-        className={TRIGGER_FIELD_CLASS}
-      />
-      <input
-        name="atTime"
-        aria-label="Run at"
-        type="datetime-local"
-        disabled={creating}
-        className={TRIGGER_FIELD_CLASS}
-      />
-      <button
-        type="submit"
-        disabled={creating}
-        className={cn(
-          "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-          creating ? "cursor-not-allowed opacity-60" : "",
-        )}
-      >
-        {creating ? (
-          <IconLoader2 size={13} className="animate-spin" />
-        ) : (
-          <IconPlus size={13} stroke={1.5} />
-        )}
-        <span>Add trigger</span>
-      </button>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">
+        Schedule
+      </div>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+        <select
+          name="scheduleType"
+          aria-label="Schedule type"
+          defaultValue="cron"
+          disabled={creating}
+          className={TRIGGER_FIELD_CLASS}
+        >
+          <option value="cron">Repeat (cron)</option>
+          <option value="loop">Loop (interval)</option>
+          <option value="once">Once</option>
+        </select>
+        <input
+          name="cronExpression"
+          aria-label="Cron expression"
+          defaultValue="0 9 * * *"
+          disabled={creating}
+          placeholder="cron, e.g. 0 9 * * *"
+          className={TRIGGER_FIELD_CLASS}
+        />
+        <input
+          name="intervalSeconds"
+          aria-label="Interval seconds"
+          type="number"
+          min="1"
+          defaultValue="3600"
+          disabled={creating}
+          placeholder="loop interval seconds"
+          className={TRIGGER_FIELD_CLASS}
+        />
+        <input
+          name="atTime"
+          aria-label="Run at"
+          type="datetime-local"
+          disabled={creating}
+          className={TRIGGER_FIELD_CLASS}
+        />
+        <button
+          type="submit"
+          disabled={creating}
+          className={cn(
+            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+            creating ? "cursor-not-allowed opacity-60" : "",
+          )}
+        >
+          {creating ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconPlus size={13} stroke={1.5} />
+          )}
+          <span>Add schedule</span>
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CreateGmailNewMessageTriggerForm({
+  workflowId,
+}: {
+  readonly workflowId: string;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createGmailTrigger] = useLoadableSet(
+    createWorkflowGmailNewMessageTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <form
+      aria-label="Create Gmail new message trigger"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        detach(
+          createGmailTrigger(
+            {
+              workflowId,
+              eventConfig: buildGmailNewMessageEventConfig(form),
+            },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <div className="mb-1 text-xs font-medium text-muted-foreground">
+        Gmail new message
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+          return (
+            <div key={field} className="grid grid-cols-2 gap-1.5">
+              <input
+                name={`${field}Contains`}
+                aria-label={`${label} contains`}
+                disabled={creating}
+                placeholder={`${label} contains`}
+                className={TRIGGER_FIELD_CLASS}
+              />
+              <input
+                name={`${field}DoesNotContain`}
+                aria-label={`${label} does not contain`}
+                disabled={creating}
+                placeholder={`${label} does not contain`}
+                className={TRIGGER_FIELD_CLASS}
+              />
+            </div>
+          );
+        })}
+        <button
+          type="submit"
+          disabled={creating}
+          className={cn(
+            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+            creating ? "cursor-not-allowed opacity-60" : "",
+          )}
+        >
+          {creating ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconPlus size={13} stroke={1.5} />
+          )}
+          <span>Add Gmail trigger</span>
+        </button>
+      </div>
     </form>
   );
 }
@@ -787,6 +975,10 @@ function TriggerRow({
     runLoadable.state === "loading";
   const title =
     trigger.kind === "schedule" ? trigger.scheduleSummary : "Gmail new message";
+  const matchSummary =
+    trigger.kind === "event"
+      ? formatGmailMatchSummary(trigger.eventConfig)
+      : null;
   const TriggerIcon = trigger.kind === "schedule" ? IconClock : IconMail;
 
   return (
@@ -813,6 +1005,11 @@ function TriggerRow({
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {triggerKindLabel(trigger.kind)}
         </p>
+        {matchSummary ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {matchSummary}
+          </p>
+        ) : null}
         {trigger.chatThreadId ? (
           <Link
             pathname={ROUTES.chat}
@@ -822,7 +1019,7 @@ function TriggerRow({
             Open thread
           </Link>
         ) : null}
-        {canManage ? (
+        {canManage && trigger.kind === "schedule" ? (
           <div className="mt-1 flex items-center gap-2">
             <button
               type="button"
