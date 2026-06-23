@@ -840,11 +840,20 @@ impl ObservedProcessGroup {
         if pgid <= 1 || pgid == current_pgid {
             return Err(format!("refusing to observe unsafe process group {pgid}"));
         }
+        let leader_identity = linux_process_identity(pid)?;
+        if let Some(identity) = leader_identity
+            && identity.process_group_id != pgid
+        {
+            return Err(format!(
+                "app-server child {pid} is in process group {}, expected {pgid}",
+                identity.process_group_id
+            ));
+        }
 
         Ok(Self {
             pgid,
             leader_pid: pid,
-            leader_identity: linux_process_identity(pid)?,
+            leader_identity,
         })
     }
 }
