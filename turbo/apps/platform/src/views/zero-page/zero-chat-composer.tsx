@@ -3304,7 +3304,7 @@ const TEMPLATE_DETAIL_FOCUSABLE_SELECTOR = [
   "input",
   "select",
   "textarea",
-  '[tabindex]:not([tabindex="-1"])',
+  '[tabindex]:not([tabindex="-1"]):not([role="group"])',
 ].join(",");
 
 function templateDetailFocusableElements(root: HTMLElement): HTMLElement[] {

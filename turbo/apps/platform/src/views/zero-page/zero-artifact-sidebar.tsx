@@ -140,6 +140,10 @@ function ArtifactSidebarWithThreadData({
   );
 }
 
+function noop() {
+  return undefined;
+}
+
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
@@ -171,11 +175,7 @@ function ArtifactSidebarContent({
       ? artifactSidebarSyncTarget({
           agentId,
           item,
-          onSyncSuccess:
-            onSyncSuccess ??
-            (() => {
-              return undefined;
-            }),
+          onSyncSuccess: onSyncSuccess ?? noop,
           threadId,
         })
       : undefined;
