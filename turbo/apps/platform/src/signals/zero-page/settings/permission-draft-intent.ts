@@ -803,7 +803,7 @@ export function isPermissionDraftPristine(
   );
 }
 
-export function hasPermissionDraftPermissionChange({
+function hasPermissionDraftPermissionChange({
   context,
   draft,
   permissionName,
@@ -833,7 +833,7 @@ export function hasPermissionDraftPermissionChange({
   return selected !== "always";
 }
 
-export function hasPermissionDraftUnknownChange({
+function hasPermissionDraftUnknownChange({
   context,
   draft,
   selected,
