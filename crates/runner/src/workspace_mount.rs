@@ -16,7 +16,14 @@ pub(crate) async fn ensure_workspace_drive_mounted(
     diagnostic_id: impl std::fmt::Display,
 ) -> RunnerResult<()> {
     let cmd = workspace_mount_command();
-    run_workspace_drive_command(sandbox, diagnostic_id, &cmd, "mount workspace drive").await
+    run_workspace_drive_command(
+        sandbox,
+        diagnostic_id,
+        &cmd,
+        "mount workspace drive",
+        "workspace-mount",
+    )
+    .await
 }
 
 pub(crate) async fn flush_and_unmount_workspace_drive(
@@ -24,7 +31,14 @@ pub(crate) async fn flush_and_unmount_workspace_drive(
     diagnostic_id: impl std::fmt::Display,
 ) -> RunnerResult<()> {
     let cmd = workspace_unmount_command();
-    run_workspace_drive_command(sandbox, diagnostic_id, &cmd, "unmount workspace drive").await
+    run_workspace_drive_command(
+        sandbox,
+        diagnostic_id,
+        &cmd,
+        "unmount workspace drive",
+        "workspace-unmount",
+    )
+    .await
 }
 
 async fn run_workspace_drive_command(
@@ -32,16 +46,20 @@ async fn run_workspace_drive_command(
     diagnostic_id: impl std::fmt::Display,
     cmd: &str,
     operation: &'static str,
+    label: &'static str,
 ) -> RunnerResult<()> {
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd,
-            timeout: WORKSPACE_MOUNT_TIMEOUT,
-            env: &[],
-            sudo: true,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd,
+                timeout: WORKSPACE_MOUNT_TIMEOUT,
+                env: &[],
+                sudo: true,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            label,
+        )
         .await
         .map_err(RunnerError::from)?;
     if helper_exec_succeeded(&result) {

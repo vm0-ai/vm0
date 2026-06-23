@@ -94,6 +94,12 @@ const cronExecuteAutomationsResponseSchema = z.object({
   skipped: z.number(),
 });
 
+const cronRenewGmailWatchesResponseSchema = z.object({
+  success: z.literal(true),
+  renewed: z.number(),
+  failed: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -207,6 +213,19 @@ export const cronDrainEmailOutboxContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Drain pending email outbox messages",
+  },
+});
+
+export const cronRenewGmailWatchesContract = c.router({
+  renew: {
+    method: "GET",
+    path: "/api/cron/renew-gmail-watches",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRenewGmailWatchesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Renew Gmail push notification watches",
   },
 });
 

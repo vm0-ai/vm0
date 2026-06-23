@@ -72,6 +72,32 @@ export const webhookStripeContract = c.router({
   },
 });
 
+const gmailWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
+/**
+ * Gmail Pub/Sub push webhook contract for /api/webhooks/gmail.
+ */
+export const webhookGmailContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/gmail",
+    body: c.type<string>(),
+    responses: {
+      200: gmailWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",

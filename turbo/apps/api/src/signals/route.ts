@@ -25,6 +25,7 @@ import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
 import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
+import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -55,6 +56,7 @@ import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
+import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
@@ -205,6 +207,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
+  ...webhooksGmailRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
@@ -229,6 +232,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteAutomationsRoutes,
   ...cronExecuteWorkflowTriggersRoutes,
+  ...cronRenewGmailWatchesRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
