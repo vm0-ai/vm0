@@ -1075,7 +1075,15 @@ function validateRepresentativeRules(
   }
 }
 
-const RUNTIME_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"];
+const RUNTIME_METHODS = [
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+] as const;
 
 function expandRuntimeRule(rule: string): string[] {
   const spaceIndex = rule.indexOf(" ");

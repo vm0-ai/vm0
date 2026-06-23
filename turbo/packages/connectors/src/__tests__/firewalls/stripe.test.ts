@@ -14,6 +14,16 @@ import {
   stripeGenerationStats,
 } from "../../firewalls/stripe.generated";
 
+const RUNTIME_METHODS = [
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+] as const;
+
 function getStripePermission(name: string) {
   const firewall = getConnectorFirewall("stripe");
   const permission = firewall.apis
@@ -48,6 +58,16 @@ function expectStripeMatches(
   expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
 }
 
+function expandRuntimeRules(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
 describe("stripe firewall", () => {
   it("registers the Stripe firewall with API token auth", () => {
     expect(isFirewallConnectorType("stripe")).toBe(true);
@@ -79,13 +99,15 @@ describe("stripe firewall", () => {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {
-          const key = `${api.base} ${rule}`;
-          const existing = owners.get(key);
-          if (existing) {
-            duplicates.push(`${key}: ${existing}, ${permission.name}`);
-            continue;
+          for (const runtimeRule of expandRuntimeRules(rule)) {
+            const key = `${api.base} ${runtimeRule}`;
+            const existing = owners.get(key);
+            if (existing) {
+              duplicates.push(`${key}: ${existing}, ${permission.name}`);
+              continue;
+            }
+            owners.set(key, permission.name);
           }
-          owners.set(key, permission.name);
         }
       }
     }
