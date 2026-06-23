@@ -3783,14 +3783,16 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    const rows = await readOrgCleanupRows(orgOf(doomed));
-    expect(rows.metadata).toStrictEqual([
-      {
-        stripeCustomerId: granted.customerId,
-        stripeSubscriptionId: granted.subscriptionId,
-      },
-    ]);
-    expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
+    await waitForExpectation(async () => {
+      const rows = await readOrgCleanupRows(orgOf(doomed));
+      expect(rows.metadata).toStrictEqual([
+        {
+          stripeCustomerId: granted.customerId,
+          stripeSubscriptionId: granted.subscriptionId,
+        },
+      ]);
+      expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
+    });
   });
 
   it("suspends user-owned runs and automations after a verified user.banned event", async () => {
