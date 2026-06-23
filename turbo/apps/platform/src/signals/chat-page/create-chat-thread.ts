@@ -1778,18 +1778,18 @@ function createChatThreadMessagePipeline({
     awayFromBottom$,
   });
 
-  const loadHistory$ = createCommandWithPrependScroll(
+  const loadHistory$ = createLoadHistoryWithPrependScroll(
     recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
+    pagedMessages.groupedChatMessages$,
     renderedMessages.renderedGroupedChatMessages$,
     pagedMessages.loadHistory$,
   );
-  const loadMoreRenderedChatGroups$ = createCommandWithPrependScroll(
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    renderedMessages.renderedGroupedChatMessages$,
-    renderedMessages.loadMoreRenderedChatGroups$,
-  );
+  const loadMoreRenderedChatGroups$ =
+    createLoadMoreRenderedChatGroupsWithPrependScroll(
+      recordScrollHeightForPrepend$,
+      clearScrollHeightForPrepend$,
+      renderedMessages.loadMoreRenderedChatGroups$,
+    );
   const silentBackfillHistory$ = createSilentBackfillHistoryCommand({
     groupedChatMessages$: pagedMessages.groupedChatMessages$,
     hasOlderHistory$: pagedMessages.hasOlderHistory$,
@@ -1975,39 +1975,38 @@ function createLatestRunStatus(
   });
 }
 
-function firstRenderedGroupId(
-  groups: readonly GroupedChatMessageGroup[],
-): string | null {
-  return groups[0]?.beginMessageId ?? null;
+function createLoadHistoryWithPrependScroll(
+  recordScrollHeightForPrepend$: Command<void, []>,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
+) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const [groups, renderedGroups] = await Promise.all([
+      get(groupedChatMessages$),
+      get(renderedGroupedChatMessages$),
+    ]);
+    signal.throwIfAborted();
+
+    if (groups.length === renderedGroups.length) {
+      set(recordScrollHeightForPrepend$);
+    }
+    return await set(loadHistory$, signal);
+  });
 }
 
-function createCommandWithPrependScroll<Result>(
+function createLoadMoreRenderedChatGroupsWithPrependScroll(
   recordScrollHeightForPrepend$: Command<void, []>,
   clearScrollHeightForPrepend$: Command<void, []>,
-  renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
-  run$: Command<Promise<Result>, [AbortSignal]>,
+  loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<Result> => {
-    const firstRenderedGroupBefore = firstRenderedGroupId(
-      await get(renderedGroupedChatMessages$),
-    );
-    signal.throwIfAborted();
+  return command(async ({ set }, signal: AbortSignal) => {
     set(recordScrollHeightForPrepend$);
-    try {
-      const result = await set(run$, signal);
-      signal.throwIfAborted();
-      const firstRenderedGroupAfter = firstRenderedGroupId(
-        await get(renderedGroupedChatMessages$),
-      );
-      signal.throwIfAborted();
-      if (firstRenderedGroupAfter === firstRenderedGroupBefore) {
-        set(clearScrollHeightForPrepend$);
-      }
-      return result;
-    } catch (error) {
+    const didPrepend = await set(loadMoreRenderedChatGroups$, signal);
+    if (!didPrepend) {
       set(clearScrollHeightForPrepend$);
-      throw error;
     }
+    return didPrepend;
   });
 }
 
