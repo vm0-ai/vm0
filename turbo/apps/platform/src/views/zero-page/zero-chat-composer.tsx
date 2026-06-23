@@ -4487,7 +4487,11 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
-  const rightOverflow = thumbnailRect.right - thumbnailStripRect.right;
+  const nextThumbnail = node.nextElementSibling;
+  const rightTarget =
+    nextThumbnail instanceof HTMLElement ? nextThumbnail : node;
+  const rightTargetRect = rightTarget.getBoundingClientRect();
+  const rightOverflow = rightTargetRect.right - thumbnailStripRect.right;
   if (rightOverflow > 0) {
     thumbnailStrip.scrollTo({
       left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),

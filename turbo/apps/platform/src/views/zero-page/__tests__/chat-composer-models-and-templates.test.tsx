@@ -2392,8 +2392,9 @@ describe("chat composer templates", () => {
       throw new Error("Illustration card not found");
     }
 
-    // Clicking a thumbnail scrolls within the thumbnail strip only.
+    // Clicking the rightmost visible thumbnail reveals the next thumbnail.
     const variant2Thumbnail = within(card).getByLabelText("Show variant 2");
+    const variant3Thumbnail = within(card).getByLabelText("Show variant 3");
     const thumbnailStrip = variant2Thumbnail.parentElement;
     if (!thumbnailStrip) {
       throw new Error("Illustration thumbnail strip not found");
@@ -2412,14 +2413,20 @@ describe("chat composer templates", () => {
     Object.defineProperty(variant2Thumbnail, "getBoundingClientRect", {
       configurable: true,
       value: () => {
-        return rect({ left: 72, right: 120 });
+        return rect({ left: 48, right: 96 });
+      },
+    });
+    Object.defineProperty(variant3Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 104, right: 152 });
       },
     });
     click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 24 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 56 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Clicking a left-clipped thumbnail nudges the strip back just enough.
