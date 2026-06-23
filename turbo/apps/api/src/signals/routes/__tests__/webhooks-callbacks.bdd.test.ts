@@ -3733,14 +3733,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     // User storage cleanup is best-effort: a failing S3 listing must not
     // stop the rest of the teardown.
-    context.mocks.s3.send.mockRejectedValue(new Error("R2 unavailable"));
+    context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
     api.verifyNextClerkWebhook({
       type: "user.deleted",
       data: { id: doomed.userId },
     });
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
-    context.mocks.s3.send.mockResolvedValue({});
 
     await waitForExpectation(() => {
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
