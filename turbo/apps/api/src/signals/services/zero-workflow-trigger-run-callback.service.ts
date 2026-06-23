@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -106,7 +106,12 @@ export async function handleWorkflowTriggerInternalCallback(
       nextRunAt,
       updatedAt: completedAt,
     })
-    .where(eq(zeroWorkflowTriggers.id, payload.data.triggerId));
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.id, payload.data.triggerId),
+        eq(zeroWorkflowTriggers.enabled, true),
+      ),
+    );
   signal?.throwIfAborted();
 
   return { success: true };
