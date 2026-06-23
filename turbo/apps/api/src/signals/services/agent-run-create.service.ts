@@ -46,7 +46,6 @@ import {
 import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
-  expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
@@ -98,8 +97,6 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -138,6 +135,14 @@ import {
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import {
+  customConnectorInternalName,
+  customConnectorSecretKey,
+  decryptCustomConnectorValues,
+  loadCustomConnectorRuntimeData,
+  renderCustomConnectorRuntimePrefix,
+  renderTemplateForRuntime,
+} from "./zero-custom-connector.service";
 import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -186,7 +191,6 @@ function getEffectiveConcurrencyLimit(
 }
 
 const ORG_SENTINEL_USER_ID = "__org__";
-const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
 const L = logger("AgentRunCreate");
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
@@ -2108,10 +2112,6 @@ async function loadStoredConnectorContext(
   });
 }
 
-function customConnectorSecretKey(connectorId: string): string {
-  return `CUSTOM_${connectorId.replaceAll("-", "").toUpperCase()}`;
-}
-
 async function loadCustomConnectorContext(
   db: Db,
   args: {
@@ -2125,60 +2125,95 @@ async function loadCustomConnectorContext(
     return { firewalls: [], secrets: undefined };
   }
 
-  const rows = await db
-    .select({
-      id: orgCustomConnectors.id,
-      slug: orgCustomConnectors.slug,
-      displayName: orgCustomConnectors.displayName,
-      prefixes: orgCustomConnectors.prefixes,
-      headerName: orgCustomConnectors.headerName,
-      headerTemplate: orgCustomConnectors.headerTemplate,
-      encryptedValue: orgCustomConnectorSecrets.encryptedValue,
-    })
-    .from(orgCustomConnectors)
-    .innerJoin(
-      orgCustomConnectorSecrets,
-      and(
-        eq(orgCustomConnectorSecrets.connectorId, orgCustomConnectors.id),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-      ),
-    )
-    .where(
-      args.allowedCustomConnectorIds
-        ? and(
-            eq(orgCustomConnectors.orgId, args.orgId),
-            inArray(orgCustomConnectors.id, [
-              ...args.allowedCustomConnectorIds,
-            ]),
-          )
-        : eq(orgCustomConnectors.orgId, args.orgId),
-    );
-
+  const rows = await loadCustomConnectorRuntimeData(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorIds: args.allowedCustomConnectorIds,
+  });
   const firewalls: ExpandedFirewallConfig[] = [];
   const secrets: Record<string, string> = {};
   for (const row of rows) {
-    const secretKey = customConnectorSecretKey(row.id);
-    firewalls.push({
-      name: row.slug,
-      description: row.displayName,
-      apis: row.prefixes.map((prefix) => {
-        return {
-          base: expandHostWildcardsInBaseUrl(prefix),
-          auth: {
-            headers: {
-              [row.headerName]: row.headerTemplate.replaceAll(
-                CUSTOM_CONNECTOR_SECRET_PLACEHOLDER,
-                `\${{ secrets.${secretKey} }}`,
-              ),
-            },
-          },
-        };
+    const valueMarkers = new Set(
+      row.values.map((value) => {
+        return `${value.kind}:${value.key}`;
       }),
-    });
-    secrets[secretKey] = await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
     );
+    const missingRequired = row.connector.fields.some((field) => {
+      return field.required && !valueMarkers.has(`${field.kind}:${field.key}`);
+    });
+    if (missingRequired) {
+      continue;
+    }
+    const decryptedValues = await decryptCustomConnectorValues({
+      values: row.values,
+      featureSwitchContext: args.featureSwitchContext,
+    });
+    const apis: ExpandedFirewallConfig["apis"] = [];
+    for (const prefixTemplate of row.connector.prefixTemplates) {
+      const renderedPrefix = renderCustomConnectorRuntimePrefix({
+        template: prefixTemplate,
+        values: decryptedValues,
+      });
+      if (!renderedPrefix) {
+        continue;
+      }
+      apis.push({
+        base: renderedPrefix,
+        auth: {
+          headers: Object.fromEntries(
+            row.connector.headerInjections.map((header) => {
+              return [
+                header.name,
+                renderTemplateForRuntime({
+                  template: header.valueTemplate,
+                  connectorId: row.connector.id,
+                  fields: row.connector.fields,
+                }),
+              ];
+            }),
+          ),
+          query: Object.fromEntries(
+            row.connector.queryInjections.map((query) => {
+              return [
+                query.name,
+                renderTemplateForRuntime({
+                  template: query.valueTemplate,
+                  connectorId: row.connector.id,
+                  fields: row.connector.fields,
+                }),
+              ];
+            }),
+          ),
+        },
+      });
+    }
+    if (apis.length === 0) {
+      continue;
+    }
+    firewalls.push({
+      name: customConnectorInternalName(row.connector.id),
+      description: row.connector.displayName,
+      apis,
+    });
+    for (const value of row.values) {
+      const field = row.connector.fields.find((candidate) => {
+        return candidate.kind === value.kind && candidate.key === value.key;
+      });
+      if (!field) {
+        continue;
+      }
+      const decryptedValue = decryptedValues[`${value.kind}:${value.key}`];
+      if (decryptedValue === undefined) {
+        continue;
+      }
+      secrets[
+        customConnectorSecretKey({
+          connectorId: row.connector.id,
+          kind: value.kind,
+          key: value.key,
+        })
+      ] = decryptedValue;
+    }
   }
 
   return { firewalls, secrets: compactRecord(secrets) };

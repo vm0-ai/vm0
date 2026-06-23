@@ -11,32 +11,15 @@ import {
   type FirewallPolicyValue,
 } from "../firewall-types";
 import type { ConnectorType } from "../connectors";
-import { CONNECTOR_TYPES } from "../connectors";
 import { expandFirewallPlaceholders } from "../firewall-placeholder-expansion";
-import {
-  clerkDefaultAllowed,
-  clerkCategories,
-  clerkCategoryOrder,
-  clerkFirewall,
-} from "./clerk.generated";
+import { clerkDefaultAllowed, clerkFirewall } from "./clerk.generated";
 import {
   gmailDefaultAllowed,
-  gmailCategories,
-  gmailCategoryOrder,
   gmailDefaultUnknownPolicy,
   gmailFirewall,
 } from "./gmail.generated";
-import {
-  slackDefaultAllowed,
-  slackCategories,
-  slackCategoryOrder,
-  slackFirewall,
-} from "./slack.generated";
-import {
-  vercelCategories,
-  vercelCategoryOrder,
-  vercelFirewall,
-} from "./vercel.generated";
+import { slackDefaultAllowed, slackFirewall } from "./slack.generated";
+import { vercelFirewall } from "./vercel.generated";
 import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { amadeusFirewall } from "./amadeus.generated";
@@ -89,8 +72,6 @@ import { clearbitFirewall } from "./clearbit.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import {
-  cloudflareCategories,
-  cloudflareCategoryOrder,
   cloudflareDefaultAllowed,
   cloudflareDefaultUnknownPolicy,
   cloudflareFirewall,
@@ -137,22 +118,16 @@ import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
 import {
-  googleAnalyticsCategories,
-  googleAnalyticsCategoryOrder,
   googleAnalyticsDefaultAllowed,
   googleAnalyticsDefaultUnknownPolicy,
   googleAnalyticsFirewall,
 } from "./google-analytics.generated";
 import {
-  googleCalendarCategories,
-  googleCalendarCategoryOrder,
   googleCalendarDefaultAllowed,
   googleCalendarDefaultUnknownPolicy,
   googleCalendarFirewall,
 } from "./google-calendar.generated";
 import {
-  googleCloudCategories,
-  googleCloudCategoryOrder,
   googleCloudDefaultAllowed,
   googleCloudDefaultUnknownPolicy,
   googleCloudFirewall,
@@ -164,29 +139,21 @@ import {
   googleDocsFirewall,
 } from "./google-docs.generated";
 import {
-  googleDriveCategories,
-  googleDriveCategoryOrder,
   googleDriveDefaultAllowed,
   googleDriveDefaultUnknownPolicy,
   googleDriveFirewall,
 } from "./google-drive.generated";
 import {
-  googleMeetCategories,
-  googleMeetCategoryOrder,
   googleMeetDefaultAllowed,
   googleMeetDefaultUnknownPolicy,
   googleMeetFirewall,
 } from "./google-meet.generated";
 import {
-  googleSearchConsoleCategories,
-  googleSearchConsoleCategoryOrder,
   googleSearchConsoleDefaultAllowed,
   googleSearchConsoleDefaultUnknownPolicy,
   googleSearchConsoleFirewall,
 } from "./google-search-console.generated";
 import {
-  googleSheetsCategories,
-  googleSheetsCategoryOrder,
   googleSheetsDefaultAllowed,
   googleSheetsDefaultUnknownPolicy,
   googleSheetsFirewall,
@@ -314,12 +281,7 @@ import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { strapiFirewall } from "./strapi.generated";
 import { streakFirewall } from "./streak.generated";
-import {
-  stripeCategories,
-  stripeCategoryOrder,
-  stripeDefaultAllowed,
-  stripeFirewall,
-} from "./stripe.generated";
+import { stripeDefaultAllowed, stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
 import { supermemoryFirewall } from "./supermemory.generated";
@@ -344,8 +306,6 @@ import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
 import {
-  youtubeCategories,
-  youtubeCategoryOrder,
   youtubeDefaultAllowed,
   youtubeDefaultUnknownPolicy,
   youtubeFirewall,
@@ -373,20 +333,6 @@ export {
   type FirewallPermissionGrantAction,
 } from "../firewall-metadata";
 export * from "../firewall-types";
-
-// ── Permission categories ───────────────────────────────────────────────
-
-export interface ConnectorCategories {
-  /** Map of permission name to category label */
-  categories: Record<string, string>;
-  /** Display order of categories (first = top of list) */
-  displayOrder: readonly string[];
-}
-
-export interface PermissionGroup<T extends { name: string }> {
-  category: string;
-  permissions: T[];
-}
 
 function defineConnectorFirewalls<
   const T extends Record<string, FirewallConfig>,
@@ -703,97 +649,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
       : never
     : never;
 
-const CONNECTOR_CATEGORIES: Partial<
-  Record<FirewallConnectorType, ConnectorCategories>
-> = {
-  clerk: { categories: clerkCategories, displayOrder: clerkCategoryOrder },
-  cloudflare: {
-    categories: cloudflareCategories,
-    displayOrder: cloudflareCategoryOrder,
-  },
-  "google-cloud": {
-    categories: googleCloudCategories,
-    displayOrder: googleCloudCategoryOrder,
-  },
-  "google-analytics": {
-    categories: googleAnalyticsCategories,
-    displayOrder: googleAnalyticsCategoryOrder,
-  },
-  "google-calendar": {
-    categories: googleCalendarCategories,
-    displayOrder: googleCalendarCategoryOrder,
-  },
-  "google-drive": {
-    categories: googleDriveCategories,
-    displayOrder: googleDriveCategoryOrder,
-  },
-  "google-meet": {
-    categories: googleMeetCategories,
-    displayOrder: googleMeetCategoryOrder,
-  },
-  "google-search-console": {
-    categories: googleSearchConsoleCategories,
-    displayOrder: googleSearchConsoleCategoryOrder,
-  },
-  "google-sheets": {
-    categories: googleSheetsCategories,
-    displayOrder: googleSheetsCategoryOrder,
-  },
-  gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
-  slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
-  stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
-  vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
-  youtube: {
-    categories: youtubeCategories,
-    displayOrder: youtubeCategoryOrder,
-  },
-};
-
-/** Get the category data for a connector type (null if uncategorized). */
-export function getPermissionCategories(
-  type: string,
-): ConnectorCategories | null {
-  return CONNECTOR_CATEGORIES[type as FirewallConnectorType] ?? null;
-}
-
-/**
- * Group permissions by their category for a given connector type.
- * Returns null when the connector has no category data (caller should
- * fall back to a flat list).
- */
-export function groupPermissionsByCategory<T extends { name: string }>(
-  permissions: T[],
-  connectorType: string,
-): PermissionGroup<T>[] | null {
-  const categoryData = getPermissionCategories(connectorType);
-  if (!categoryData) {
-    return null;
-  }
-
-  const grouped = new Map<string, T[]>();
-  for (const category of categoryData.displayOrder) {
-    grouped.set(category, []);
-  }
-
-  for (const perm of permissions) {
-    const category = categoryData.categories[perm.name];
-    if (category) {
-      const list = grouped.get(category);
-      if (list) {
-        list.push(perm);
-      }
-    }
-  }
-
-  return [...grouped.entries()]
-    .filter(([, perms]) => {
-      return perms.length > 0;
-    })
-    .map(([category, perms]) => {
-      return { category, permissions: perms };
-    });
-}
-
 /**
  * Connector types that do not have a firewall config.
  *
@@ -1009,15 +864,4 @@ export function getAllBuiltinConnectorHosts(): Map<
     }
   }
   return hosts;
-}
-
-/**
- * Human-readable display name for a built-in connector type
- * (e.g. "GitHub", "Google Drive"). Falls back to the type slug if
- * `CONNECTOR_TYPES` has no entry.
- */
-export function getBuiltinConnectorDisplayName(
-  type: FirewallConnectorType,
-): string {
-  return CONNECTOR_TYPES[type]?.label ?? type;
 }

@@ -4,6 +4,7 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -49,6 +50,13 @@ function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
     enabledTypes = body.enabledTypes;
     return respond(200, { enabledTypes });
   });
+}
+
+function encodeBase64UrlJson(value: unknown): string {
+  return btoa(JSON.stringify(value))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
 }
 
 function buttonByText(text: string, container: ParentNode): HTMLElement {
@@ -147,6 +155,76 @@ describe("chat message action cards", () => {
         within(permissionCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders custom connector proposal links as configure cards", async () => {
+    const proposalUrl = `https://app.vm0.ai/connectors/custom/proposal?p=${encodeBase64UrlJson(
+      {
+        operation: "create",
+        displayName: "Acme Internal API",
+        prefixTemplates: ["https://{{variables.subdomain}}.acme.test/v1/"],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+    )}&agentId=${AGENT_ID}`;
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-custom-connector`,
+      threadTitle: "Custom connector card",
+      chatMessages: [
+        {
+          id: "msg-user-custom-connector",
+          role: "user",
+          content: "Set up the custom connector",
+          runId: "run-custom-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-custom-connector-card",
+          role: "assistant",
+          content: proposalUrl,
+          runId: "run-custom-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorProposals]: true },
+      path: `/chats/${THREAD_ID}-custom-connector`,
+    });
+
+    const card = await screen.findByTestId("custom-connector-action-card");
+    expect(within(card).getByText("Acme Internal API")).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "Review, connect, and authorize this custom connector for the agent.",
+      ),
+    ).toBeInTheDocument();
+    const configureLink = queryAllByRoleFast("link", card).find((link) => {
+      return /configure/i.test(link.textContent ?? "");
+    });
+    expect(configureLink).toHaveAttribute("href", proposalUrl);
   });
 
   it("automatically retries permission action loading before showing an error", async () => {

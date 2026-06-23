@@ -111,6 +111,7 @@ export {
   getZeroAgentInstructions,
   updateZeroAgentInstructions,
   getZeroAgentUserConnectors,
+  getZeroAgentCustomConnectors,
   listZeroUserPermissionGrants,
 } from "./domains/zero-agents";
 
@@ -149,6 +150,8 @@ export {
   getZeroConnector,
   searchZeroConnectors,
   connectZeroConnectorManualGrant,
+  listZeroCustomConnectors,
+  getZeroCustomConnector,
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack

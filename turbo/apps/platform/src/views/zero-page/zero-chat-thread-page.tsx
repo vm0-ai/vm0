@@ -4,6 +4,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
+  UIEvent as ReactUIEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -115,6 +116,7 @@ import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
   completeChatConnectorActionConnect$,
+  type CustomConnectorActionBlock,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
@@ -2600,6 +2602,7 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-[calc(var(--github-pr-tracking-content-inset)_+_1rem)] sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset)_+_1.5rem)] @container";
 const GITHUB_PR_TRACKING_DOCK_WIDTH =
   "min(400px, max(280px, calc(100% - 760px)))";
+const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
 function githubPrTrackingLayoutStyle(
   githubPrTrackingOpen: boolean,
@@ -2636,6 +2639,7 @@ function ChatThreadMessagesMain({
   thread,
   groups,
   activeGroups,
+  renderedGroups,
   sessionError,
   skeletonVisible,
   messagesLoading,
@@ -2643,6 +2647,7 @@ function ChatThreadMessagesMain({
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
   activeGroups: GroupedChatMessageGroup[];
+  renderedGroups: GroupedChatMessageGroup[];
   sessionError: string | null;
   skeletonVisible: boolean;
   messagesLoading: boolean;
@@ -2652,10 +2657,13 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
-  const completedWorkFolding = buildCompletedWorkFolding(activeGroups);
+  const { activeGroups: renderedActiveGroups } =
+    splitQueuedMessagesForThinkingIndicator(renderedGroups);
+  const completedWorkFolding = buildCompletedWorkFolding(renderedActiveGroups);
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
+  const visibleGroups =
+    completedWorkFolding?.visibleGroups ?? renderedActiveGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -3148,17 +3156,35 @@ function useChatThreadKeyDownFactory() {
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const renderedGroupsLoadable = useLastLoadable(
+    thread.renderedGroupedChatMessages$,
+  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const renderedGroups =
+    renderedGroupsLoadable.state === "hasData"
+      ? renderedGroupsLoadable.data
+      : [];
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
+  const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
+  const pageSignal = useGet(pageSignal$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const githubPrTrackingOpen = useGithubPrTrackingOpen(
     thread,
     threadDataLoadable,
   );
+
+  const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
+    if (
+      event.currentTarget.scrollTop > CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX
+    ) {
+      return;
+    }
+    detach(loadMoreRenderedChatGroups(pageSignal), Reason.DomCallback);
+  };
 
   return (
     <>
@@ -3174,12 +3200,14 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               ref={setScrollContainer}
               data-scroll-container
               tabIndex={-1}
-              className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
+              onScroll={handleScroll}
+              className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
             >
               <ChatThreadMessagesMain
                 thread={thread}
                 groups={groups}
                 activeGroups={activeGroups}
+                renderedGroups={renderedGroups}
                 sessionError={sessionError}
                 skeletonVisible={skeletonVisible}
                 messagesLoading={messagesLoading}
@@ -4325,6 +4353,10 @@ function BodyContentBlocks({
           return <ConnectorActionCard key={block.id} block={block} />;
         }
 
+        if (block.type === "custom-connector-action") {
+          return <CustomConnectorActionCard key={block.id} block={block} />;
+        }
+
         if (block.type === "permission-action") {
           return <PermissionActionCard key={block.id} block={block} />;
         }
@@ -4423,6 +4455,52 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
         {activating && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
       </button>
+    </div>
+  );
+}
+
+function CustomConnectorActionCard({
+  block,
+}: {
+  block: CustomConnectorActionBlock;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const enabled =
+    features?.[FeatureSwitchKey.CustomConnectorProposals] ?? false;
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="custom-connector-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <IconPackage size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            {block.displayName}
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {block.agentId
+              ? "Review, connect, and authorize this custom connector for the agent."
+              : "Review and connect this custom connector."}
+          </div>
+        </div>
+      </div>
+      <a
+        href={block.originalUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        Configure
+        <IconArrowUpRight size={15} />
+      </a>
     </div>
   );
 }

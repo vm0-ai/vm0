@@ -1,16 +1,10 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { writeDb$ } from "../external/db";
-import { notFound } from "../../lib/error";
-import { nowDate } from "../../lib/time";
-import { encryptStoredSecretValue } from "../services/crypto.utils";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { getCustomConnectorById } from "../services/zero-custom-connector.service";
+import { setCustomConnectorValues$ } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route";
 
 const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -26,47 +20,21 @@ const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const connector = await get(
-    getCustomConnectorById({
+  const result = await set(
+    setCustomConnectorValues$,
+    {
       orgId: auth.orgId,
-      connectorId: params.id,
-    }),
-  );
-  signal.throwIfAborted();
-  if (!connector) {
-    return notFound("Custom connector not found");
-  }
-
-  const featureSwitchContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-
-  const encryptedValue = await encryptStoredSecretValue(
-    bodyResult.data.value,
-    featureSwitchContext,
-  );
-  signal.throwIfAborted();
-  const writeDb = set(writeDb$);
-  await writeDb
-    .insert(orgCustomConnectorSecrets)
-    .values({
-      connectorId: params.id,
       userId: auth.userId,
-      orgId: auth.orgId,
-      encryptedValue,
-    })
-    .onConflictDoUpdate({
-      target: [
-        orgCustomConnectorSecrets.connectorId,
-        orgCustomConnectorSecrets.userId,
-      ],
-      set: {
-        encryptedValue,
-        updatedAt: nowDate(),
-      },
-    });
+      connectorId: params.id,
+      values: [{ key: "secret", kind: "secret", value: bodyResult.data.value }],
+      syncLegacySecret: true,
+    },
+    signal,
+  );
   signal.throwIfAborted();
+  if ("status" in result) {
+    return result;
+  }
 
   return { status: 204 as const, body: undefined };
 });

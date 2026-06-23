@@ -10,8 +10,9 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import {
+  normaliseCustomConnectorRow,
+  serialiseCustomConnector,
   validateDisplayName,
-  type CustomConnectorRow,
 } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route";
 
@@ -34,20 +35,6 @@ function isBadRequestResponse(
     "status" in value &&
     (value as { status: unknown }).status === 400
   );
-}
-
-function serialiseRow(row: CustomConnectorRow) {
-  return {
-    id: row.id,
-    slug: row.slug,
-    displayName: row.displayName,
-    prefixes: [...row.prefixes],
-    headerName: row.headerName,
-    headerTemplate: row.headerTemplate,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    hasSecret: false,
-  };
 }
 
 const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -89,9 +76,9 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: serialiseRow({
-      ...row,
-      prefixes: row.prefixes as readonly string[],
+    body: serialiseCustomConnector({
+      row: normaliseCustomConnectorRow(row),
+      valueMarkers: [],
     }),
   };
 });

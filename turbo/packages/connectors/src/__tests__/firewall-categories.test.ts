@@ -1,13 +1,23 @@
-import { describe, it, expect } from "vitest";
-import {
-  getPermissionCategories,
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "../firewalls/index";
+import { describe, expect, it } from "vitest";
 
-const CATEGORIZED_CONNECTORS = [
+import {
+  FIREWALL_PERMISSION_METADATA_SUMMARIES,
+  getFirewallPermissionSummary,
+  loadFirewallPermissionMetadata,
+} from "../firewall-metadata";
+import type {
+  FirewallPermissionCategoryMetadata,
+  FirewallPermissionDetailMetadata,
+} from "../firewall-metadata";
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+const EXPECTED_CATEGORIZED_CONNECTORS = [
   "clerk",
   "cloudflare",
+  "gmail",
   "google-analytics",
   "google-calendar",
   "google-cloud",
@@ -16,84 +26,121 @@ const CATEGORIZED_CONNECTORS = [
   "google-search-console",
   "google-sheets",
   "slack",
-  "gmail",
   "stripe",
   "vercel",
   "youtube",
 ] as const;
 
-function getFirewallPermissionNames(connectorType: string): Set<string> {
-  if (!isFirewallConnectorType(connectorType)) {
-    return new Set();
+const CATEGORIZED_CONNECTORS = Object.entries(
+  FIREWALL_PERMISSION_METADATA_SUMMARIES,
+)
+  .filter(([, summary]) => {
+    return summary.hasCategories;
+  })
+  .map(([type]) => {
+    return type;
+  })
+  .sort(compareStrings);
+
+const UNCATEGORIZED_CONNECTORS = ["linear", "notion"] as const;
+
+async function loadDetail(
+  type: string,
+): Promise<FirewallPermissionDetailMetadata> {
+  const detail = await loadFirewallPermissionMetadata(type);
+  if (detail === null) {
+    throw new Error(`Expected firewall metadata detail for ${type}`);
   }
-  const config = getConnectorFirewall(connectorType);
-  const names = new Set<string>();
-  for (const api of config.apis) {
-    if (api.permissions) {
-      for (const p of api.permissions) {
-        names.add(p.name);
-      }
-    }
+  return detail;
+}
+
+async function loadCategorizedDetail(type: string): Promise<{
+  detail: FirewallPermissionDetailMetadata;
+  categories: FirewallPermissionCategoryMetadata;
+}> {
+  const detail = await loadDetail(type);
+  if (detail.categories === undefined) {
+    throw new Error(`Expected firewall category metadata for ${type}`);
   }
-  return names;
+  return { detail, categories: detail.categories };
 }
 
 describe("firewall categories", () => {
-  it("should return categories for all categorized connectors", () => {
-    for (const connector of CATEGORIZED_CONNECTORS) {
-      const data = getPermissionCategories(connector);
-      expect(data).not.toBeNull();
-    }
+  it("tracks categorized connectors in generated summaries", () => {
+    expect(CATEGORIZED_CONNECTORS).toStrictEqual(
+      [...EXPECTED_CATEGORIZED_CONNECTORS].sort(compareStrings),
+    );
   });
 
-  it("should return null for uncategorized connectors", () => {
-    expect(getPermissionCategories("notion")).toBeNull();
-    expect(getPermissionCategories("linear")).toBeNull();
+  it("does not emit categories for selected uncategorized connectors", async () => {
+    for (const connector of UNCATEGORIZED_CONNECTORS) {
+      const summary = getFirewallPermissionSummary(connector);
+      if (summary === null) {
+        throw new Error(`Expected firewall metadata summary for ${connector}`);
+      }
+      const detail = await loadDetail(connector);
+
+      expect(summary.hasCategories).toBe(false);
+      expect(detail.categories).toBeUndefined();
+    }
   });
 
   for (const connector of CATEGORIZED_CONNECTORS) {
     describe(connector, () => {
-      it("should have a category for every permission in the firewall config", () => {
-        const permNames = getFirewallPermissionNames(connector);
-        const data = getPermissionCategories(connector)!;
-        const categorized = new Set(Object.keys(data.categories));
+      it("has category metadata", async () => {
+        const { categories } = await loadCategorizedDetail(connector);
 
-        const missing = [...permNames].filter((name) => {
-          return !categorized.has(name);
-        });
+        expect(categories).toBeDefined();
+      });
+
+      it("has a category for every metadata permission", async () => {
+        const { detail, categories } = await loadCategorizedDetail(connector);
+        const categorized = new Set(Object.keys(categories.categories));
+
+        const missing = detail.permissions
+          .map((permission) => {
+            return permission.name;
+          })
+          .filter((name) => {
+            return !categorized.has(name);
+          });
         expect(missing).toEqual([]);
       });
 
-      it("should not have orphan keys that are not in the firewall config", () => {
-        const permNames = getFirewallPermissionNames(connector);
-        const data = getPermissionCategories(connector)!;
+      it("does not have orphan category keys", async () => {
+        const { detail, categories } = await loadCategorizedDetail(connector);
+        const permissionNames = new Set(
+          detail.permissions.map((permission) => {
+            return permission.name;
+          }),
+        );
 
-        const orphans = Object.keys(data.categories).filter((name) => {
-          return !permNames.has(name);
+        const orphans = Object.keys(categories.categories).filter((name) => {
+          return !permissionNames.has(name);
         });
         expect(orphans).toEqual([]);
       });
 
-      it("should have displayOrder covering every category used", () => {
-        const data = getPermissionCategories(connector)!;
-        const usedCategories = new Set(Object.values(data.categories));
-        const orderedCategories = new Set(data.displayOrder);
+      it("has displayOrder covering every category used", async () => {
+        const { categories } = await loadCategorizedDetail(connector);
+        const usedCategories = new Set(Object.values(categories.categories));
+        const orderedCategories = new Set(categories.displayOrder);
 
-        const missing = [...usedCategories].filter((cat) => {
-          return !orderedCategories.has(cat);
+        const missing = [...usedCategories].filter((category) => {
+          return !orderedCategories.has(category);
         });
         expect(missing).toEqual([]);
       });
 
-      it("should have at least one permission in each displayOrder category", () => {
-        const data = getPermissionCategories(connector)!;
+      it("has at least one permission in each displayOrder category", async () => {
+        const { categories } = await loadCategorizedDetail(connector);
         const categoryCounts = new Map<string, number>();
-        for (const cat of Object.values(data.categories)) {
-          categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1);
+        for (const category of Object.values(categories.categories)) {
+          categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
         }
 
-        for (const cat of data.displayOrder) {
-          expect(categoryCounts.get(cat) ?? 0).toBeGreaterThan(0);
+        for (const category of categories.displayOrder) {
+          expect(categoryCounts.get(category) ?? 0).toBeGreaterThan(0);
         }
       });
     });

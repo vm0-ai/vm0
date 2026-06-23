@@ -115,6 +115,25 @@ function customConnector(
     prefixes: ["https://api.acme.test/v1/"],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
+    prefixTemplates: ["https://api.acme.test/v1/"],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
     hasSecret: false,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",

@@ -297,52 +297,6 @@ export const setTemplateCardThemeId$ = command(
   },
 );
 
-export type TemplateCardThemePopoverSide = "bottom" | "left" | "right";
-export type TemplateCardThemePopoverAlign = "end" | "start";
-export interface TemplateCardThemePopoverPlacement {
-  readonly align: TemplateCardThemePopoverAlign;
-  readonly alignOffset: number;
-  readonly side: TemplateCardThemePopoverSide;
-}
-
-const internalTemplateCardThemePopoverPlacementBySlug$ = state<
-  Readonly<Record<string, TemplateCardThemePopoverPlacement>>
->({});
-export const templateCardThemePopoverPlacementBySlug$ = computed((get) => {
-  return get(internalTemplateCardThemePopoverPlacementBySlug$);
-});
-export const setTemplateCardThemePopoverPlacement$ = command(
-  (
-    { get, set },
-    slug: string,
-    placement: TemplateCardThemePopoverPlacement,
-  ) => {
-    const current = get(internalTemplateCardThemePopoverPlacementBySlug$);
-    const previous = current[slug];
-    if (
-      previous?.align === placement.align &&
-      previous.alignOffset === placement.alignOffset &&
-      previous.side === placement.side
-    ) {
-      return;
-    }
-    set(internalTemplateCardThemePopoverPlacementBySlug$, {
-      ...current,
-      [slug]: placement,
-    });
-  },
-);
-
-const internalTemplateCardThemePopoverOpenSlug$ = state<string | null>(null);
-export const templateCardThemePopoverOpenSlug$ = computed((get) => {
-  return get(internalTemplateCardThemePopoverOpenSlug$);
-});
-export const setTemplateCardThemePopoverOpenSlug$ = command(
-  ({ set }, slug: string | null) => {
-    set(internalTemplateCardThemePopoverOpenSlug$, slug);
-  },
-);
-
 interface TemplateDetailHtmlPreviewState {
   readonly slug: string;
   readonly embedUrl: string;

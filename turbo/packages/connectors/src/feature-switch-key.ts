@@ -54,4 +54,5 @@ export enum FeatureSwitchKey {
   WorkflowGmailEventTriggers = "workflowGmailEventTriggers",
   GoalWorkflows = "goalWorkflows",
   MobileSingleLineComposer = "mobileSingleLineComposer",
+  CustomConnectorProposals = "customConnectorProposals",
 }

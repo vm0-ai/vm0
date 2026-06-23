@@ -6,12 +6,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh
+Usage: runner-host-architecture-groups.sh [matrix|has-groups|hosts ID]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
-  AWS_METAL_RUNNER_HOSTS      Existing ARM64 host list.
-  X86_64_METAL_RUNNER_HOSTS   Optional x86_64 host list.
+  AWS_METAL_RUNNER_HOSTS      Metal runner host list.
+  METAL_USER                  SSH user for metal runner hosts.
+
+Commands:
+  <none>      Emit the full local contract, including hosts.
+  matrix      Emit the cross-job matrix contract, excluding hosts.
+  has-groups  Emit true when at least one host group is configured.
+  hosts ID    Emit comma-separated hosts for the given architecture group.
 USAGE
 }
 
@@ -61,18 +67,146 @@ append_group() {
     }]' <<<"$groups"
 }
 
+require_env() {
+  local name=$1
+  if [ -z "${!name:-}" ]; then
+    echo "missing required env: ${name}" >&2
+    exit 2
+  fi
+}
+
+append_csv() {
+  local current=$1 value=$2
+  if [ -n "$current" ]; then
+    printf '%s,%s\n' "$current" "$value"
+  else
+    printf '%s\n' "$value"
+  fi
+}
+
+validate_host_entry() {
+  local host=$1
+  if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
+    echo "invalid runner host entry: ${host}" >&2
+    return 2
+  fi
+}
+
+validate_hosts_csv() {
+  local hosts=$1
+  local host host_key
+  while IFS= read -r host; do
+    validate_host_entry "$host" || return $?
+  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+
+  declare -A seen_hosts=()
+  while IFS= read -r host; do
+    host_key=${host,,}
+    if [ -n "${seen_hosts[$host_key]+x}" ]; then
+      echo "duplicate runner host configured: ${host}" >&2
+      return 2
+    fi
+    seen_hosts[$host_key]=1
+  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+}
+
+host_uname_m() {
+  local host=$1
+  local remote_arch
+  remote_arch=$(ssh "${METAL_USER}@${host}" uname -m)
+  printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r'
+}
+
 emit_groups() {
-  local groups
+  local groups hosts arm64_hosts="" x86_64_hosts=""
+  hosts=$(normalize_hosts "${AWS_METAL_RUNNER_HOSTS:-}")
+  if [ -z "$hosts" ]; then
+    jq -n -c '[]'
+    return 0
+  fi
+
+  require_env METAL_USER
+  validate_hosts_csv "$hosts" || return $?
+
+  local host uname_m
+  while IFS= read -r host; do
+    uname_m=$(host_uname_m "$host")
+    case "$uname_m" in
+      aarch64)
+        arm64_hosts=$(append_csv "$arm64_hosts" "$host")
+        ;;
+      x86_64)
+        x86_64_hosts=$(append_csv "$x86_64_hosts" "$host")
+        ;;
+      *)
+        echo "unsupported runner host architecture for ${host}: ${uname_m}" >&2
+        return 2
+        ;;
+    esac
+  done < <(printf '%s\n' "$hosts" | tr ',' '\n')
+
   groups=$(jq -n -c '[]')
-  groups=$(append_group "$groups" "arm64" "ARM64" "${AWS_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
-  groups=$(append_group "$groups" "x86_64" "x86_64" "${X86_64_METAL_RUNNER_HOSTS:-}" "x86_64-unknown-linux-musl")
+  groups=$(append_group "$groups" "arm64" "ARM64" "$arm64_hosts" "aarch64-unknown-linux-musl")
+  groups=$(append_group "$groups" "x86_64" "x86_64" "$x86_64_hosts" "x86_64-unknown-linux-musl")
   printf '%s\n' "$groups"
+}
+
+emit_matrix() {
+  local groups
+  groups=$(emit_groups) || return $?
+  jq -c 'map({
+    id,
+    label,
+    target,
+    unameM,
+    cacheSuffix,
+    assetSuffix
+  })' <<<"$groups"
+}
+
+emit_has_groups() {
+  local groups
+  groups=$(emit_groups) || return $?
+  if jq -e 'length > 0' >/dev/null <<<"$groups"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+emit_hosts() {
+  local group_id=${1:-}
+  if [ -z "$group_id" ]; then
+    echo "missing runner host group id" >&2
+    return 2
+  fi
+
+  case "$group_id" in
+    arm64|x86_64) ;;
+    *)
+      echo "unsupported runner host group id: ${group_id}" >&2
+      return 2
+      ;;
+  esac
+
+  local groups
+  groups=$(emit_groups) || return $?
+  jq -r --arg id "$group_id" '.[] | select(.id == $id) | .hosts' <<<"$groups"
 }
 
 cmd="${1:-}"
 case "$cmd" in
   "")
     emit_groups
+    ;;
+  matrix)
+    emit_matrix
+    ;;
+  has-groups)
+    emit_has_groups
+    ;;
+  hosts)
+    emit_hosts "${2:-}"
     ;;
   -h|--help|help)
     usage

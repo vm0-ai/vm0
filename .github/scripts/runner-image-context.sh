@@ -166,9 +166,12 @@ needed() {
   local release_skip
   release_skip=$(bool "${RELEASE_SKIP:-false}")
 
+  local runner_host_groups_configured
+  runner_host_groups_configured=$(bool "${RUNNER_HOST_GROUPS_CONFIGURED:-false}")
+
   local metal_hosts="${METAL_HOSTS:-}"
   local has_metal_hosts="false"
-  if printf '%s\n' "$metal_hosts" | tr ',' '\n' | grep -q '[^[:space:]]'; then
+  if [ "$runner_host_groups_configured" = "true" ] || printf '%s\n' "$metal_hosts" | tr ',' '\n' | grep '[^[:space:]]' >/dev/null; then
     has_metal_hosts="true"
   fi
 

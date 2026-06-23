@@ -1,4 +1,4 @@
-import { command, state, type State } from "ccstate";
+import { command, computed, state, type State } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -8,6 +8,13 @@ const USER_INPUT_WINDOW_MS = 200;
 const KEY_SCROLL_STEP_PX = 72;
 
 export type ScrollStepDirection = "up" | "down";
+export type PrependScrollCompensationToken = symbol;
+
+interface PendingPrependScrollRecord {
+  readonly token: PrependScrollCompensationToken;
+  scrollHeight: number;
+  scrollTop: number;
+}
 
 // Persists a user's last non-bottom scroll position across container
 // re-binds (e.g. when switching between parallel chat threads). Keyed by
@@ -64,10 +71,11 @@ function scrollInfo(el: HTMLElement) {
 interface RestoreState {
   pendingRestorePosition: number | null;
   suppressNextScrollToBottom: boolean;
-  // Snapshot taken just before prepending older messages. The ResizeObserver
-  // detects the resulting height increase and adds the delta to scrollTop so
-  // the user's viewport stays anchored on the same content.
-  pendingPrependScrollHeight: number | null;
+  // Snapshots taken just before prepending older messages. Each async caller
+  // owns a token so a no-op clear from one path cannot discard another path's
+  // pending compensation.
+  pendingPrependScrollRecords: PendingPrependScrollRecord[];
+  suppressNextResizeScrollToBottom: boolean;
 }
 
 function attachUserInputListeners(
@@ -135,6 +143,7 @@ function buildScrollHandler(ctx: ScrollHandlerContext) {
     }
     if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
       const wasDisabled = ctx.isDisabled();
+      restoreState.suppressNextResizeScrollToBottom = false;
       ctx.setDisabled(false);
       ctx.clearCache();
       if (wasDisabled) {
@@ -164,13 +173,7 @@ function buildScrollHandler(ctx: ScrollHandlerContext) {
   };
 }
 
-interface ResizeHandlerContext {
-  el: HTMLElement;
-  restoreState: RestoreState;
-  isDisabled: () => boolean;
-}
-
-function buildResizeHandler(ctx: ResizeHandlerContext) {
+function buildResizeHandler(ctx: ScrollHandlerContext) {
   return () => {
     const { el, restoreState } = ctx;
     const disabled = ctx.isDisabled();
@@ -182,17 +185,38 @@ function buildResizeHandler(ctx: ResizeHandlerContext) {
       }
       return;
     }
-    if (restoreState.pendingPrependScrollHeight !== null) {
-      const delta = el.scrollHeight - restoreState.pendingPrependScrollHeight;
-      restoreState.pendingPrependScrollHeight = null;
+    const prependRecord = restoreState.pendingPrependScrollRecords.shift();
+    if (prependRecord) {
+      const delta = el.scrollHeight - prependRecord.scrollHeight;
       if (delta > 0) {
-        el.scrollTop += delta;
+        el.scrollTop = prependRecord.scrollTop + delta;
+        const distanceFromBottom =
+          el.scrollHeight - el.scrollTop - el.clientHeight;
+        const awayFromBottom = distanceFromBottom > AT_BOTTOM_THRESHOLD;
+        ctx.setAwayFromBottom(awayFromBottom);
+        if (awayFromBottom) {
+          restoreState.suppressNextResizeScrollToBottom = true;
+          ctx.setDisabled(true);
+          if (ctx.id !== undefined) {
+            ctx.saveCache(el.scrollTop);
+          }
+        }
+        ctx.lastKnownScrollTop.v = el.scrollTop;
         L.debug(
           "prepend compensation applied",
           `delta=${delta}`,
           scrollInfo(el),
         );
       }
+      for (const pendingRecord of restoreState.pendingPrependScrollRecords) {
+        pendingRecord.scrollHeight = el.scrollHeight;
+        pendingRecord.scrollTop = el.scrollTop;
+      }
+      return;
+    }
+    if (restoreState.suppressNextResizeScrollToBottom) {
+      restoreState.suppressNextResizeScrollToBottom = false;
+      L.debug("resize scroll-to-bottom suppressed after prepend");
       return;
     }
     if (!disabled) {
@@ -268,6 +292,7 @@ function createPrepareKeyboardScrollCommand(
 interface RecordScrollHeightForPrependCommandDeps {
   internalScrollContainer$: State<HTMLElement | null>;
   restoreState: RestoreState;
+  lastKnownScrollTop: { v: number };
 }
 
 function createRecordScrollHeightForPrependCommand(
@@ -275,11 +300,37 @@ function createRecordScrollHeightForPrependCommand(
 ) {
   return command(({ get }) => {
     const el = get(deps.internalScrollContainer$);
-    if (el) {
-      deps.restoreState.pendingPrependScrollHeight = el.scrollHeight;
-      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    if (!el) {
+      return null;
     }
+    const token = Symbol("prepend-scroll-compensation");
+    deps.restoreState.pendingPrependScrollRecords.push({
+      token,
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    });
+    deps.lastKnownScrollTop.v = el.scrollTop;
+    L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    return token;
   });
+}
+
+function createClearScrollHeightForPrependCommand(restoreState: RestoreState) {
+  return command(
+    (_ctx, token: PrependScrollCompensationToken | null | undefined) => {
+      if (!token) {
+        return;
+      }
+      const index = restoreState.pendingPrependScrollRecords.findIndex(
+        (record) => {
+          return record.token === token;
+        },
+      );
+      if (index !== -1) {
+        restoreState.pendingPrependScrollRecords.splice(index, 1);
+      }
+    },
+  );
 }
 
 interface ScrollToTopCommandDeps {
@@ -319,6 +370,7 @@ function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
       deps.restoreState.suppressNextScrollToBottom = false;
       return;
     }
+    deps.restoreState.suppressNextResizeScrollToBottom = false;
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 }
@@ -351,11 +403,15 @@ export function createScrollSignals(id?: string) {
   const autoScrollDisabled$ = state(false);
   // Readable "scrolled away from the bottom" flag for UI (the scroll-to-bottom
   // button). Purely reflects distance from bottom, unlike autoScrollDisabled$.
-  const awayFromBottom$ = state(false);
+  const awayFromBottomState$ = state(false);
+  const awayFromBottom$ = computed((get) => {
+    return get(awayFromBottomState$);
+  });
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
-    pendingPrependScrollHeight: null,
+    pendingPrependScrollRecords: [],
+    suppressNextResizeScrollToBottom: false,
   };
   const lastKnownScrollTop = { v: 0 };
   const lastUserInputAt = { v: 0 };
@@ -378,7 +434,7 @@ export function createScrollSignals(id?: string) {
         el.scrollTop = saved;
         set(autoScrollDisabled$, true);
         // A cached position is always non-bottom — reflect it immediately.
-        set(awayFromBottom$, true);
+        set(awayFromBottomState$, true);
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
       }
 
@@ -408,18 +464,14 @@ export function createScrollSignals(id?: string) {
           }
         },
         setAwayFromBottom: (v) => {
-          if (get(awayFromBottom$) !== v) {
-            set(awayFromBottom$, v);
+          if (get(awayFromBottomState$) !== v) {
+            set(awayFromBottomState$, v);
           }
         },
       };
 
       const onScroll = buildScrollHandler(ctx);
-      const onResize = buildResizeHandler({
-        el,
-        restoreState,
-        isDisabled: ctx.isDisabled,
-      });
+      const onResize = buildResizeHandler(ctx);
 
       attachUserInputListeners(el, markUserInput, onScroll, signal);
       observeContainerResize(el, onResize, signal);
@@ -468,7 +520,10 @@ export function createScrollSignals(id?: string) {
     createRecordScrollHeightForPrependCommand({
       internalScrollContainer$,
       restoreState,
+      lastKnownScrollTop,
     });
+  const clearScrollHeightForPrepend$ =
+    createClearScrollHeightForPrependCommand(restoreState);
 
   const scrollToTop$ = createScrollToTopCommand({
     internalScrollContainer$,
@@ -485,6 +540,7 @@ export function createScrollSignals(id?: string) {
     scrollBy$,
     prepareKeyboardScroll$,
     recordScrollHeightForPrepend$,
+    clearScrollHeightForPrepend$,
     awayFromBottom$,
   };
 }

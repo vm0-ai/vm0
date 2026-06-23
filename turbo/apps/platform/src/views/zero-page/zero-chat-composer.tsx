@@ -18,7 +18,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconChevronDown,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
@@ -181,15 +180,10 @@ import {
   setTemplateCardLoadedHtmlFrameUrl$,
   templateCardThemeIdBySlug$,
   setTemplateCardThemeId$,
-  templateCardThemePopoverPlacementBySlug$,
-  setTemplateCardThemePopoverPlacement$,
-  templateCardThemePopoverOpenSlug$,
-  setTemplateCardThemePopoverOpenSlug$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
   templateCardDefaultHtmlPreviews$,
   setTemplateCardDefaultHtmlPreview$,
-  type TemplateCardThemePopoverPlacement,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
   setTemplateDetailHtmlPreview$,
@@ -3101,6 +3095,7 @@ function TemplatePreviewPage({
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setThemeId = useSet(setTemplateDetailThemeId$);
+  const setCardThemeId = useSet(setTemplateCardThemeId$);
   const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const selectedThemeId =
@@ -3540,6 +3535,7 @@ function TemplatePreviewPage({
               aria-label={`Select template ${item.title}`}
               className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
+                setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
                   item,
                   presentationTemplateColorSystemId(selectedTheme.id),
@@ -3552,307 +3548,6 @@ function TemplatePreviewPage({
         </div>
       </div>
     </>
-  );
-}
-
-function presentationTemplateCardThemeSwatches(
-  item: PresentationTemplateItem,
-  theme: PresentationTemplateThemeOption,
-): readonly { readonly color: string; readonly id: string }[] {
-  if (theme.group === "single-accent") {
-    return presentationTemplateThemeAccentSwatches(item, theme);
-  }
-  return presentationTemplateThemePreviewSwatches(theme);
-}
-
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP = 4;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT = 228;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH = 232;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN = 12;
-const PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR =
-  "[data-presentation-template-grid-scroll]";
-
-function presentationTemplateGridScrollElement(
-  slug: string,
-): HTMLElement | undefined {
-  if (typeof document === "undefined") {
-    return undefined;
-  }
-  for (const candidate of document.querySelectorAll(
-    "[data-template-theme-trigger-slug]",
-  )) {
-    if (
-      candidate instanceof HTMLButtonElement &&
-      candidate.dataset.templateThemeTriggerSlug === slug
-    ) {
-      const scrollContainer = candidate.closest(
-        PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-      return scrollContainer instanceof HTMLElement
-        ? scrollContainer
-        : undefined;
-    }
-  }
-  return undefined;
-}
-
-function resolvePresentationTemplateCardThemePopoverPlacement(
-  trigger: HTMLButtonElement,
-): TemplateCardThemePopoverPlacement {
-  const triggerRect = trigger.getBoundingClientRect();
-  const scrollContainer = trigger.closest(
-    PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-  );
-  const boundaryRect =
-    scrollContainer instanceof HTMLElement
-      ? scrollContainer.getBoundingClientRect()
-      : null;
-  const boundaryBottom = boundaryRect?.bottom ?? window.innerHeight;
-  const boundaryLeft = boundaryRect?.left ?? 0;
-  const boundaryRight = boundaryRect?.right ?? window.innerWidth;
-  const availableBottomSpace = boundaryBottom - triggerRect.bottom;
-  if (
-    availableBottomSpace >=
-    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
-  ) {
-    const startOverflowsRight =
-      triggerRect.left +
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN >
-      boundaryRight;
-    const endOverflowsLeft =
-      triggerRect.right -
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH -
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN <
-      boundaryLeft;
-    return {
-      align: startOverflowsRight && !endOverflowsLeft ? "end" : "start",
-      alignOffset: 0,
-      side: "bottom",
-    };
-  }
-  const availableRightSpace = boundaryRight - triggerRect.right;
-  if (
-    availableRightSpace >=
-    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
-  ) {
-    return { align: "end", alignOffset: 0, side: "right" };
-  }
-  return {
-    align: "start",
-    alignOffset:
-      triggerRect.height + PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP,
-    side: "left",
-  };
-}
-
-function shouldOpenPresentationTemplateThemePage(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 639px)").matches
-  );
-}
-
-function PresentationTemplateCardThemePicker({
-  item,
-  onOpenThemePage,
-  selectedTheme,
-  triggerClassName,
-  onThemeChange,
-}: {
-  item: PresentationTemplateItem;
-  onOpenThemePage: () => void;
-  selectedTheme: PresentationTemplateThemeOption;
-  triggerClassName?: string;
-  onThemeChange: (theme: PresentationTemplateThemeOption) => void;
-}) {
-  const selectedSwatches = presentationTemplateCardThemeSwatches(
-    item,
-    selectedTheme,
-  );
-  const openSlug = useGet(templateCardThemePopoverOpenSlug$);
-  const setOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
-  const placementBySlug = useGet(templateCardThemePopoverPlacementBySlug$);
-  const setPlacement = useSet(setTemplateCardThemePopoverPlacement$);
-  const open = openSlug === item.slug;
-  const placement = placementBySlug[item.slug] ?? {
-    align: "start",
-    alignOffset: 0,
-    side: "bottom",
-  };
-  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
-    (theme) => {
-      return theme.group === "multi-accent";
-    },
-  );
-  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
-    (theme) => {
-      return theme.group === "single-accent";
-    },
-  );
-
-  const updatePopoverPlacement = (trigger: HTMLButtonElement) => {
-    setPlacement(
-      item.slug,
-      resolvePresentationTemplateCardThemePopoverPlacement(trigger),
-    );
-  };
-  const openThemePageOnMobile = () => {
-    if (!shouldOpenPresentationTemplateThemePage()) {
-      return false;
-    }
-    setOpenSlug(null);
-    onOpenThemePage();
-    return true;
-  };
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpenSlug(nextOpen ? item.slug : null);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Change theme for ${item.title}`}
-          data-template-theme-trigger-slug={item.slug}
-          onPointerDown={(event) => {
-            if (openThemePageOnMobile()) {
-              event.preventDefault();
-              return;
-            }
-            updatePopoverPlacement(event.currentTarget);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              if (openThemePageOnMobile()) {
-                event.preventDefault();
-                return;
-              }
-              updatePopoverPlacement(event.currentTarget);
-            }
-          }}
-          className={cn(
-            "inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            triggerClassName,
-          )}
-        >
-          <IconPalette
-            size={13}
-            stroke={1.8}
-            className="shrink-0 text-muted-foreground"
-          />
-          <span className="flex shrink-0 items-center gap-0.5">
-            {selectedSwatches.map((swatch) => {
-              return (
-                <span
-                  key={`${selectedTheme.id}-${swatch.id}`}
-                  className="h-2.5 w-2.5 rounded-full border border-border"
-                  style={{ backgroundColor: swatch.color }}
-                />
-              );
-            })}
-          </span>
-          <IconChevronDown
-            size={12}
-            stroke={1.8}
-            className="shrink-0 text-muted-foreground"
-          />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align={placement.align}
-        alignOffset={placement.alignOffset}
-        avoidCollisions={false}
-        className="z-[90] w-[232px] p-2"
-        portalContainer={presentationTemplateGridScrollElement(item.slug)}
-        side={placement.side}
-        sideOffset={PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP}
-      >
-        <p className="px-1 text-[11px] font-medium text-muted-foreground">
-          Multi-accent
-        </p>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {multiAccentThemes.map((theme) => {
-            const active = theme.id === selectedTheme.id;
-            const swatches = presentationTemplateCardThemeSwatches(item, theme);
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-label={`Select card theme ${theme.name} for ${item.title}`}
-                aria-pressed={active}
-                onClick={() => {
-                  onThemeChange(theme);
-                }}
-                className={cn(
-                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "border-border hover:border-muted-foreground/60",
-                )}
-              >
-                <span className="flex h-full">
-                  {swatches.map((swatch) => {
-                    return (
-                      <span
-                        key={`${theme.id}-${swatch.id}`}
-                        className="flex-1"
-                        style={{ backgroundColor: swatch.color }}
-                      />
-                    );
-                  })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 px-1 text-[11px] font-medium text-muted-foreground">
-          Single-accent
-        </p>
-        <div className="mt-1 grid grid-cols-4 gap-1.5">
-          {singleAccentThemes.map((theme) => {
-            const active = theme.id === selectedTheme.id;
-            const swatches = presentationTemplateCardThemeSwatches(item, theme);
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-label={`Select card theme ${theme.name} for ${item.title}`}
-                aria-pressed={active}
-                onClick={() => {
-                  onThemeChange(theme);
-                }}
-                className={cn(
-                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "border-border hover:border-muted-foreground/60",
-                )}
-              >
-                <span className="flex h-full">
-                  {swatches.map((swatch) => {
-                    return (
-                      <span
-                        key={`${theme.id}-${swatch.id}`}
-                        className="flex-1"
-                        style={{ backgroundColor: swatch.color }}
-                      />
-                    );
-                  })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -3869,42 +3564,9 @@ function PptCard({
   priority?: boolean;
 }) {
   const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const setThemeId = useSet(setTemplateCardThemeId$);
-  const hover = useGet(templateCardHover$);
-  const htmlPreview = useGet(templateCardHtmlPreview$);
-  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
-  const refreshCardHtmlPreviewTheme = (
-    theme: PresentationTemplateThemeOption,
-  ) => {
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
-    if (cachedDraft === undefined) {
-      return;
-    }
-    const index =
-      hover?.slug === item.slug
-        ? hover.index
-        : (presentationTemplateHtmlPreviewCache().activeIndexes.get(
-            item.embedUrl,
-          ) ?? 0);
-    setHtmlPreview(
-      createPresentationTemplateHtmlPreviewState({
-        draft: cachedDraft,
-        index,
-        item,
-        previousFrameUrl:
-          htmlPreview?.slug === item.slug &&
-          htmlPreview.embedUrl === item.embedUrl
-            ? htmlPreview.frameUrl
-            : null,
-        theme,
-      }),
-    );
-  };
 
   return (
     <div
@@ -3932,41 +3594,22 @@ function PptCard({
             </Tooltip>
           </TooltipProvider>
         </div>
-        <div className="inline-flex h-8 max-w-full shrink-0 overflow-hidden rounded-md border border-border bg-background text-foreground">
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(
-                item,
-                presentationTemplateColorSystemId(selectedTheme.id),
-              );
-            }}
-            className={cn(
-              "h-full shrink-0 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              selected
-                ? "bg-primary/10 text-primary"
-                : "bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
-          <div className="min-w-0 border-l border-border">
-            <PresentationTemplateCardThemePicker
-              item={item}
-              onOpenThemePage={() => {
-                onPreview(item);
-              }}
-              selectedTheme={selectedTheme}
-              triggerClassName="rounded-none border-0 shadow-none focus-visible:ring-inset"
-              onThemeChange={(theme) => {
-                setThemeId(item.slug, theme.id);
-                refreshCardHtmlPreviewTheme(theme);
-              }}
-            />
-          </div>
-        </div>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "bg-primary/10 text-primary"
+              : "bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
       </div>
     </div>
   );
