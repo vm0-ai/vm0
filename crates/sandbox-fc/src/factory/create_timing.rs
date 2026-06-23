@@ -361,6 +361,29 @@ mod tests {
         "workspace_seed_sparse_copy_ms",
     ];
 
+    const SUCCESS_SUMMARY_STAGE_FIELDS: &[(SandboxCreateStage, &str)] = &[
+        (SandboxCreateStage::CowPoolAcquire, "cow_pool_acquire_ms"),
+        (
+            SandboxCreateStage::WorkspaceDirRename,
+            "workspace_dir_rename_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceDrivePrepare,
+            "workspace_drive_prepare_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceSeedSparseCopy,
+            "workspace_seed_sparse_copy_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceFreshFormat,
+            "workspace_fresh_format_ms",
+        ),
+        (SandboxCreateStage::SockDirPrepare, "sock_dir_prepare_ms"),
+        (SandboxCreateStage::NetnsAcquire, "netns_acquire_ms"),
+        (SandboxCreateStage::NbdCowCreate, "nbd_cow_create_ms"),
+    ];
+
     fn capture_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
@@ -419,15 +442,26 @@ mod tests {
 
     #[test]
     fn success_summary_contract_includes_every_stage_field() {
-        let stage_fields: BTreeSet<&str> = SandboxCreateStage::ALL
+        assert_eq!(
+            SUCCESS_SUMMARY_STAGE_FIELDS.len(),
+            SandboxCreateStage::COUNT
+        );
+        let stage_fields: BTreeSet<&str> = SUCCESS_SUMMARY_STAGE_FIELDS
             .iter()
-            .map(|stage| stage.summary_field_name())
+            .map(|(_, field)| *field)
             .collect();
 
         assert_eq!(stage_fields.len(), SandboxCreateStage::COUNT);
         for stage in SandboxCreateStage::ALL {
+            let Some((_, field)) = SUCCESS_SUMMARY_STAGE_FIELDS
+                .iter()
+                .find(|(candidate, _)| *candidate == stage)
+            else {
+                panic!("missing success summary field contract for {stage:?}");
+            };
+            assert_eq!(stage.summary_field_name(), *field);
             assert!(
-                SUCCESS_SUMMARY_FIELD_NAMES.contains(&stage.summary_field_name()),
+                SUCCESS_SUMMARY_FIELD_NAMES.contains(field),
                 "missing success summary field for {stage:?}"
             );
         }
@@ -482,7 +516,7 @@ mod tests {
         let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
         timing.mark_workspace_drive_present();
         timing.mark_workspace_seed_image_used();
-        for (index, stage) in SandboxCreateStage::ALL.into_iter().enumerate() {
+        for (index, (stage, _)) in SUCCESS_SUMMARY_STAGE_FIELDS.iter().copied().enumerate() {
             let duration_ms = (index as u64 + 1) * 10;
             timing.record_stage_duration(stage, Duration::from_millis(duration_ms));
         }
@@ -501,9 +535,9 @@ mod tests {
         assert_field(&event, "threshold_ms", "3000");
         assert_field(&event, "workspace_drive_present", "true");
         assert_field(&event, "workspace_seed_image_used", "true");
-        for (index, stage) in SandboxCreateStage::ALL.into_iter().enumerate() {
+        for (index, (_, field)) in SUCCESS_SUMMARY_STAGE_FIELDS.iter().copied().enumerate() {
             let expected = ((index as u64 + 1) * 10).to_string();
-            assert_field(&event, stage.summary_field_name(), &expected);
+            assert_field(&event, field, &expected);
         }
     }
 
