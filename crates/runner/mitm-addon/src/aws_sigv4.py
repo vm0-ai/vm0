@@ -511,7 +511,7 @@ def _content_hash_header_value(headers: list[tuple[str, str]]) -> str | None:
     )
     if header_value is None:
         return None
-    if _has_content_hash_forbidden_control(header_value):
+    if _has_content_hash_invalid_text(header_value):
         raise AwsSigV4SigningError("AWS content hash header contains invalid text")
 
     normalized = _normalize_header_value(header_value)
@@ -530,9 +530,11 @@ def _is_sha256_hex_digest(value: str) -> bool:
     return len(value) == _SHA256_HEX_LENGTH and all(char in _LOWER_HEX_DIGITS for char in value)
 
 
-def _has_content_hash_forbidden_control(value: str) -> bool:
+def _has_content_hash_invalid_text(value: str) -> bool:
     return any(
-        (ord(char) <= _ASCII_CONTROL_MAX and char != "\t") or ord(char) == _ASCII_DELETE
+        ord(char) > _ASCII_DELETE
+        or (ord(char) <= _ASCII_CONTROL_MAX and char != "\t")
+        or ord(char) == _ASCII_DELETE
         for char in value
     )
 

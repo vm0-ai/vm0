@@ -313,8 +313,16 @@ def test_header_auth_invalid_content_hash_header_raises_signing_error(
         )
 
 
-@pytest.mark.parametrize("header_value", ["a" * 64 + "\n", "UNSIGNED-PAYLOAD\r"])
-def test_header_auth_control_content_hash_header_raises_signing_error(
+@pytest.mark.parametrize(
+    "header_value",
+    [
+        "a" * 64 + "\n",
+        "UNSIGNED-PAYLOAD\r",
+        "a" * 64 + "\u00a0",
+        "\uff41" * 64,
+    ],
+)
+def test_header_auth_non_ascii_or_control_content_hash_header_raises_signing_error(
     header_value: str,
 ) -> None:
     with pytest.raises(
