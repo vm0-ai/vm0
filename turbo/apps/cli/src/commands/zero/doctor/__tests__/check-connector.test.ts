@@ -560,7 +560,54 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain('"admin" is in the deny list');
     });
 
-    it("should report unmatched permission falling through to unknown policy", async () => {
+    it("should report compact policy overrides for explicit permission checks", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            networkPolicies: {
+              github: {
+                kind: "default-overrides",
+                defaultPermissionPolicy: "allow",
+                permissionOverrides: {
+                  deny: ["admin"],
+                },
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "admin",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("default permission policy: allow");
+      expect(output).toContain("deny overrides:  [admin]");
+      expect(output).toContain('"admin" is in the deny override');
+    });
+
+    it("should report unmatched expanded permission using the implicit allow default", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -591,9 +638,8 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        '"some-unknown-perm" is not in any permission list',
+        '"some-unknown-perm" is not in any permission list. Requests matching this permission are allowed by the implicit permission default.',
       );
-      expect(output).toContain("unknown endpoint policy: allow");
     });
   });
 
@@ -943,6 +989,58 @@ describe("zero doctor check-connector command", () => {
         "Matched permissions: [accounting.settings, accounting.settings.read]",
       );
       expect(output).not.toContain("Matched permissions: [connections");
+    });
+
+    it("should report compact default policy for URL-detected permissions", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["slack"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/slack", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "slack",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["slack"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            networkPolicies: {
+              slack: {
+                kind: "default-overrides",
+                defaultPermissionPolicy: "allow",
+                permissionOverrides: {
+                  deny: ["admin"],
+                },
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://slack.com/api/chat.postMessage",
+        "--method",
+        "POST",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Matched permissions: [chat:write]");
+      expect(output).toContain(
+        '"chat:write" uses the default permission policy — policy: allow',
+      );
     });
 
     it("should not resolve connector base paths without a segment boundary", async () => {

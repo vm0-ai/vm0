@@ -185,12 +185,26 @@ pub struct FirewallAuth {
     pub query: Option<std::collections::HashMap<String, String>>,
 }
 
-/// Per-firewall grant configuration: which permissions are authorized and
-/// what policy applies to unknown endpoints (not matching any rule).
-/// Refs absent from the map are fully permissive (all granted + allow unknown).
+/// Per-firewall runtime network policy.
+///
+/// Expanded is the historical full-array shape. DefaultOverrides keeps large
+/// built-in catalogs compact by sending one default permission policy plus
+/// sparse per-permission overrides. Refs absent from the map are fully
+/// permissive (all granted + allow unknown). The runner only carries this
+/// contract across the API/proxy-registry boundary; mitm-addon validates and
+/// enforces policy values.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum NetworkPolicy {
+    Expanded(ExpandedNetworkPolicy),
+    DefaultOverrides(DefaultOverridesNetworkPolicy),
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NetworkPolicy {
+pub struct ExpandedNetworkPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ExpandedNetworkPolicyKind>,
     /// Permission names granted by the user.
     pub allow: Vec<String>,
     /// Permission names explicitly denied by the admin.
@@ -200,6 +214,45 @@ pub struct NetworkPolicy {
     /// Policy for requests not matching any known permission rule.
     /// Values: "allow", "deny", "ask"
     pub unknown_policy: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ExpandedNetworkPolicyKind {
+    #[serde(rename = "expanded")]
+    Expanded,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultOverridesNetworkPolicy {
+    pub kind: DefaultOverridesNetworkPolicyKind,
+    /// Default policy for every known permission unless overridden below.
+    pub default_permission_policy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_overrides: Option<NetworkPolicyPermissionOverrides>,
+    /// Policy for requests not matching any known permission rule.
+    /// Values: "allow", "deny", "ask"
+    pub unknown_policy: String,
+    /// Optional until generated catalogs expose a stable identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum DefaultOverridesNetworkPolicyKind {
+    #[serde(rename = "default-overrides")]
+    DefaultOverrides,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkPolicyPermissionOverrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deny: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<Vec<String>>,
 }
 
 /// Runner-derived manifest written to `guest-download`.
@@ -585,6 +638,72 @@ mod tests {
 
         let result = serde_json::from_value::<ExecutionContext>(json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn execution_context_accepts_expanded_network_policy() {
+        let json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "networkPolicies": {
+                "github": {
+                    "allow": ["repo-read"],
+                    "deny": ["repo-write"],
+                    "ask": [],
+                    "unknownPolicy": "deny"
+                }
+            },
+            "billableFirewalls": []
+        });
+
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let policies = ctx.network_policies.as_ref().unwrap();
+        let NetworkPolicy::Expanded(policy) = &policies["github"] else {
+            panic!("expected expanded policy");
+        };
+        assert_eq!(policy.allow, vec!["repo-read".to_string()]);
+        assert_eq!(policy.deny, vec!["repo-write".to_string()]);
+        assert_eq!(policy.unknown_policy, "deny");
+    }
+
+    #[test]
+    fn execution_context_accepts_compact_network_policy() {
+        let json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "networkPolicies": {
+                "github": {
+                    "kind": "default-overrides",
+                    "defaultPermissionPolicy": "allow",
+                    "permissionOverrides": {
+                        "deny": ["repo-write"],
+                        "ask": ["repo-admin"]
+                    },
+                    "unknownPolicy": "deny",
+                    "catalogVersion": "catalog-1"
+                }
+            },
+            "billableFirewalls": []
+        });
+
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let policies = ctx.network_policies.as_ref().unwrap();
+        let NetworkPolicy::DefaultOverrides(policy) = &policies["github"] else {
+            panic!("expected compact policy");
+        };
+        assert_eq!(policy.default_permission_policy, "allow");
+        assert_eq!(policy.unknown_policy, "deny");
+        assert_eq!(policy.catalog_version.as_deref(), Some("catalog-1"));
+
+        let serialized = serde_json::to_value(&policies["github"]).unwrap();
+        assert_eq!(serialized["kind"], "default-overrides");
+        assert_eq!(serialized["defaultPermissionPolicy"], "allow");
+        assert_eq!(serialized["permissionOverrides"]["deny"][0], "repo-write");
+        assert_eq!(serialized["catalogVersion"], "catalog-1");
     }
 
     #[test]

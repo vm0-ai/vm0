@@ -261,7 +261,10 @@ UnknownPolicy = Literal["allow", "deny", "ask"]
 
 
 class _CompiledNetworkPolicy(NamedTuple):
-    blocked_permissions: frozenset[str]
+    default_permission_policy: UnknownPolicy
+    allow_permissions: frozenset[str]
+    deny_permissions: frozenset[str]
+    ask_permissions: frozenset[str]
     unknown_policy: UnknownPolicy
     permission_malformed: bool
     unknown_policy_malformed: bool
@@ -1421,6 +1424,58 @@ def _compile_permission_set(raw_value: object | None) -> tuple[frozenset[str], b
     return frozenset(raw_value), False
 
 
+def _compile_policy_value(raw_value: object | None) -> tuple[UnknownPolicy, bool]:
+    if raw_value == "allow":
+        return "allow", False
+    if raw_value == "deny":
+        return "deny", False
+    if raw_value == "ask":
+        return "ask", False
+    return "allow", True
+
+
+def _compile_unknown_policy(
+    raw_value: object | None,
+    *,
+    required: bool,
+) -> tuple[UnknownPolicy, bool]:
+    if raw_value is None:
+        return "allow", required
+    if raw_value == "allow":
+        return "allow", False
+    if raw_value == "deny":
+        return "deny", False
+    if raw_value == "ask":
+        return "ask", False
+    return "allow", True
+
+
+def _compile_permission_overrides(
+    raw_value: object | None,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str], bool]:
+    if raw_value is None:
+        return frozenset(), frozenset(), frozenset(), False
+    if not isinstance(raw_value, dict):
+        return frozenset(), frozenset(), frozenset(), True
+
+    allow, allow_malformed = _compile_permission_set(raw_value.get("allow"))
+    deny, deny_malformed = _compile_permission_set(raw_value.get("deny"))
+    ask, ask_malformed = _compile_permission_set(raw_value.get("ask"))
+    return allow, deny, ask, allow_malformed or deny_malformed or ask_malformed
+
+
+def _compile_malformed_network_policy() -> _CompiledNetworkPolicy:
+    return _CompiledNetworkPolicy(
+        "allow",
+        frozenset(),
+        frozenset(),
+        frozenset(),
+        "allow",
+        True,
+        False,
+    )
+
+
 def compile_network_policies(raw_network_policies: object | None) -> CompiledNetworkPolicies:
     """Compile networkPolicies and retain selected malformed policy state.
 
@@ -1437,30 +1492,57 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
             continue
 
         if not isinstance(grant, dict):
+            compiled[fw_name] = _compile_malformed_network_policy()
+            continue
+
+        kind = grant.get("kind")
+        if kind == "default-overrides":
+            default_policy, default_policy_malformed = _compile_policy_value(
+                grant.get("defaultPermissionPolicy")
+            )
+            allow, deny, ask, overrides_malformed = _compile_permission_overrides(
+                grant.get("permissionOverrides")
+            )
+            unknown_policy, unknown_policy_malformed = _compile_unknown_policy(
+                grant.get("unknownPolicy"),
+                required=True,
+            )
             compiled[fw_name] = _CompiledNetworkPolicy(
-                frozenset(),
-                "allow",
-                True,
-                False,
+                default_policy,
+                allow,
+                deny,
+                ask,
+                unknown_policy,
+                default_policy_malformed or overrides_malformed,
+                unknown_policy_malformed,
             )
             continue
 
-        _allow, allow_malformed = _compile_permission_set(grant.get("allow"))
+        unknown_policy, unknown_policy_malformed = _compile_unknown_policy(
+            grant.get("unknownPolicy"),
+            required=False,
+        )
+        if kind not in (None, "expanded"):
+            compiled[fw_name] = _CompiledNetworkPolicy(
+                "allow",
+                frozenset(),
+                frozenset(),
+                frozenset(),
+                unknown_policy,
+                True,
+                unknown_policy_malformed,
+            )
+            continue
+
+        allow, allow_malformed = _compile_permission_set(grant.get("allow"))
         deny, deny_malformed = _compile_permission_set(grant.get("deny"))
         ask, ask_malformed = _compile_permission_set(grant.get("ask"))
 
-        raw_unknown_policy = grant.get("unknownPolicy")
-        unknown_policy: UnknownPolicy = "allow"
-        unknown_policy_malformed = False
-        if raw_unknown_policy is None:
-            unknown_policy = "allow"
-        elif raw_unknown_policy in ("allow", "deny", "ask"):
-            unknown_policy = raw_unknown_policy
-        else:
-            unknown_policy_malformed = True
-
         compiled[fw_name] = _CompiledNetworkPolicy(
-            deny | ask,
+            "allow",
+            allow,
+            deny,
+            ask,
             unknown_policy,
             allow_malformed or deny_malformed or ask_malformed,
             unknown_policy_malformed,
@@ -1475,6 +1557,19 @@ def _ensure_compiled_network_policies(
     if isinstance(network_policies, CompiledNetworkPolicies):
         return network_policies
     return compile_network_policies(network_policies)
+
+
+def _network_policy_for_permission(
+    policy: _CompiledNetworkPolicy,
+    permission_name: str,
+) -> UnknownPolicy:
+    if permission_name in policy.deny_permissions:
+        return "deny"
+    if permission_name in policy.ask_permissions:
+        return "ask"
+    if permission_name in policy.allow_permissions:
+        return "allow"
+    return policy.default_permission_policy
 
 
 class FirewallAllow(NamedTuple):
@@ -1762,10 +1857,11 @@ def match_compiled_firewall_request(
     use ``unsafe_path`` after base match. APIs with malformed firewall name,
     base, or auth config do not evaluate their rules; malformed permission/rule
     config can still leave valid compiled rules eligible. Malformed top-level
-    policies or malformed allow/deny/ask permission sets skip rule evaluation
-    for the matched API. Recorded allow/deny rule decisions keep their current
-    precedence over retained malformed state, and malformed ``unknownPolicy``
-    only affects unknown-endpoint resolution.
+    policies, malformed expanded allow/deny/ask sets, or malformed compact
+    default/override fields skip rule evaluation for the matched API. Recorded
+    allow/deny rule decisions keep their current precedence over retained
+    malformed state, and malformed ``unknownPolicy`` only affects
+    unknown-endpoint resolution.
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
@@ -1849,7 +1945,10 @@ def match_compiled_firewall_request(
 
             rel_path_segs = _split_path_segments(rel_path)
             for perm in api_entry.permissions:
-                permission_blocked = policy is not None and perm.name in policy.blocked_permissions
+                permission_blocked = (
+                    policy is not None
+                    and _network_policy_for_permission(policy, perm.name) != "allow"
+                )
                 for rule in perm.rules:
                     if rule.method not in ("ANY", upper_method):
                         continue

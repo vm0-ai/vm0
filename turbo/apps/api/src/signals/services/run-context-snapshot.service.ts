@@ -1,5 +1,9 @@
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
+import type {
+  DefaultOverridesNetworkPolicy,
+  NetworkPolicies,
+  NetworkPolicyPermissionList,
+} from "@vm0/connectors/firewall-types";
 
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
@@ -99,8 +103,57 @@ function networkPolicyValue(value: unknown): NetworkPolicyValue | undefined {
     : undefined;
 }
 
+function compactPermissionOverridesFromUnknown(
+  value: unknown,
+): DefaultOverridesNetworkPolicy["permissionOverrides"] | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  const overrides: Partial<Record<NetworkPolicyPermissionList, string[]>> = {};
+  for (const key of ["allow", "deny", "ask"] as const) {
+    if (value[key] === undefined) {
+      continue;
+    }
+    const list = stringArrayValue(value[key]);
+    if (!list) {
+      return null;
+    }
+    overrides[key] = list;
+  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
 function networkPolicyFromUnknown(value: unknown): NetworkPolicy | undefined {
   if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.kind === "default-overrides") {
+    const defaultPermissionPolicy = networkPolicyValue(
+      value.defaultPermissionPolicy,
+    );
+    const unknownPolicy = networkPolicyValue(value.unknownPolicy);
+    const permissionOverrides = compactPermissionOverridesFromUnknown(
+      value.permissionOverrides,
+    );
+    if (!defaultPermissionPolicy || !unknownPolicy) {
+      return undefined;
+    }
+    if (permissionOverrides === null) {
+      return undefined;
+    }
+    const catalogVersion = stringValue(value.catalogVersion);
+    return {
+      kind: "default-overrides",
+      defaultPermissionPolicy,
+      ...(permissionOverrides ? { permissionOverrides } : {}),
+      unknownPolicy,
+      ...(catalogVersion ? { catalogVersion } : {}),
+    };
+  }
+  if (value.kind !== undefined && value.kind !== "expanded") {
     return undefined;
   }
   const unknownPolicy = networkPolicyValue(value.unknownPolicy);
@@ -108,6 +161,7 @@ function networkPolicyFromUnknown(value: unknown): NetworkPolicy | undefined {
     return undefined;
   }
   return {
+    ...(value.kind === "expanded" ? { kind: "expanded" as const } : {}),
     allow: stringArrayValue(value.allow) ?? [],
     deny: stringArrayValue(value.deny) ?? [],
     ask: stringArrayValue(value.ask) ?? [],

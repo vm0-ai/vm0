@@ -141,12 +141,22 @@ export const firewallPoliciesSchema = z.record(
 );
 export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 
+const networkPolicyPermissionOverridesSchema = z.object({
+  allow: z.array(z.string()).optional(),
+  deny: z.array(z.string()).optional(),
+  ask: z.array(z.string()).optional(),
+});
+
 /**
- * Per-firewall grant configuration — which permissions are granted and
- * what policy applies to unknown endpoints (not matching any permission rule).
- * Refs absent from the map are fully permissive (all granted + allow unknown).
+ * Expanded runtime network policy. Historical jobs use this form.
+ *
+ * Permission names in `deny` and `ask` are blocked by the proxy. Permission
+ * names not listed in any array are treated as allowed for permission-rule
+ * matches. `unknownPolicy` is separate and applies only when no permission rule
+ * matches after a firewall base URL matched.
  */
-const networkPolicySchema = z.object({
+export const expandedNetworkPolicySchema = z.object({
+  kind: z.literal("expanded").optional(),
   allow: z.array(z.string()),
   deny: z.array(z.string()),
   ask: z.array(z.string()),
@@ -154,11 +164,76 @@ const networkPolicySchema = z.object({
 });
 
 /**
- * Network policies map — firewall name → policy config.
- * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
+ * Compact runtime network policy. Every known permission starts with
+ * `defaultPermissionPolicy`; `permissionOverrides` lists only permissions whose
+ * effective policy differs from that default. `catalogVersion` is optional
+ * until generated firewall metadata exposes a stable catalog identity.
+ */
+export const defaultOverridesNetworkPolicySchema = z.object({
+  kind: z.literal("default-overrides"),
+  defaultPermissionPolicy: firewallPolicyValueSchema,
+  permissionOverrides: networkPolicyPermissionOverridesSchema.optional(),
+  unknownPolicy: firewallPolicyValueSchema,
+  catalogVersion: z.string().optional(),
+});
+
+/**
+ * Per-firewall runtime network policy. Refs absent from the map are fully
+ * permissive (all granted + allow unknown).
+ */
+export const networkPolicySchema = z.union([
+  expandedNetworkPolicySchema,
+  defaultOverridesNetworkPolicySchema,
+]);
+
+/**
+ * Network policies map — firewall name → runtime policy config.
+ * Example expanded: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
+ * Example compact: { "github": { kind: "default-overrides", defaultPermissionPolicy: "allow", permissionOverrides: { deny: ["admin"] }, unknownPolicy: "deny" } }
  */
 export const networkPoliciesSchema = z.record(z.string(), networkPolicySchema);
+export type ExpandedNetworkPolicy = z.infer<typeof expandedNetworkPolicySchema>;
+export type DefaultOverridesNetworkPolicy = z.infer<
+  typeof defaultOverridesNetworkPolicySchema
+>;
+export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
 export type NetworkPolicies = z.infer<typeof networkPoliciesSchema>;
+
+export type NetworkPolicyPermissionList = "allow" | "deny" | "ask";
+
+export function isDefaultOverridesNetworkPolicy(
+  policy: NetworkPolicy,
+): policy is DefaultOverridesNetworkPolicy {
+  return policy.kind === "default-overrides";
+}
+
+export function networkPolicyPermissionList(
+  policy: NetworkPolicy,
+  list: NetworkPolicyPermissionList,
+): readonly string[] {
+  if (isDefaultOverridesNetworkPolicy(policy)) {
+    return policy.permissionOverrides?.[list] ?? [];
+  }
+  return policy[list];
+}
+
+export function networkPolicyPermissionPolicy(
+  policy: NetworkPolicy,
+  permissionName: string,
+): FirewallPolicyValue {
+  if (networkPolicyPermissionList(policy, "deny").includes(permissionName)) {
+    return "deny";
+  }
+  if (networkPolicyPermissionList(policy, "ask").includes(permissionName)) {
+    return "ask";
+  }
+  if (networkPolicyPermissionList(policy, "allow").includes(permissionName)) {
+    return "allow";
+  }
+  return isDefaultOverridesNetworkPolicy(policy)
+    ? policy.defaultPermissionPolicy
+    : "allow";
+}
 
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;

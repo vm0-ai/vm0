@@ -7,8 +7,11 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   UNKNOWN_PERMISSION_GRANT,
+  isDefaultOverridesNetworkPolicy,
+  type ExpandedNetworkPolicy,
   type ExecutionFirewallEntry,
   type FirewallApi,
+  type NetworkPolicy,
 } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import { HttpResponse, http } from "msw";
@@ -50,6 +53,18 @@ const context = testContext();
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+
+function expectExpandedNetworkPolicy(
+  policy: NetworkPolicy | undefined,
+  connectorName: string,
+): ExpandedNetworkPolicy {
+  if (!policy || isDefaultOverridesNetworkPolicy(policy)) {
+    throw new Error(
+      `Expected an expanded ${connectorName} network policy on the claim`,
+    );
+  }
+  return policy;
+}
 
 function modelProviderPlaceholder(
   type: ModelProviderType,
@@ -1357,11 +1372,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
 
-    async function claimSlackPolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
-    }> {
+    async function claimSlackPolicy(
+      prompt: string,
+    ): Promise<ExpandedNetworkPolicy> {
       const run = await api.createRun(actor, {
         agentId,
         prompt,
@@ -1369,11 +1382,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       });
       const claim = await api.claimRunnerJob(run.runId);
       await api.requestCancelRun(actor, run.runId, [200]);
-      const policy = claim.networkPolicies?.slack;
-      if (!policy) {
-        throw new Error("Expected a slack network policy on the claim");
-      }
-      return policy;
+      return expectExpandedNetworkPolicy(claim.networkPolicies?.slack, "slack");
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -1481,10 +1490,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
-    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
-      "chat:write",
+    const snapshotPolicy = expectExpandedNetworkPolicy(
+      snapshotClaim.networkPolicies?.slack,
+      "slack",
     );
+    expect(snapshotPolicy.allow).toContain("chat:write");
+    expect(snapshotPolicy.deny).not.toContain("chat:write");
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
@@ -1508,11 +1519,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["cloudflare"]);
 
-    async function claimCloudflarePolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
-    }> {
+    async function claimCloudflarePolicy(
+      prompt: string,
+    ): Promise<ExpandedNetworkPolicy> {
       const run = await api.createRun(actor, {
         agentId,
         prompt,
@@ -1520,11 +1529,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       });
       const claim = await api.claimRunnerJob(run.runId);
       await api.requestCancelRun(actor, run.runId, [200]);
-      const policy = claim.networkPolicies?.cloudflare;
-      if (!policy) {
-        throw new Error("Expected a cloudflare network policy on the claim");
-      }
-      return policy;
+      return expectExpandedNetworkPolicy(
+        claim.networkPolicies?.cloudflare,
+        "cloudflare",
+      );
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -1579,10 +1587,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    const policy = claim.networkPolicies?.cloudflare;
-    if (!policy) {
-      throw new Error("Expected a cloudflare network policy on the claim");
-    }
+    const policy = expectExpandedNetworkPolicy(
+      claim.networkPolicies?.cloudflare,
+      "cloudflare",
+    );
     expect(policy.allow).toContain("dns-firewall.read");
     expect(policy.deny).toContain("dns-firewall.write");
     expect(policy.unknownPolicy).toBe("deny");

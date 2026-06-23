@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import {
+  isDefaultOverridesNetworkPolicy,
+  type ExpandedNetworkPolicy,
+  type NetworkPolicy,
+} from "@vm0/connectors/firewall-types";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { createStore } from "ccstate";
@@ -55,6 +60,19 @@ const store = createStore();
 const writeDb = store.set(writeDb$);
 const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
 const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
+
+function expectExpandedNetworkPolicy(
+  policy: NetworkPolicy | undefined,
+  connectorName: string,
+): ExpandedNetworkPolicy {
+  if (!policy || isDefaultOverridesNetworkPolicy(policy)) {
+    throw new Error(
+      `Expected an expanded ${connectorName} network policy on the claim`,
+    );
+  }
+  return policy;
+}
+
 interface SeedEmailOutboxOptions {
   readonly subject: string;
   readonly to: string;
@@ -841,8 +859,12 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       "Use the schedule-specific context.",
     );
     expect(claim.environment?.ANTHROPIC_MODEL).toBe("claude-opus-4-7");
-    expect(claim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(claim.networkPolicies?.slack?.deny).not.toContain("chat:write");
+    const policy = expectExpandedNetworkPolicy(
+      claim.networkPolicies?.slack,
+      "slack",
+    );
+    expect(policy.allow).toContain("chat:write");
+    expect(policy.deny).not.toContain("chat:write");
 
     const conflict = await api.requestRunAutomation(
       actor,

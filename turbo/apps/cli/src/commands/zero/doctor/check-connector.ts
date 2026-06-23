@@ -15,9 +15,14 @@ import {
 } from "@vm0/connectors/firewall-rule-matcher";
 import {
   extractSecretNamesFromApis,
+  isDefaultOverridesNetworkPolicy,
+  networkPolicyPermissionList,
+  networkPolicyPermissionPolicy,
   resolveFirewallBaseUrlVars,
   UNKNOWN_PERMISSION_GRANT,
   type FirewallConfig,
+  type NetworkPolicy,
+  type NetworkPolicyPermissionList,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -424,28 +429,91 @@ function checkPermissionPolicy(
   }
 
   console.log(`Permission policies for the ${label} connector:`);
-  console.log(`  allow list: [${connectorPolicies.allow.join(", ")}]`);
-  console.log(`  deny list:  [${connectorPolicies.deny.join(", ")}]`);
-  console.log(`  unknown endpoint policy: ${connectorPolicies.unknownPolicy}`);
+  logNetworkPolicy(connectorPolicies);
   console.log("");
 
-  const isInAllow = connectorPolicies.allow.includes(permissionName);
-  const isInDeny = connectorPolicies.deny.includes(permissionName);
+  console.log(
+    `Result: ${permissionPolicyDescription(connectorPolicies, permissionName)}`,
+  );
+  console.log("");
+}
 
-  if (isInAllow) {
+function policyList(policy: NetworkPolicy, list: NetworkPolicyPermissionList) {
+  return networkPolicyPermissionList(policy, list);
+}
+
+function logNetworkPolicy(policy: NetworkPolicy): void {
+  if (isDefaultOverridesNetworkPolicy(policy)) {
     console.log(
-      `Result: "${permissionName}" is in the allow list. Requests matching this permission are allowed.`,
+      `  default permission policy: ${policy.defaultPermissionPolicy}`,
     );
-  } else if (isInDeny) {
     console.log(
-      `Result: "${permissionName}" is in the deny list. Requests matching this permission are denied.`,
+      `  allow overrides: [${policyList(policy, "allow").join(", ")}]`,
     );
-  } else {
     console.log(
-      `Result: "${permissionName}" is not in any permission list. It will be handled by the unknown endpoint policy: ${connectorPolicies.unknownPolicy}.`,
+      `  deny overrides:  [${policyList(policy, "deny").join(", ")}]`,
     );
+    console.log(`  ask overrides:   [${policyList(policy, "ask").join(", ")}]`);
+    console.log(`  unknown endpoint policy: ${policy.unknownPolicy}`);
+    return;
   }
-  console.log("");
+
+  console.log(`  allow list: [${policy.allow.join(", ")}]`);
+  console.log(`  deny list:  [${policy.deny.join(", ")}]`);
+  console.log(`  ask list:   [${policy.ask.join(", ")}]`);
+  console.log(`  unknown endpoint policy: ${policy.unknownPolicy}`);
+}
+
+function permissionPolicyDescription(
+  policy: NetworkPolicy,
+  permissionName: string,
+): string {
+  const effectivePolicy = networkPolicyPermissionPolicy(policy, permissionName);
+  if (isDefaultOverridesNetworkPolicy(policy)) {
+    for (const list of ["allow", "deny", "ask"] as const) {
+      if (policyList(policy, list).includes(permissionName)) {
+        return `"${permissionName}" is in the ${list} override. Requests matching this permission use policy: ${effectivePolicy}.`;
+      }
+    }
+    return `"${permissionName}" uses the default permission policy: ${effectivePolicy}.`;
+  }
+
+  if (policy.allow.includes(permissionName)) {
+    return `"${permissionName}" is in the allow list. Requests matching this permission are allowed.`;
+  }
+  if (policy.deny.includes(permissionName)) {
+    return `"${permissionName}" is in the deny list. Requests matching this permission are denied.`;
+  }
+  if (policy.ask.includes(permissionName)) {
+    return `"${permissionName}" is in the ask list. Requests matching this permission require approval and are blocked by the proxy.`;
+  }
+  return `"${permissionName}" is not in any permission list. Requests matching this permission are allowed by the implicit permission default.`;
+}
+
+function matchedPermissionPolicyDescription(
+  policy: NetworkPolicy,
+  permissionName: string,
+): string {
+  const effectivePolicy = networkPolicyPermissionPolicy(policy, permissionName);
+  if (isDefaultOverridesNetworkPolicy(policy)) {
+    for (const list of ["allow", "deny", "ask"] as const) {
+      if (policyList(policy, list).includes(permissionName)) {
+        return `"${permissionName}" is in the ${list} override — policy: ${effectivePolicy}.`;
+      }
+    }
+    return `"${permissionName}" uses the default permission policy — policy: ${effectivePolicy}.`;
+  }
+
+  if (policy.allow.includes(permissionName)) {
+    return `"${permissionName}" is in the allow list — allowed.`;
+  }
+  if (policy.deny.includes(permissionName)) {
+    return `"${permissionName}" is in the deny list — denied.`;
+  }
+  if (policy.ask.includes(permissionName)) {
+    return `"${permissionName}" is in the ask list — approval required and blocked by the proxy.`;
+  }
+  return `"${permissionName}" is not in any list — allowed by the implicit permission default.`;
 }
 
 function unknownPermissionChangeCommand(connectorRef: string): string {
@@ -516,9 +584,7 @@ function resolvePermissionFromUrl(
   }
 
   console.log(`Permission policies for the ${label} connector:`);
-  console.log(`  allow list: [${connectorPolicies.allow.join(", ")}]`);
-  console.log(`  deny list:  [${connectorPolicies.deny.join(", ")}]`);
-  console.log(`  unknown endpoint policy: ${connectorPolicies.unknownPolicy}`);
+  logNetworkPolicy(connectorPolicies);
   console.log("");
 
   if (matchedPermissions.length === 0) {
@@ -532,17 +598,9 @@ function resolvePermissionFromUrl(
     }
   } else {
     for (const perm of matchedPermissions) {
-      const isInAllow = connectorPolicies.allow.includes(perm);
-      const isInDeny = connectorPolicies.deny.includes(perm);
-      if (isInAllow) {
-        console.log(`Result: "${perm}" is in the allow list — allowed.`);
-      } else if (isInDeny) {
-        console.log(`Result: "${perm}" is in the deny list — denied.`);
-      } else {
-        console.log(
-          `Result: "${perm}" is not in any list — falls through to unknown endpoint policy: ${connectorPolicies.unknownPolicy}.`,
-        );
-      }
+      console.log(
+        `Result: ${matchedPermissionPolicyDescription(connectorPolicies, perm)}`,
+      );
     }
   }
   console.log("");

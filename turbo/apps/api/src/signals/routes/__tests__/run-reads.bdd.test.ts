@@ -2729,6 +2729,19 @@ describe("RUN-04: agent run telemetry families", () => {
                   unknownPolicy: "allow",
                 },
               },
+              {
+                name: "slack",
+                policy: {
+                  kind: "default-overrides",
+                  defaultPermissionPolicy: "allow",
+                  permissionOverrides: {
+                    deny: ["admin"],
+                    ask: ["chat:write"],
+                  },
+                  unknownPolicy: "deny",
+                  catalogVersion: "catalog-1",
+                },
+              },
               { name: "broken", policy: "nope" },
               { name: "invalid", policy: { unknownPolicy: "bogus" } },
               {
@@ -2761,6 +2774,16 @@ describe("RUN-04: agent run telemetry families", () => {
           ask: [],
           unknownPolicy: "allow",
         },
+        slack: {
+          kind: "default-overrides",
+          defaultPermissionPolicy: "allow",
+          permissionOverrides: {
+            deny: ["admin"],
+            ask: ["chat:write"],
+          },
+          unknownPolicy: "deny",
+          catalogVersion: "catalog-1",
+        },
       },
       featureFlags: { sandboxIoLimiters: true },
       artifact: { vasStorageName: "art-1" },
@@ -2770,6 +2793,7 @@ describe("RUN-04: agent run telemetry families", () => {
     });
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",
+      "slack",
     ]);
     expect(contextRead.body.firewalls).toHaveLength(1);
     expect(contextRead.body.volumes).toHaveLength(1);

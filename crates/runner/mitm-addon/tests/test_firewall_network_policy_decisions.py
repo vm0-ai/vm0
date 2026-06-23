@@ -199,6 +199,98 @@ class TestFirewallNetworkPolicyDecisions:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "permission_denied"
 
+    def test_compact_default_allow_matches_equivalent_expanded_policy(self):
+        policies = {
+            "github": {
+                "kind": "default-overrides",
+                "defaultPermissionPolicy": "allow",
+                "permissionOverrides": {
+                    "deny": ["repo-write"],
+                    "ask": ["repo-admin"],
+                },
+                "unknownPolicy": "deny",
+            }
+        }
+
+        allowed = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        blocked = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.permissions == ("repo-write",)
+        assert blocked.reason == "permission_denied"
+
+    def test_compact_default_deny_allows_only_allow_overrides(self):
+        policies = {
+            "github": {
+                "kind": "default-overrides",
+                "defaultPermissionPolicy": "deny",
+                "permissionOverrides": {"allow": ["repo-read"]},
+                "unknownPolicy": "deny",
+            }
+        }
+
+        allowed = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        blocked = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.permissions == ("repo-write",)
+        assert blocked.reason == "permission_denied"
+
+    def test_compact_default_ask_blocks_without_allow_override(self):
+        policies = {
+            "github": {
+                "kind": "default-overrides",
+                "defaultPermissionPolicy": "ask",
+                "permissionOverrides": {
+                    "allow": ["repo-read"],
+                },
+                "unknownPolicy": "allow",
+            }
+        }
+
+        allowed = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        blocked = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.permissions == ("repo-write",)
+        assert blocked.reason == "permission_denied"
+
     def test_unknown_policy_key_missing_defaults_to_allow(self):
         """Ref present but unknownPolicy key absent → defaults to allow."""
         policies = {"github": {"allow": ["repo-read"], "deny": ["repo-write"]}}

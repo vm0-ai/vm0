@@ -83,8 +83,77 @@ def test_malformed_permission_policy_fails_closed_after_base_match(policies):
     assert result.reason == "malformed_network_policy"
 
 
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "kind": "default-overrides",
+            "defaultPermissionPolicy": "blocked",
+            "unknownPolicy": "allow",
+        },
+        {
+            "kind": "default-overrides",
+            "defaultPermissionPolicy": "allow",
+            "permissionOverrides": "repo-read",
+            "unknownPolicy": "allow",
+        },
+        {
+            "kind": "default-overrides",
+            "defaultPermissionPolicy": "allow",
+            "permissionOverrides": {"deny": [123]},
+            "unknownPolicy": "allow",
+        },
+        {
+            "kind": "unexpected",
+            "defaultPermissionPolicy": "allow",
+            "unknownPolicy": "allow",
+        },
+    ],
+)
+def test_malformed_compact_permission_policy_fails_closed_after_base_match(policy):
+    result = match_compiled_firewalls(
+        REPO_URL,
+        _github_firewalls(),
+        matching.compile_network_policies({"github": policy}),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.permissions == ()
+    assert result.reason == "malformed_network_policy"
+
+
 def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch():
     policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+    compiled_policies = matching.compile_network_policies(policies)
+    compiled_firewalls = compile_firewalls_or_fail(_github_firewalls())
+
+    allowed = matching.match_compiled_firewall_request(
+        REPO_URL,
+        "GET",
+        compiled_firewalls,
+        compiled_policies,
+    )
+    blocked = matching.match_compiled_firewall_request(
+        "https://api.github.com/users/octocat",
+        "GET",
+        compiled_firewalls,
+        compiled_policies,
+    )
+
+    assert isinstance(allowed, matching.FirewallAllow)
+    assert allowed.permission == "repo-read"
+    assert isinstance(blocked, matching.FirewallBlock)
+    assert blocked.reason == "malformed_network_policy"
+
+
+def test_compact_invalid_unknown_policy_only_blocks_unknown_endpoint_branch():
+    policies = {
+        "github": {
+            "kind": "default-overrides",
+            "defaultPermissionPolicy": "allow",
+            "unknownPolicy": "broken",
+        }
+    }
     compiled_policies = matching.compile_network_policies(policies)
     compiled_firewalls = compile_firewalls_or_fail(_github_firewalls())
 
