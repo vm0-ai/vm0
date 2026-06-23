@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -96,7 +97,7 @@ def test_truncated_buffer_with_no_hints_skips_billing(x_usage, tmp_path, real_fl
     error.  The previous blind fallback of 100 units was removed;
     ops audits via the proxy error log instead."""
     flow = x_usage.make_flow(real_flow, tmp_path, body=b"{")
-    flow.metadata["stream_buffer_state"] = {"truncated": True}
+    flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] = True
     proxy_log = tmp_path / "proxy.jsonl"
 
     assert x_usage.call_and_get_billing(flow) == []

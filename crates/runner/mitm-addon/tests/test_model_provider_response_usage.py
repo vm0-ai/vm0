@@ -23,7 +23,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
-from tests.usage_helpers import set_stream_buffer
+from tests.stream_buffer_helpers import set_response_stream_buffer
 
 
 @dataclass(frozen=True)
@@ -386,7 +386,7 @@ class TestModelProviderResponseUsage:
         flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
         # No model_provider_usage set (no SSE parser) — JSON body in buffer
         body = _standard_success_payload(provider_case)
-        flow.metadata["stream_buffer"] = bytearray(body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -408,7 +408,7 @@ class TestModelProviderResponseUsage:
         provider_case = OPENAI_RESPONSES_CASE
         flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
         body = _standard_success_payload(provider_case)
-        flow.metadata["stream_buffer"] = bytearray(body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -439,7 +439,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"msg_1","model":"claude-sonnet-4-6","usage":{"input_tokens":50'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -473,7 +473,7 @@ class TestModelProviderResponseUsage:
                 "usage": {"input_tokens": 50},
             }
         ).encode()
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -501,7 +501,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -546,7 +546,7 @@ class TestModelProviderResponseUsage:
         payload = _standard_success_payload(provider_case)
         body = encoding_case.make_body(payload)
 
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -594,7 +594,7 @@ class TestModelProviderResponseUsage:
             body = gzip.compress(b"") + gzip.compress(payload)
         else:
             body = zlib.compress(b"") + zlib.compress(payload)
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -649,7 +649,7 @@ class TestModelProviderResponseUsage:
         else:
             body = zstandard.ZstdCompressor().compress(payload)
 
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -689,7 +689,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"msg_1"}'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -712,7 +712,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5"}'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -768,7 +768,7 @@ class TestModelProviderResponseUsage:
             response_headers["content-encoding"] = (
                 "zstd" if encoding_case == "zstd-no-size" else encoding_case
             )
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(status_code=200, headers=header_map(response_headers))
 
         webhook = self._run_response(flow)
@@ -788,7 +788,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"msg_1","model":"claude-sonnet-4-6"}'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -831,7 +831,7 @@ class TestModelProviderResponseUsage:
             cached_tokens=0,
         )
 
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -849,7 +849,7 @@ class TestModelProviderResponseUsage:
         provider_case = CODEX_OAUTH_RESPONSES_CASE
         flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
         body = _standard_success_payload(provider_case)
-        flow.metadata["stream_buffer"] = bytearray(body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -878,7 +878,7 @@ class TestModelProviderResponseUsage:
             billable=False,
         )
         body = _standard_success_payload(OPENAI_RESPONSES_CASE)
-        flow.metadata["stream_buffer"] = bytearray(body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -925,7 +925,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -1269,7 +1269,7 @@ class TestModelProviderResponseUsage:
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
         body = b'{"incomplete":'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
@@ -1288,7 +1288,7 @@ class TestModelProviderResponseUsage:
         flow.metadata[metadata_keys.ORIGINAL_URL] = ANTHROPIC_JSON_CASE.original_url
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
         body = _standard_success_payload(ANTHROPIC_JSON_CASE)
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )

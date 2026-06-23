@@ -237,11 +237,3 @@ class UsageWebhookServer:
         handler.end_headers()
         if response.body:
             handler.wfile.write(response.body)
-
-
-def set_stream_buffer(flow, body: bytes) -> None:
-    flow.metadata["stream_buffer"] = bytearray(body)
-    flow.metadata["stream_buffer_state"] = {
-        "truncated": False,
-        "total_bytes": len(body),
-    }

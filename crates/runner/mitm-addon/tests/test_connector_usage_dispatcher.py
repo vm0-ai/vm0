@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -43,6 +44,16 @@ class TestConnectorUsageDispatcher:
             for body in [request.json_body()]
             for event in body["events"]
         ]
+
+    def test_x_usage_flow_stream_state_matches_response_stream_contract(self, tmp_path, real_flow):
+        body = b'{"data":[{"id":"1","text":"hi"}]}'
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+
+        assert flow.metadata[metadata_keys.STREAM_BUFFER] == bytearray(body)
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE] == {
+            "truncated": False,
+            "total_bytes": len(body),
+        }
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model-provider flows go through report_model_provider_usage instead.

@@ -14,6 +14,7 @@ import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.stream_buffer_helpers import set_response_stream_buffer
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
@@ -520,8 +521,7 @@ class TestXConnectorErrorPipeline:
             "lines_parsed": 23,
             "lines_failed": 0,
         }
-        flow.metadata["stream_buffer"] = bytearray()
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, b"")
         flow.error = Error("connection reset by peer")
 
         with usage_webhook_api() as webhook:

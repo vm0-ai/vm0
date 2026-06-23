@@ -16,7 +16,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_flow
-from tests.usage_helpers import set_stream_buffer
+from tests.stream_buffer_helpers import set_response_stream_buffer
 
 
 class TestUsageReportingIdempotency:
@@ -39,7 +39,7 @@ class TestUsageReportingIdempotency:
             "tokens.output": 20,
         }
         body = b'{"id":"resp_1","usage":{"input_tokens":'
-        set_stream_buffer(flow, body)
+        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),

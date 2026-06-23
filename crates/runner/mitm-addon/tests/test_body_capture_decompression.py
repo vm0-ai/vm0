@@ -11,6 +11,7 @@ from mitmproxy import http
 from body_capture import add_capture_fields
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
+from tests.stream_buffer_helpers import set_response_stream_buffer
 
 
 class TestDecompression:
@@ -26,8 +27,7 @@ class TestDecompression:
             response_content_type=content_type,
             response_encoding=encoding or None,
         )
-        flow.metadata["stream_buffer"] = bytearray(data)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        set_response_stream_buffer(flow, data)
         return flow
 
     def test_no_encoding_captures_plain_text(self, real_flow):
