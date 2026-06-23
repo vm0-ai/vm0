@@ -19,7 +19,7 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, Ar
     let root_path = Path::new(dir_path);
     let root = open_artifact_root(root_path)?;
     let entries = read_artifact_root(&root, root_path)?;
-    walk_entries(&root, "", entries, &mut files);
+    walk_entries(&root, "", entries, &mut files)?;
     Ok(files)
 }
 
@@ -31,31 +31,31 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, Ar
 }
 
 #[cfg(target_os = "linux")]
-fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) {
+fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) -> Result<(), ArchiveError> {
     let entries = match current.read_dir() {
         Ok(e) => e,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
-    walk_entries(current, relative, entries, out);
+    walk_entries(current, relative, entries, out)
 }
 
 #[cfg(target_os = "linux")]
-fn walk_entries(current: &Dir, relative: &str, entries: fs::ReadDir, out: &mut Vec<FileEntry>) {
+fn walk_entries(
+    current: &Dir,
+    relative: &str,
+    entries: fs::ReadDir,
+    out: &mut Vec<FileEntry>,
+) -> Result<(), ArchiveError> {
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if name_str == ".git" || name_str == ".vm0" {
+        if is_excluded_artifact_entry(&name) {
             continue;
         }
 
-        let rel = if relative.is_empty() {
-            name_str.to_string()
-        } else {
-            format!("{relative}/{name_str}")
-        };
-
         if let Ok(dir) = current.open_child_dir(&name) {
-            walk_dir(&dir, &rel, out);
+            let name_str = artifact_path_component(&name, relative)?;
+            let rel = relative_artifact_path(relative, name_str);
+            walk_dir(&dir, &rel, out)?;
             continue;
         }
 
@@ -68,6 +68,8 @@ fn walk_entries(current: &Dir, relative: &str, entries: fs::ReadDir, out: &mut V
         if !metadata.is_file() {
             continue;
         }
+        let name_str = artifact_path_component(&name, relative)?;
+        let rel = relative_artifact_path(relative, name_str);
         match compute_file_hash_from_reader(file) {
             Ok((hash, size)) => out.push(FileEntry {
                 path: rel,
@@ -79,6 +81,37 @@ fn walk_entries(current: &Dir, relative: &str, entries: fs::ReadDir, out: &mut V
             }
         }
     }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_excluded_artifact_entry(name: &std::ffi::OsStr) -> bool {
+    name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new(".vm0")
+}
+
+#[cfg(target_os = "linux")]
+fn relative_artifact_path(parent: &str, component: &str) -> String {
+    if parent.is_empty() {
+        component.to_string()
+    } else {
+        format!("{parent}/{component}")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn artifact_path_component<'a>(
+    name: &'a std::ffi::OsStr,
+    parent: &str,
+) -> Result<&'a str, ArchiveError> {
+    name.to_str()
+        .ok_or_else(|| ArchiveError::NonUtf8PathComponent {
+            parent: if parent.is_empty() {
+                ".".to_string()
+            } else {
+                parent.to_string()
+            },
+            component: format!("{name:?}"),
+        })
 }
 
 #[cfg(test)]
@@ -115,6 +148,10 @@ pub(super) enum ArchiveError {
         path.display()
     )]
     UnsupportedRoot { path: PathBuf },
+    #[error(
+        "artifact path component is not valid UTF-8 under {parent:?}: {component}; artifact paths must be valid UTF-8"
+    )]
+    NonUtf8PathComponent { parent: String, component: String },
     #[error("failed to create archive output {}: {source}", path.display())]
     CreateOutput { path: PathBuf, source: io::Error },
     #[error("invalid archive path {path:?}: path must be relative and stay within the artifact")]
@@ -492,7 +529,7 @@ fn open_archive_file(_root: &Path, _rel_path: &Path) -> io::Result<File> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use std::ffi::{CString, OsStr};
     use std::io::Cursor;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs as unix_fs;
@@ -649,6 +686,25 @@ mod tests {
 
         assert!(paths.contains(&"real.txt"));
         assert!(!paths.contains(&"pipe"));
+    }
+
+    #[test]
+    fn collect_file_metadata_skips_non_utf8_paths_for_ignored_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("real.txt"), "hello").unwrap();
+
+        let symlink_name = OsStr::from_bytes(b"link\xff.txt");
+        unix_fs::symlink(root.join("real.txt"), root.join(Path::new(symlink_name))).unwrap();
+
+        let fifo_name = OsStr::from_bytes(b"pipe\xff");
+        make_fifo(&root.join(Path::new(fifo_name))).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        assert_eq!(paths, vec!["real.txt"]);
     }
 
     #[test]
@@ -1065,6 +1121,63 @@ mod tests {
         // .git and .vm0 contents must NOT be present
         assert!(!paths.iter().any(|p| p.starts_with(".git")));
         assert!(!paths.iter().any(|p| p.starts_with(".vm0")));
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_non_utf8_path_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let filename = OsStr::from_bytes(b"bad\xff.txt");
+        std::fs::write(root.join(Path::new(filename)), "data").unwrap();
+
+        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+
+        let ArchiveError::NonUtf8PathComponent { parent, component } = &err else {
+            panic!("expected non-UTF-8 path component error, got: {err}");
+        };
+        assert_eq!(parent, ".");
+        assert!(component.contains("bad"), "got: {component}");
+        assert!(
+            err.to_string()
+                .contains("artifact path component is not valid UTF-8"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_non_utf8_directory_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let dirname = OsStr::from_bytes(b"bad\xffdir");
+        let nested = root.join(Path::new(dirname));
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("file.txt"), "data").unwrap();
+
+        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+
+        let ArchiveError::NonUtf8PathComponent { parent, component } = &err else {
+            panic!("expected non-UTF-8 path component error, got: {err}");
+        };
+        assert_eq!(parent, ".");
+        assert!(component.contains("bad"), "got: {component}");
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_nested_non_utf8_path_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let parent = root.join("parent");
+        std::fs::create_dir(&parent).unwrap();
+        let filename = OsStr::from_bytes(b"bad\xff.txt");
+        std::fs::write(parent.join(Path::new(filename)), "data").unwrap();
+
+        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+
+        let ArchiveError::NonUtf8PathComponent { parent, component } = &err else {
+            panic!("expected non-UTF-8 path component error, got: {err}");
+        };
+        assert_eq!(parent, "parent");
+        assert!(component.contains("bad"), "got: {component}");
     }
 
     #[test]

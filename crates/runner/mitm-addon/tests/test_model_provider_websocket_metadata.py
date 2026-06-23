@@ -3,19 +3,15 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
 
 import pytest
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-import usage
 from tests.model_provider_websocket_helpers import (
     _capture_deferred_websocket_trims,
     _feed_websocket_server_message,
-    _feed_websocket_server_text_message,
-    _model_websocket_usage_sources,
     _openai_model_websocket_flow,
     _ScheduledWebSocketTrim,
 )
@@ -28,19 +24,6 @@ def deferred_websocket_trim_scheduler(
     return _capture_deferred_websocket_trims(monkeypatch)
 
 
-@pytest.fixture(autouse=True)
-def keep_websocket_usage_sources(monkeypatch: pytest.MonkeyPatch) -> None:
-    def keep_source(
-        _flow: http.HTTPFlow,
-        _run_id: str,
-        _message_id: str,
-        _source_usage: dict,
-    ) -> Literal["keep"]:
-        return "keep"
-
-    monkeypatch.setattr(usage, "report_model_provider_usage_source", keep_source)
-
-
 def _openai_model_websocket_metadata_flow(
     tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
 ) -> http.HTTPFlow:
@@ -49,159 +32,6 @@ def _openai_model_websocket_metadata_flow(
 
 class TestModelProviderWebSocketUsageMetadata:
     """Tests for WebSocket usage metadata parsing without webhook reporting."""
-
-    def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {
-                            "input_tokens": 100,
-                            "output_tokens": 40,
-                            "input_tokens_details": {"cached_tokens": 25},
-                        },
-                    },
-                }
-            ).encode(),
-        )
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.done",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {
-                            "input_tokens": 0,
-                            "output_tokens": 0,
-                            "input_tokens_details": {"cached_tokens": 0},
-                        },
-                    },
-                }
-            ).encode(),
-        )
-
-        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
-            "message_id": "resp_ws_1",
-            "model": "gpt-5.5",
-            "tokens.input": 75,
-            "tokens.output": 40,
-            "tokens.cache_read": 25,
-        }
-
-    def test_model_websocket_positive_frame_updates_prior_zero_usage(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {"input_tokens": 0, "output_tokens": 0},
-                    },
-                }
-            ).encode(),
-        )
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.done",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {"input_tokens": 10, "output_tokens": 4},
-                    },
-                }
-            ).encode(),
-        )
-
-        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
-            "message_id": "resp_ws_1",
-            "model": "gpt-5.5",
-            "tokens.input": 10,
-            "tokens.output": 4,
-        }
-
-    def test_model_websocket_partial_frame_preserves_existing_categories(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {
-                            "input_tokens": 100,
-                            "output_tokens": 0,
-                            "input_tokens_details": {"cached_tokens": 25},
-                        },
-                    },
-                }
-            ).encode(),
-        )
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.done",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {"output_tokens": 40},
-                    },
-                }
-            ).encode(),
-        )
-
-        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
-            "message_id": "resp_ws_1",
-            "model": "gpt-5.5",
-            "tokens.input": 75,
-            "tokens.output": 40,
-            "tokens.cache_read": 25,
-        }
-
-    def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
-        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-
-        _feed_websocket_server_text_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_text",
-                        "model": "gpt-5.4",
-                        "usage": {"input_tokens": 3, "output_tokens": 2},
-                    },
-                }
-            ),
-        )
-
-        assert _model_websocket_usage_sources(flow)["resp_ws_text"] == {
-            "message_id": "resp_ws_text",
-            "model": "gpt-5.4",
-            "tokens.input": 3,
-            "tokens.output": 2,
-        }
 
     def test_model_websocket_malformed_frame_preserves_prior_usage(self, tmp_path, real_flow):
         flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
@@ -221,37 +51,6 @@ class TestModelProviderWebSocketUsageMetadata:
             "tokens.input": 10,
             "tokens.output": 4,
         }
-
-    def test_model_websocket_valid_id_usage_replaces_non_dict_usage_sources_metadata(
-        self, tmp_path, real_flow
-    ):
-        flow = _openai_model_websocket_metadata_flow(tmp_path, real_flow)
-        mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
-
-        _feed_websocket_server_message(
-            flow,
-            json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {"input_tokens": 10, "output_tokens": 4},
-                    },
-                }
-            ).encode(),
-        )
-
-        assert _model_websocket_usage_sources(flow) == {
-            "resp_ws_1": {
-                "message_id": "resp_ws_1",
-                "model": "gpt-5.5",
-                "tokens.input": 10,
-                "tokens.output": 4,
-            }
-        }
-        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
 
     def test_model_websocket_ignores_invalid_frames_with_non_dict_usage_metadata(
         self, tmp_path, real_flow

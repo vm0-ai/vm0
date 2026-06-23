@@ -12,10 +12,42 @@ pub(in crate::exec_operation) enum ExecTerminalLogLifecycle {
     Supervised,
 }
 
+impl ExecTerminalLogLifecycle {
+    fn as_str(self) -> &'static str {
+        match self {
+            ExecTerminalLogLifecycle::OneShot => "one_shot",
+            ExecTerminalLogLifecycle::Supervised => "supervised",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::exec_operation) enum ExecTerminalLogSeverity {
     Info,
     Warn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::exec_operation) enum ExecTerminalLogReason {
+    ExpectedCancel,
+    Notable,
+    Slow,
+}
+
+impl ExecTerminalLogReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            ExecTerminalLogReason::ExpectedCancel => "expected_cancel",
+            ExecTerminalLogReason::Notable => "notable",
+            ExecTerminalLogReason::Slow => "slow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::exec_operation) struct ExecTerminalLogDecision {
+    pub(in crate::exec_operation) severity: ExecTerminalLogSeverity,
+    pub(in crate::exec_operation) reason: ExecTerminalLogReason,
 }
 
 #[derive(Clone, Copy)]
@@ -118,7 +150,7 @@ impl ExecOperationDiagnostic {
         let stdout_truncated = exec_operation_captured_output_truncated(result.stdout);
         let stderr_truncated = exec_operation_captured_output_truncated(result.stderr);
         let diagnostic_present = !result.diagnostic.is_empty();
-        let Some(severity) = exec_terminal_log_severity(ExecTerminalLogContext {
+        let Some(decision) = exec_terminal_log_decision(ExecTerminalLogContext {
             lifecycle,
             slow,
             termination: result.termination,
@@ -130,6 +162,8 @@ impl ExecOperationDiagnostic {
         }) else {
             return;
         };
+        let lifecycle = lifecycle.as_str();
+        let terminal_reason = decision.reason.as_str();
 
         macro_rules! emit_terminal_result_log {
             ($level:expr) => {
@@ -138,6 +172,9 @@ impl ExecOperationDiagnostic {
                     seq = self.seq,
                     label = %self.label_log,
                     elapsed_ms,
+                    slow,
+                    lifecycle,
+                    terminal_reason,
                     guest_duration_ms = result.duration_ms,
                     termination = ?result.termination,
                     stream_overflowed,
@@ -150,7 +187,7 @@ impl ExecOperationDiagnostic {
             };
         }
 
-        match severity {
+        match decision.severity {
             ExecTerminalLogSeverity::Info => emit_terminal_result_log!(tracing::Level::INFO),
             ExecTerminalLogSeverity::Warn => emit_terminal_result_log!(tracing::Level::WARN),
         }
@@ -200,11 +237,21 @@ pub(in crate::exec_operation) fn exec_terminal_log_lifecycle(
     }
 }
 
+#[cfg(test)]
 pub(in crate::exec_operation) fn exec_terminal_log_severity(
     context: ExecTerminalLogContext,
 ) -> Option<ExecTerminalLogSeverity> {
+    exec_terminal_log_decision(context).map(|decision| decision.severity)
+}
+
+pub(in crate::exec_operation) fn exec_terminal_log_decision(
+    context: ExecTerminalLogContext,
+) -> Option<ExecTerminalLogDecision> {
     if exec_terminal_cancel_is_expected(context) {
-        return Some(ExecTerminalLogSeverity::Info);
+        return Some(ExecTerminalLogDecision {
+            severity: ExecTerminalLogSeverity::Info,
+            reason: ExecTerminalLogReason::ExpectedCancel,
+        });
     }
 
     let notable = exec_termination_requires_low_level_warning(context.termination)
@@ -213,15 +260,22 @@ pub(in crate::exec_operation) fn exec_terminal_log_severity(
         || context.stream_overflowed
         || context.diagnostic_present;
     if notable {
-        return Some(ExecTerminalLogSeverity::Warn);
+        return Some(ExecTerminalLogDecision {
+            severity: ExecTerminalLogSeverity::Warn,
+            reason: ExecTerminalLogReason::Notable,
+        });
     }
     if !context.slow {
         return None;
     }
-    match context.lifecycle {
-        ExecTerminalLogLifecycle::OneShot => Some(ExecTerminalLogSeverity::Warn),
-        ExecTerminalLogLifecycle::Supervised => Some(ExecTerminalLogSeverity::Info),
-    }
+    let severity = match context.lifecycle {
+        ExecTerminalLogLifecycle::OneShot => ExecTerminalLogSeverity::Warn,
+        ExecTerminalLogLifecycle::Supervised => ExecTerminalLogSeverity::Info,
+    };
+    Some(ExecTerminalLogDecision {
+        severity,
+        reason: ExecTerminalLogReason::Slow,
+    })
 }
 
 pub(in crate::exec_operation) fn exec_operation_label_log(label: &str) -> String {

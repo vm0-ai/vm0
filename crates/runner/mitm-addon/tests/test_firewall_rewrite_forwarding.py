@@ -25,6 +25,10 @@ def _templated_builtin_auth_header_names() -> list[str]:
     return sorted(names, key=str.lower)
 
 
+def _request_line_parts(upstream) -> tuple[str, str, str]:
+    return upstream.socket.request_lines()[0].split(" ", 2)
+
+
 class TestAuthBaseUrlRewriteForwarding:
     """auth.base rewrite forwarding handler tests."""
 
@@ -140,7 +144,7 @@ class TestAuthBaseUrlRewriteForwarding:
         assert "real-token" not in log_text
         assert "webhook/secret" not in log_text
 
-    async def test_forward_request_includes_auth_headers(
+    async def test_url_rewrite_sends_resolved_auth_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """auth.headers are forwarded without mutating the placeholder request."""
@@ -159,26 +163,21 @@ class TestAuthBaseUrlRewriteForwarding:
             "X-Api-Key": "real-api-key",
             "X-Custom": "injected-value",
         }
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.metadata["auth_url_rewrite"] is True
-        # Auth headers passed to forward_request.
-        call_args = mock_forward.call_args
-        req_headers = call_args[0][2]
-        assert ("Authorization", "Bearer agent") not in req_headers
-        assert ("Authorization", "Bearer real-token") in req_headers
-        assert ("X-Api-Key", "agent-api-key") not in req_headers
-        assert ("X-Api-Key", "real-api-key") in req_headers
-        assert ("X-Custom", "injected-value") in req_headers
+        assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
+        assert upstream.socket.request_header_values("X-Api-Key") == ["real-api-key"]
+        assert upstream.socket.request_header_values("X-Custom") == ["injected-value"]
         assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert flow.request.headers["X-Api-Key"] == "agent-api-key"
         assert "X-Custom" not in flow.request.headers
 
-    async def test_forward_request_strips_client_credentials_without_resolved_headers(
+    async def test_url_rewrite_strips_client_credentials_without_resolved_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """auth.base forwarding must not leak placeholder-scoped credentials."""
@@ -200,34 +199,27 @@ class TestAuthBaseUrlRewriteForwarding:
             ),
         )
         token_meta["headers"] = {}
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        req_headers = mock_forward.call_args[0][2]
-        forwarded_names = {name.lower() for name, _value in req_headers}
-        stripped_names = {
-            "authorization",
-            "cookie",
-            "x-api-key",
-            "x-auth-token",
-            "private-token",
-        }
-        assert stripped_names.isdisjoint(forwarded_names)
-        assert req_headers.count(("X-Repeat", "one")) == 1
-        assert req_headers.count(("X-Repeat", "two")) == 1
-        assert ("X-Keep", "client") in req_headers
+        assert upstream.socket.request_header_values("Authorization") == []
+        assert upstream.socket.request_header_values("Cookie") == []
+        assert upstream.socket.request_header_values("X-Api-Key") == []
+        assert upstream.socket.request_header_values("X-Auth-Token") == []
+        assert upstream.socket.request_header_values("Private-Token") == []
+        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
+        assert upstream.socket.request_header_values("X-Keep") == ["client"]
         request_headers = list(flow.request.headers.items(multi=True))
         assert ("Authorization", "Bearer agent") in request_headers
         assert ("authorization", "Bearer lower-agent") in request_headers
         assert ("AUTHORIZATION", "Bearer upper-agent") in request_headers
         assert flow.request.headers["Cookie"] == "session=agent"
 
-    async def test_forward_request_strips_templated_builtin_auth_headers_without_resolved_headers(
+    async def test_url_rewrite_strips_templated_builtin_auth_headers_without_resolved_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Client-provided templated builtin auth headers must not cross auth.base rewrites."""
@@ -243,20 +235,18 @@ class TestAuthBaseUrlRewriteForwarding:
             ),
         )
         token_meta["headers"] = {}
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        req_headers = mock_forward.call_args[0][2]
-        forwarded_names = {name.lower() for name, _value in req_headers}
-        assert {name.lower() for name in auth_header_names}.isdisjoint(forwarded_names)
-        assert ("X-Keep", "client") in req_headers
+        for name in auth_header_names:
+            assert upstream.socket.request_header_values(name) == []
+        assert upstream.socket.request_header_values("X-Keep") == ["client"]
 
-    async def test_forward_request_preserves_client_static_metadata_headers(
+    async def test_url_rewrite_preserves_client_static_metadata_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Client-provided non-secret metadata headers should still reach auth.base targets."""
@@ -271,20 +261,20 @@ class TestAuthBaseUrlRewriteForwarding:
             ),
         )
         token_meta["headers"] = {}
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        req_headers = mock_forward.call_args[0][2]
-        assert ("Reap-Version", "2025-02-14") in req_headers
-        assert ("X-Api-Version", "2025-11-01") in req_headers
-        assert ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN") in req_headers
+        assert upstream.socket.request_header_values("Reap-Version") == ["2025-02-14"]
+        assert upstream.socket.request_header_values("X-Api-Version") == ["2025-11-01"]
+        assert upstream.socket.request_header_values("X-Snowflake-Authorization-Token-Type") == [
+            "PROGRAMMATIC_ACCESS_TOKEN"
+        ]
 
-    async def test_forward_request_preserves_duplicate_headers_and_auth_override(
+    async def test_url_rewrite_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """auth.base forwarding keeps repeated headers unless auth overrides that name."""
@@ -304,26 +294,19 @@ class TestAuthBaseUrlRewriteForwarding:
             ),
         )
         token_meta["headers"] = {"Authorization": "Bearer real"}
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        req_headers = mock_forward.call_args[0][2]
-        assert ("Connection", "Authorization, X-Remove") not in req_headers
-        assert ("X-Remove", "drop") not in req_headers
-        assert req_headers.count(("X-Repeat", "one")) == 1
-        assert req_headers.count(("X-Repeat", "two")) == 1
-        assert ("Authorization", "Bearer agent") not in req_headers
-        assert ("authorization", "Bearer lower-agent") not in req_headers
-        assert ("AUTHORIZATION", "Bearer upper-agent") not in req_headers
-        assert ("Authorization", "Bearer stale") not in req_headers
-        assert req_headers.count(("Authorization", "Bearer real")) == 1
+        assert upstream.socket.request_header_values("Connection") == []
+        assert upstream.socket.request_header_values("X-Remove") == []
+        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
+        assert upstream.socket.request_header_values("Authorization") == ["Bearer real"]
 
-    async def test_forward_request_filters_client_and_injected_unsafe_headers(
+    async def test_url_rewrite_filters_client_and_injected_unsafe_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Unsafe client and injected headers are stripped without suppressing auth."""
@@ -361,34 +344,27 @@ class TestAuthBaseUrlRewriteForwarding:
             "Authorization": "Bearer real",
             "X-Injected": "trusted",
         }
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        req_headers = mock_forward.call_args[0][2]
-        header_names = [name.lower() for name, _value in req_headers]
-        blocked_headers = {
-            "connection",
-            "content-length",
-            "host",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "proxy-connection",
-            "te",
-            "trailer",
-            "transfer-encoding",
-            "upgrade",
-        }
-        assert blocked_headers.isdisjoint(header_names)
-        assert ("Authorization", "Bearer agent") not in req_headers
-        assert ("Authorization", "Bearer real") in req_headers
-        assert ("X-Injected", "trusted") in req_headers
-        assert ("X-Keep", "client") in req_headers
+        assert upstream.socket.request_header_values("Connection") == []
+        assert upstream.socket.request_header_values("Content-Length") == []
+        assert upstream.socket.request_header_values("Host") == ["discord.com"]
+        assert upstream.socket.request_header_values("Keep-Alive") == []
+        assert upstream.socket.request_header_values("Proxy-Authenticate") == []
+        assert upstream.socket.request_header_values("Proxy-Authorization") == []
+        assert upstream.socket.request_header_values("Proxy-Connection") == []
+        assert upstream.socket.request_header_values("TE") == []
+        assert upstream.socket.request_header_values("Trailer") == []
+        assert upstream.socket.request_header_values("Transfer-Encoding") == []
+        assert upstream.socket.request_header_values("Upgrade") == []
+        assert upstream.socket.request_header_values("Authorization") == ["Bearer real"]
+        assert upstream.socket.request_header_values("X-Injected") == ["trusted"]
+        assert upstream.socket.request_header_values("X-Keep") == ["client"]
 
     async def test_forward_request_rejects_malformed_injected_header(
         self, real_flow, mitm_ctx, tmp_path
@@ -420,7 +396,7 @@ class TestAuthBaseUrlRewriteForwarding:
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_resolved_auth_header"
 
-    async def test_forward_request_signs_rewritten_aws_sigv4_request(
+    async def test_url_rewrite_signs_rewritten_aws_sigv4_request(
         self,
         headers,
         real_flow,
@@ -464,32 +440,36 @@ class TestAuthBaseUrlRewriteForwarding:
                 ),
             },
         )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        forwarded_url = mock_forward.call_args[0][0]
-        req_headers = mock_forward.call_args[0][2]
-        authorization = dict(req_headers)["authorization"]
-        assert forwarded_url == "https://sts.amazonaws.com:443/"
-        assert ("host", "sts.amazonaws.com") in req_headers
+        method, request_target, _version = _request_line_parts(upstream)
+        assert method == "POST"
+        assert request_target == "/"
+        authorization = upstream.socket.request_header_values("Authorization")[0]
+        assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
+        assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
         assert "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request" in authorization
         assert (
             "Signature=d58b7e131d8f54e75a6ee98fd426242a7bab02e04a9e7eaec5dfad94425ab4ae"
             in authorization
         )
-        assert ("x-amz-security-token", "real-session-token") in req_headers
-        forwarded_names = {name.lower() for name, _value in req_headers}
-        assert "cookie" not in forwarded_names
-        assert "x-api-key" not in forwarded_names
-        assert ("X-Amz-Security-Token", "placeholder-session-token") not in req_headers
+        assert upstream.socket.request_header_values("X-Amz-Security-Token") == [
+            "real-session-token"
+        ]
+        assert upstream.socket.request_header_values("Cookie") == []
+        assert upstream.socket.request_header_values("X-Api-Key") == []
+        assert upstream.socket.request_header_values("Content-Length") == ["43"]
+        assert upstream.socket.request_text().endswith(
+            "\r\n\r\nAction=GetCallerIdentity&Version=2011-06-15"
+        )
         assert flow.request.headers["Authorization"] == placeholder_authorization
 
-    async def test_forward_request_strips_unrelated_authorization_for_aws_query_sigv4(
+    async def test_url_rewrite_strips_unrelated_authorization_for_aws_query_sigv4(
         self,
         headers,
         real_flow,
@@ -535,47 +515,49 @@ class TestAuthBaseUrlRewriteForwarding:
                 ),
             },
         )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        forwarded_url = mock_forward.call_args[0][0]
-        req_headers = mock_forward.call_args[0][2]
-        query = dict(parse_qs(urlparse(forwarded_url).query))
-        forwarded_names = {name.lower() for name, _value in req_headers}
+        method, request_target, _version = _request_line_parts(upstream)
+        query = dict(parse_qs(urlparse(request_target).query))
+        assert method == "GET"
+        assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
+        assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
         assert query["X-Amz-Credential"] == ["AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"]
         assert query["X-Amz-Security-Token"] == ["real-session-token"]
         assert query["X-Amz-Signature"] != ["placeholder"]
-        assert "authorization" not in forwarded_names
-        assert "cookie" not in forwarded_names
-        assert "x-amz-security-token" not in forwarded_names
+        assert upstream.socket.request_header_values("Authorization") == []
+        assert upstream.socket.request_header_values("Cookie") == []
+        assert upstream.socket.request_header_values("X-Amz-Security-Token") == []
 
-    async def test_forward_request_uses_raw_body_for_any_method(
-        self, real_flow, mitm_ctx, tmp_path
-    ):
+    async def test_url_rewrite_sends_raw_body_for_any_method(self, real_flow, mitm_ctx, tmp_path):
         """auth.base forwarding does not drop bodies for non-POST methods."""
+        request_body = b"\x00\xffdelete-body"
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             method="DELETE",
-            request_body=b"delete-body",
+            request_body=request_body,
         )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        assert mock_forward.call_args[0][1] == "DELETE"
-        assert mock_forward.call_args[0][3] == b"delete-body"
+        method, _request_target, _version = _request_line_parts(upstream)
+        assert method == "DELETE"
+        assert upstream.socket.request_header_values("Content-Length") == [str(len(request_body))]
+        assert bytes(upstream.socket.sent).endswith(b"\r\n\r\n" + request_body)
 
-    async def test_forward_request_preserves_empty_raw_body(self, real_flow, mitm_ctx, tmp_path):
+    async def test_url_rewrite_sends_empty_raw_body_with_zero_content_length(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
         """An explicit empty body is distinct from no body for Content-Length."""
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
@@ -583,17 +565,21 @@ class TestAuthBaseUrlRewriteForwarding:
             method="POST",
             request_body=b"",
         )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        assert mock_forward.call_args[0][3] == b""
+        method, _request_target, _version = _request_line_parts(upstream)
+        assert method == "POST"
+        assert upstream.socket.request_header_values("Content-Length") == ["0"]
+        assert upstream.socket.request_text().endswith("\r\n\r\n")
 
-    async def test_forward_request_preserves_absent_body(self, real_flow, mitm_ctx, tmp_path):
+    async def test_url_rewrite_sends_absent_body_without_content_length(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
         """A request with no raw body remains distinct from an explicit empty body."""
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
@@ -601,17 +587,19 @@ class TestAuthBaseUrlRewriteForwarding:
             method="GET",
             request_body=None,
         )
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        assert mock_forward.call_args[0][3] is None
+        method, _request_target, _version = _request_line_parts(upstream)
+        assert method == "GET"
+        assert upstream.socket.request_header_values("Content-Length") == []
+        assert upstream.socket.request_text().endswith("\r\n\r\n")
 
-    async def test_forward_request_accepts_body_at_limit(self, real_flow, mitm_ctx, tmp_path):
+    async def test_url_rewrite_accepts_body_at_limit(self, real_flow, mitm_ctx, tmp_path):
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
@@ -619,17 +607,17 @@ class TestAuthBaseUrlRewriteForwarding:
             request_body=b"1234",
         )
         get_headers = AsyncMock(return_value=token_meta)
-        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
+            fake_forwarder_upstream() as upstream,
             patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
             patch.object(auth, "get_firewall_headers", get_headers),
-            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert get_headers.await_count == 1
-        assert mock_forward.call_args[0][3] == b"1234"
+        assert upstream.socket.request_header_values("Content-Length") == ["4"]
+        assert upstream.socket.request_text().endswith("\r\n\r\n1234")
         assert flow.response is not None
         assert flow.response.status_code == 200
 

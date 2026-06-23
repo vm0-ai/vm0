@@ -84,6 +84,7 @@ import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
 import * as automationSchema from "./schema/automation";
+import * as gmailEventSchema from "./schema/gmail-event";
 
 export const schema = {
   ...userSchema,
@@ -172,4 +173,5 @@ export const schema = {
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
   ...automationSchema,
+  ...gmailEventSchema,
 };

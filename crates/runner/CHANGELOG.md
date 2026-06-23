@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.129.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.2...runner-rs-v0.129.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate sentry firewall route owners ([#18620](https://github.com/vm0-ai/vm0/issues/18620)) ([21f9f3b](https://github.com/vm0-ai/vm0/commit/21f9f3bc6b5c3fec803824e292247721c64b6baf))
+
+
+### Performance Improvements
+
+* avoid active input validation allocation ([#18624](https://github.com/vm0-ai/vm0/issues/18624)) ([4b0cd9c](https://github.com/vm0-ai/vm0/commit/4b0cd9cac8ffe9855503d675d7f0320809ac49e7))
+* index mitm firewall matching ([#18621](https://github.com/vm0-ai/vm0/issues/18621)) ([8893680](https://github.com/vm0-ai/vm0/commit/8893680a262a377ac7e029a5f06d64571b54b23c))
+* **runner:** reduce procfs stat parsing overhead ([#18626](https://github.com/vm0-ai/vm0/issues/18626)) ([3922056](https://github.com/vm0-ai/vm0/commit/39220562e2d1f9e66142d8ba22e5ab48183c3690))
+
+## [0.129.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.1...runner-rs-v0.129.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate xero firewall route owners ([#18598](https://github.com/vm0-ai/vm0/issues/18598)) ([c5e833d](https://github.com/vm0-ai/vm0/commit/c5e833d699b10daf210cc832e893973c26e9a924))
+* make slow exec terminal warnings actionable ([#18619](https://github.com/vm0-ai/vm0/issues/18619)) ([ab0ce71](https://github.com/vm0-ai/vm0/commit/ab0ce71380d416da28156f15e80def1a24dd3bef))
+
+
+### Documentation
+
+* **mitm-addon:** clarify x usage billing test docstrings ([#18607](https://github.com/vm0-ai/vm0/issues/18607)) ([137280e](https://github.com/vm0-ai/vm0/commit/137280ecb71d0d341668a41de15a1d7afa061370))
+
+
+### Performance Improvements
+
+* **mitm-addon:** cache compiled builtin firewall cores ([#18597](https://github.com/vm0-ai/vm0/issues/18597)) ([251c7dc](https://github.com/vm0-ai/vm0/commit/251c7dc481283c1b43f673ca45b547f47487b64c))
+* **runner:** coalesce network log batch writes ([#18604](https://github.com/vm0-ai/vm0/issues/18604)) ([acc9054](https://github.com/vm0-ai/vm0/commit/acc9054b688e3861e2793cc31226c8287f0337d4))
+
+## [0.129.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.0...runner-rs-v0.129.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* classify claude output token limits ([#18579](https://github.com/vm0-ai/vm0/issues/18579)) ([2b43740](https://github.com/vm0-ai/vm0/commit/2b437408b03be9c6413705dd1b633cbc33a2a62a))
+* select single cloudflare firewall permission ([#18554](https://github.com/vm0-ai/vm0/issues/18554)) ([bf31571](https://github.com/vm0-ai/vm0/commit/bf31571649ef8dee8018214a255af036ddd5d775))
+
 ## [0.129.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.128.0...runner-rs-v0.129.0) (2026-06-22)
 
 

@@ -95,10 +95,12 @@ struct NetnsPoolInner {
 
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
 ///
-/// Maintains a buffer of `BUFFER_SIZE` ready namespaces per queue. After each
+/// Maintains a buffer of `BUFFER_SIZE` ready namespaces for the active queue
+/// selected by [`NetnsPoolConfig`]. Without a proxy port, the active queue is
+/// the plain queue; with a proxy port, it is the proxy queue. After each
 /// [`acquire`](Self::acquire), the pool spawns a background task to replenish
-/// the buffer. Namespaces returned via [`release`](Self::release) are recycled
-/// back into the queue.
+/// the active queue. Namespaces returned via [`release`](Self::release) are
+/// recycled back into that queue.
 pub struct NetnsPool {
     inner: NetnsPoolInner,
 }
@@ -504,7 +506,7 @@ impl NetnsPoolState {
                 return Ok(AcquirePlan::Ready(lease));
             }
 
-            let kind = self.acquire_kind();
+            let kind = self.active_kind();
             if self.pending_set(kind).is_empty() {
                 self.spawn_creation(kind)?;
             }
@@ -537,7 +539,7 @@ impl NetnsPoolState {
     }
 
     fn try_checkout_ready(&mut self) -> Result<Option<NetnsLease>> {
-        let kind = self.acquire_kind();
+        let kind = self.active_kind();
         let (pooled, queue_len_after_pop) = {
             let queue = self.target_queue_mut(kind);
             let pooled = queue.pop_front();
@@ -558,7 +560,7 @@ impl NetnsPoolState {
         Ok(Some(lease))
     }
 
-    fn acquire_kind(&self) -> NetnsKind {
+    fn active_kind(&self) -> NetnsKind {
         if self.proxy_port.is_some() {
             NetnsKind::Proxy
         } else {
@@ -618,7 +620,7 @@ impl NetnsPoolState {
             ));
         }
 
-        let kind = self.acquire_kind();
+        let kind = self.active_kind();
         let reusable = self.active && !self.non_reusable.contains(active_lease.name());
         if reusable
             && self
@@ -910,10 +912,12 @@ impl NetnsPoolInner {
 impl NetnsPool {
     /// Create a new pool with a small pre-warmed buffer.
     ///
-    /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.
-    /// After each [`acquire`](Self::acquire), the pool replenishes to
-    /// maintain the buffer level. Namespaces returned via
-    /// [`release`](Self::release) are recycled back into the queue.
+    /// Pre-warms `BUFFER_SIZE` namespaces for the active queue at startup.
+    /// Without a proxy port, this is the plain queue; with a proxy port, this
+    /// is the proxy queue. After each [`acquire`](Self::acquire), the pool
+    /// replenishes the same active queue to maintain the buffer level.
+    /// Namespaces returned via [`release`](Self::release) are recycled back
+    /// into that queue.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle

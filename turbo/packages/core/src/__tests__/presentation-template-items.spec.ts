@@ -17,7 +17,7 @@ const FORBIDDEN_ASSET_URL_PARTS = [
 ] as const;
 
 const BOTANE_BORDERLESS_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c55e2b08-4242-4ce7-99e2-6e37440c3709/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/64d1a85a-9347-48fb-860b-073180385b66/botane-organic-deck.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a43f103f-e4b3-40b0-a326-c37a2240e6b5/slide-02.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/576f05a7-2d2c-4963-876b-6eda1fe8f93e/slide-03.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12a44151-de3a-465d-9631-df029387a922/slide-04.png",
@@ -35,7 +35,7 @@ const BOTANE_BORDERLESS_PREVIEW_IMAGES = [
 ] as const;
 
 const BUSINESS_DATA_BORDERLESS_PREVIEW_IMAGES = [
-  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc1a93e1-e55d-4e40-b562-ef5f265ff79c/slide-01.png",
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9aa42296-a49e-4128-a80a-e920637b1506/business-data-presentation.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/04a3765b-ef6a-4bbb-8ae4-b116941760cf/slide-02.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1919e6e0-2adf-4727-825d-3470568733e7/slide-03.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d71bc2-9359-4a41-bde6-da6e4d9d0fd0/slide-04.png",
@@ -399,7 +399,7 @@ describe("presentation template items", () => {
     expect(item.previewImages.length).toBe(15);
     expect(item.previewImage).toBe(item.previewImages[0]);
     expect(item.embedUrl).toMatch(
-      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/aplocoto\.html$/,
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/playful-launch-presentation\.html$/,
     );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
@@ -432,7 +432,7 @@ describe("presentation template items", () => {
     expectColorSystem(item.colorSystemId, "color-system:berry-pop");
     expect(item.previewImages.length).toBe(15);
     expect(item.embedUrl).toMatch(
-      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/business-data\.html$/,
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/business-data-presentation\.html$/,
     );
     expectCdnPreviewImages(item);
     expect(findDesignSystem(item.designSystemId)).toBeDefined();
@@ -514,7 +514,7 @@ describe("presentation template items", () => {
     expect(botaneItem.previewImages.length).toBe(15);
     expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
     expect(botaneItem.embedUrl).toMatch(
-      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/botane-organic\.html$/,
+      /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/botane-organic-deck\.html$/,
     );
     expectCdnPreviewImages(botaneItem);
     expect(findDesignSystem(botaneItem.designSystemId)).toBeDefined();

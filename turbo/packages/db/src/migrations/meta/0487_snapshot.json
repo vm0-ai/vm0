@@ -1,5 +1,5 @@
 {
-  "id": "0568cc1a-982a-4df0-b666-0de6d34f35c1",
+  "id": "7c7e6028-56d3-4473-849b-ec94d07e0ebe",
   "prevId": "f3d00456-ac1b-4fb5-b7be-ebba29c3d49e",
   "version": "7",
   "dialect": "postgresql",
@@ -1629,18 +1629,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "webhook_token": {
-          "name": "webhook_token",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "encrypted_secret": {
-          "name": "encrypted_secret",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "cron_expression": {
           "name": "cron_expression",
           "type": "varchar(100)",
@@ -1729,21 +1717,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_automation_triggers_webhook_token": {
-          "name": "idx_automation_triggers_webhook_token",
-          "columns": [
-            {
-              "expression": "webhook_token",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_automation_triggers_next_run": {
           "name": "idx_automation_triggers_next_run",
           "columns": [
@@ -1795,7 +1768,7 @@
       "checkConstraints": {
         "automation_triggers_kind_config_check": {
           "name": "automation_triggers_kind_config_check",
-          "value": "(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)\n          OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)\n          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)\n          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)"
+          "value": "(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)\n          OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)\n          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -8382,154 +8355,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.org_custom_connector_values": {
-      "name": "org_custom_connector_values",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "connector_id": {
-          "name": "connector_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key": {
-          "name": "key",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "encrypted_value": {
-          "name": "encrypted_value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_org_custom_connector_values_connector": {
-          "name": "idx_org_custom_connector_values_connector",
-          "columns": [
-            {
-              "expression": "connector_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_org_custom_connector_values_user": {
-          "name": "idx_org_custom_connector_values_user",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_org_custom_connector_values_unique": {
-          "name": "idx_org_custom_connector_values_unique",
-          "columns": [
-            {
-              "expression": "connector_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "org_custom_connector_values_connector_id_org_custom_connectors_id_fk": {
-          "name": "org_custom_connector_values_connector_id_org_custom_connectors_id_fk",
-          "tableFrom": "org_custom_connector_values",
-          "tableTo": "org_custom_connectors",
-          "columnsFrom": [
-            "connector_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.org_custom_connectors": {
       "name": "org_custom_connectors",
       "schema": "",
@@ -8576,34 +8401,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "prefix_templates": {
-          "name": "prefix_templates",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "fields": {
-          "name": "fields",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "header_injections": {
-          "name": "header_injections",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "query_injections": {
-          "name": "query_injections",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         },
         "created_by": {
           "name": "created_by",

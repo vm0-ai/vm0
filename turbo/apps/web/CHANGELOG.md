@@ -1,5 +1,51 @@
 # Changelog
 
+## [12.437.2](https://github.com/vm0-ai/vm0/compare/web-v12.437.1...web-v12.437.2) (2026-06-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.2
+    * @vm0/core bumped to 8.364.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.104.2
+
+## [12.437.1](https://github.com/vm0-ai/vm0/compare/web-v12.437.0...web-v12.437.1) (2026-06-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.1
+    * @vm0/core bumped to 8.364.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.104.1
+
+## [12.437.0](https://github.com/vm0-ai/vm0/compare/web-v12.436.0...web-v12.437.0) (2026-06-23)
+
+
+### Features
+
+* add Gmail new message workflow trigger ([#18591](https://github.com/vm0-ai/vm0/issues/18591)) ([3ce1cb5](https://github.com/vm0-ai/vm0/commit/3ce1cb525fb8c01e81513383789e40646ed81c0b))
+
+
+### Refactoring
+
+* remove automation webhook triggers ([#18563](https://github.com/vm0-ai/vm0/issues/18563)) ([b4e8e96](https://github.com/vm0-ai/vm0/commit/b4e8e9640e7922c7ea2969c36584d719ecddd196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.0
+    * @vm0/core bumped to 8.364.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.104.0
+
 ## [12.436.0](https://github.com/vm0-ai/vm0/compare/web-v12.435.10...web-v12.436.0) (2026-06-23)
 
 

@@ -179,6 +179,9 @@ fn find_startable_download(
     pending: &VecDeque<DownloadTask>,
     active: &[ActiveDownload],
 ) -> Option<(usize, PathBuf)> {
+    // Scan the pending queue instead of using strict FIFO so an active
+    // parent/child mount-path conflict does not leave a slot idle when a later
+    // independent task can start.
     pending.iter().enumerate().find_map(|(index, task)| {
         let mount_path = normalize_mount_path(task.mount_path());
         let has_conflict = active.iter().any(|download| {

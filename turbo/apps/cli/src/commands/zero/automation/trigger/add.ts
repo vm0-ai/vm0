@@ -5,7 +5,7 @@ import { addAutomationTrigger } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 import { requireTimezoneForLocalAtTime } from "../at-time-input";
 import { parseDurationSeconds } from "../duration";
-import { printTriggerDetails, printWebhookSecret } from "../trigger-display";
+import { printTriggerDetails } from "../trigger-display";
 
 interface AddOptions {
   expr?: string;
@@ -14,11 +14,11 @@ interface AddOptions {
   timezone?: string;
 }
 
-const TRIGGER_KINDS = ["cron", "once", "loop", "webhook"] as const;
+const TRIGGER_KINDS = ["cron", "once", "loop"] as const;
 
 /**
  * Build the trigger creation request from the kind keyword plus its own flag:
- * cron → --expr, once → --at, loop → --every, webhook → nothing.
+ * cron → --expr, once → --at, loop → --every.
  */
 function buildTrigger(kind: string, options: AddOptions): CreateTriggerRequest {
   switch (kind) {
@@ -49,8 +49,6 @@ function buildTrigger(kind: string, options: AddOptions): CreateTriggerRequest {
         kind: "loop",
         intervalSeconds: parseDurationSeconds(options.every),
       };
-    case "webhook":
-      return { kind: "webhook" };
     default:
       throw new Error(
         `Unknown trigger kind: "${kind}". Use one of: ${TRIGGER_KINDS.join(", ")}`,
@@ -60,7 +58,7 @@ function buildTrigger(kind: string, options: AddOptions): CreateTriggerRequest {
 
 export const addCommand = new Command()
   .name("add")
-  .description("Add a trigger (cron | once | loop | webhook) to an automation")
+  .description("Add a trigger (cron | once | loop) to an automation")
   .argument("<automation>", "Automation ID or name")
   .argument("<kind>", `Trigger kind: ${TRIGGER_KINDS.join(" | ")}`)
   .option(
@@ -79,11 +77,7 @@ export const addCommand = new Command()
 Trigger kinds:
   cron     Recurring schedule:      zero automation trigger add alerts cron --expr "0 9 * * *" [--timezone Asia/Shanghai]
   once     One-time fire:           zero automation trigger add alerts once --at "2026-06-10T09:00" [--timezone UTC]
-  loop     Fixed interval:          zero automation trigger add alerts loop --every 15m
-  webhook  Inbound signed webhook:  zero automation trigger add alerts webhook
-
-Notes:
-  - A webhook trigger prints its inbound URL plus a signing secret shown ONCE — store it securely`,
+  loop     Fixed interval:          zero automation trigger add alerts loop --every 15m`,
   )
   .action(
     withErrorHandler(async (ref: string, kind: string, options: AddOptions) => {
@@ -93,13 +87,9 @@ Notes:
 
       const body = buildTrigger(kind, options);
 
-      const { trigger, webhookSecret } = await addAutomationTrigger(ref, body);
+      const { trigger } = await addAutomationTrigger(ref, body);
 
       console.log(chalk.green(`✓ Trigger added to automation "${ref}"`));
       printTriggerDetails(trigger);
-
-      if (webhookSecret && trigger.kind === "webhook") {
-        printWebhookSecret(trigger.webhookUrl, webhookSecret);
-      }
     }),
   );

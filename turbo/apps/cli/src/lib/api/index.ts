@@ -207,7 +207,6 @@ export {
   removeAutomationTrigger,
   enableAutomationTrigger,
   disableAutomationTrigger,
-  rotateAutomationTriggerSecret,
 } from "./domains/automations";
 
 // Domain modules - Zero Runs

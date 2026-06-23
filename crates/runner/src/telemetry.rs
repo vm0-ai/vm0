@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use api_contracts::generated::routes;
 use chrono::Utc;
 use serde::Serialize;
+use tokio::task::JoinHandle;
 use tracing::warn;
 
 use crate::http::HttpClient;
@@ -18,13 +19,14 @@ const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
 /// periodically (auto on 30 s threshold) and at job end.
 ///
 /// Owns its state — passed as `&mut` through the call chain, no `Mutex` needed.
-#[must_use = "JobTelemetry buffers pending ops until `flush()` is awaited; dropping it loses them"]
+#[must_use = "JobTelemetry owns pending and in-flight ops until `flush()` is awaited; dropping it loses them"]
 pub struct JobTelemetry {
     http: HttpClient,
     run_id: RunId,
     sandbox_token: String,
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
+    in_flight_flushes: Vec<JoinHandle<()>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -53,10 +55,11 @@ impl JobTelemetry {
             sandbox_token,
             pending_ops: Vec::new(),
             oldest_pending: None,
+            in_flight_flushes: Vec::new(),
         }
     }
 
-    /// Record a timed operation. Auto-flushes (fire-and-forget) if the oldest
+    /// Record a timed operation. Starts an owned auto-flush if the oldest
     /// pending op exceeds the 30 s threshold.
     pub fn record(
         &mut self,
@@ -79,18 +82,24 @@ impl JobTelemetry {
         if let Some(oldest) = self.oldest_pending
             && oldest.elapsed() >= FLUSH_THRESHOLD
         {
-            self.fire_and_forget_flush();
+            self.start_auto_flush();
         }
     }
 
-    /// Final flush — awaits the HTTP request. Consumes self so callers can't
-    /// accidentally record after flushing.
+    /// Final flush — awaits buffered and already-started HTTP requests.
+    /// Consumes self so callers can't accidentally record after flushing.
     pub async fn flush(mut self) {
-        if self.pending_ops.is_empty() {
+        if self.pending_ops.is_empty() && self.in_flight_flushes.is_empty() {
             return;
         }
         let ops = std::mem::take(&mut self.pending_ops);
-        send_telemetry(&self.http, self.run_id, &self.sandbox_token, ops).await;
+        let in_flight_flushes = std::mem::take(&mut self.in_flight_flushes);
+        let run_id = self.run_id;
+
+        tokio::join!(
+            send_telemetry(&self.http, run_id, &self.sandbox_token, ops),
+            drain_in_flight_flushes(run_id, in_flight_flushes),
+        );
     }
 
     /// Snapshot of buffered ops for tests. Returns `(action_type, success, error)`
@@ -113,8 +122,8 @@ impl JobTelemetry {
         }
     }
 
-    /// Spawn a fire-and-forget flush for auto-threshold flushes.
-    fn fire_and_forget_flush(&mut self) {
+    /// Start an owned flush for auto-threshold flushes.
+    fn start_auto_flush(&mut self) {
         let ops = std::mem::take(&mut self.pending_ops);
         self.oldest_pending = None;
 
@@ -122,9 +131,18 @@ impl JobTelemetry {
         let run_id = self.run_id;
         let sandbox_token = self.sandbox_token.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             send_telemetry(&http, run_id, &sandbox_token, ops).await;
         });
+        self.in_flight_flushes.push(handle);
+    }
+}
+
+async fn drain_in_flight_flushes(run_id: RunId, in_flight_flushes: Vec<JoinHandle<()>>) {
+    for handle in in_flight_flushes {
+        if let Err(e) = handle.await {
+            warn!(run_id = %run_id, error = %e, "telemetry auto-flush task failed");
+        }
     }
 }
 
@@ -165,11 +183,59 @@ mod tests {
     use crate::http::HttpClientConfig;
 
     fn http_client() -> HttpClient {
+        http_client_for_api_url("http://localhost")
+    }
+
+    fn http_client_for_api_url(api_url: &str) -> HttpClient {
         HttpClient::new(HttpClientConfig {
-            api_url: "http://localhost".to_string(),
+            api_url: api_url.to_string(),
             vercel_bypass: None,
         })
         .unwrap()
+    }
+
+    fn http_headers_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|index| index + 4)
+    }
+
+    fn content_length(headers: &str) -> usize {
+        headers
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .find_map(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().unwrap())
+            })
+            .unwrap_or(0)
+    }
+
+    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> String {
+        use tokio::io::AsyncReadExt;
+
+        let mut buf = Vec::new();
+        let header_end = loop {
+            let mut chunk = [0; 1024];
+            let len = socket.read(&mut chunk).await.unwrap();
+            assert!(len > 0, "connection closed before HTTP headers completed");
+            buf.extend_from_slice(&chunk[..len]);
+
+            if let Some(header_end) = http_headers_end(&buf) {
+                break header_end;
+            }
+        };
+
+        let headers = String::from_utf8_lossy(&buf[..header_end]);
+        let body_len = content_length(&headers);
+        while buf.len() < header_end + body_len {
+            let mut chunk = [0; 1024];
+            let len = socket.read(&mut chunk).await.unwrap();
+            assert!(len > 0, "connection closed before HTTP body completed");
+            buf.extend_from_slice(&chunk[..len]);
+        }
+
+        String::from_utf8(buf).unwrap()
     }
 
     #[test]
@@ -212,6 +278,7 @@ mod tests {
         let telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
         assert!(telemetry.pending_ops.is_empty());
         assert!(telemetry.oldest_pending.is_none());
+        assert!(telemetry.in_flight_flushes.is_empty());
     }
 
     #[test]
@@ -259,14 +326,89 @@ mod tests {
         assert_eq!(telemetry.pending_ops_snapshot().len(), 1);
 
         // Age the oldest-pending marker past the threshold so the next record
-        // trips fire_and_forget_flush.
+        // starts an owned auto flush.
         telemetry.rewind_oldest_pending_for_test(FLUSH_THRESHOLD + Duration::from_millis(1));
         telemetry.record("op2", Duration::from_millis(10), true, None);
 
-        // fire_and_forget_flush drains the buffer (including the op that
+        // start_auto_flush drains the buffer (including the op that
         // tripped the threshold) and resets the oldest-pending marker so the
         // next record re-seeds it.
         assert!(telemetry.pending_ops_snapshot().is_empty());
         assert!(telemetry.oldest_pending.is_none());
+        assert_eq!(telemetry.in_flight_flushes.len(), 1);
+
+        for handle in telemetry.in_flight_flushes.drain(..) {
+            handle.abort();
+            let _ = handle.await;
+        }
+    }
+
+    #[tokio::test]
+    async fn flush_waits_for_in_flight_auto_flush_after_buffer_is_drained() {
+        use futures_util::FutureExt;
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let (request_tx, request_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            request_tx.send(request).unwrap();
+            release_rx.await.unwrap();
+            socket
+                .write_all(
+                    concat!(
+                        "HTTP/1.1 200 OK\r\n",
+                        "content-length: 16\r\n",
+                        "content-type: application/json\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        r#"{"success":true}"#
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+
+        let http = http_client_for_api_url(&api_url);
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+
+        telemetry.record("op1", Duration::from_millis(10), true, None);
+        telemetry.rewind_oldest_pending_for_test(FLUSH_THRESHOLD + Duration::from_millis(1));
+        telemetry.record("op2", Duration::from_millis(10), true, None);
+
+        assert!(telemetry.pending_ops_snapshot().is_empty());
+        assert_eq!(telemetry.in_flight_flushes.len(), 1);
+
+        let request = tokio::time::timeout(Duration::from_secs(1), request_rx)
+            .await
+            .expect("auto flush request should reach the server")
+            .unwrap();
+        assert!(request.starts_with("POST /api/webhooks/agent/telemetry "));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer tok")
+        );
+        assert!(request.contains(r#""action_type":"op1""#));
+        assert!(request.contains(r#""action_type":"op2""#));
+
+        let mut flush = Box::pin(telemetry.flush());
+        assert!(
+            flush.as_mut().now_or_never().is_none(),
+            "flush returned before the held auto-flush response completed"
+        );
+
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), flush)
+            .await
+            .expect("flush should complete after the response is released");
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("server should exit")
+            .unwrap();
     }
 }

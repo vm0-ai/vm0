@@ -95,35 +95,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Deprecated. Read files, projects, users, versions, comments, components & styles, and webhooks.",
-          "name": "files:read",
-          "rules": [
-            "GET /v1/component_sets/{key}",
-            "GET /v1/components/{key}",
-            "GET /v1/files/{file_key}",
-            "GET /v1/files/{file_key}/comments",
-            "GET /v1/files/{file_key}/comments/{comment_id}/reactions",
-            "GET /v1/files/{file_key}/component_sets",
-            "GET /v1/files/{file_key}/components",
-            "GET /v1/files/{file_key}/images",
-            "GET /v1/files/{file_key}/meta",
-            "GET /v1/files/{file_key}/nodes",
-            "GET /v1/files/{file_key}/styles",
-            "GET /v1/files/{file_key}/versions",
-            "GET /v1/images/{file_key}",
-            "GET /v1/me",
-            "GET /v1/projects/{project_id}/files",
-            "GET /v1/styles/{key}",
-            "GET /v1/teams/{team_id}/component_sets",
-            "GET /v1/teams/{team_id}/components",
-            "GET /v1/teams/{team_id}/projects",
-            "GET /v1/teams/{team_id}/styles",
-            "GET /v2/teams/{team_id}/webhooks",
-            "GET /v2/webhooks/{webhook_id}",
-            "GET /v2/webhooks/{webhook_id}/requests"
-          ]
-        },
-        {
           "description": "Read library analytics data.",
           "name": "library_analytics:read",
           "rules": [

@@ -33,8 +33,7 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise, jsonParseOr } from "../../../signals/utils.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage,
@@ -48,9 +47,6 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const { get$: presentationTemplateThemeIdBySlugRaw$ } = localStorageSignals(
-  "presentationTemplateThemeIdBySlug",
-);
 
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
@@ -104,31 +100,6 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
     } else {
       delete (navigator as { userAgent?: string }).userAgent;
     }
-  };
-}
-
-function mockMatchMedia(matches: boolean): () => void {
-  const original = window.matchMedia;
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn((query: string): MediaQueryList => {
-      return {
-        addEventListener: vi.fn(),
-        addListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        matches,
-        media: query,
-        onchange: null,
-        removeEventListener: vi.fn(),
-        removeListener: vi.fn(),
-      };
-    }),
-  });
-  return () => {
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: original,
-    });
   };
 }
 
@@ -401,7 +372,7 @@ async function openTemplatePicker(
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
 
-  click(screen.getByLabelText(`View template ${template.title}`));
+  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
   await waitFor(() => {
     expect(
       screen.getByTestId(`${template.title} detail HTML preview`),
@@ -1472,6 +1443,38 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
+  it("places the template control immediately after attach", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+
+    await waitFor(() => {
+      const controls = Array.from(
+        composer.querySelectorAll(
+          [
+            'button[aria-label="Attach"]',
+            'button[aria-label="Template"]',
+            'button[aria-label="Connectors"]',
+          ].join(","),
+        ),
+      ).map((button) => {
+        return button.getAttribute("aria-label");
+      });
+
+      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+    });
+  });
+
   it("opens the template picker without focusing the tabs on small screens", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1618,6 +1621,9 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
+      expect(
+        screen.queryByLabelText(`View template ${template.title}`),
+      ).not.toBeInTheDocument();
       const currentPreviewFrame = () => {
         return screen.getByTestId(`${template.title} card HTML preview`);
       };
@@ -1643,6 +1649,7 @@ describe("chat composer templates", () => {
           screen.getByTestId(`${template.title} card HTML preview`),
         ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
       });
+      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
       const firstPreviewHtml = await htmlForFrame(currentPreviewFrame());
       expect(firstPreviewHtml).toContain("Slide one");
       expect(firstPreviewHtml).toContain("--accent:#FF7A1A");
@@ -1713,112 +1720,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("uses the presentation card theme picker for template selection", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
-    });
-    if (template === undefined) {
-      throw new Error("Second presentation template not found");
-    }
-    let selectedColorSystemId: string | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        if (body.generationTemplate?.type === "presentation") {
-          selectedColorSystemId =
-            body.generationTemplate.selection.colorSystemId;
-        }
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    await user.click(
-      await screen.findByLabelText(
-        `Select card theme Prism for ${template.title}`,
-      ),
-    );
-    expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      jsonParseOr<Record<string, string>>(
-        context.store.get(presentationTemplateThemeIdBySlugRaw$) ?? "{}",
-        {},
-      ),
-    ).toMatchObject({ [template.slug]: "prism" });
-
-    await user.click(screen.getByLabelText(`View template ${template.title}`));
-    const templateDialog = screen.getByRole("dialog");
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByRole("heading", {
-          name: `Template ${template.title}`,
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      within(templateDialog).getByLabelText("Select style Prism"),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    const templateButton = queryAllByRoleFast("button", templateDialog).find(
-      (candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-        );
-      },
-    );
-    if (!templateButton) {
-      throw new Error("Template button not found");
-    }
-    await user.click(templateButton);
-
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(
-      screen.getByLabelText(`Select template ${template.title}`),
-    );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-
-    await sendMessageInUI(
-      user,
-      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
-      "Create a launch deck",
-    );
-    await waitFor(() => {
-      expect(selectedColorSystemId).toBe("color-system:prism");
-    });
-  });
-
-  it("opens the presentation theme page from the card theme trigger on mobile", async () => {
-    const restoreMatchMedia = mockMatchMedia(true);
-    const user = userEvent.setup({ delay: null });
+  it("selects presentation templates without a card theme picker", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
     });
@@ -1841,23 +1743,60 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-
-    const templateDialog = screen.getByRole("dialog");
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByRole("heading", {
-          name: `Template ${template.title}`,
-        }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
     ).not.toBeInTheDocument();
 
-    restoreMatchMedia();
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+    const templateDialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template / ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+    const defaultThemeLabel = (
+      template.colorSystemId ?? "color-system:warm-sand"
+    )
+      .replace("color-system:", "")
+      .replace(/-/g, " ");
+    expect(
+      within(templateDialog).getByLabelText(
+        new RegExp(`^Select style ${defaultThemeLabel}$`, "i"),
+      ),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText(`Select template ${template.title}`));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens presentation template detail at the scrubbed card slide", async () => {
@@ -1898,9 +1837,12 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(`${String(lastSlideNumber)} of 15`),
-      ).toBeInTheDocument();
+        screen.getByLabelText(`Preview slide ${String(lastSlideNumber)}`),
+      ).toHaveAttribute("aria-pressed", "true");
     });
+    expect(
+      screen.queryByText(`${String(lastSlideNumber)} of 15`),
+    ).not.toBeInTheDocument();
   });
 
   it("resumes presentation template detail preview loading after reopening the same slide", async () => {
@@ -1964,7 +1906,9 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
-      click(screen.getByLabelText(`View template ${template.title}`));
+      click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
 
       await waitFor(() => {
         expect(previewFetchCount).toBe(1);
@@ -1982,7 +1926,9 @@ describe("chat composer templates", () => {
         throw new Error("Template button not found");
       }
       click(templateButton);
-      click(screen.getByLabelText(`View template ${template.title}`));
+      click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
 
       previewFetch.resolve(
         new Response(
@@ -2081,20 +2027,58 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    click(screen.getByLabelText(`View template ${template.title}`));
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     const templateDialog = screen.getByRole("dialog");
     expect(
       within(templateDialog).getByRole("heading", {
-        name: `Template ${template.title}`,
+        name: `Template / ${template.title}`,
       }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview previous slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview previous slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
+    expect(screen.getByLabelText("Preview next slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview next slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(
+        within(templateDialog).getByLabelText("Preview slide 1"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
+    const detailPreviewFrame = screen.getByTestId(
+      `${template.title} detail HTML preview`,
+    );
+    expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
+    expect(screen.queryByText("1 of 15")).not.toBeInTheDocument();
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
+    const secondSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 2");
+    const backButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!backButton) {
+      throw new Error("Template button not found");
+    }
+    backButton.focus();
+    fireEvent.keyDown(backButton, { key: "Tab" });
+    expect(document.activeElement).toBe(firstSlidePreviewButton);
+    fireEvent.keyDown(firstSlidePreviewButton, { key: "Tab" });
+    expect(document.activeElement).toBe(secondSlidePreviewButton);
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
     expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
       "src",
@@ -2171,26 +2155,91 @@ describe("chat composer templates", () => {
       throw new Error("Template button not found");
     }
     click(templateButton);
-    click(screen.getByLabelText(`View template ${template.title}`));
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(
+        within(templateDialog).getByLabelText("Preview slide 1"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
     expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    fireEvent.click(screen.getByLabelText("Preview next slide"));
+    fireEvent.keyDown(
+      screen.getByLabelText(`${template.title} slide preview`),
+      {
+        key: "ArrowRight",
+      },
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("2 of 15")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
-    fireEvent.click(screen.getByLabelText("Preview previous slide"));
+    fireEvent.keyDown(
+      screen.getByLabelText(`${template.title} slide preview`),
+      {
+        key: "ArrowLeft",
+      },
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    const themeButton = screen.getByLabelText("Select style Carnival");
+    themeButton.focus();
+    expect(themeButton).toHaveFocus();
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowLeft",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 1"), {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 2"), {
+      key: "ArrowLeft",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
   });
 
@@ -2294,7 +2343,12 @@ describe("chat composer templates", () => {
   });
 
   it("scrolls illustration thumbnails only after clicking a variant thumbnail", async () => {
-    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+      return item.previewImages.length >= 4;
+    });
+    if (!illustrationTemplate) {
+      throw new Error("Illustration template with four variants not found");
+    }
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();
     const rect = ({
@@ -2317,6 +2371,40 @@ describe("chat composer templates", () => {
           return {};
         },
       };
+    };
+    const mockElementRect = (
+      element: Element,
+      bounds: { left: number; right: number },
+    ) => {
+      Object.defineProperty(element, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return rect(bounds);
+        },
+      });
+    };
+    const mockScrollLeft = (element: Element, value: number) => {
+      Object.defineProperty(element, "scrollLeft", {
+        configurable: true,
+        value,
+        writable: true,
+      });
+    };
+    const mockScrollSize = (
+      element: Element,
+      {
+        scrollWidth,
+        clientWidth,
+      }: { scrollWidth: number; clientWidth: number },
+    ) => {
+      Object.defineProperty(element, "scrollWidth", {
+        configurable: true,
+        value: scrollWidth,
+      });
+      Object.defineProperty(element, "clientWidth", {
+        configurable: true,
+        value: clientWidth,
+      });
     };
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
@@ -2392,55 +2480,79 @@ describe("chat composer templates", () => {
       throw new Error("Illustration card not found");
     }
 
-    // Clicking a thumbnail scrolls within the thumbnail strip only.
+    // Clicking the rightmost visible thumbnail reveals the next two thumbnails.
+    const variant1Thumbnail = within(card).getByLabelText("Show variant 1");
     const variant2Thumbnail = within(card).getByLabelText("Show variant 2");
+    const variant3Thumbnail = within(card).getByLabelText("Show variant 3");
+    const variant4Thumbnail = within(card).getByLabelText("Show variant 4");
     const thumbnailStrip = variant2Thumbnail.parentElement;
     if (!thumbnailStrip) {
       throw new Error("Illustration thumbnail strip not found");
     }
-    Object.defineProperty(thumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 0,
-      writable: true,
-    });
-    Object.defineProperty(thumbnailStrip, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 0, right: 96 });
-      },
-    });
-    Object.defineProperty(variant2Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 72, right: 120 });
-      },
-    });
+    mockScrollLeft(thumbnailStrip, 0);
+    mockScrollSize(thumbnailStrip, { scrollWidth: 240, clientWidth: 96 });
+    mockElementRect(thumbnailStrip, { left: 0, right: 96 });
+    mockElementRect(variant2Thumbnail, { left: 48, right: 96 });
+    mockElementRect(variant3Thumbnail, { left: 104, right: 152 });
+    mockElementRect(variant4Thumbnail, { left: 160, right: 208 });
     click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 24 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Clicking a left-clipped thumbnail nudges the strip back just enough.
+    // Clicking the active thumbnail at the right edge still reveals the next
+    // two thumbnails.
     scrollTo.mockClear();
-    const variant1Thumbnail = within(card).getByLabelText("Show variant 1");
-    Object.defineProperty(thumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 64,
-      writable: true,
+    click(variant2Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: -16, right: 32 });
-      },
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Move to the last thumbnail without scrolling the thumbnail strip, then
+    // click left to reveal the two thumbnails before the clicked one.
+    scrollTo.mockClear();
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 190 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
     });
+    fireEvent.click(screen.getByAltText(heroAlt), { clientX: 190 });
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+    mockScrollLeft(thumbnailStrip, 112);
+    mockElementRect(variant1Thumbnail, { left: -96, right: -48 });
+    mockElementRect(variant3Thumbnail, { left: 0, right: 48 });
+    click(variant3Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking the active thumbnail at the left edge still reveals the previous
+    // two thumbnails.
+    scrollTo.mockClear();
+    click(variant3Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking near the left boundary scrolls all the way to the start.
+    scrollTo.mockClear();
+    mockScrollLeft(thumbnailStrip, 64);
+    mockElementRect(variant1Thumbnail, { left: -16, right: 32 });
     click(variant1Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 48 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Switching away and back to Illustration remounts the active thumbnail but
@@ -2472,6 +2584,34 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
     expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking near the right boundary scrolls all the way to the end.
+    const remountedCard = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("div.group");
+    if (!remountedCard) {
+      throw new Error("Remounted illustration card not found");
+    }
+    const remountedVariant4Thumbnail =
+      within(remountedCard).getByLabelText("Show variant 4");
+    const remountedThumbnailStrip = remountedVariant4Thumbnail.parentElement;
+    if (!remountedThumbnailStrip) {
+      throw new Error("Remounted illustration thumbnail strip not found");
+    }
+    scrollTo.mockClear();
+    mockScrollLeft(remountedThumbnailStrip, 120);
+    mockScrollSize(remountedThumbnailStrip, {
+      scrollWidth: 240,
+      clientWidth: 96,
+    });
+    mockElementRect(remountedThumbnailStrip, { left: 0, right: 96 });
+    mockElementRect(remountedVariant4Thumbnail, { left: 48, right: 96 });
+    click(remountedVariant4Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 

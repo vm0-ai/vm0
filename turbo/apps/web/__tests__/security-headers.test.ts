@@ -472,6 +472,12 @@ const CRON_EXECUTE_AUTOMATIONS_NEXT_NEGATIVE_PATHS = [
   "/api/cron/execute-automations/extra",
   "/api/cron",
 ] as const;
+const CRON_RENEW_GMAIL_WATCHES_REWRITE_SOURCE = "/api/cron/renew-gmail-watches";
+const CRON_RENEW_GMAIL_WATCHES_PATH = "/api/cron/renew-gmail-watches";
+const CRON_RENEW_GMAIL_WATCHES_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/renew-gmail-watches/extra",
+  "/api/cron",
+] as const;
 const CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE =
   "/api/cron/process-usage-events";
 const CRON_PROCESS_USAGE_EVENTS_PATH = "/api/cron/process-usage-events";
@@ -751,6 +757,12 @@ const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
 const GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/github/extra",
+  "/api/webhooks",
+] as const;
+const GMAIL_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/gmail";
+const GMAIL_WEBHOOK_PATH = "/api/webhooks/gmail";
+const GMAIL_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/gmail/extra",
   "/api/webhooks",
 ] as const;
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
@@ -2077,6 +2089,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/execute-automations",
         },
         {
+          source: CRON_RENEW_GMAIL_WATCHES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/renew-gmail-watches",
+        },
+        {
           source: CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/process-usage-events",
         },
@@ -2263,6 +2279,10 @@ describe("API backend rewrites", () => {
         {
           source: GITHUB_WEBHOOK_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/github",
+        },
+        {
+          source: GMAIL_WEBHOOK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/webhooks/gmail",
         },
         {
           source: STRIPE_WEBHOOK_REWRITE_SOURCE,
@@ -3671,6 +3691,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact cron renew Gmail watches rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_RENEW_GMAIL_WATCHES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_RENEW_GMAIL_WATCHES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/renew-gmail-watches",
+    });
+
+    const matcher = getPathMatch(CRON_RENEW_GMAIL_WATCHES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_RENEW_GMAIL_WATCHES_PATH)).toStrictEqual({});
+    for (const pathname of CRON_RENEW_GMAIL_WATCHES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact cron process usage events rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4599,6 +4642,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GITHUB_WEBHOOK_PATH)).toStrictEqual({});
     for (const pathname of GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact Gmail webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === GMAIL_WEBHOOK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: GMAIL_WEBHOOK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/gmail",
+    });
+
+    const matcher = getPathMatch(GMAIL_WEBHOOK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(GMAIL_WEBHOOK_PATH)).toStrictEqual({});
+    for (const pathname of GMAIL_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

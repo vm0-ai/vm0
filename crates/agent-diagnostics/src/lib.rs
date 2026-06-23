@@ -238,6 +238,7 @@ pub enum FailureReason {
     InsufficientCredits,
     InvalidApiKey,
     InvalidCredentials,
+    OutputTokenLimit,
     ProviderOverloaded,
     ReconnectRequired,
     UsageLimit,
@@ -250,6 +251,7 @@ impl FailureReason {
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
+            Self::OutputTokenLimit => "output_token_limit",
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ReconnectRequired => "reconnect_required",
             Self::UsageLimit => "usage_limit",
@@ -575,6 +577,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "invalid_credentials");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_output_token_limit_reason() {
+        assert_eq!(
+            FailureReason::OutputTokenLimit.as_str(),
+            "output_token_limit"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::OutputTokenLimit);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "output_token_limit");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

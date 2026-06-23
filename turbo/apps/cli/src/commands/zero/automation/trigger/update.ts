@@ -74,8 +74,7 @@ Examples:
 
 Notes:
   - Exactly one of --expr (cron), --at (once), --every (loop); the trigger's kind switches to match
-  - The trigger keeps its id, enabled flag, and run history; the next run is recomputed and the failure counter resets
-  - Webhook triggers have no schedule and cannot be updated`,
+  - The trigger keeps its id, enabled flag, and run history; the next run is recomputed and the failure counter resets`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
