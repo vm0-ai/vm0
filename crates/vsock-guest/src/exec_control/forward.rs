@@ -12,7 +12,7 @@ use crate::error::to_io_error;
 use crate::log::log;
 use crate::writer::GuestWriter;
 
-use super::sink::{ControlSinkState, PendingControlSlot};
+use super::sink::{ControlSinkState, ControlStreamLockError, PendingControlSlot};
 use super::{
     CONTROL_SINK_IO_TIMEOUT, EXEC_CONTROL_LOG_NAME, EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX,
     EXEC_CONTROL_WORKER_START_ERROR_PREFIX, EXEC_OPERATION_INACTIVE_MESSAGE,
@@ -96,14 +96,19 @@ pub(super) fn forward_control_request(
                         forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
                     }
                 }
-                Err(error) if is_timeout(&error) => ControlForwardOutcome {
-                    status: ExecControlStatus::SinkTimeout,
-                    diagnostic: error.to_string(),
+                Err(ControlStreamLockError::Inactive) => ControlForwardOutcome {
+                    status: ExecControlStatus::Inactive,
+                    diagnostic: EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
-                Err(error) => ControlForwardOutcome {
+                Err(ControlStreamLockError::Timeout) => ControlForwardOutcome {
+                    status: ExecControlStatus::SinkTimeout,
+                    diagnostic: EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                    sink_disposition: ControlSinkDisposition::Keep,
+                },
+                Err(ControlStreamLockError::SinkError(diagnostic)) => ControlForwardOutcome {
                     status: ExecControlStatus::SinkError,
-                    diagnostic: error.to_string(),
+                    diagnostic,
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
             },

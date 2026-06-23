@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use vsock_proto::{ExecControlNonce, ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
 use super::forward::{OwnedExecControlRequest, forward_control_request, try_forward};
-use super::sink::{ControlSinkInner, ControlSinkState};
+use super::sink::{ControlSinkInner, ControlSinkState, ControlStreamLockError};
 use super::*;
 
 const NONCE: ExecControlNonce = *b"0123456789abcdef";
@@ -953,6 +953,32 @@ fn fail_does_not_wait_for_busy_control_stream_lock() {
 }
 
 #[test]
+fn failed_control_sink_rejects_existing_connected_stream_handle() {
+    let sink = Arc::new(ControlSinkState::new());
+    let (stream, _peer) = UnixStream::pair().unwrap();
+    sink.connect(stream);
+    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
+        _ => panic!("sink should be connected"),
+    };
+    let stream_guard = stream
+        .lock_until(request_deadline(5000), &sink.active)
+        .unwrap();
+
+    sink.fail("failed".to_owned());
+
+    let error = match stream.lock_until(request_deadline(5000), &sink.active) {
+        Ok(_) => panic!("failed sink should reject existing connected stream handles"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        ControlStreamLockError::SinkError(message) if message == "failed"
+    ));
+    drop(stream_guard);
+}
+
+#[test]
 fn queued_control_request_is_not_delivered_after_close() {
     let sink = Arc::new(ControlSinkState::new());
     let (stream, mut peer) = UnixStream::pair().unwrap();
@@ -1005,6 +1031,61 @@ fn queued_control_request_is_not_delivered_after_close() {
         err.kind(),
         io::ErrorKind::WouldBlock | io::ErrorKind::UnexpectedEof | io::ErrorKind::ConnectionReset
     ));
+}
+
+#[test]
+fn queued_control_request_is_not_delivered_after_fail() {
+    let sink = Arc::new(ControlSinkState::new());
+    let (stream, mut peer) = UnixStream::pair().unwrap();
+    peer.set_nonblocking(true).unwrap();
+    sink.connect(stream);
+    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
+        _ => panic!("sink should be connected"),
+    };
+    let stream_guard = stream
+        .lock_until(request_deadline(5000), &sink.active)
+        .unwrap();
+    let (guest, mut host) = UnixStream::pair().unwrap();
+    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+    let pending_slot = sink.reserve_pending_slot().unwrap();
+    let worker = std::thread::spawn({
+        let sink = Arc::clone(&sink);
+        move || {
+            forward_control_request(
+                sink,
+                pending_slot,
+                OwnedExecControlRequest {
+                    response_seq: 23,
+                    target_seq: 9,
+                    deadline: request_deadline(5000),
+                    control_nonce: NONCE,
+                    message_id: "msg-after-fail".to_owned(),
+                    payload: b"payload".to_vec(),
+                },
+                GuestWriter::new(guest),
+            );
+        }
+    });
+
+    sink.fail("failed".to_owned());
+
+    let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
+    assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
+    assert_eq!(seq, 23);
+    assert_eq!(status, ExecControlStatus::SinkError);
+    assert_eq!(message_id, "msg-after-fail");
+    assert_eq!(diagnostic, "failed");
+    worker.join().unwrap();
+    assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+
+    let err = process_control_ipc::read_request(&mut peer).unwrap_err();
+    assert!(matches!(
+        err.kind(),
+        io::ErrorKind::WouldBlock | io::ErrorKind::UnexpectedEof | io::ErrorKind::ConnectionReset
+    ));
+    drop(stream_guard);
 }
 
 #[test]
