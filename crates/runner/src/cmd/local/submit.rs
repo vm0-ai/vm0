@@ -655,8 +655,8 @@ impl SubmitPlan {
         Ok(())
     }
 
-    fn start_active_input_producer(&self) -> Option<ActiveInputProducer> {
-        ActiveInputProducer::start(self.queue.clone(), self.active_inputs.clone())
+    fn start_active_input_producer(&mut self) -> Option<ActiveInputProducer> {
+        ActiveInputProducer::start(self.queue.clone(), std::mem::take(&mut self.active_inputs))
     }
 
     async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
@@ -740,7 +740,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 }
 
 async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult<ExitCode> {
-    let plan = SubmitPlan::from_args(args, home)?;
+    let mut plan = SubmitPlan::from_args(args, home)?;
     plan.write_job_file()?;
     let producer = plan.start_active_input_producer();
     let outcome = plan.wait_for_result().await;
