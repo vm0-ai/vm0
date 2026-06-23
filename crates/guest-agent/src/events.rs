@@ -116,8 +116,9 @@ pub(crate) fn masked_claude_failure_diagnostic(
 
 pub fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     let message = message.trim().to_ascii_lowercase();
+    let message = message.trim_end_matches(['.', ':', '!', '?']);
     matches!(
-        message.as_str(),
+        message,
         "error" | "turn failed" | "turn interrupted" | "unknown error" | "codex error"
     )
 }
@@ -957,10 +958,14 @@ mod tests {
     fn codex_generic_failure_diagnostic_matcher_is_case_insensitive() {
         for message in [
             "error",
+            "error:",
             "Turn failed",
+            "Turn failed.",
             " turn interrupted ",
             "UNKNOWN ERROR",
+            "unknown error!",
             "codex error",
+            "codex error?",
         ] {
             assert!(
                 is_generic_codex_failure_diagnostic(message),
@@ -1021,7 +1026,12 @@ mod tests {
 
     #[test]
     fn codex_turn_failed_uses_nested_message_when_top_level_is_generic() {
-        for top_level_error in ["turn failed", "Unknown error", "codex error"] {
+        for top_level_error in [
+            "turn failed",
+            "Turn failed.",
+            "Unknown error",
+            "codex error",
+        ] {
             let event = serde_json::json!({
                 "type": "turn.failed",
                 "error": top_level_error,

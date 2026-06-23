@@ -1234,7 +1234,12 @@ mod tests {
     #[test]
     fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
         let stderr_lines = vec!["specific stderr failure".to_string()];
-        for diagnostic_message in ["turn failed", "Unknown error", "codex error"] {
+        for diagnostic_message in [
+            "turn failed",
+            "Turn failed.",
+            "Unknown error",
+            "codex error",
+        ] {
             let diagnostic = cli_diagnostic(diagnostic_message, FailureDetailSource::CodexJsonl);
             let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
 
