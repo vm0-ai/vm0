@@ -116,7 +116,7 @@ pub(crate) fn masked_claude_failure_diagnostic(
 
 pub fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     let message = message.trim().to_ascii_lowercase();
-    let message = message.trim_end_matches(['.', ':', '!', '?']);
+    let message = message.trim_end_matches(['.', ':', '!', '?']).trim_end();
     matches!(
         message,
         "error" | "turn failed" | "turn interrupted" | "unknown error" | "codex error"
@@ -959,8 +959,10 @@ mod tests {
         for message in [
             "error",
             "error:",
+            "error :",
             "Turn failed",
             "Turn failed.",
+            "Turn failed .",
             " turn interrupted ",
             "UNKNOWN ERROR",
             "unknown error!",
