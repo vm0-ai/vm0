@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh [matrix|has-groups|hosts ID]
+Usage: runner-host-architecture-groups.sh [matrix|has-groups|hosts ID|select-host ID KEY [HOSTS]]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
@@ -17,7 +17,8 @@ Commands:
   <none>      Emit the full local contract, including hosts.
   matrix      Emit the cross-job matrix contract, excluding hosts.
   has-groups  Emit true when at least one host group is configured.
-  hosts ID    Emit comma-separated hosts for the given architecture group.
+  hosts ID            Emit comma-separated hosts for the given architecture group.
+  select-host ID KEY [HOSTS]  Emit one deterministic host from the given architecture group.
 USAGE
 }
 
@@ -174,7 +175,7 @@ emit_has_groups() {
   fi
 }
 
-emit_hosts() {
+validate_group_id() {
   local group_id=${1:-}
   if [ -z "$group_id" ]; then
     echo "missing runner host group id" >&2
@@ -188,10 +189,49 @@ emit_hosts() {
       return 2
       ;;
   esac
+}
+
+emit_hosts() {
+  local group_id=${1:-}
+  validate_group_id "$group_id" || return $?
 
   local groups
   groups=$(emit_groups) || return $?
   jq -r --arg id "$group_id" '.[] | select(.id == $id) | .hosts' <<<"$groups"
+}
+
+emit_selected_host() {
+  local group_id=${1:-}
+  local selection_key=${2:-}
+  local hosts=${3:-}
+  validate_group_id "$group_id" || return $?
+  if [ -z "$selection_key" ]; then
+    echo "missing runner host selection key" >&2
+    return 2
+  fi
+
+  if [ -z "$hosts" ]; then
+    hosts=$(emit_hosts "$group_id") || return $?
+  fi
+
+  local -a host_list=()
+  mapfile -t host_list < <(
+    printf '%s\n' "$hosts" \
+      | tr ',' '\n' \
+      | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+      | sed '/^$/d'
+  )
+
+  local host_count=${#host_list[@]}
+  if [ "$host_count" -lt 1 ]; then
+    echo "no runner hosts found for runner host group: ${group_id}" >&2
+    return 2
+  fi
+
+  local hash host_index
+  hash=$(printf '%s-%s' "$selection_key" "$group_id" | md5sum | cut -c1-8)
+  host_index=$(( 0x$hash % host_count ))
+  printf '%s\n' "${host_list[$host_index]}"
 }
 
 cmd="${1:-}"
@@ -207,6 +247,9 @@ case "$cmd" in
     ;;
   hosts)
     emit_hosts "${2:-}"
+    ;;
+  select-host)
+    emit_selected_host "${2:-}" "${3:-}" "${4:-}"
     ;;
   -h|--help|help)
     usage

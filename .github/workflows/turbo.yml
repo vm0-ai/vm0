@@ -1789,6 +1789,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
       - name: Generate runner E2E test matrix
         id: runner-matrix
         shell: bash
@@ -1844,10 +1851,12 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          TARGET: aarch64-unknown-linux-musl
+          # The helper resolves per-architecture host subsets locally and emits
+          # merged hash maps for deploy-runner-start.
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           PROFILE: vm0/default
-        run: .github/scripts/wait-runner-image.sh
+        run: .github/scripts/wait-runner-image-groups.sh
 
   # Deploy runner start: generate config with real API preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
