@@ -1329,6 +1329,69 @@ describe("logs command", () => {
       expect(logCalls).toContain("Deleted: /workspace/old.ts");
     });
 
+    it("should tolerate malformed file_change payloads", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "change_1",
+                      type: "file_change",
+                      changes: "not an array",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "change_2",
+                      type: "file_change",
+                      changes: [
+                        null,
+                        { kind: "unknown", path: "/workspace/changed.ts" },
+                        { kind: "add", path: "" },
+                        { kind: "modify", path: 7 },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "warning",
+                    message: "later event still renders",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Changed: /workspace/changed.ts");
+      expect(logCalls).toContain("[warning] later event still renders");
+      expect(logCalls).not.toContain("not an array");
+    });
+
     it("should render turn.failed as Codex Failed", async () => {
       server.use(
         http.get(

@@ -42,8 +42,8 @@ interface TurnPlanUpdatedEvent {
 }
 
 interface FileChange {
-  kind: "add" | "modify" | "delete";
-  path: string;
+  kind?: unknown;
+  path?: unknown;
 }
 
 interface CodexItem {
@@ -339,21 +339,26 @@ export class CodexEventParser {
   }
 
   private static parseFileChange(item: CodexItem): ParsedEvent | null {
-    if (!item.changes || item.changes.length === 0) {
+    if (!Array.isArray(item.changes) || item.changes.length === 0) {
       return null;
     }
 
     const changes = item.changes
-      .map((c) => {
-        const action =
-          c.kind === "add"
-            ? "Created"
-            : c.kind === "modify"
-              ? "Modified"
-              : "Deleted";
-        return `${action}: ${c.path}`;
+      .flatMap((change) => {
+        if (!isRecord(change)) {
+          return [];
+        }
+        const path = getStringField(change, "path")?.trim();
+        if (!path) {
+          return [];
+        }
+        const action = formatFileChangeAction(change.kind);
+        return [`${action}: ${path}`];
       })
       .join("\n");
+    if (!changes) {
+      return null;
+    }
 
     return {
       type: "text",
@@ -411,6 +416,19 @@ function getStringField(
 ): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function formatFileChangeAction(kind: unknown): string {
+  switch (kind) {
+    case "add":
+      return "Created";
+    case "modify":
+      return "Modified";
+    case "delete":
+      return "Deleted";
+    default:
+      return "Changed";
+  }
 }
 
 function formatCodexWarningMessage(event: WarningEvent): string | null {
