@@ -1,4 +1,9 @@
-"""Shared stream-buffer metadata helpers for mitm-addon tests."""
+"""Shared stream-buffer metadata helpers for mitm-addon tests.
+
+These helpers seed the hook-owned metadata keys and required state fields for
+tests that consume buffered stream metadata. Tests for byte-limit behavior
+should use the real request/response stream callbacks instead.
+"""
 
 from mitmproxy import http
 
@@ -11,7 +16,7 @@ def set_response_stream_buffer(
     *,
     truncated: bool = False,
 ) -> None:
-    """Seed response stream metadata with the production hook's normal shape."""
+    """Seed response stream metadata with the hook-owned key/state shape."""
     flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
     flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {
         "truncated": truncated,
@@ -25,7 +30,7 @@ def set_request_stream_buffer(
     *,
     truncated: bool = False,
 ) -> None:
-    """Seed request stream metadata with the production hook's normal shape."""
+    """Seed request stream metadata with the hook-owned key/state shape."""
     flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = bytearray(body)
     flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {
         "truncated": truncated,
