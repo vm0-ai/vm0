@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.365.1](https://github.com/vm0-ai/vm0/compare/core-v8.365.0...core-v8.365.1) (2026-06-23)
+
+
+### Refactoring
+
+* split firewall selection resolver from expander ([#18697](https://github.com/vm0-ai/vm0/issues/18697)) ([8958d11](https://github.com/vm0-ai/vm0/commit/8958d119aa7c3aa4ebecd725c6751e736ea05b24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.1
+    * @vm0/connectors bumped to 1.105.1
+
 ## [8.365.0](https://github.com/vm0-ai/vm0/compare/core-v8.364.3...core-v8.365.0) (2026-06-23)
 
 

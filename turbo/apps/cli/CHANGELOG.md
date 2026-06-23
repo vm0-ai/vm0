@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.204.1](https://github.com/vm0-ai/vm0/compare/cli-v9.204.0...cli-v9.204.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate Slack firewall route owners ([#18675](https://github.com/vm0-ai/vm0/issues/18675)) ([fdccc38](https://github.com/vm0-ai/vm0/commit/fdccc38bbd5b6cacac21926e233dec8f649e087b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.110.1
+    * @vm0/connectors bumped to 1.105.1
+    * @vm0/core bumped to 8.365.1
+
 ## [9.204.0](https://github.com/vm0-ai/vm0/compare/cli-v9.203.0...cli-v9.204.0) (2026-06-23)
 
 

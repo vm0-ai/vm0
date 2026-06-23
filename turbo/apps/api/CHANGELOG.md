@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.172.1](https://github.com/vm0-ai/vm0/compare/api-v1.172.0...api-v1.172.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate Slack firewall route owners ([#18675](https://github.com/vm0-ai/vm0/issues/18675)) ([fdccc38](https://github.com/vm0-ai/vm0/commit/fdccc38bbd5b6cacac21926e233dec8f649e087b))
+
+
+### Refactoring
+
+* decouple workflow triggers from automation api ([#18695](https://github.com/vm0-ai/vm0/issues/18695)) ([39ca57a](https://github.com/vm0-ai/vm0/commit/39ca57a33caea773aeba1eca4d243cadaf10fae1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.1
+    * @vm0/connectors bumped to 1.105.1
+    * @vm0/core bumped to 8.365.1
+    * @vm0/db bumped to 1.67.1
+
 ## [1.172.0](https://github.com/vm0-ai/vm0/compare/api-v1.171.2...api-v1.172.0) (2026-06-23)
 
 

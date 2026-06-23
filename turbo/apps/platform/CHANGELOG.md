@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.484.1](https://github.com/vm0-ai/vm0/compare/app-v0.484.0...app-v0.484.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* prevent lightbox image zoom drift ([#18698](https://github.com/vm0-ai/vm0/issues/18698)) ([0c2e42b](https://github.com/vm0-ai/vm0/commit/0c2e42b2b2891978556723e8b714dfbe2069887d))
+* respect mobile safe areas in toasts and artifacts ([#18535](https://github.com/vm0-ai/vm0/issues/18535)) ([11151a4](https://github.com/vm0-ai/vm0/commit/11151a4b003e8341f52dfde837508e6335edffa9))
+* stabilize presentation template preview loading ([#18686](https://github.com/vm0-ai/vm0/issues/18686)) ([24f5776](https://github.com/vm0-ai/vm0/commit/24f57764768244372b08aa14090af08f703ce018))
+
+
+### Refactoring
+
+* decouple workflow triggers from automation api ([#18695](https://github.com/vm0-ai/vm0/issues/18695)) ([39ca57a](https://github.com/vm0-ai/vm0/commit/39ca57a33caea773aeba1eca4d243cadaf10fae1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.1
+    * @vm0/connectors bumped to 1.105.1
+    * @vm0/core bumped to 8.365.1
+
 ## [0.484.0](https://github.com/vm0-ai/vm0/compare/app-v0.483.3...app-v0.484.0) (2026-06-23)
 
 
