@@ -20,6 +20,8 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { closeDbPool, db } from "../lib/db";
+import { optionalEnv } from "../lib/env";
+import { settle } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
 const SCRIPT_MARKER = "dev-bench-seed";
@@ -36,13 +38,13 @@ type SeedChatMessageRow = ChatMessageInsert & {
   revokesMessageId?: string | null;
 };
 
-interface BuiltProfileRows {
+export interface BuiltProfileRows {
   readonly runRows: AgentRunInsert[];
   readonly zeroRunRows: ZeroRunInsert[];
   readonly messageRows: SeedChatMessageRow[];
 }
 
-interface BuildProfileRowsArgs {
+export interface BuildProfileRowsArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly versionId: string;
@@ -68,7 +70,7 @@ interface AutomationTitleSpec {
   readonly count: number;
 }
 
-interface ThreadProfile {
+export interface ThreadProfile {
   readonly slug: string;
   readonly title: string;
   readonly selectedModel: string;
@@ -88,7 +90,7 @@ interface ThreadProfile {
   readonly sequenceMax: number;
 }
 
-const PROFILES: readonly ThreadProfile[] = [
+export const DEV_BENCH_THREAD_PROFILES: readonly ThreadProfile[] = [
   {
     slug: "feature-switch-digest",
     title: "[dev bench] prod-shaped chat thread A - 1.4k rows",
@@ -202,11 +204,11 @@ function usage(): never {
 }
 
 function assertLocalDatabase(): void {
-  if (process.env[ALLOW_NON_LOCAL_ENV] === "1") {
+  if (optionalEnv(ALLOW_NON_LOCAL_ENV) === "1") {
     return;
   }
 
-  const rawUrl = process.env.DATABASE_URL;
+  const rawUrl = optionalEnv("DATABASE_URL");
   if (!rawUrl) {
     throw new Error("DATABASE_URL is required");
   }
@@ -255,7 +257,9 @@ function bucketForCount(
   buckets: readonly BucketSpec[],
   bucketName: string,
 ): BucketSpec {
-  const bucket = buckets.find((item) => item.name === bucketName);
+  const bucket = buckets.find((item) => {
+    return item.name === bucketName;
+  });
   if (!bucket) {
     throw new Error(`Unknown run-count bucket "${bucketName}"`);
   }
@@ -292,7 +296,9 @@ function buildRunCounts(profile: ThreadProfile): number[] {
     }
   }
 
-  let currentTotal = rows.reduce((sum, row) => sum + row.count, 0);
+  let currentTotal = rows.reduce((sum, row) => {
+    return sum + row.count;
+  }, 0);
   let extra = profile.targetRunRows - currentTotal;
   if (extra < 0) {
     throw new Error(
@@ -319,7 +325,9 @@ function buildRunCounts(profile: ThreadProfile): number[] {
     }
   }
 
-  currentTotal = rows.reduce((sum, row) => sum + row.count, 0);
+  currentTotal = rows.reduce((sum, row) => {
+    return sum + row.count;
+  }, 0);
   if (currentTotal !== profile.targetRunRows) {
     throw new Error(
       `${profile.slug} generated ${String(currentTotal)} run rows, expected ${String(profile.targetRunRows)}`,
@@ -327,7 +335,9 @@ function buildRunCounts(profile: ThreadProfile): number[] {
   }
 
   return shuffle(
-    rows.map((row) => row.count),
+    rows.map((row) => {
+      return row.count;
+    }),
     `${profile.slug}:chronology`,
   );
 }
@@ -337,7 +347,9 @@ function buildAutomationTitles(
 ): readonly (string | null)[] {
   return shuffle(
     profile.automationTitles.flatMap((spec) => {
-      return Array.from({ length: spec.count }, () => spec.title);
+      return Array.from({ length: spec.count }, () => {
+        return spec.title;
+      });
     }),
     `${profile.slug}:automation`,
   );
@@ -432,8 +444,7 @@ function sequenceNumberFor(
       ? profile.sequenceMax
       : Math.max(12, Math.min(profile.sequenceMax, eventCount * 4 + 8));
   const ratio = eventIndex / (eventCount - 1);
-  const jitter = (runIndex + eventIndex * 7) % 5;
-  return Math.max(1, Math.round(2 + ratio * (baseMax - 2) + jitter));
+  return Math.max(1, Math.round(2 + ratio * (baseMax - 2)));
 }
 
 function recommendedFollowups(
@@ -504,12 +515,16 @@ async function cleanupExistingBenchThreads(
         eq(chatThreads.agentComposeId, args.agentId),
         inArray(
           chatThreads.title,
-          PROFILES.map((profile) => profile.title),
+          DEV_BENCH_THREAD_PROFILES.map((profile) => {
+            return profile.title;
+          }),
         ),
       ),
     );
 
-  const threadIds = threadRows.map((row) => row.id);
+  const threadIds = threadRows.map((row) => {
+    return row.id;
+  });
   if (threadIds.length === 0) {
     return 0;
   }
@@ -518,7 +533,9 @@ async function cleanupExistingBenchThreads(
     .select({ id: zeroRuns.id })
     .from(zeroRuns)
     .where(inArray(zeroRuns.chatThreadId, threadIds));
-  const runIds = runRows.map((row) => row.id);
+  const runIds = runRows.map((row) => {
+    return row.id;
+  });
   const sessionRows =
     runIds.length === 0
       ? []
@@ -526,7 +543,13 @@ async function cleanupExistingBenchThreads(
           .select({ id: agentRuns.sessionId })
           .from(agentRuns)
           .where(inArray(agentRuns.id, runIds));
-  const sessionIds = [...new Set(sessionRows.map((row) => row.id))];
+  const sessionIds = [
+    ...new Set(
+      sessionRows.map((row) => {
+        return row.id;
+      }),
+    ),
+  ];
 
   await database
     .delete(chatMessages)
@@ -799,7 +822,7 @@ function appendNullRunControlRows(args: {
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
-      role: "user",
+      role: controlIndex % 2 === 0 ? "user" : "assistant",
       content:
         controlIndex % 2 === 0
           ? userPromptLorem(args.profile, controlIndex)
@@ -842,7 +865,7 @@ function sortMessageRows(messageRows: SeedChatMessageRow[]): void {
   });
 }
 
-function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
+export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
   const startAt = new Date(args.profile.startAt);
   const endAt = new Date(args.profile.endAt);
   const runCounts = buildRunCounts(args.profile);
@@ -965,7 +988,7 @@ async function seedDevBench(args: {
   }
 
   const seeded = [];
-  for (const profile of PROFILES) {
+  for (const profile of DEV_BENCH_THREAD_PROFILES) {
     const result = await seedProfile(database, {
       ...args,
       orgId,
@@ -993,10 +1016,10 @@ async function main(): Promise<void> {
   if (!userId || !agentId) {
     usage();
   }
-  try {
-    await seedDevBench({ userId, agentId });
-  } finally {
-    await closeDbPool();
+  const result = await settle(seedDevBench({ userId, agentId }));
+  await closeDbPool();
+  if (!result.ok) {
+    throw result.error;
   }
 }
 
