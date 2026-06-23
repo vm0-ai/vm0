@@ -5,13 +5,10 @@ import { formatDurationSeconds } from "./duration";
 
 /**
  * Shared rendering for automation triggers: the triggers table used by
- * `automation list/show` and `trigger list`, and the one-time webhook secret
- * block used everywhere a secret is minted.
+ * `automation list/show` and `trigger list`.
  */
 
-/**
- * One-line config summary per trigger kind (schedule config or webhook URL)
- */
+/** One-line config summary per trigger kind. */
 export function formatTriggerConfig(
   trigger: AutomationTriggerResponse,
 ): string {
@@ -22,15 +19,10 @@ export function formatTriggerConfig(
       return `at ${trigger.atTime} (${trigger.timezone})`;
     case "loop":
       return `every ${formatDurationSeconds(trigger.intervalSeconds)}`;
-    case "webhook":
-      return trigger.webhookUrl;
   }
 }
 
 function formatNextRun(trigger: AutomationTriggerResponse): string {
-  if (trigger.kind === "webhook") {
-    return chalk.dim("-");
-  }
   if (!trigger.nextRunAt) {
     return chalk.dim("-");
   }
@@ -115,44 +107,17 @@ export function printTriggerDetails(trigger: AutomationTriggerResponse): void {
         `${"Every:".padEnd(14)}${formatDurationSeconds(trigger.intervalSeconds)}`,
       );
       break;
-    case "webhook":
-      console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);
-      break;
   }
 
-  if (trigger.kind !== "webhook") {
-    console.log(`${"Timezone:".padEnd(14)}${trigger.timezone}`);
-    console.log(
-      `${"Next run:".padEnd(14)}${
-        trigger.nextRunAt
-          ? formatRelativeTime(trigger.nextRunAt)
-          : chalk.dim("-")
-      }`,
-    );
-    console.log(
-      `${"Last run:".padEnd(14)}${
-        trigger.lastRunAt
-          ? formatRelativeTime(trigger.lastRunAt)
-          : chalk.dim("-")
-      }`,
-    );
-  }
-}
-
-/**
- * Print a freshly minted webhook trigger's inbound URL plus its one-time HMAC
- * signing secret with a prominent "shown only once" warning.
- */
-export function printWebhookSecret(webhookUrl: string, secret: string): void {
-  console.log();
-  console.log(chalk.bold("  Inbound URL:"));
-  console.log(`    ${webhookUrl}`);
-  console.log();
-  console.log(chalk.bold("  Signing secret (shown only once — store it now):"));
-  console.log(`    ${secret}`);
+  console.log(`${"Timezone:".padEnd(14)}${trigger.timezone}`);
   console.log(
-    chalk.yellow(
-      "  ⚠ This secret cannot be retrieved again. If lost, rotate it with: zero automation trigger rotate-secret <trigger-id>",
-    ),
+    `${"Next run:".padEnd(14)}${
+      trigger.nextRunAt ? formatRelativeTime(trigger.nextRunAt) : chalk.dim("-")
+    }`,
+  );
+  console.log(
+    `${"Last run:".padEnd(14)}${
+      trigger.lastRunAt ? formatRelativeTime(trigger.lastRunAt) : chalk.dim("-")
+    }`,
   );
 }

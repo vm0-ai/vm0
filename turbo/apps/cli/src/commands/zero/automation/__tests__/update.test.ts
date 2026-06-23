@@ -67,17 +67,6 @@ const onceTrigger = {
   nextRunAt: "2026-06-10T01:00:00Z",
 };
 
-const webhookTrigger = {
-  id: "44444444-4444-4444-8444-444444444444",
-  automationId: AUTOMATION_ID,
-  enabled: true,
-  createdAt: "2026-06-01T00:00:00Z",
-  updatedAt: "2026-06-01T00:00:00Z",
-  kind: "webhook",
-  webhookToken: "whk_deadbeef",
-  webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-};
-
 function mockShowAutomation(triggers: object[]) {
   server.use(
     http.get("http://localhost:3000/api/automations/:ref", () => {
@@ -162,9 +151,7 @@ describe("zero automation update command", () => {
       let capturedTriggerId: string | undefined;
       let capturedTriggerBody: Record<string, unknown> | undefined;
 
-      // The webhook trigger is ignored: only time triggers are schedule
-      // candidates.
-      mockShowAutomation([webhookTrigger, loopTrigger]);
+      mockShowAutomation([loopTrigger]);
       server.use(
         http.patch("http://localhost:3000/api/automations/:ref", () => {
           automationPatchCalls += 1;
@@ -317,7 +304,7 @@ describe("zero automation update command", () => {
     });
 
     it("should error when the automation has no time trigger", async () => {
-      mockShowAutomation([webhookTrigger]);
+      mockShowAutomation([]);
 
       await expect(async () => {
         await updateCommand.parseAsync([

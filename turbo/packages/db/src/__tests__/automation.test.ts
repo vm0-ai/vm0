@@ -78,8 +78,6 @@ describe("automations schema", () => {
     expect(automationTriggers.automationId.name).toBe("automation_id");
     expect(automationTriggers.kind.name).toBe("kind");
     expect(automationTriggers.config.name).toBe("config");
-    expect(automationTriggers.webhookToken.name).toBe("webhook_token");
-    expect(automationTriggers.encryptedSecret.name).toBe("encrypted_secret");
     expect(automationTriggers.createdAt.name).toBe("created_at");
     expect(automationTriggers.updatedAt.name).toBe("updated_at");
   });
@@ -98,11 +96,10 @@ describe("automations schema", () => {
     expect(automationTriggers.enabled.name).toBe("enabled");
   });
 
-  it("declares the trigger automation, webhook token, and next-run indexes", () => {
+  it("declares the trigger automation and next-run indexes", () => {
     expect(getExtraConfigNames(automationTriggers)).toEqual(
       expect.arrayContaining([
         "idx_automation_triggers_automation",
-        "idx_automation_triggers_webhook_token",
         "idx_automation_triggers_next_run",
       ]),
     );

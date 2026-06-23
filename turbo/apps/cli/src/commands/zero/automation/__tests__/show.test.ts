@@ -42,16 +42,6 @@ const mockAutomation = {
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:00:00Z",
     },
-    {
-      id: "33333333-3333-4333-8333-333333333333",
-      automationId: AUTOMATION_ID,
-      enabled: false,
-      kind: "webhook",
-      webhookToken: "whk_deadbeef",
-      webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: "2026-06-01T00:00:00Z",
-    },
   ],
 };
 
@@ -95,11 +85,6 @@ describe("zero automation show command", () => {
     expect(logCalls).toContain("loop");
     expect(logCalls).toContain("22222222-2222-4222-8222-222222222222");
     expect(logCalls).toContain("every 15m");
-    expect(logCalls).toContain("webhook");
-    expect(logCalls).toContain(
-      "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-    );
-    expect(logCalls).toContain("disabled");
   });
 
   it("should hint at adding a trigger when the automation has none", async () => {

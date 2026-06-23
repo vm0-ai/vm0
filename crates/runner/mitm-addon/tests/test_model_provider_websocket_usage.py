@@ -18,6 +18,7 @@ from tests.model_provider_websocket_helpers import (
     _append_websocket_message,
     _capture_deferred_websocket_trims,
     _feed_websocket_server_message,
+    _feed_websocket_server_text_message,
     _model_websocket_usage_sources,
     _openai_model_websocket_flow,
     _openai_websocket_usage_frame,
@@ -395,6 +396,101 @@ class TestModelProviderWebSocketUsage:
         } == {
             ("gpt-5.5", "tokens.input"): 20,
             ("gpt-5.5", "tokens.output"): 12,
+        }
+
+    def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            _feed_websocket_server_text_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_text",
+                            "model": "gpt-5.4",
+                            "usage": {"input_tokens": 3, "output_tokens": 2},
+                        },
+                    }
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert {
+            (event["provider"], event["category"]): event["quantity"]
+            for event in webhook.usage_events()
+        } == {
+            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.4", "tokens.output"): 2,
+        }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.4", "tokens.output"): 2,
+        }
+
+    def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = "invalid"
+
+        with self._usage_webhook_api() as webhook:
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_usage_frame(
+                    "resp_ws_invalid_sources",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+        assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+    def test_model_websocket_same_id_zero_after_positive_does_not_double_bill(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=20,
+                output_tokens=12,
+            ),
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=0,
+                output_tokens=0,
+            ),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
         }
 
     def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):

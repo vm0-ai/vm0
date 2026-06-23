@@ -98,6 +98,63 @@ export type ZeroWorkflowTriggerKind = z.infer<
   typeof zeroWorkflowTriggerKindSchema
 >;
 
+export const zeroWorkflowEventTypeSchema = z.enum([
+  "thread-idle",
+  "gmail-new-message",
+]);
+export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
+
+const gmailTextMatchSchema = z
+  .object({
+    contains: z.string().min(1).optional(),
+    containsAny: z.array(z.string().min(1)).min(1).optional(),
+    doesNotContain: z.string().min(1).optional(),
+    doesNotContainAny: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .refine(
+    (value) => {
+      return (
+        value.contains !== undefined ||
+        value.containsAny !== undefined ||
+        value.doesNotContain !== undefined ||
+        value.doesNotContainAny !== undefined
+      );
+    },
+    { message: "At least one text matcher is required" },
+  );
+
+const gmailLabelMatchSchema = z
+  .object({
+    includeAny: z.array(z.string().min(1)).min(1).optional(),
+    excludeAny: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .refine(
+    (value) => {
+      return value.includeAny !== undefined || value.excludeAny !== undefined;
+    },
+    { message: "At least one label matcher is required" },
+  );
+
+export const gmailNewMessageEventConfigSchema = z.object({
+  provider: z.literal("gmail"),
+  event: z.literal("new_message"),
+  match: z
+    .object({
+      from: gmailTextMatchSchema.optional(),
+      subject: gmailTextMatchSchema.optional(),
+      snippet: gmailTextMatchSchema.optional(),
+      body: gmailTextMatchSchema.optional(),
+      to: gmailTextMatchSchema.optional(),
+      cc: gmailTextMatchSchema.optional(),
+      labels: gmailLabelMatchSchema.optional(),
+      hasAttachment: z.boolean().optional(),
+    })
+    .optional(),
+});
+export type GmailNewMessageEventConfig = z.infer<
+  typeof gmailNewMessageEventConfigSchema
+>;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-trigger model:
@@ -128,32 +185,72 @@ export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
  * no longer carry an agentId. Detail responses only ever list the caller's own
  * triggers.
  */
-export const zeroWorkflowTriggerSummarySchema = z.object({
+const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   id: z.string(),
-  kind: zeroWorkflowTriggerKindSchema,
-  schedule: zeroWorkflowScheduleSchema,
-  scheduleSummary: z.string(),
   ownerUserId: z.string(),
   enabled: z.boolean(),
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
 });
+
+export const zeroWorkflowScheduleTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("schedule"),
+    schedule: zeroWorkflowScheduleSchema,
+    scheduleSummary: z.string(),
+  });
+
+export const zeroWorkflowGmailNewMessageTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-new-message"),
+    eventConfig: gmailNewMessageEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowTriggerSummarySchema = z.discriminatedUnion("kind", [
+  zeroWorkflowScheduleTriggerSummarySchema,
+  zeroWorkflowGmailNewMessageTriggerSummarySchema,
+]);
 export type ZeroWorkflowTriggerSummary = z.infer<
   typeof zeroWorkflowTriggerSummarySchema
 >;
 
-export const zeroWorkflowTriggerCreateRequestSchema = z.object({
+export const zeroWorkflowScheduleTriggerCreateRequestSchema = z.object({
+  kind: z.literal("schedule").optional(),
   schedule: zeroWorkflowScheduleSchema,
   enabled: z.boolean().optional(),
 });
+
+export const zeroWorkflowGmailNewMessageTriggerCreateRequestSchema = z.object({
+  kind: z.literal("event"),
+  eventType: z.literal("gmail-new-message"),
+  eventConfig: gmailNewMessageEventConfigSchema,
+  enabled: z.boolean().optional(),
+});
+
+export const zeroWorkflowTriggerCreateRequestSchema = z.union([
+  zeroWorkflowScheduleTriggerCreateRequestSchema,
+  zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
+]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<
   typeof zeroWorkflowTriggerCreateRequestSchema
 >;
 
-export const zeroWorkflowTriggerUpdateRequestSchema = z.object({
+export const zeroWorkflowScheduleTriggerUpdateRequestSchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
 });
+
+export const zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema = z.object({
+  eventConfig: gmailNewMessageEventConfigSchema,
+});
+
+export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
+  zeroWorkflowScheduleTriggerUpdateRequestSchema,
+  zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema,
+]);
 export type ZeroWorkflowTriggerUpdateRequest = z.infer<
   typeof zeroWorkflowTriggerUpdateRequestSchema
 >;

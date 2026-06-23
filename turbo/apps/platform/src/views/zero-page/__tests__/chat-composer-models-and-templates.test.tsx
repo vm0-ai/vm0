@@ -401,7 +401,7 @@ async function openTemplatePicker(
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
 
-  click(screen.getByLabelText(`View template ${template.title}`));
+  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
   await waitFor(() => {
     expect(
       screen.getByTestId(`${template.title} detail HTML preview`),
@@ -1650,6 +1650,9 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
+      expect(
+        screen.queryByLabelText(`View template ${template.title}`),
+      ).not.toBeInTheDocument();
       const currentPreviewFrame = () => {
         return screen.getByTestId(`${template.title} card HTML preview`);
       };
@@ -1796,7 +1799,9 @@ describe("chat composer templates", () => {
       ),
     ).toMatchObject({ [template.slug]: "prism" });
 
-    await user.click(screen.getByLabelText(`View template ${template.title}`));
+    await user.click(
+      screen.getByLabelText(`Preview ${template.title} at current slide`),
+    );
     const templateDialog = screen.getByRole("dialog");
     await waitFor(() => {
       expect(
@@ -1996,7 +2001,9 @@ describe("chat composer templates", () => {
         }),
       );
       await fill(screen.getByLabelText("Search templates"), template.title);
-      click(screen.getByLabelText(`View template ${template.title}`));
+      click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
 
       await waitFor(() => {
         expect(previewFetchCount).toBe(1);
@@ -2014,7 +2021,9 @@ describe("chat composer templates", () => {
         throw new Error("Template button not found");
       }
       click(templateButton);
-      click(screen.getByLabelText(`View template ${template.title}`));
+      click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
 
       previewFetch.resolve(
         new Response(
@@ -2113,7 +2122,7 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    click(screen.getByLabelText(`View template ${template.title}`));
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     const templateDialog = screen.getByRole("dialog");
     expect(
@@ -2203,7 +2212,7 @@ describe("chat composer templates", () => {
       throw new Error("Template button not found");
     }
     click(templateButton);
-    click(screen.getByLabelText(`View template ${template.title}`));
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     await waitFor(() => {
       expect(screen.getByText("1 of 15")).toBeInTheDocument();

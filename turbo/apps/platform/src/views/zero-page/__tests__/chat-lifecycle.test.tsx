@@ -4039,7 +4039,9 @@ describe("chat lifecycle", () => {
 
     await user.click(await screen.findByLabelText("Template"));
     await user.click(
-      await screen.findByLabelText(`View template ${template.title}`),
+      await screen.findByLabelText(
+        `Preview ${template.title} at current slide`,
+      ),
     );
     await user.click(await screen.findByLabelText("Select style Gold Luxe"));
     await user.click(

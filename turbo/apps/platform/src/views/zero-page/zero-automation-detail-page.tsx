@@ -267,15 +267,14 @@ function triggerKindLabel(kind: CombinedEntry["triggerKinds"][number]): string {
   if (kind === "loop") {
     return "Loop";
   }
-  return "Webhook";
+
+  const exhaustive: never = kind;
+  return exhaustive;
 }
 
 function triggerReadOnlyCopy(entry: CombinedEntry): string {
   if (entry.triggerReadOnlyReason === "multiple_triggers") {
     return "This automation has multiple triggers. Manage them from the CLI or API.";
-  }
-  if (entry.triggerReadOnlyReason === "unsupported_trigger") {
-    return "This trigger type is managed from the CLI or API.";
   }
   return "This automation does not have a platform-managed trigger.";
 }
