@@ -1395,15 +1395,67 @@ mod tests {
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {
+        for generic_message in [
+            "turn failed",
+            "Turn failed.",
+            "Unknown error",
+            "codex error",
+        ] {
+            assert_eq!(
+                select_failure_diagnostic(
+                    Some(&CliFailureDiagnostic {
+                        message: "You've hit your usage limit.".to_string(),
+                        source: FailureDetailSource::CodexJsonl,
+                        failure_reason: None,
+                    }),
+                    CliFailureDiagnostic {
+                        message: generic_message.to_string(),
+                        source: FailureDetailSource::CodexJsonl,
+                        failure_reason: None,
+                    },
+                ),
+                None,
+                "generic message should not replace specific diagnostic: {generic_message}"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_codex_failure_diagnostic_replaces_prior_generic_event() {
+        let selected = select_failure_diagnostic(
+            Some(&CliFailureDiagnostic {
+                message: "error".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            }),
+            CliFailureDiagnostic {
+                message: "Unknown error".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            },
+        );
+
+        assert_eq!(
+            selected,
+            Some(CliFailureDiagnostic {
+                message: "Unknown error".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn generic_codex_failure_diagnostic_does_not_replace_specific_claude_result() {
         assert_eq!(
             select_failure_diagnostic(
                 Some(&CliFailureDiagnostic {
-                    message: "You've hit your usage limit.".to_string(),
-                    source: FailureDetailSource::CodexJsonl,
+                    message: "Claude result failure".to_string(),
+                    source: FailureDetailSource::ClaudeResult,
                     failure_reason: None,
                 }),
                 CliFailureDiagnostic {
-                    message: "turn failed".to_string(),
+                    message: "Unknown error".to_string(),
                     source: FailureDetailSource::CodexJsonl,
                     failure_reason: None,
                 },
