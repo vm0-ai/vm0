@@ -2092,6 +2092,20 @@ describe("chat composer templates", () => {
         name: `Template / ${template.title}`,
       }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview previous slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview previous slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
+    expect(screen.getByLabelText("Preview next slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview next slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
 
     await waitFor(() => {
       expect(
@@ -2209,6 +2223,53 @@ describe("chat composer templates", () => {
         key: "ArrowLeft",
       },
     );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    const themeButton = screen.getByLabelText("Select style Carnival");
+    themeButton.focus();
+    expect(themeButton).toHaveFocus();
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowLeft",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 1"), {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 2"), {
+      key: "ArrowLeft",
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
