@@ -3522,6 +3522,21 @@ function TemplatePreviewPage({
       });
     }
   };
+  const handleDetailPreviewKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key === "ArrowLeft" && activeSlideIndex > 0) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex - 1);
+    }
+    if (event.key === "ArrowRight" && activeSlideIndex < detailSlideCount - 1) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex + 1);
+    }
+  };
   const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
     (theme) => {
       return theme.group === "multi-accent";
@@ -3544,6 +3559,7 @@ function TemplatePreviewPage({
           >
             Template
           </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 flex-1 truncate leading-none">
             {item.title}
           </span>
@@ -3554,7 +3570,13 @@ function TemplatePreviewPage({
         className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
       >
         <div className="rounded-lg border border-border bg-background p-3">
-          <div className="relative overflow-hidden rounded-lg bg-muted">
+          <div
+            role="group"
+            aria-label={`${item.title} slide preview`}
+            tabIndex={0}
+            onKeyDown={handleDetailPreviewKeyDown}
+            className="relative overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <iframe
               title={`${item.title} HTML preview`}
               data-testid={`${item.title} detail HTML preview`}
@@ -3580,10 +3602,6 @@ function TemplatePreviewPage({
               }}
               className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
             />
-            <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
-              {Math.min(activeSlideIndex + 1, detailSlideCount)} of{" "}
-              {detailSlideCount}
-            </div>
             {visibleDetailPreview?.loading ||
             !visibleDetailPreview?.frameUrl ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
