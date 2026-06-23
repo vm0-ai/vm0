@@ -101,6 +101,18 @@ const PAT_TOKEN_PREFIX = "vm0_pat_";
 const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 const OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 const SO_FRONTEND_PAGE_METHODS = new Set(["GET", "HEAD"]);
+const HOP_BY_HOP_HEADERS = [
+  "connection",
+  "content-length",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+];
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
@@ -158,20 +170,37 @@ async function proxySoFrontendRequest(
   targetUrl: URL,
 ): Promise<Response> {
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.delete("host");
-  requestHeaders.delete("content-length");
+  for (const header of HOP_BY_HOP_HEADERS) {
+    requestHeaders.delete(header);
+  }
   requestHeaders.set("x-forwarded-host", request.nextUrl.host);
   requestHeaders.set(
     "x-forwarded-proto",
     request.nextUrl.protocol.slice(0, -1),
   );
 
-  return fetch(targetUrl, {
+  if (requestHeaders.get("origin") === request.nextUrl.origin) {
+    requestHeaders.set("origin", targetUrl.origin);
+  }
+  const referer = requestHeaders.get("referer");
+  if (referer?.startsWith(request.nextUrl.origin)) {
+    requestHeaders.set(
+      "referer",
+      `${targetUrl.origin}${referer.slice(request.nextUrl.origin.length)}`,
+    );
+  }
+
+  const proxyRequestInit: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers: requestHeaders,
-    body: request.body,
     redirect: "manual",
-  });
+  };
+  if (request.body) {
+    proxyRequestInit.body = request.body;
+    proxyRequestInit.duplex = "half";
+  }
+
+  return fetch(targetUrl, proxyRequestInit);
 }
 
 // ---------------------------------------------------------------------------
