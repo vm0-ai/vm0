@@ -458,7 +458,6 @@ fn normalize_file_update_change(
         .as_object()
         .ok_or_else(|| invalid_field_for_method(method, "item.changes[]"))?;
     let path = required_string_field(change, method, "item.changes[].path")?;
-    let diff = required_string_field(change, method, "item.changes[].diff")?;
     let kind = change
         .get("kind")
         .ok_or_else(|| missing_field(method, "item.changes[].kind"))?;
@@ -470,7 +469,9 @@ fn normalize_file_update_change(
         "kind".to_string(),
         Value::String(normalized_kind.to_string()),
     );
-    normalized.insert("diff".to_string(), Value::String(diff.to_string()));
+    if let Some(diff) = change.get("diff").and_then(Value::as_str) {
+        normalized.insert("diff".to_string(), Value::String(diff.to_string()));
+    }
     if normalized_kind == "modify"
         && let Some(move_path) = optional_patch_move_path(kind, method)?
     {
@@ -501,6 +502,7 @@ fn normalize_patch_kind(
     match kind {
         "add" => Ok("add"),
         "delete" => Ok("delete"),
+        "modify" => Ok("modify"),
         "update" => Ok("modify"),
         _ => Err(invalid_field_for_method(method, field)),
     }
@@ -740,6 +742,9 @@ fn optional_string_array_field(
     let Some(values) = object.get(key) else {
         return Ok(Vec::new());
     };
+    if values.is_null() {
+        return Ok(Vec::new());
+    }
     let values = values
         .as_array()
         .ok_or_else(|| invalid_field_for_method(method, field))?;
@@ -1136,6 +1141,57 @@ mod tests {
     }
 
     #[test]
+    fn file_change_ignores_missing_and_malformed_optional_diff() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "completed",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": "modify"
+                        },
+                        {
+                            "path": "src/new.rs",
+                            "kind": {"type": "add"},
+                            "diff": null
+                        },
+                        {
+                            "path": "src/generated.rs",
+                            "kind": {"type": "add"},
+                            "diff": {"unexpected": true}
+                        }
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/changes"),
+            Some(&json!([
+                {
+                    "path": "src/lib.rs",
+                    "kind": "modify"
+                },
+                {
+                    "path": "src/new.rs",
+                    "kind": "add"
+                },
+                {
+                    "path": "src/generated.rs",
+                    "kind": "add"
+                }
+            ]))
+        );
+    }
+
+    #[test]
     fn reasoning_joins_summary_and_content() {
         let event = mapped_event(
             "item/completed",
@@ -1173,6 +1229,30 @@ mod tests {
                 "item": {
                     "type": "reasoning",
                     "id": "reason-1"
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/type").and_then(Value::as_str),
+            Some("reasoning")
+        );
+        assert_eq!(event.pointer("/item/text"), None);
+    }
+
+    #[test]
+    fn reasoning_omits_text_when_summary_and_content_are_null() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "summary": null,
+                    "content": null
                 }
             }),
         );

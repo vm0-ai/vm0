@@ -896,16 +896,25 @@ function parseAssistantContent(contents: MessageContent[]): {
 /**
  * Process a tool_result content block and attach to pending tool use or create orphan.
  */
-function processToolResult(
-  resultContent: ToolResultContent,
-  toolMeta: ToolResultMeta | undefined,
+function processToolResult(params: {
+  resultContent: ToolResultContent;
+  toolMeta: ToolResultMeta | undefined;
   pendingToolUses: Map<
     string,
     { operation: ToolOperation; message: GroupedMessage }
-  >,
-  event: AgentEvent,
-  grouped: GroupedMessage[],
-): void {
+  >;
+  event: AgentEvent;
+  grouped: GroupedMessage[];
+  contentIndex: number;
+}): void {
+  const {
+    resultContent,
+    toolMeta,
+    pendingToolUses,
+    event,
+    grouped,
+    contentIndex,
+  } = params;
   const toolUseId = resultContent.tool_use_id;
   const pending = toolUseId ? pendingToolUses.get(toolUseId) : undefined;
 
@@ -925,11 +934,12 @@ function processToolResult(
   // Orphan tool_result - create standalone message
   grouped.push({
     type: "assistant",
-    sequenceNumber: event.sequenceNumber,
+    sequenceNumber: event.sequenceNumber + (contentIndex + 1) / 1_000_000,
     createdAt: event.createdAt,
     toolOperations: [
       {
-        toolUseId: toolUseId ?? `orphan-${Math.random()}`,
+        toolUseId:
+          toolUseId ?? `orphan-${event.sequenceNumber}-${contentIndex}`,
         toolName: "Unknown",
         keyParam: "",
         input: {},
@@ -1267,15 +1277,16 @@ function processUserEvent(
   const contents = getMessageContents(eventData);
   const toolMeta = eventData.tool_use_result;
 
-  for (const content of contents) {
+  for (const [contentIndex, content] of contents.entries()) {
     if (content.type === "tool_result") {
-      processToolResult(
-        content as ToolResultContent,
+      processToolResult({
+        resultContent: content as ToolResultContent,
         toolMeta,
-        ctx.pendingToolUses,
+        pendingToolUses: ctx.pendingToolUses,
         event,
-        target,
-      );
+        grouped: target,
+        contentIndex,
+      });
     }
   }
 }

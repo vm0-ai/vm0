@@ -234,6 +234,27 @@ function detailedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 10,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              content: "first orphan tool result without id",
+              is_error: false,
+            },
+            {
+              type: "tool_result",
+              content: "second orphan tool result without id",
+              is_error: false,
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T14:56:07.400Z",
+    },
+    {
+      sequenceNumber: 11,
       eventType: "result",
       eventData: {
         type: "result",
@@ -1440,6 +1461,12 @@ describe("activity detail polling", () => {
     expect(
       screen.queryByText("bad non-array result should be ignored"),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("first orphan tool result without id"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("second orphan tool result without id"),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
       screen.getAllByText("pnpm test -- --filter checkout"),

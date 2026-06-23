@@ -141,9 +141,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             let structured_error = codex_nested_turn_error(event).or(error);
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
-                message: codex_error_message(error)
-                    .or_else(|| codex_error_message(structured_error))
-                    .unwrap_or_else(|| "turn failed".into()),
+                message: codex_turn_failed_message(error, structured_error),
                 failure_reason: codex_event_failure_reason(event, structured_error),
             })
         }
@@ -164,6 +162,21 @@ fn codex_nested_turn_error(event: &Value) -> Option<&Value> {
     event
         .pointer("/turn/error")
         .filter(|error| !error.is_null())
+}
+
+fn codex_turn_failed_message(error: Option<&Value>, structured_error: Option<&Value>) -> String {
+    let top_level_message = codex_error_message(error);
+    let structured_message = codex_error_message(structured_error);
+    match (top_level_message, structured_message) {
+        (Some(message), Some(structured_message))
+            if is_generic_codex_failure_diagnostic(&message) =>
+        {
+            structured_message
+        }
+        (Some(message), _) => message,
+        (None, Some(structured_message)) => structured_message,
+        (None, None) => "turn failed".into(),
+    }
 }
 
 fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagnostic> {
@@ -911,6 +924,29 @@ mod tests {
     fn codex_turn_failed_uses_nested_turn_error_for_message_when_top_level_error_missing() {
         let event = serde_json::json!({
             "type": "turn.failed",
+            "turn": {
+                "error": {
+                    "message": "nested turn failure",
+                    "additionalDetails": "quota exhausted"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "nested turn failure (quota exhausted)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_uses_nested_turn_error_for_message_when_top_level_error_is_generic() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "turn failed",
             "turn": {
                 "error": {
                     "message": "nested turn failure",
