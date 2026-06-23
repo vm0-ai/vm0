@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.364.2](https://github.com/vm0-ai/vm0/compare/core-v8.364.1...core-v8.364.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* hide presentation picker theme switcher assets ([#18595](https://github.com/vm0-ai/vm0/issues/18595)) ([02c9809](https://github.com/vm0-ai/vm0/commit/02c9809a5fb61b97913200c86c21517d4002ac1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.2
+    * @vm0/connectors bumped to 1.104.2
+
 ## [8.364.1](https://github.com/vm0-ai/vm0/compare/core-v8.364.0...core-v8.364.1) (2026-06-23)
 
 

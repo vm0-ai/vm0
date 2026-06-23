@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.129.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.2...runner-rs-v0.129.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate sentry firewall route owners ([#18620](https://github.com/vm0-ai/vm0/issues/18620)) ([21f9f3b](https://github.com/vm0-ai/vm0/commit/21f9f3bc6b5c3fec803824e292247721c64b6baf))
+
+
+### Performance Improvements
+
+* avoid active input validation allocation ([#18624](https://github.com/vm0-ai/vm0/issues/18624)) ([4b0cd9c](https://github.com/vm0-ai/vm0/commit/4b0cd9cac8ffe9855503d675d7f0320809ac49e7))
+* index mitm firewall matching ([#18621](https://github.com/vm0-ai/vm0/issues/18621)) ([8893680](https://github.com/vm0-ai/vm0/commit/8893680a262a377ac7e029a5f06d64571b54b23c))
+* **runner:** reduce procfs stat parsing overhead ([#18626](https://github.com/vm0-ai/vm0/issues/18626)) ([3922056](https://github.com/vm0-ai/vm0/commit/39220562e2d1f9e66142d8ba22e5ab48183c3690))
+
 ## [0.129.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.1...runner-rs-v0.129.2) (2026-06-23)
 
 
