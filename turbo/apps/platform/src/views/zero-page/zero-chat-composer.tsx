@@ -261,6 +261,8 @@ interface ZeroChatComposerProps {
   className?: string;
   /** Auto-focus the textarea when mounted. */
   autoFocus?: boolean;
+  /** Allows the MobileSingleLineComposer switch to reduce this instance on mobile. */
+  enableMobileSingleLine?: boolean;
   /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
   draft?: DraftSignals;
   /** Composer file input element reference. When omitted, falls back to singleton. */
@@ -5888,6 +5890,7 @@ function ComposerInputSlot({
   onDraftChange,
   sending,
   autoFocus,
+  enableMobileSingleLine,
   setInputRef,
   onKeyDown,
   onPaste,
@@ -5897,6 +5900,7 @@ function ComposerInputSlot({
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
+  readonly enableMobileSingleLine: boolean;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
@@ -5905,7 +5909,8 @@ function ComposerInputSlot({
   const slashWorkflowCommandsEnabled =
     features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
   const singleLineOnMobile =
-    features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false;
+    enableMobileSingleLine &&
+    (features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false);
 
   if (slashWorkflowCommandsEnabled) {
     return (
@@ -5918,6 +5923,7 @@ function ComposerInputSlot({
         setInputRef={setInputRef}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
+        singleLineOnMobile={singleLineOnMobile}
       />
     );
   }
@@ -6122,6 +6128,7 @@ export function ZeroChatComposer({
   displayName,
   className,
   autoFocus,
+  enableMobileSingleLine = false,
   draft,
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
@@ -6548,6 +6555,7 @@ export function ZeroChatComposer({
                     onDraftChange={onDraftChange}
                     sending={sending}
                     autoFocus={autoFocus}
+                    enableMobileSingleLine={enableMobileSingleLine}
                     setInputRef={setInputRef}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
