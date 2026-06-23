@@ -67,7 +67,7 @@ export class EventStreamNormalizer {
       return this.processCodexTurnFailed(turnId, parsed);
     }
 
-    if (this.shouldFlushPendingCodexErrorBefore(eventType, turnId)) {
+    if (this.shouldFlushPendingCodexErrorBefore(turnId)) {
       const output = this.flush();
       if (parsed) {
         output.push(parsed);
@@ -115,13 +115,9 @@ export class EventStreamNormalizer {
     return output;
   }
 
-  private shouldFlushPendingCodexErrorBefore(
-    eventType: string | undefined,
-    turnId: string | null,
-  ): boolean {
+  private shouldFlushPendingCodexErrorBefore(turnId: string | null): boolean {
     return (
-      Boolean(this.pendingCodexError) &&
-      eventType === "turn.started" &&
+      Boolean(this.pendingCodexError?.turnId) &&
       Boolean(turnId) &&
       this.pendingCodexError?.turnId !== turnId
     );

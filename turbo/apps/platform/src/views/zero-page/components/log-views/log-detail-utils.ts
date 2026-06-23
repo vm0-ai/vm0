@@ -995,8 +995,7 @@ function normalizeEventsForGrouping(events: AgentEvent[]): AgentEvent[] {
     }
 
     if (
-      pendingCodexError &&
-      codexType === "turn.started" &&
+      pendingCodexError?.turnId &&
       turnId &&
       pendingCodexError.turnId !== turnId
     ) {

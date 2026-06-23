@@ -2262,11 +2262,16 @@ describe("logs command", () => {
                 },
                 {
                   sequenceNumber: 3,
-                  eventType: "turn.started",
+                  eventType: "item.completed",
                   createdAt: "2024-01-15T10:30:02Z",
                   eventData: {
-                    type: "turn.started",
-                    turn: { id: "turn-b" },
+                    type: "item.completed",
+                    turn_id: "turn-b",
+                    item: {
+                      id: "msg-b",
+                      type: "agent_message",
+                      text: "New turn started work",
+                    },
                   },
                 },
                 {
@@ -2292,7 +2297,11 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
       expect(logCalls).toContain("Previous turn lost connection");
+      expect(logCalls).toContain("New turn started work");
       expect(logCalls).toContain("New turn quota failed");
+      expect(logCalls.indexOf("Previous turn lost connection")).toBeLessThan(
+        logCalls.indexOf("New turn started work"),
+      );
     });
 
     it("should preserve top-level Codex error detail when paired turn.failed is generic", async () => {

@@ -1295,10 +1295,15 @@ function codexFallbackActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 18,
-      eventType: "turn.started",
+      eventType: "item.completed",
       eventData: {
-        type: "turn.started",
-        turn: { id: "turn-b" },
+        type: "item.completed",
+        turn_id: "turn-b",
+        item: {
+          id: "msg-b",
+          type: "agent_message",
+          text: "New turn started work",
+        },
       },
       createdAt: "2026-03-10T15:30:19Z",
     },
@@ -2511,6 +2516,14 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Previous turn lost connection"),
     ).toBeInTheDocument();
+    const previousTurnFailure = screen.getByText(
+      "Previous turn lost connection",
+    );
+    const newTurnMessage = screen.getByText("New turn started work");
+    expect(
+      previousTurnFailure.compareDocumentPosition(newTurnMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByText("New turn quota failed")).toBeInTheDocument();
   });
 
