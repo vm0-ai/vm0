@@ -340,12 +340,16 @@ fn normalize_item(
     method: &str,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
     let item_type = required_string_field(item, method, "item.type")?;
-    match item_type {
-        "agentMessage" => normalize_agent_message(item, method).map(Some),
-        "plan" => normalize_plan(item, method).map(Some),
-        "reasoning" => normalize_reasoning(item, method).map(Some),
-        "commandExecution" => normalize_command_execution(item, method).map(Some),
-        "fileChange" => normalize_file_change_item(item, method).map(Some),
+    match (method, item_type) {
+        ("item/started", "agentMessage") => normalize_agent_message(item, method).map(|_| None),
+        ("item/started", "plan") => normalize_plan(item, method).map(|_| None),
+        ("item/started", "reasoning") => normalize_reasoning(item, method).map(|_| None),
+        ("item/started", "fileChange") => normalize_file_change_item(item, method).map(|_| None),
+        (_, "agentMessage") => normalize_agent_message(item, method).map(Some),
+        (_, "plan") => normalize_plan(item, method).map(Some),
+        (_, "reasoning") => normalize_reasoning(item, method).map(Some),
+        (_, "commandExecution") => normalize_command_execution(item, method).map(Some),
+        (_, "fileChange") => normalize_file_change_item(item, method).map(Some),
         _ => Ok(None),
     }
 }
@@ -928,6 +932,65 @@ mod tests {
             event.pointer("/item/text").and_then(Value::as_str),
             Some("")
         );
+    }
+
+    #[test]
+    fn display_item_started_notifications_are_ignored() {
+        let items = [
+            (
+                "agent message with text",
+                json!({
+                    "type": "agentMessage",
+                    "id": "message-1",
+                    "text": "partial response"
+                }),
+            ),
+            (
+                "plan with text",
+                json!({
+                    "type": "plan",
+                    "id": "plan-1",
+                    "text": "1. Inspect\n2. Patch"
+                }),
+            ),
+            (
+                "reasoning with summary",
+                json!({
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "summary": ["thinking"]
+                }),
+            ),
+            (
+                "file change with changes",
+                json!({
+                    "type": "fileChange",
+                    "id": "file-1",
+                    "status": "inProgress",
+                    "changes": [
+                        {
+                            "path": "src/lib.rs",
+                            "kind": "modify"
+                        }
+                    ]
+                }),
+            ),
+        ];
+
+        for (name, item) in items {
+            let result = notification_to_codex_event(&notification(
+                "item/started",
+                json!({
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "startedAtMs": 42,
+                    "item": item
+                }),
+            ))
+            .expect("started display item should not fail");
+
+            assert_eq!(result, None, "{name} should not emit a visible event");
+        }
     }
 
     #[test]
