@@ -21,7 +21,6 @@ JSON_PART = r"""{
             "GET /rest/v2/invoices/deel",
             "GET /rest/v2/invoices/{id}/download",
             "GET /rest/v2/invoices/{invoice_id}",
-            "GET /rest/v2/legal-entities",
             "GET /rest/v2/payments",
             "GET /rest/v2/payments/{payment_id}/breakdown",
             "GET /rest/v2/refund-statements",
@@ -100,8 +99,7 @@ JSON_PART = r"""{
             "GET /rest/v2/benefits/legal-entities/{legal_entity_id}/contracts/{contract_id}/plans/{plan_id}",
             "GET /rest/v2/benefits/legal-entities/{legal_entity_id}/paystubs",
             "GET /rest/v2/eor/benefits",
-            "GET /rest/v2/eor/worker/benefits",
-            "POST /rest/v2/workers/amendments/{amendment_id}/sign"
+            "GET /rest/v2/eor/worker/benefits"
           ]
         },
         {
@@ -153,19 +151,10 @@ JSON_PART = r"""{
             "GET /rest/v2/eor/contracts/{contract_id}/offboarding/time-offs",
             "GET /rest/v2/eor/contracts/{contract_id}/project-assignment",
             "GET /rest/v2/eor/contracts/{contract_id}/project-assignment/checkin",
-            "POST /rest/v2/eor/contracts/{contract_id}/project-assignment/checkin",
             "GET /rest/v2/eor/start-date",
             "GET /rest/v2/eor/validations/{country_code}",
             "GET /rest/v2/eor/{contract_id}/benefits",
-            "POST /rest/v2/eor/{oid}/terminations/regular",
-            "POST /rest/v2/eor/{oid}/terminations/resignation",
-            "GET /rest/v2/eor/{oid}/terminations/{terminationId}",
-            "GET /rest/v2/offboarding/tracker",
-            "GET /rest/v2/offboarding/tracker/hris_profile/{oid}",
-            "GET /rest/v2/offboarding/tracker/{id}",
-            "GET /rest/v2/onboarding/tracker",
-            "GET /rest/v2/onboarding/tracker/hris_profile/{hris_profile_id}",
-            "GET /rest/v2/onboarding/tracker/{tracker_id}"
+            "GET /rest/v2/eor/{oid}/terminations/{terminationId}"
           ]
         },
         {
@@ -174,7 +163,6 @@ JSON_PART = r"""{
             "POST /rest/v2/contracts",
             "POST /rest/v2/contracts/gp",
             "PATCH /rest/v2/contracts/{contract_id}",
-            "GET /rest/v2/contracts/{contract_id}/amendments",
             "POST /rest/v2/contracts/{contract_id}/amendments",
             "POST /rest/v2/contracts/{contract_id}/cost-centers",
             "PUT /rest/v2/contracts/{contract_id}/custom_fields",
@@ -248,9 +236,7 @@ JSON_PART = r"""{
         {
           "name": "groups:read",
           "rules": [
-            "GET /rest/v2/groups",
-            "POST /rest/v2/groups",
-            "PATCH /rest/v2/groups/{id}"
+            "GET /rest/v2/groups"
           ]
         },
         {
@@ -329,9 +315,6 @@ JSON_PART = r"""{
           "name": "legal-entity:read",
           "rules": [
             "GET /rest/v2/industries",
-            "POST /rest/v2/legal-entities",
-            "PATCH /rest/v2/legal-entities/{id}",
-            "DELETE /rest/v2/legal-entities/{id}",
             "GET /rest/v2/legal-entities/{legal_entity_id}/cost-centers",
             "GET /rest/v2/legal-entities/{legal_entity_id}/payroll-events",
             "GET /rest/v2/lookups"
@@ -487,8 +470,7 @@ JSON_PART = r"""{
             "GET /rest/v2/hris/positions/profile/{hrisProfileId}",
             "GET /rest/v2/hris/positions/profile/{hris_profile_id}",
             "GET /rest/v2/hris/worker_relations/profile/external/{profile_id}",
-            "GET /rest/v2/hris/worker_relations/profile/{hrisProfileOid}",
-            "PATCH /rest/v2/profiles"
+            "GET /rest/v2/hris/worker_relations/profile/{hrisProfileOid}"
           ]
         },
         {
@@ -631,12 +613,8 @@ JSON_PART = r"""{
         {
           "name": "worker:read",
           "rules": [
-            "GET /rest/v2/contracts/{contract_id}/preview",
             "GET /rest/v2/daas/payslips",
             "GET /rest/v2/engage/learning/actionable-journeys",
-            "GET /rest/v2/eor/contracts/{contract_id}/hrx-documents",
-            "GET /rest/v2/eor/contracts/{contract_id}/hrx-documents/{document_id}",
-            "GET /rest/v2/eor/contracts/{contract_id}/offboarding",
             "GET /rest/v2/eor/workers/banks-guide/country/{country}/currency/{currency}",
             "GET /rest/v2/eor/workers/banks/guide",
             "GET /rest/v2/eor/workers/compliance-documents",
@@ -655,23 +633,13 @@ JSON_PART = r"""{
             "GET /rest/v2/immigration/workers/cases/{case_id}",
             "GET /rest/v2/immigration/workers/{worker_id}/cases/{case_id}/required-document",
             "GET /rest/v2/immigration/workers/{worker_id}/onboarding-case",
-            "GET /rest/v2/invoice-adjustments/{id}",
             "POST /rest/v2/magic-link",
             "GET /rest/v2/payouts/auto-withdrawal-setting",
             "GET /rest/v2/payouts/balances",
             "GET /rest/v2/payouts/contractors/methods",
-            "POST /rest/v2/payouts/contractors/methods",
             "GET /rest/v2/payouts/contractors/methods/bank_transfers/requirements",
             "GET /rest/v2/payouts/contractors/methods/bank_transfers/supported_routes",
-            "PUT /rest/v2/payouts/contractors/methods/{id}",
-            "POST /rest/v2/payouts/contractors/settings/auto_withdraw",
             "GET /rest/v2/payouts/employees/methods",
-            "POST /rest/v2/payouts/employees/methods",
-            "POST /rest/v2/payouts/employees/methods/bank_transfers/requirements",
-            "DELETE /rest/v2/payouts/employees/methods/{id}",
-            "GET /rest/v2/people/me",
-            "GET /rest/v2/screenings/verification-method",
-            "POST /rest/v2/workers/amendments/{amendment_id}/sign",
             "GET /rest/v2/workers/compliance-documents",
             "GET /rest/v2/workers/contracts/{contract_id}/pdf"
           ]
@@ -693,28 +661,18 @@ JSON_PART = r"""{
             "POST /rest/v2/eor/workers/contracts/{contract_id}/project-assignment/acknowledge",
             "POST /rest/v2/eor/workers/contracts/{contract_id}/signatures",
             "POST /rest/v2/immigration/workers/{worker_id}/cases/{case_id}/required-document/{document_request_id}",
-            "POST /rest/v2/invoice-adjustments",
-            "PATCH /rest/v2/invoice-adjustments/{id}",
             "POST /rest/v2/onboarding/workers/individual",
             "POST /rest/v2/onboarding/workers/legal-entity",
             "PATCH /rest/v2/payouts/auto-withdrawal-setting",
-            "GET /rest/v2/payouts/contractors/methods",
             "POST /rest/v2/payouts/contractors/methods",
-            "GET /rest/v2/payouts/contractors/methods/bank_transfers/requirements",
-            "GET /rest/v2/payouts/contractors/methods/bank_transfers/supported_routes",
             "PUT /rest/v2/payouts/contractors/methods/{id}",
             "POST /rest/v2/payouts/contractors/settings/auto_withdraw",
-            "GET /rest/v2/payouts/employees/methods",
             "POST /rest/v2/payouts/employees/methods",
             "POST /rest/v2/payouts/employees/methods/bank_transfers/requirements",
             "DELETE /rest/v2/payouts/employees/methods/{id}",
             "POST /rest/v2/payouts/withdrawals",
             "POST /rest/v2/screenings/kyc/external",
             "POST /rest/v2/screenings/manual-verification",
-            "POST /rest/v2/time_offs",
-            "PATCH /rest/v2/time_offs/{time_off_id}",
-            "DELETE /rest/v2/time_offs/{time_off_id}",
-            "POST /rest/v2/veriff/session",
             "POST /rest/v2/workers/amendments/{amendment_id}/sign",
             "POST /rest/v2/workers/contracts/{contract_id}/reject",
             "POST /rest/v2/workers/contracts/{contract_id}/signatures"
