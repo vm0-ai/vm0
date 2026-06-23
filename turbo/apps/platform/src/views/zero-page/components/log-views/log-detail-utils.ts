@@ -507,9 +507,13 @@ function makeCodexToolResultEvent(params: {
   };
 }
 
-function formatCodexFileChanges(changes: CodexFileChange[]): string {
+function formatCodexFileChanges(
+  changes: CodexFileChange[],
+  status: string | undefined,
+): string {
+  const statusText = formatCodexFileChangeStatus(status);
   if (changes.length === 0) {
-    return "[files] Files changed";
+    return statusText ? `[files] ${statusText}` : "[files] Files changed";
   }
 
   const lines = changes.map((change) => {
@@ -518,7 +522,26 @@ function formatCodexFileChanges(changes: CodexFileChange[]): string {
     return `- ${kind} ${path}`;
   });
 
-  return ["[files] Files changed:", ...lines].join("\n");
+  const header = statusText
+    ? `[files] ${statusText}:`
+    : "[files] Files changed:";
+  return [header, ...lines].join("\n");
+}
+
+function formatCodexFileChangeStatus(
+  status: string | undefined,
+): string | null {
+  switch (status) {
+    case "failed": {
+      return "File changes failed";
+    }
+    case "declined": {
+      return "File changes declined";
+    }
+    default: {
+      return null;
+    }
+  }
 }
 
 function formatCodexPlanUpdate(
@@ -861,7 +884,7 @@ function normalizeCodexItemEvent(
       return codexType === "item.completed"
         ? makeCodexAssistantTextEvent(
             event,
-            formatCodexFileChanges(item.changes ?? []),
+            formatCodexFileChanges(item.changes ?? [], item.status),
           )
         : makeCodexAssistantTextEvent(
             event,

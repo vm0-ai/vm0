@@ -353,32 +353,43 @@ export class CodexEventParser {
   private static parseFileChange(
     item: Record<string, unknown>,
   ): ParsedEvent | null {
+    const statusText = formatFileChangeStatus(getStringField(item, "status"));
     const changesValue = item.changes;
-    if (!Array.isArray(changesValue) || changesValue.length === 0) {
+    if (!Array.isArray(changesValue)) {
+      return statusText
+        ? {
+            type: "text",
+            timestamp: new Date(),
+            data: { text: `[files]\n${statusText}` },
+          }
+        : null;
+    }
+
+    const changes = changesValue.flatMap((change) => {
+      if (!isRecord(change)) {
+        return [];
+      }
+      const path = getStringField(change, "path")?.trim();
+      if (!path) {
+        return [];
+      }
+      const action = formatFileChangeAction(change.kind);
+      return [`${action}: ${path}`];
+    });
+    if (changes.length === 0 && !statusText) {
       return null;
     }
 
-    const changes = changesValue
-      .flatMap((change) => {
-        if (!isRecord(change)) {
-          return [];
-        }
-        const path = getStringField(change, "path")?.trim();
-        if (!path) {
-          return [];
-        }
-        const action = formatFileChangeAction(change.kind);
-        return [`${action}: ${path}`];
+    const text = ["[files]", statusText, ...changes]
+      .filter((line): line is string => {
+        return Boolean(line);
       })
       .join("\n");
-    if (!changes) {
-      return null;
-    }
 
     return {
       type: "text",
       timestamp: new Date(),
-      data: { text: `[files]\n${changes}` },
+      data: { text },
     };
   }
 
@@ -478,6 +489,17 @@ function formatFileChangeAction(kind: unknown): string {
       return "Deleted";
     default:
       return "Changed";
+  }
+}
+
+function formatFileChangeStatus(status: string | undefined): string | null {
+  switch (status) {
+    case "failed":
+      return "File changes failed";
+    case "declined":
+      return "File changes declined";
+    default:
+      return null;
   }
 }
 

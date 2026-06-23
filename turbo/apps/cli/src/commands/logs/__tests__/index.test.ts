@@ -1989,6 +1989,20 @@ describe("logs command", () => {
                     },
                   },
                 },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "change_failed",
+                      type: "file_change",
+                      status: "failed",
+                      changes: [],
+                    },
+                  },
+                },
               ],
               framework: "codex",
               hasMore: false,
@@ -2004,6 +2018,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("Created: /workspace/new.ts");
       expect(logCalls).toContain("Modified: /workspace/existing.ts");
       expect(logCalls).toContain("Deleted: /workspace/old.ts");
+      expect(logCalls).toContain("File changes failed");
     });
 
     it("should tolerate malformed file_change payloads", async () => {
@@ -2022,6 +2037,7 @@ describe("logs command", () => {
                     item: {
                       id: "change_1",
                       type: "file_change",
+                      status: "declined",
                       changes: "not an array",
                     },
                   },
@@ -2064,6 +2080,7 @@ describe("logs command", () => {
       await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("File changes declined");
       expect(logCalls).toContain("Changed: /workspace/changed.ts");
       expect(logCalls).toContain("[warning] later event still renders");
       expect(logCalls).not.toContain("not an array");
