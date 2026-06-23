@@ -3740,6 +3740,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
 
     await waitForExpectation(() => {
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
@@ -3782,16 +3783,14 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    await waitForExpectation(async () => {
-      const rows = await readOrgCleanupRows(orgOf(doomed));
-      expect(rows.metadata).toStrictEqual([
-        {
-          stripeCustomerId: granted.customerId,
-          stripeSubscriptionId: granted.subscriptionId,
-        },
-      ]);
-      expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
-    });
+    const rows = await readOrgCleanupRows(orgOf(doomed));
+    expect(rows.metadata).toStrictEqual([
+      {
+        stripeCustomerId: granted.customerId,
+        stripeSubscriptionId: granted.subscriptionId,
+      },
+    ]);
+    expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
   });
 
   it("suspends user-owned runs and automations after a verified user.banned event", async () => {
