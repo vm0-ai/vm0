@@ -4,10 +4,11 @@
 //! `run_in_sandbox`. For each eligible manifest entry, checks a host-local
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
 //! tarball from disk and pushes it into the guest via vsock; on miss,
-//! downloads the archive from R2 into the cache first. Either way, the
-//! entry's `archive_url` is rewritten to
+//! downloads the archive from R2 into the cache first. Once guest staging
+//! succeeds, the entry's `archive_url` is rewritten to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
-//! so `guest-download` reads from the local stage instead of re-fetching.
+//! so `guest-download` reads the guest-local staged archive instead of
+//! re-fetching.
 //! Keying on both name and version gives same-version entries with different
 //! storage names separate collision-resistant staged filenames in normal
 //! operation, so they do not clobber each other on the guest tmpfs.
@@ -19,9 +20,9 @@
 //! [`CACHE_MAX_SIZE`], the cache fails closed instead of handing the same
 //! inconsistent URL to the guest.
 //!
-//! Merge-order contract: this module produces `file://` URLs, which only
-//! `guest-download` understands after #10805. The PR adding this module
-//! must not merge before #10805 is on `main`.
+//! Runtime contract: `file://` URLs produced here point to guest-local archives
+//! staged under [`GUEST_STAGE_DIR`]. `guest-download` supports that scheme and
+//! treats missing local archives as a broken staging contract.
 
 use std::collections::HashMap;
 use std::io;
@@ -147,8 +148,8 @@ impl GuestWriteLocks {
 /// Populate the runner-side cache for eligible entries in `manifest`.
 ///
 /// Mutates `manifest.storages[i].archive_url` / `manifest.artifacts[i].archive_url`
-/// in place, rewriting them to `file://` URLs pointing at host-staged tarballs
-/// pushed into the guest over vsock.
+/// in place, rewriting them to `file://` URLs pointing at guest-local tarballs
+/// staged over vsock.
 ///
 /// Invariant: only touches entries where `cached == false`, `archive_url.is_some()`,
 /// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
