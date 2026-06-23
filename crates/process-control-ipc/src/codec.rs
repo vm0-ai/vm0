@@ -41,7 +41,7 @@ pub fn write_hello(stream: &mut UnixStream) -> io::Result<()> {
 /// read failures are returned as standard library `io::Error` values.
 pub fn read_hello(stream: &mut UnixStream) -> io::Result<()> {
     let frame = read_frame(stream)?;
-    if frame.kind != FRAME_HELLO || !frame.payload.is_empty() {
+    if frame.kind != FRAME_HELLO || !frame.payload().is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid control hello frame",
@@ -77,12 +77,15 @@ pub fn write_request(stream: &mut UnixStream, request: &ControlRequest) -> io::R
             "control payload too large",
         ));
     }
-    let mut payload = Vec::with_capacity(2 + message_id.len() + 4 + request.payload.len());
-    payload.extend_from_slice(&(message_id.len() as u16).to_be_bytes());
-    payload.extend_from_slice(message_id);
-    payload.extend_from_slice(&(request.payload.len() as u32).to_be_bytes());
-    payload.extend_from_slice(&request.payload);
-    write_frame(stream, FRAME_REQUEST, &payload)
+    let payload_len = checked_payload_len(2, message_id.len())?;
+    let payload_len = checked_payload_len(payload_len, 4)?;
+    let payload_len = checked_payload_len(payload_len, request.payload.len())?;
+    let mut frame = new_frame(FRAME_REQUEST, payload_len)?;
+    frame.extend_from_slice(&(message_id.len() as u16).to_be_bytes());
+    frame.extend_from_slice(message_id);
+    frame.extend_from_slice(&(request.payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&request.payload);
+    stream.write_all(&frame)
 }
 
 /// Read and decode a request frame from a connected control sink stream.
@@ -102,7 +105,7 @@ pub fn read_request(stream: &mut UnixStream) -> io::Result<ControlRequest> {
             "expected control request frame",
         ));
     }
-    decode_request(&frame.payload)
+    decode_request(frame.payload())
 }
 
 /// Write a response frame to a connected control sink stream.
@@ -133,18 +136,22 @@ pub fn write_response(stream: &mut UnixStream, response: &ControlResponse) -> io
             "control diagnostic too large",
         ));
     }
-    let mut payload = Vec::with_capacity(2 + message_id.len() + 1 + 2 + diagnostic.len());
-    payload.extend_from_slice(&(message_id.len() as u16).to_be_bytes());
-    payload.extend_from_slice(message_id);
-    payload.push(match response.status {
+    let payload_len = checked_payload_len(2, message_id.len())?;
+    let payload_len = checked_payload_len(payload_len, 1)?;
+    let payload_len = checked_payload_len(payload_len, 2)?;
+    let payload_len = checked_payload_len(payload_len, diagnostic.len())?;
+    let mut frame = new_frame(FRAME_RESPONSE, payload_len)?;
+    frame.extend_from_slice(&(message_id.len() as u16).to_be_bytes());
+    frame.extend_from_slice(message_id);
+    frame.push(match response.status {
         ControlResponseStatus::Accepted => RESPONSE_ACCEPTED,
         ControlResponseStatus::Rejected => RESPONSE_REJECTED,
         ControlResponseStatus::Error => RESPONSE_ERROR,
         ControlResponseStatus::QueueFull => RESPONSE_QUEUE_FULL,
     });
-    payload.extend_from_slice(&(diagnostic.len() as u16).to_be_bytes());
-    payload.extend_from_slice(diagnostic);
-    write_frame(stream, FRAME_RESPONSE, &payload)
+    frame.extend_from_slice(&(diagnostic.len() as u16).to_be_bytes());
+    frame.extend_from_slice(diagnostic);
+    stream.write_all(&frame)
 }
 
 /// Read and decode a response frame from a connected control sink stream.
@@ -164,18 +171,28 @@ pub fn read_response(stream: &mut UnixStream) -> io::Result<ControlResponse> {
             "expected control response frame",
         ));
     }
-    decode_response(&frame.payload)
+    decode_response(frame.payload())
 }
 
 struct Frame {
     kind: u8,
-    payload: Vec<u8>,
+    body: Vec<u8>,
 }
 
-fn write_frame(stream: &mut UnixStream, kind: u8, payload: &[u8]) -> io::Result<()> {
-    let body_len = 2usize
-        .checked_add(payload.len())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "control frame too large"))?;
+impl Frame {
+    fn payload(&self) -> &[u8] {
+        self.body.get(2..).unwrap_or_default()
+    }
+}
+
+fn checked_payload_len(total: usize, add: usize) -> io::Result<usize> {
+    total
+        .checked_add(add)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "control frame too large"))
+}
+
+fn new_frame(kind: u8, payload_len: usize) -> io::Result<Vec<u8>> {
+    let body_len = checked_payload_len(2, payload_len)?;
     if body_len > MAX_FRAME_BYTES {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -186,6 +203,11 @@ fn write_frame(stream: &mut UnixStream, kind: u8, payload: &[u8]) -> io::Result<
     frame.extend_from_slice(&(body_len as u32).to_be_bytes());
     frame.push(FRAME_VERSION);
     frame.push(kind);
+    Ok(frame)
+}
+
+fn write_frame(stream: &mut UnixStream, kind: u8, payload: &[u8]) -> io::Result<()> {
+    let mut frame = new_frame(kind, payload.len())?;
     frame.extend_from_slice(payload);
     stream.write_all(&frame)
 }
@@ -208,7 +230,7 @@ fn read_frame(stream: &mut UnixStream) -> io::Result<Frame> {
             "invalid control frame length",
         ));
     };
-    let Some((&kind, payload)) = rest.split_first() else {
+    let Some((&kind, _)) = rest.split_first() else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid control frame length",
@@ -220,10 +242,7 @@ fn read_frame(stream: &mut UnixStream) -> io::Result<Frame> {
             "invalid control frame version",
         ));
     }
-    Ok(Frame {
-        kind,
-        payload: payload.to_vec(),
-    })
+    Ok(Frame { kind, body })
 }
 
 fn decode_request(payload: &[u8]) -> io::Result<ControlRequest> {
@@ -360,6 +379,7 @@ fn expect_consumed(payload: &[u8], offset: usize) -> io::Result<()> {
 mod tests {
     use std::io::{self, Write};
     use std::os::unix::net::UnixStream;
+    use std::thread;
 
     use super::*;
 
@@ -418,6 +438,20 @@ mod tests {
             payload: vec![0; MAX_CONTROL_PAYLOAD_BYTES + 1],
         };
         assert!(write_request(&mut a, &request).is_err());
+    }
+
+    #[test]
+    fn request_roundtrip_at_max_payload_size() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let request = ControlRequest {
+            message_id: "msg-1".to_string(),
+            payload: vec![0xA5; MAX_CONTROL_PAYLOAD_BYTES],
+        };
+        let reader = thread::spawn(move || read_request(&mut b).unwrap());
+
+        write_request(&mut a, &request).unwrap();
+
+        assert_eq!(reader.join().unwrap(), request);
     }
 
     #[test]
