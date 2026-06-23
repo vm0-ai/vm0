@@ -103,7 +103,10 @@ export class CodexEventParser {
       return null;
     }
 
-    const eventType = rawEvent.type as string;
+    const eventType = rawEvent.type;
+    if (typeof eventType !== "string") {
+      return null;
+    }
 
     // Thread started = init event
     if (eventType === "thread.started") {

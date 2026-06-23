@@ -1001,6 +1001,50 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("failed");
     });
 
+    it("should skip codex events with malformed type fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: 123,
+                    item: {
+                      id: "message-1",
+                      type: "agent_message",
+                      text: "this malformed event should be skipped",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "warning",
+                    message: "later event still renders",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("this malformed event should be skipped");
+      expect(logCalls).toContain("[warning] later event still renders");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(
