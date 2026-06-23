@@ -1310,6 +1310,27 @@ mod tests {
     }
 
     #[test]
+    fn accepts_active_input_payload_at_serialized_limit() {
+        let job_id = RunId::nil();
+        let payload_overhead = active_input_payload_len("").unwrap();
+        let exact_limit_text =
+            "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - payload_overhead);
+
+        let parsed = SubmitPlan::parse_active_inputs(
+            &[format!("after=1s,text={exact_limit_text}")],
+            Duration::from_secs(5),
+            job_id,
+        )
+        .unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            active_input_payload_len(&parsed[0].text).unwrap(),
+            ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+        );
+    }
+
+    #[test]
     fn rejects_active_input_for_non_claude_agent() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
