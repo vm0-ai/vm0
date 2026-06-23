@@ -14,7 +14,7 @@ import type { ParsedEvent } from "./claude-event-parser";
 
 interface ThreadStartedEvent {
   type: "thread.started";
-  thread_id: string;
+  thread_id?: unknown;
 }
 
 interface TurnStartedEvent {
@@ -23,11 +23,7 @@ interface TurnStartedEvent {
 
 interface TurnCompletedEvent {
   type: "turn.completed";
-  usage?: {
-    input_tokens?: number;
-    cached_input_tokens?: number;
-    output_tokens?: number;
-  };
+  usage?: unknown;
 }
 
 interface TurnFailedEvent {
@@ -42,33 +38,9 @@ interface TurnPlanUpdatedEvent {
   plan?: unknown;
 }
 
-interface FileChange {
-  kind?: unknown;
-  path?: unknown;
-}
-
-interface CodexItem {
-  id: string;
-  type: string;
-  status?: string;
-  // For command_execution
-  command?: string;
-  exit_code?: number;
-  output?: string;
-  aggregated_output?: string;
-  // For agent_message, plan, and reasoning
-  text?: string;
-  // For file operations
-  path?: string;
-  diff?: string;
-  // For file_change
-  changes?: FileChange[];
-  // For reasoning (text field is used)
-}
-
 interface ItemEvent {
   type: "item.started" | "item.updated" | "item.completed";
-  item: CodexItem;
+  item?: unknown;
 }
 
 interface ErrorEvent {
@@ -154,7 +126,7 @@ export class CodexEventParser {
       timestamp: new Date(),
       data: {
         framework: "codex",
-        sessionId: event.thread_id,
+        sessionId: formatCodexString(event.thread_id) ?? "",
         tools: [],
       },
     };
@@ -172,7 +144,7 @@ export class CodexEventParser {
         durationMs: 0,
         numTurns: 1,
         cost: 0,
-        usage: event.usage || {},
+        usage: parseCodexUsage(event.usage),
       },
     };
   }
@@ -210,66 +182,73 @@ export class CodexEventParser {
 
   private static parseItemEvent(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
-    if (!item) {
+    if (!isRecord(item)) {
       return null;
     }
 
-    const itemType = item.type;
+    const itemType = getStringField(item, "type");
+    const text = getStringField(item, "text");
 
-    if (itemType === "agent_message" && item.text) {
-      return { type: "text", timestamp: new Date(), data: { text: item.text } };
+    if (itemType === "agent_message" && text) {
+      return { type: "text", timestamp: new Date(), data: { text } };
     }
-    if (itemType === "plan" && item.text) {
+    if (itemType === "plan" && text) {
       return {
         type: "text",
         timestamp: new Date(),
-        data: { text: `[plan] ${item.text}` },
+        data: { text: `[plan] ${text}` },
       };
     }
     if (itemType === "command_execution") {
-      return this.parseCommandExecution(event);
+      return this.parseCommandExecution(event.type, item);
     }
     if (itemType === "file_edit" || itemType === "file_write") {
-      return this.parseFileEditOrWrite(event);
+      return this.parseFileEditOrWrite(event.type, item, itemType);
     }
     if (itemType === "file_read") {
-      return this.parseFileRead(event);
+      return this.parseFileRead(event.type, item);
     }
     if (itemType === "file_change") {
       return this.parseFileChange(item);
     }
-    if (itemType === "reasoning" && item.text) {
+    if (itemType === "reasoning" && text) {
       return {
         type: "text",
         timestamp: new Date(),
-        data: { text: `[thinking] ${item.text}` },
+        data: { text: `[thinking] ${text}` },
       };
     }
 
     return null;
   }
 
-  private static parseCommandExecution(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseCommandExecution(
+    eventType: ItemEvent["type"],
+    item: Record<string, unknown>,
+  ): ParsedEvent | null {
     const toolUseId = getCodexItemId(item);
     if (!toolUseId) {
       return null;
     }
 
-    if (event.type === "item.started" && item.command) {
+    const command = getStringField(item, "command");
+    if (eventType === "item.started" && command) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
           tool: "Bash",
           toolUseId,
-          input: { command: item.command },
+          input: { command },
         },
       };
     }
 
-    if (event.type === "item.completed") {
-      const output = item.aggregated_output ?? item.output ?? "";
+    if (eventType === "item.completed") {
+      const output =
+        getStringField(item, "aggregated_output") ??
+        getStringField(item, "output") ??
+        "";
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -284,32 +263,36 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileEditOrWrite(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseFileEditOrWrite(
+    eventType: ItemEvent["type"],
+    item: Record<string, unknown>,
+    itemType: string,
+  ): ParsedEvent | null {
     const toolUseId = getCodexItemId(item);
     if (!toolUseId) {
       return null;
     }
 
-    if (event.type === "item.started" && item.path) {
+    const path = getStringField(item, "path");
+    if (eventType === "item.started" && path) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
-          tool: item.type === "file_edit" ? "Edit" : "Write",
+          tool: itemType === "file_edit" ? "Edit" : "Write",
           toolUseId,
-          input: { file_path: item.path },
+          input: { file_path: path },
         },
       };
     }
 
-    if (event.type === "item.completed") {
+    if (eventType === "item.completed") {
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
           toolUseId,
-          result: item.diff || "File operation completed",
+          result: getStringField(item, "diff") ?? "File operation completed",
           isError: false,
         },
       };
@@ -318,26 +301,29 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileRead(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseFileRead(
+    eventType: ItemEvent["type"],
+    item: Record<string, unknown>,
+  ): ParsedEvent | null {
     const toolUseId = getCodexItemId(item);
     if (!toolUseId) {
       return null;
     }
 
-    if (event.type === "item.started" && item.path) {
+    const path = getStringField(item, "path");
+    if (eventType === "item.started" && path) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
           tool: "Read",
           toolUseId,
-          input: { file_path: item.path },
+          input: { file_path: path },
         },
       };
     }
 
-    if (event.type === "item.completed") {
+    if (eventType === "item.completed") {
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -352,12 +338,15 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileChange(item: CodexItem): ParsedEvent | null {
-    if (!Array.isArray(item.changes) || item.changes.length === 0) {
+  private static parseFileChange(
+    item: Record<string, unknown>,
+  ): ParsedEvent | null {
+    const changesValue = item.changes;
+    if (!Array.isArray(changesValue) || changesValue.length === 0) {
       return null;
     }
 
-    const changes = item.changes
+    const changes = changesValue
       .flatMap((change) => {
         if (!isRecord(change)) {
           return [];
@@ -412,25 +401,24 @@ export class CodexEventParser {
   }
 }
 
-function isCommandExecutionError(item: CodexItem): boolean {
-  if (item.status === "failed" || item.status === "declined") {
+function isCommandExecutionError(item: Record<string, unknown>): boolean {
+  const status = getStringField(item, "status");
+  if (status === "failed" || status === "declined") {
     return true;
   }
-  if (item.status === "completed") {
-    return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
+  const exitCode = getNumberField(item, "exit_code");
+  if (status === "completed") {
+    return typeof exitCode === "number" ? exitCode !== 0 : false;
   }
-  return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
+  return typeof exitCode === "number" ? exitCode !== 0 : false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getCodexItemId(item: CodexItem): string | null {
-  if (typeof item.id !== "string") {
-    return null;
-  }
-  const id = item.id.trim();
+function getCodexItemId(item: Record<string, unknown>): string | null {
+  const id = getStringField(item, "id")?.trim();
   return id || null;
 }
 
@@ -440,6 +428,32 @@ function getStringField(
 ): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function getNumberField(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function parseCodexUsage(value: unknown): Record<string, number> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return {
+    ...(typeof value.input_tokens === "number"
+      ? { input_tokens: value.input_tokens }
+      : {}),
+    ...(typeof value.cached_input_tokens === "number"
+      ? { cached_input_tokens: value.cached_input_tokens }
+      : {}),
+    ...(typeof value.output_tokens === "number"
+      ? { output_tokens: value.output_tokens }
+      : {}),
+  };
 }
 
 function formatFileChangeAction(kind: unknown): string {

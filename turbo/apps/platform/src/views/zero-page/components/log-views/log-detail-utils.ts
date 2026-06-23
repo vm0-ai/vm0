@@ -583,7 +583,9 @@ function normalizeCodexFailedTurnEvent(
   return makeCodexResultEvent({
     event,
     success: false,
-    result: codexEvent?.error ?? "Turn failed",
+    result:
+      formatCodexEventMessage(codexEvent?.message, codexEvent?.error) ??
+      "Turn failed",
     usage: codexEvent?.usage,
   });
 }

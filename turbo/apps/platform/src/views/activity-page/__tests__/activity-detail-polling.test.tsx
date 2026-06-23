@@ -1133,6 +1133,15 @@ function codexFallbackActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 8,
+      eventType: "turn.failed",
+      eventData: {
+        type: "turn.failed",
+        message: "Codex failed with message-only detail.",
+      },
+      createdAt: "2026-03-10T15:30:09Z",
+    },
+    {
+      sequenceNumber: 9,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1141,7 +1150,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
           additional_details: "stdio closed",
         },
       },
-      createdAt: "2026-03-10T15:30:09Z",
+      createdAt: "2026-03-10T15:30:10Z",
     },
   ];
 }
@@ -2303,6 +2312,9 @@ describe("activity detail polling", () => {
     expect(screen.getByText("File read completed")).toBeInTheDocument();
     expect(
       screen.getByText("Codex build failed before retry. (quota exhausted)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Codex failed with message-only detail."),
     ).toBeInTheDocument();
     expect(
       screen.getAllByText("Codex stream disconnected. (stdio closed)"),
