@@ -1246,7 +1246,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.40.1"
+version = "0.40.2"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.31"
+version = "0.20.32"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2525,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.0"
+version = "0.129.1"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
