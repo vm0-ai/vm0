@@ -1145,6 +1145,24 @@ mod tests {
     }
 
     #[test]
+    fn collect_file_metadata_rejects_nested_non_utf8_path_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let parent = root.join("parent");
+        std::fs::create_dir(&parent).unwrap();
+        let filename = OsStr::from_bytes(b"bad\xff.txt");
+        std::fs::write(parent.join(Path::new(filename)), "data").unwrap();
+
+        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+
+        let ArchiveError::NonUtf8PathComponent { parent, component } = &err else {
+            panic!("expected non-UTF-8 path component error, got: {err}");
+        };
+        assert_eq!(parent, "parent");
+        assert!(component.contains("bad"), "got: {component}");
+    }
+
+    #[test]
     fn compute_file_hash_known_value() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
