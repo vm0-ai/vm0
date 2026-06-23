@@ -849,6 +849,11 @@ impl ObservedProcessGroup {
                 identity.process_group_id
             ));
         }
+        if !process_group_exists(pgid)? {
+            return Err(format!(
+                "app-server child process group {pgid} was not running before drop"
+            ));
+        }
 
         Ok(Self {
             pgid,
