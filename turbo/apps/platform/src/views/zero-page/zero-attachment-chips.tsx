@@ -711,19 +711,20 @@ function ArtifactDialogBody({
     return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
   }
 
+  const publicUrl = publicAttachmentUrl(preview.url);
+  const src = preview.kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
+
   return (
-    <ArtifactDialogStage>
+    <ArtifactDialogStage scrollable={false}>
       <div
-        className="flex min-h-[420px] w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+        className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
         data-testid="artifact-dialog-document-frame"
       >
         <iframe
-          src={
-            preview.kind === "pdf" ? `${preview.url}#navpanes=0` : preview.url
-          }
+          src={src}
           title={`${filename} preview`}
           scrolling="yes"
-          className="block h-full w-full bg-background"
+          className="block h-full min-h-0 w-full border-0 bg-background"
         />
       </div>
     </ArtifactDialogStage>
