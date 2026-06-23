@@ -30,7 +30,8 @@ jobs:
       current-runner-image-needed: ${{ steps.needed.outputs.current-runner-image-needed }}
       stable-runner-image-allowed: ${{ steps.needed.outputs.stable-runner-image-allowed }}
       image-selection-reason: ${{ steps.needed.outputs.image-selection-reason }}
-      artifact-name: ${{ steps.artifact.outputs.artifact-name }}
+      runner-host-groups-matrix: ${{ steps.host-groups.outputs.matrix }}
+      runner-host-groups-configured: ${{ steps.host-group-presence.outputs.configured }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -163,7 +164,7 @@ jobs:
           set -euo pipefail
 
           runner_image_ci_changed=false
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(turbo|crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/(prepare-runner-image|runner-image-context|runner-image-manifest|runner-image-target|wait-runner-image)\.sh$|^ansible/(ansible\.cfg|playbooks/(build-runner|provision-runner|promote-runner|rollback-runner)\.yml)$"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(turbo|crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/(prepare-runner-image|runner-host-architecture-groups|runner-image-context|runner-image-manifest|runner-image-target|wait-runner-image)\.sh$|^ansible/(ansible\.cfg|playbooks/(build-runner|provision-runner|promote-runner|rollback-runner)\.yml)$"; then
             runner_image_ci_changed=true
           fi
 
@@ -178,27 +179,65 @@ jobs:
           RUNNER_IMAGE_CI_CHANGED="$runner_image_ci_changed" \
           .github/scripts/runner-image-context.sh image-inputs
 
+      - name: Detect runner host architecture groups
+        id: host-group-presence
+        env:
+          RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_SKIP" = "true" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          configured=false
+          if printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" \
+            | tr ',' '\n' \
+            | grep '[^[:space:]]' >/dev/null; then
+            configured=true
+          fi
+          echo "configured=${configured}" >> "$GITHUB_OUTPUT"
+
       - name: Determine whether runner image is needed
         id: needed
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_HOST_GROUPS_CONFIGURED: ${{ steps.host-group-presence.outputs.configured }}
           TURBO_RUNNER_CONSUMER_NEEDED: ${{ steps.turbo.outputs.turbo-runner-consumer-needed }}
           CRATES_RUNNER_CONSUMER_NEEDED: ${{ steps.crates.outputs.crates-runner-consumer-needed }}
           RUNNER_IMAGE_INPUTS_CHANGED: ${{ steps.image-inputs.outputs.runner-image-inputs-changed }}
         run: .github/scripts/runner-image-context.sh needed
 
-      - name: Resolve manifest artifact name
-        id: artifact
+      - name: Setup SSH via Cloudflare Tunnel
         if: steps.needed.outputs.current-runner-image-needed == 'true'
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve runner host architecture groups
+        id: host-groups
         env:
-          HEAD_SHA: ${{ steps.identity.outputs.head-sha }}
-          JOB_REF: ${{ steps.identity.outputs.job-ref }}
-          TARGET: aarch64-unknown-linux-musl
-        run: .github/scripts/runner-image-context.sh artifact-name
+          CURRENT_RUNNER_IMAGE_NEEDED: ${{ steps.needed.outputs.current-runner-image-needed }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        run: |
+          set -euo pipefail
+          if [ "$CURRENT_RUNNER_IMAGE_NEEDED" != "true" ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "Skipping runner host architecture group resolution because runner image is not needed"
+            exit 0
+          fi
+
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Configured runner host architecture groups: $(jq -r 'map(.id) | join(",") // ""' <<<"$matrix")"
 
   build:
+    name: Build runner image (${{ matrix.label }})
     runs-on: ubuntu-latest-8-cores
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
@@ -207,8 +246,12 @@ jobs:
     needs: [prepare]
     if: needs.prepare.outputs.current-runner-image-needed == 'true'
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.runner-host-groups-matrix) }}
     env:
-      TARGET_TRIPLE: aarch64-unknown-linux-musl
+      TARGET_TRIPLE: ${{ matrix.target }}
       PROFILE: vm0/default
     steps:
       - uses: actions/checkout@v7
@@ -239,7 +282,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-ci
+          shared-key: ${{ matrix.cacheSuffix }}-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup SSH via Cloudflare Tunnel
@@ -249,10 +292,28 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Resolve metal hosts for architecture
+        id: matrix-hosts
+        shell: bash
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
+            echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}"
+            exit 1
+          fi
+          echo "hosts=${hosts}" >> "$GITHUB_OUTPUT"
+          host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
+
       - name: Provision metal hosts
         uses: ./.github/actions/provision
         with:
-          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          hosts: ${{ steps.matrix-hosts.outputs.hosts }}
           metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
           grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
@@ -265,7 +326,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
+          EXPECTED_REMOTE_ARCH: ${{ matrix.unameM }}
           MANIFEST_PATH: runner-image-manifest/manifest.json
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -280,12 +342,20 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           TARGET: ${{ env.TARGET_TRIPLE }}
           PROFILE: ${{ env.PROFILE }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
         run: .github/scripts/runner-image-manifest.sh validate
+
+      - name: Resolve manifest artifact name
+        id: artifact
+        env:
+          HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          TARGET: ${{ matrix.target }}
+        run: .github/scripts/runner-image-context.sh artifact-name
 
       - name: Upload runner image manifest
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.prepare.outputs.artifact-name }}
+          name: ${{ steps.artifact.outputs.artifact-name }}
           path: runner-image-manifest/manifest.json
           retention-days: 7

@@ -23,7 +23,38 @@ MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
 TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
-EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
+DERIVED_EXPECTED_REMOTE_ARCH=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
+if [ "${EXPECTED_REMOTE_ARCH+x}" = "x" ]; then
+  if [ -z "$EXPECTED_REMOTE_ARCH" ]; then
+    echo "EXPECTED_REMOTE_ARCH is empty" >&2
+    exit 2
+  fi
+else
+  EXPECTED_REMOTE_ARCH="$DERIVED_EXPECTED_REMOTE_ARCH"
+fi
+if [ "$EXPECTED_REMOTE_ARCH" != "$DERIVED_EXPECTED_REMOTE_ARCH" ]; then
+  echo "EXPECTED_REMOTE_ARCH mismatch: ${TARGET_TRIPLE} maps to ${DERIVED_EXPECTED_REMOTE_ARCH}, got ${EXPECTED_REMOTE_ARCH}" >&2
+  exit 2
+fi
+
+mapfile -t HOSTS < <(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep .)
+if [ "${#HOSTS[@]}" -lt 1 ]; then
+  echo "METAL_HOSTS is empty" >&2
+  exit 1
+fi
+declare -A seen_hosts=()
+for host in "${HOSTS[@]}"; do
+  if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
+    echo "invalid METAL_HOSTS entry: ${host}" >&2
+    exit 2
+  fi
+  host_key=${host,,}
+  if [ -n "${seen_hosts[$host_key]+x}" ]; then
+    echo "duplicate METAL_HOSTS entry: ${host}" >&2
+    exit 2
+  fi
+  seen_hosts[$host_key]=1
+done
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
@@ -69,12 +100,6 @@ guest_sha_json=$(jq -n \
     "guest-reseed": $guest_reseed,
     "guest-write-file": $guest_write_file
   }')
-
-mapfile -t HOSTS < <(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep .)
-if [ "${#HOSTS[@]}" -lt 1 ]; then
-  echo "METAL_HOSTS is empty" >&2
-  exit 1
-fi
 
 prepare_host() {
   local host=$1
