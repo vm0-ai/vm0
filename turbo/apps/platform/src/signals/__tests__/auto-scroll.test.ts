@@ -21,10 +21,7 @@ function createScrollContainer(): HTMLElement {
   return container;
 }
 
-let restoreResizeObserver = () => {};
-
-function mockResizeObserver(): { triggerAll: () => void } {
-  restoreResizeObserver();
+function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "ResizeObserver",
@@ -72,7 +69,7 @@ function mockResizeObserver(): { triggerAll: () => void } {
   }
 
   let restored = false;
-  restoreResizeObserver = () => {
+  const restore = () => {
     if (restored) {
       return;
     }
@@ -90,6 +87,7 @@ function mockResizeObserver(): { triggerAll: () => void } {
   });
 
   return {
+    restore,
     triggerAll: () => {
       for (const observer of observers) {
         observer.trigger();
@@ -100,6 +98,7 @@ function mockResizeObserver(): { triggerAll: () => void } {
 
 describe("auto-scroll prepend compensation", () => {
   const ctx = testContext();
+  const resizeObserverCleanups: (() => void)[] = [];
   const scrollRefCleanups: (() => void)[] = [];
 
   function bindScrollContainer(
@@ -112,17 +111,26 @@ describe("auto-scroll prepend compensation", () => {
     }
   }
 
+  function installResizeObserver(): { triggerAll: () => void } {
+    const resizeObserver = mockResizeObserver();
+    resizeObserverCleanups.push(resizeObserver.restore);
+    return {
+      triggerAll: resizeObserver.triggerAll,
+    };
+  }
+
   afterEach(() => {
     for (const cleanup of scrollRefCleanups.splice(0).reverse()) {
       cleanup();
     }
-    restoreResizeObserver();
-    restoreResizeObserver = () => {};
+    for (const cleanup of resizeObserverCleanups.splice(0).reverse()) {
+      cleanup();
+    }
     document.body.textContent = "";
   });
 
   it("keeps the viewport anchored when prepended content increases height", () => {
-    const resizeObserver = mockResizeObserver();
+    const resizeObserver = installResizeObserver();
     const scroll = createScrollSignals("prepend-compensation");
     const scrollContainer = createScrollContainer();
     setScrollMetrics(scrollContainer, {
@@ -148,7 +156,7 @@ describe("auto-scroll prepend compensation", () => {
   });
 
   it("drops pending compensation when a prepend attempt does not change content", () => {
-    const resizeObserver = mockResizeObserver();
+    const resizeObserver = installResizeObserver();
     const scroll = createScrollSignals("prepend-noop");
     const scrollContainer = createScrollContainer();
     setScrollMetrics(scrollContainer, {
@@ -177,7 +185,7 @@ describe("auto-scroll prepend compensation", () => {
   });
 
   it("does not let a no-op prepend clear another pending compensation", () => {
-    const resizeObserver = mockResizeObserver();
+    const resizeObserver = installResizeObserver();
     const scroll = createScrollSignals("prepend-overlap");
     const scrollContainer = createScrollContainer();
     setScrollMetrics(scrollContainer, {
