@@ -536,11 +536,12 @@ class TestAuthBaseUrlRewriteForwarding:
 
     async def test_url_rewrite_sends_raw_body_for_any_method(self, real_flow, mitm_ctx, tmp_path):
         """auth.base forwarding does not drop bodies for non-POST methods."""
+        request_body = b"\x00\xffdelete-body"
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             method="DELETE",
-            request_body=b"delete-body",
+            request_body=request_body,
         )
         with (
             fake_forwarder_upstream() as upstream,
@@ -551,8 +552,8 @@ class TestAuthBaseUrlRewriteForwarding:
 
         method, _request_target, _version = _request_line_parts(upstream)
         assert method == "DELETE"
-        assert upstream.socket.request_header_values("Content-Length") == ["11"]
-        assert upstream.socket.request_text().endswith("\r\n\r\ndelete-body")
+        assert upstream.socket.request_header_values("Content-Length") == [str(len(request_body))]
+        assert bytes(upstream.socket.sent).endswith(b"\r\n\r\n" + request_body)
 
     async def test_url_rewrite_sends_empty_raw_body_with_zero_content_length(
         self, real_flow, mitm_ctx, tmp_path
