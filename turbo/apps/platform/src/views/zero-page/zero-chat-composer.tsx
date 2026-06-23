@@ -4485,9 +4485,11 @@ function illustrationThumbnailScrollTarget(
     }
     target = sibling;
   }
+  const boundarySibling =
+    direction > 0 ? target.nextElementSibling : target.previousElementSibling;
   return {
     element: target,
-    reachedBoundary: false,
+    reachedBoundary: !(boundarySibling instanceof HTMLElement),
   };
 }
 

@@ -2411,6 +2411,14 @@ describe("chat composer templates", () => {
       value: 0,
       writable: true,
     });
+    Object.defineProperty(thumbnailStrip, "scrollWidth", {
+      configurable: true,
+      value: 240,
+    });
+    Object.defineProperty(thumbnailStrip, "clientWidth", {
+      configurable: true,
+      value: 96,
+    });
     Object.defineProperty(thumbnailStrip, "getBoundingClientRect", {
       configurable: true,
       value: () => {
@@ -2439,7 +2447,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 112 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Clicking the active thumbnail at the right edge still reveals the next
@@ -2449,7 +2457,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 112 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Move to the last thumbnail without scrolling the thumbnail strip, then
@@ -2472,7 +2480,7 @@ describe("chat composer templates", () => {
     Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
       configurable: true,
       value: () => {
-        return rect({ left: -112, right: -64 });
+        return rect({ left: -96, right: -48 });
       },
     });
     Object.defineProperty(variant3Thumbnail, "getBoundingClientRect", {
