@@ -248,6 +248,14 @@ function detailedActivityEvents(): AgentEvent[] {
               content: "second orphan tool result without id",
               is_error: false,
             },
+            {
+              type: "tool_result",
+              content: {
+                status: "ok",
+                count: 2,
+              },
+              is_error: false,
+            },
           ],
         },
       },
@@ -1482,6 +1490,8 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("second orphan tool result without id"),
     ).toBeInTheDocument();
+    expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
+    expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
       screen.getAllByText("pnpm test -- --filter checkout"),

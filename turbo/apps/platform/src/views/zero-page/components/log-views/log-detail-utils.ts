@@ -29,7 +29,13 @@ function normalizeToolResultContent(content: unknown): string {
   if (typeof content === "string") {
     return content;
   }
-  return String(content ?? "");
+  if (content === null || content === undefined) {
+    return "";
+  }
+  if (Array.isArray(content) || isRecord(content)) {
+    return JSON.stringify(content);
+  }
+  return String(content);
 }
 
 type MessageContent = TextContent | ToolUseContent | ToolResultContent;
