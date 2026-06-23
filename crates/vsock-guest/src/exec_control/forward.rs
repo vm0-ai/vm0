@@ -12,7 +12,7 @@ use crate::error::to_io_error;
 use crate::log::log;
 use crate::writer::GuestWriter;
 
-use super::sink::{ControlSinkState, PendingControlSlot};
+use super::sink::{ControlSinkState, ControlStreamLockError, PendingControlSlot};
 use super::{
     CONTROL_SINK_IO_TIMEOUT, EXEC_CONTROL_LOG_NAME, EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX,
     EXEC_CONTROL_WORKER_START_ERROR_PREFIX, EXEC_OPERATION_INACTIVE_MESSAGE,
@@ -80,7 +80,7 @@ pub(super) fn forward_control_request(
         match sink.wait_for_stream(deadline) {
             Ok(stream) => match stream.lock_until(deadline, &sink.active) {
                 Ok(mut stream) => {
-                    if !sink.active.load(Ordering::Acquire) {
+                    let outcome = if !sink.active.load(Ordering::Acquire) {
                         ControlForwardOutcome {
                             status: ExecControlStatus::Inactive,
                             diagnostic: EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
@@ -94,16 +94,25 @@ pub(super) fn forward_control_request(
                         }
                     } else {
                         forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
+                    };
+                    if matches!(outcome.sink_disposition, ControlSinkDisposition::Fail) {
+                        sink.fail(outcome.diagnostic.clone());
                     }
+                    outcome
                 }
-                Err(error) if is_timeout(&error) => ControlForwardOutcome {
-                    status: ExecControlStatus::SinkTimeout,
-                    diagnostic: error.to_string(),
+                Err(ControlStreamLockError::Inactive) => ControlForwardOutcome {
+                    status: ExecControlStatus::Inactive,
+                    diagnostic: EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
-                Err(error) => ControlForwardOutcome {
+                Err(ControlStreamLockError::Timeout) => ControlForwardOutcome {
+                    status: ExecControlStatus::SinkTimeout,
+                    diagnostic: EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                    sink_disposition: ControlSinkDisposition::Keep,
+                },
+                Err(ControlStreamLockError::SinkError(diagnostic)) => ControlForwardOutcome {
                     status: ExecControlStatus::SinkError,
-                    diagnostic: error.to_string(),
+                    diagnostic,
                     sink_disposition: ControlSinkDisposition::Keep,
                 },
             },
@@ -116,15 +125,8 @@ pub(super) fn forward_control_request(
     };
 
     let ControlForwardOutcome {
-        status,
-        diagnostic,
-        sink_disposition,
+        status, diagnostic, ..
     } = outcome;
-
-    match sink_disposition {
-        ControlSinkDisposition::Keep => {}
-        ControlSinkDisposition::Fail => sink.fail(diagnostic.clone()),
-    }
 
     let result = writer.write_generated_frame_after_lock(|| {
         let (status, diagnostic) = if sink.active.load(Ordering::Acquire) {

@@ -20,8 +20,8 @@
 //! `inner` and `ready` own connection-state changes and wake waiting forwarders.
 //! `active` is the operation-lifetime gate, so close/drop can stop queued or
 //! in-flight forwarding even when a connected stream guard is busy. The
-//! connected stream has a separate `locked` gate so waiters can keep their
-//! request deadlines and be woken by close/fail before taking the stream mutex.
+//! connected stream has a separate gate so waiters can keep their request
+//! deadlines and be woken by close/fail before taking the stream mutex.
 //! `pending` limits outstanding forwarding work; when it is full, new requests
 //! release their transient count and return `QueueFull`. `PendingControlSlot`
 //! releases reserved work. The shutdown stream clones let close/fail interrupt
@@ -38,7 +38,7 @@ use vsock_proto::ExecControlStatus;
 use super::{
     EXEC_CONTROL_CLONE_SINK_ERROR_PREFIX, EXEC_CONTROL_QUEUE_FULL_MESSAGE,
     EXEC_OPERATION_INACTIVE_MESSAGE, EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, MAX_PENDING_CONTROL_REQUESTS,
-    duration_until, request_timeout_error,
+    duration_until,
 };
 
 pub(super) struct ControlSinkState {
@@ -63,19 +63,32 @@ pub(super) struct ConnectedControlSink {
 
 /// Shared connected stream plus a waitable serialization gate.
 ///
-/// `locked` is separate from `stream` so waiting forwarders can wait with their
-/// request deadline and can be woken by close/fail without contending on a busy
-/// stream mutex.
+/// `gate` is separate from `stream` so waiting forwarders can wait with their
+/// request deadline, observe terminal failure, and be woken by close/fail
+/// without contending on a busy stream mutex.
 pub(super) struct ControlStreamState {
     stream: Mutex<UnixStream>,
-    locked: Mutex<bool>,
+    gate: Mutex<ControlStreamGate>,
     ready: Condvar,
 }
 
 /// RAII guard for the forwarder that owns the connected-stream gate.
 pub(super) struct ControlStreamGuard<'a> {
-    state: &'a ControlStreamState,
+    /// This field must be declared before `_gate` so the stream mutex is
+    /// released before the serialization gate is reopened.
     stream: MutexGuard<'a, UnixStream>,
+    _gate: ControlStreamGateGuard<'a>,
+}
+
+struct ControlStreamGateGuard<'a> {
+    state: &'a ControlStreamState,
+}
+
+#[derive(Debug)]
+pub(super) enum ControlStreamLockError {
+    Inactive,
+    Timeout,
+    SinkError(String),
 }
 
 pub(super) enum ControlSinkInner {
@@ -89,6 +102,12 @@ pub(super) enum ControlSinkInner {
     Failed(String),
     /// Operation cleanup completed; subsequent requests resolve inactive.
     Closed,
+}
+
+enum ControlStreamGate {
+    Available,
+    Locked,
+    Failed(String),
 }
 
 /// Reserved pending capacity for one forwarding worker.
@@ -180,13 +199,20 @@ impl ControlSinkState {
             return;
         }
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        shutdown_sink_stream(&guard);
-        {
-            if !matches!(*guard, ControlSinkInner::Closed) {
-                *guard = ControlSinkInner::Failed(message);
+        match &*guard {
+            ControlSinkInner::Connected(connected) => connected.fail(&message),
+            ControlSinkInner::Waiting | ControlSinkInner::Handshaking(_) => {
+                shutdown_sink_stream(&guard);
             }
-            self.ready.notify_all();
+            ControlSinkInner::Failed(_) | ControlSinkInner::Closed => {}
         }
+        if !matches!(
+            *guard,
+            ControlSinkInner::Closed | ControlSinkInner::Failed(_)
+        ) {
+            *guard = ControlSinkInner::Failed(message);
+        }
+        self.ready.notify_all();
     }
 
     pub(super) fn close(&self) {
@@ -291,13 +317,18 @@ impl ConnectedControlSink {
         let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
         self.stream.notify_waiters();
     }
+
+    fn fail(&self, message: &str) {
+        let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
+        self.stream.mark_failed(message);
+    }
 }
 
 impl ControlStreamState {
     fn new(stream: UnixStream) -> Self {
         Self {
             stream: Mutex::new(stream),
-            locked: Mutex::new(false),
+            gate: Mutex::new(ControlStreamGate::Available),
             ready: Condvar::new(),
         }
     }
@@ -306,43 +337,79 @@ impl ControlStreamState {
         &self,
         deadline: Instant,
         active: &AtomicBool,
-    ) -> io::Result<ControlStreamGuard<'_>> {
-        let mut locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
+    ) -> Result<ControlStreamGuard<'_>, ControlStreamLockError> {
+        let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             if !active.load(Ordering::Acquire) {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    EXEC_OPERATION_INACTIVE_MESSAGE,
-                ));
+                return Err(ControlStreamLockError::Inactive);
             }
-            if !*locked {
-                *locked = true;
-                drop(locked);
-                let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
-                return Ok(ControlStreamGuard {
-                    state: self,
-                    stream,
-                });
+            match &*gate {
+                ControlStreamGate::Available => {
+                    *gate = ControlStreamGate::Locked;
+                    drop(gate);
+                    let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
+                    if !active.load(Ordering::Acquire) {
+                        drop(stream);
+                        self.release_locked_gate(&mut gate);
+                        return Err(ControlStreamLockError::Inactive);
+                    }
+                    match &*gate {
+                        ControlStreamGate::Failed(message) => {
+                            let message = message.clone();
+                            drop(stream);
+                            return Err(ControlStreamLockError::SinkError(message));
+                        }
+                        ControlStreamGate::Available => {
+                            *gate = ControlStreamGate::Locked;
+                        }
+                        ControlStreamGate::Locked => {}
+                    }
+                    drop(gate);
+                    return Ok(ControlStreamGuard {
+                        stream,
+                        _gate: ControlStreamGateGuard { state: self },
+                    });
+                }
+                ControlStreamGate::Failed(message) => {
+                    return Err(ControlStreamLockError::SinkError(message.clone()));
+                }
+                ControlStreamGate::Locked => {}
             }
             let Some(wait) = duration_until(deadline) else {
-                return Err(request_timeout_error());
+                return Err(ControlStreamLockError::Timeout);
             };
-            let (next_locked, wait_result) = self
+            let (next_gate, wait_result) = self
                 .ready
-                .wait_timeout(locked, wait)
+                .wait_timeout(gate, wait)
                 .unwrap_or_else(|e| e.into_inner());
-            locked = next_locked;
-            // A timeout can race with unlock notification; re-check the locked
-            // flag unless the request deadline has actually elapsed.
+            gate = next_gate;
+            // A timeout can race with gate notification; re-check the gate
+            // unless the request deadline has actually elapsed.
             if wait_result.timed_out() && duration_until(deadline).is_none() {
-                return Err(request_timeout_error());
+                return Err(ControlStreamLockError::Timeout);
             }
         }
     }
 
     fn notify_waiters(&self) {
-        let _locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
+        let _gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
         self.ready.notify_all();
+    }
+
+    fn mark_failed(&self, message: &str) {
+        let mut gate = self.gate.lock().unwrap_or_else(|e| e.into_inner());
+        if !matches!(*gate, ControlStreamGate::Failed(_)) {
+            *gate = ControlStreamGate::Failed(message.to_owned());
+        }
+        self.ready.notify_all();
+    }
+
+    fn release_locked_gate(&self, gate: &mut ControlStreamGate) {
+        if matches!(*gate, ControlStreamGate::Locked) {
+            *gate = ControlStreamGate::Available;
+            self.ready.notify_one();
+        }
     }
 }
 
@@ -360,10 +427,9 @@ impl std::ops::DerefMut for ControlStreamGuard<'_> {
     }
 }
 
-impl Drop for ControlStreamGuard<'_> {
+impl Drop for ControlStreamGateGuard<'_> {
     fn drop(&mut self) {
-        let mut locked = self.state.locked.lock().unwrap_or_else(|e| e.into_inner());
-        *locked = false;
-        self.state.ready.notify_one();
+        let mut gate = self.state.gate.lock().unwrap_or_else(|e| e.into_inner());
+        self.state.release_locked_gate(&mut gate);
     }
 }
