@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.11](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.10...sandbox-v0.19.11) (2026-06-23)
+
+
+### Bug Fixes
+
+* make slow exec terminal warnings actionable ([#18619](https://github.com/vm0-ai/vm0/issues/18619)) ([ab0ce71](https://github.com/vm0-ai/vm0/commit/ab0ce71380d416da28156f15e80def1a24dd3bef))
+
 ## [0.19.10](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.9...sandbox-v0.19.10) (2026-06-22)
 
 

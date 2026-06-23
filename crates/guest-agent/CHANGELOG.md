@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.2...guest-agent-v0.40.3) (2026-06-23)
+
+
+### Refactoring
+
+* extract active input replay test harness ([#18605](https://github.com/vm0-ai/vm0/issues/18605)) ([be58da1](https://github.com/vm0-ai/vm0/commit/be58da14b91e4498a24fb96ee0397050f1d71227))
+
 ## [0.40.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.1...guest-agent-v0.40.2) (2026-06-23)
 
 
