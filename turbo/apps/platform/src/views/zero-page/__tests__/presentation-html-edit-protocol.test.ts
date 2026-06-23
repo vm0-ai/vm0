@@ -95,4 +95,23 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("box-shadow: none !important");
     expect(injectedCss).toContain("border-radius: 0 !important");
   });
+
+  it("appends additional head styles to the preview document", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      additionalHeadStyle: ":root { --accent: #ff6600; }",
+      html: `
+        <!doctype html>
+        <html>
+          <body>
+            <section data-vm0-slide data-slide-id="slide-1">
+              <h1>Slide</h1>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+
+    expect(previewHtml).toContain(":root { --accent: #ff6600; }");
+  });
 });
