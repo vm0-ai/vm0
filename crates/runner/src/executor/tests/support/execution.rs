@@ -9,22 +9,24 @@ use super::super::super::agent_run::{
     run_in_sandbox_with_process_cancel_timeouts,
 };
 use super::super::super::sandbox_run::execute_new_sandbox;
-use super::super::super::{ExecutorConfig, JobParams, NewSandboxDispatch, PROCESS_CANCEL_TIMEOUTS};
+use super::super::super::{
+    ExecuteOutcome, ExecutorConfig, JobParams, NewSandboxDispatch, PROCESS_CANCEL_TIMEOUTS,
+};
 use super::config::test_telemetry;
 use crate::error::RunnerResult;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
 pub(in crate::executor::tests) const RUN_IN_SANDBOX_TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub(in crate::executor::tests) async fn run_execute_inner(
+pub(in crate::executor::tests) async fn run_new_sandbox_outcome(
     factory: &MockSandboxFactory,
     ctx: &ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
-) -> RunnerResult<(i32, Option<String>)> {
+) -> RunnerResult<ExecuteOutcome> {
     let mut telemetry = test_telemetry(config, ctx);
     let cancel = CancellationToken::new();
-    let outcome = execute_new_sandbox(
+    execute_new_sandbox(
         factory,
         ctx,
         NewSandboxDispatch {
@@ -36,7 +38,16 @@ pub(in crate::executor::tests) async fn run_execute_inner(
         &mut telemetry,
         cancel,
     )
-    .await?;
+    .await
+}
+
+pub(in crate::executor::tests) async fn run_new_sandbox_status(
+    factory: &MockSandboxFactory,
+    ctx: &ExecutionContext,
+    config: &ExecutorConfig,
+    params: &JobParams,
+) -> RunnerResult<(i32, Option<String>)> {
+    let outcome = run_new_sandbox_outcome(factory, ctx, config, params).await?;
     Ok((outcome.exit_code(), outcome.error().map(ToOwned::to_owned)))
 }
 
