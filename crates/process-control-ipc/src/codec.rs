@@ -41,7 +41,7 @@ pub fn write_hello(stream: &mut UnixStream) -> io::Result<()> {
 /// read failures are returned as standard library `io::Error` values.
 pub fn read_hello(stream: &mut UnixStream) -> io::Result<()> {
     let frame = read_frame(stream)?;
-    if frame.kind != FRAME_HELLO || !frame.payload().is_empty() {
+    if frame.kind != FRAME_HELLO || !frame.payload()?.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid control hello frame",
@@ -105,7 +105,7 @@ pub fn read_request(stream: &mut UnixStream) -> io::Result<ControlRequest> {
             "expected control request frame",
         ));
     }
-    decode_request(frame.payload())
+    decode_request(frame.payload()?)
 }
 
 /// Write a response frame to a connected control sink stream.
@@ -171,7 +171,7 @@ pub fn read_response(stream: &mut UnixStream) -> io::Result<ControlResponse> {
             "expected control response frame",
         ));
     }
-    decode_response(frame.payload())
+    decode_response(frame.payload()?)
 }
 
 struct Frame {
@@ -180,8 +180,10 @@ struct Frame {
 }
 
 impl Frame {
-    fn payload(&self) -> &[u8] {
-        self.body.get(2..).unwrap_or_default()
+    fn payload(&self) -> io::Result<&[u8]> {
+        self.body.get(2..).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "invalid control frame length")
+        })
     }
 }
 
