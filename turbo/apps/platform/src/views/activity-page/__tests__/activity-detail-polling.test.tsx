@@ -1256,6 +1256,33 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       },
       createdAt: "2026-03-10T15:30:14Z",
     },
+    {
+      sequenceNumber: 14,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        message: "API connection failed",
+      },
+      createdAt: "2026-03-10T15:30:15Z",
+    },
+    {
+      sequenceNumber: 15,
+      eventType: "warning",
+      eventData: {
+        type: "warning",
+        message: "cleanup in progress",
+      },
+      createdAt: "2026-03-10T15:30:16Z",
+    },
+    {
+      sequenceNumber: 16,
+      eventType: "turn.failed",
+      eventData: {
+        type: "turn.failed",
+        error: "Rate limit exceeded",
+      },
+      createdAt: "2026-03-10T15:30:17Z",
+    },
   ];
 }
 
@@ -2447,6 +2474,11 @@ describe("activity detail polling", () => {
     expect(
       screen.getAllByText("Codex auth failed. (refresh token expired)"),
     ).not.toHaveLength(0);
+    expect(
+      screen.getByText("[warning] cleanup in progress"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument();
+    expect(screen.queryByText("API connection failed")).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {

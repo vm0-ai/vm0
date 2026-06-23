@@ -886,6 +886,86 @@ function normalizeCodexEventForGrouping(event: AgentEvent): AgentEvent | null {
   return normalizeCodexRunEvent(event, codexType, codexEvent);
 }
 
+function getCodexEventType(event: AgentEvent): string | undefined {
+  const codexEvent = parseCodexEventData(event.eventData);
+  const codexType = isCodexEventType(event.eventType)
+    ? event.eventType
+    : codexEvent?.type;
+  return codexType && isCodexEventType(codexType) ? codexType : undefined;
+}
+
+function getResultText(event: AgentEvent | null): string | undefined {
+  if (event?.eventType !== "result") {
+    return undefined;
+  }
+  if (!isRecord(event.eventData)) {
+    return undefined;
+  }
+  return getStringField(event.eventData, "result")?.trim() || undefined;
+}
+
+function shouldPreferPendingCodexError(
+  pendingCodexError: AgentEvent,
+  turnFailedEvent: AgentEvent | null,
+): boolean {
+  const pendingResult = getResultText(pendingCodexError);
+  const turnFailedResult = getResultText(turnFailedEvent);
+  if (!turnFailedResult) {
+    return pendingResult !== undefined;
+  }
+  return (
+    pendingResult !== undefined &&
+    !isGenericCodexFailureMessage(pendingResult) &&
+    isGenericCodexFailureMessage(turnFailedResult)
+  );
+}
+
+function normalizeEventsForGrouping(events: AgentEvent[]): AgentEvent[] {
+  const normalizedEvents: AgentEvent[] = [];
+  let pendingCodexError: AgentEvent | null = null;
+
+  const flushPendingCodexError = () => {
+    if (!pendingCodexError) {
+      return;
+    }
+    normalizedEvents.push(pendingCodexError);
+    pendingCodexError = null;
+  };
+
+  for (const rawEvent of events) {
+    const codexType = getCodexEventType(rawEvent);
+    const normalized = normalizeCodexEventForGrouping(rawEvent);
+    if (!normalized) {
+      continue;
+    }
+
+    if (codexType === "error" && normalized.eventType === "result") {
+      flushPendingCodexError();
+      pendingCodexError = normalized;
+      continue;
+    }
+
+    if (codexType === "turn.failed") {
+      const pending = pendingCodexError;
+      pendingCodexError = null;
+      if (pending && shouldPreferPendingCodexError(pending, normalized)) {
+        normalizedEvents.push(pending);
+      } else {
+        normalizedEvents.push(normalized);
+      }
+      continue;
+    }
+
+    if (normalized.eventType === "result") {
+      flushPendingCodexError();
+    }
+    normalizedEvents.push(normalized);
+  }
+
+  flushPendingCodexError();
+  return normalizedEvents;
+}
+
 /**
  * Shape of task-related system event data (task_started, task_notification, task_progress).
  */
@@ -1453,11 +1533,7 @@ export function groupEventsIntoMessages(
     taskByToolUseId: new Map(),
   };
 
-  for (const rawEvent of deduped) {
-    const event = normalizeCodexEventForGrouping(rawEvent);
-    if (!event) {
-      continue;
-    }
+  for (const event of normalizeEventsForGrouping(deduped)) {
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {

@@ -61,7 +61,7 @@ export class EventStreamNormalizer {
       return parsed ? [parsed] : [];
     }
 
-    const output = this.flush();
+    const output = parsed?.type === "result" ? this.flush() : [];
     if (parsed) {
       output.push(parsed);
     }
