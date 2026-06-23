@@ -68,12 +68,10 @@ append_group() {
 
 validate_host_entry() {
   local host=$1
-  case "$host" in
-    *[[:space:]/]*)
-      echo "invalid runner host entry: ${host}" >&2
-      return 2
-      ;;
-  esac
+  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "invalid runner host entry: ${host}" >&2
+    return 2
+  fi
 }
 
 validate_host_entries() {

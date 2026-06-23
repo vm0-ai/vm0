@@ -55,6 +55,17 @@ grep -q "invalid METAL_HOSTS entry: bad/host" "${TMPDIR}/invalid-hosts.err" || f
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
+  METAL_HOSTS='user@host' \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/invalid-user-host.out" 2>"${TMPDIR}/invalid-user-host.err"; then
+  fail "expected user-qualified metal host to fail"
+fi
+grep -q "invalid METAL_HOSTS entry: user@host" "${TMPDIR}/invalid-user-host.err" || fail "expected user-qualified metal host message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
   METAL_HOSTS='dev-1, dev-1' \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \

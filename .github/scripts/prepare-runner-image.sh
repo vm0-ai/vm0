@@ -43,12 +43,10 @@ if [ "${#HOSTS[@]}" -lt 1 ]; then
   exit 1
 fi
 for host in "${HOSTS[@]}"; do
-  case "$host" in
-    *[[:space:]/]*)
-      echo "invalid METAL_HOSTS entry: ${host}" >&2
-      exit 2
-      ;;
-  esac
+  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "invalid METAL_HOSTS entry: ${host}" >&2
+    exit 2
+  fi
 done
 duplicate_host=$(printf '%s\n' "${HOSTS[@]}" | LC_ALL=C sort | uniq -d)
 duplicate_host=${duplicate_host%%$'\n'*}

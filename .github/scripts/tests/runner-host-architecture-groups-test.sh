@@ -74,6 +74,10 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' X86_64_METAL_RUNNER_H
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='runner-1.vm3.ai,runner_2' "$HOST_GROUPS" matrix)
+assert_compact_json "$out"
+assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
 
@@ -86,6 +90,11 @@ if run_clean AWS_METAL_RUNNER_HOSTS='bad/host' "$HOST_GROUPS" matrix >"${TMPDIR}
   fail "expected host with slash to fail"
 fi
 grep -q "invalid runner host entry: bad/host" "${TMPDIR}/invalid-slash.err" || fail "expected host slash message"
+
+if run_clean AWS_METAL_RUNNER_HOSTS='bad*host' "$HOST_GROUPS" has-groups >"${TMPDIR}/invalid-glob.out" 2>"${TMPDIR}/invalid-glob.err"; then
+  fail "expected host with glob character to fail"
+fi
+grep -q "invalid runner host entry: bad\*host" "${TMPDIR}/invalid-glob.err" || fail "expected host glob message"
 
 if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
   fail "expected duplicate host in one group to fail"
