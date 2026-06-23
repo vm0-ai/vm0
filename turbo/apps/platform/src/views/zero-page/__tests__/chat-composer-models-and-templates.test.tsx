@@ -553,6 +553,80 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("keeps the agent chat composer at three-line height when the mobile single-line switch is on", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.MobileSingleLineComposer]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(textarea).toHaveAttribute("rows", "3");
+    expect(textarea).toHaveClass("min-h-[96px]");
+    expect(textarea).not.toHaveClass("min-h-[44px]");
+  });
+
+  it("uses the mobile single-line height in chat thread composers when the switch is on", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.MobileSingleLineComposer]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(textarea).toHaveAttribute("rows", "1");
+    expect(textarea).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+  });
+
+  it("keeps the agent chat slash composer at three-line height when the mobile single-line switch is on", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.MobileSingleLineComposer]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[96px]");
+    expect(editor).not.toHaveClass("min-h-[44px]");
+  });
+
+  it("uses the mobile single-line height in chat thread slash composers when the switch is on", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.MobileSingleLineComposer]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+  });
+
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");

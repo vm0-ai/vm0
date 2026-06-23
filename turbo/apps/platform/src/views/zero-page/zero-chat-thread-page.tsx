@@ -3924,6 +3924,7 @@ function ChatThreadComposer({
               autoFocus: autoFocusProp,
               hasMessages,
             })}
+            enableMobileSingleLine
             onDraftChange={handleDraftChange}
             draft={thread.draft}
             composerFileInput$={thread.composerFileInput$}

@@ -482,6 +482,7 @@ interface TiptapWorkflowComposerProps {
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
+  readonly singleLineOnMobile: boolean;
 }
 
 export function TiptapWorkflowComposer({
@@ -493,6 +494,7 @@ export function TiptapWorkflowComposer({
   setInputRef,
   onKeyDown,
   onPaste,
+  singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
   const caretIndex = useGet(slashWorkflowCaretIndex$);
   const setCaretIndex = useSet(setSlashWorkflowCaretIndex$);
@@ -500,8 +502,6 @@ export function TiptapWorkflowComposer({
   const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
   const currentAgentId = useLastResolved(currentChatAgentRecordId$);
   const features = useLastResolved(featureSwitch$);
-  const singleLineOnMobile =
-    features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false;
   const composerWorkflowsLoadable = useLastLoadable(composerWorkflows$);
   const composerWorkflowsData =
     composerWorkflowsLoadable.state === "hasData"
