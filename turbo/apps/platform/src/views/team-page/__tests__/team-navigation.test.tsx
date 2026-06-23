@@ -620,6 +620,7 @@ describe("team page navigation", () => {
       "annotations|create",
     );
     const loadedPermissionsDialog = dialogForElement(permissionRow);
+    click(buttonByText("Allow", permissionRow));
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
@@ -643,6 +644,7 @@ describe("team page navigation", () => {
     ).not.toBeInTheDocument();
     expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
 
+    click(buttonByText("Allow", reopenedPermissionRow));
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
@@ -985,6 +987,7 @@ describe("team page navigation", () => {
     if (!(miscGroup instanceof HTMLElement)) {
       throw new Error("Misc permission group not found");
     }
+    click(buttonByText("Allow", miscGroup));
     click(within(miscGroup).getByLabelText("Misc allow options"));
     click(menuItemByText("Allow for 7d"));
     await waitFor(() => {
@@ -994,6 +997,7 @@ describe("team page navigation", () => {
       loadedGroupedDialog,
       "channels:join",
     );
+    click(buttonByText("Allow", channelsJoinRow));
     click(
       within(channelsJoinRow).getByLabelText("channels:join allow options"),
     );
@@ -1035,6 +1039,7 @@ describe("team page navigation", () => {
     });
 
     const unknownRow = await unknownEndpointsRow(loadedGroupedDialog);
+    click(buttonByText("Allow", unknownRow));
     click(within(unknownRow).getByLabelText("__unknown__ allow options"));
     click(menuItemByText("Allow for 1h"));
     await waitFor(() => {

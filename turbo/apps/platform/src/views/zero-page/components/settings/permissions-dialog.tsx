@@ -546,7 +546,6 @@ function PermissionAllowDurationDropdown({
   selected,
   allowAlwaysActive,
   saving,
-  showLabel,
   onSelect,
 }: {
   permission: string;
@@ -554,7 +553,6 @@ function PermissionAllowDurationDropdown({
   selected: UserPermissionGrantExpiresIn | undefined;
   allowAlwaysActive: boolean;
   saving: boolean;
-  showLabel: boolean;
   onSelect: (expiresIn: UserPermissionGrantExpiresIn) => void;
 }) {
   return (
@@ -571,7 +569,7 @@ function PermissionAllowDurationDropdown({
           }`}
         >
           <IconClock size={12} className="shrink-0" />
-          {showLabel && <span className="max-w-[90px] truncate">{label}</span>}
+          <span className="max-w-[90px] truncate">{label}</span>
           <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
@@ -670,18 +668,18 @@ function PermissionGrantPolicyControl({
         </>
       ) : (
         <>
-          <PermissionAllowDurationDropdown
-            permission={permission}
-            label={durationLabel}
-            selected={selected}
-            allowAlwaysActive={allowAlwaysActive}
-            saving={saving}
-            showLabel={policy === "allow"}
-            onSelect={(expiresIn) => {
-              onPolicyChange("allow");
-              onAllowDurationChange(expiresIn);
-            }}
-          />
+          {policy === "allow" && (
+            <PermissionAllowDurationDropdown
+              permission={permission}
+              label={durationLabel}
+              selected={selected}
+              allowAlwaysActive={allowAlwaysActive}
+              saving={saving}
+              onSelect={(expiresIn) => {
+                onAllowDurationChange(expiresIn);
+              }}
+            />
+          )}
           <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
             <button
               type="button"
