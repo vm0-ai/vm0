@@ -4,6 +4,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
+  UIEvent as ReactUIEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -2601,6 +2602,7 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-[calc(var(--github-pr-tracking-content-inset)_+_1rem)] sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset)_+_1.5rem)] @container";
 const GITHUB_PR_TRACKING_DOCK_WIDTH =
   "min(400px, max(280px, calc(100% - 760px)))";
+const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
 function githubPrTrackingLayoutStyle(
   githubPrTrackingOpen: boolean,
@@ -2637,6 +2639,7 @@ function ChatThreadMessagesMain({
   thread,
   groups,
   activeGroups,
+  renderedGroups,
   sessionError,
   skeletonVisible,
   messagesLoading,
@@ -2644,6 +2647,7 @@ function ChatThreadMessagesMain({
   thread: ChatThreadSignals;
   groups: GroupedChatMessageGroup[];
   activeGroups: GroupedChatMessageGroup[];
+  renderedGroups: GroupedChatMessageGroup[];
   sessionError: string | null;
   skeletonVisible: boolean;
   messagesLoading: boolean;
@@ -2653,10 +2657,13 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
-  const completedWorkFolding = buildCompletedWorkFolding(activeGroups);
+  const { activeGroups: renderedActiveGroups } =
+    splitQueuedMessagesForThinkingIndicator(renderedGroups);
+  const completedWorkFolding = buildCompletedWorkFolding(renderedActiveGroups);
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
+  const visibleGroups =
+    completedWorkFolding?.visibleGroups ?? renderedActiveGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -3149,17 +3156,35 @@ function useChatThreadKeyDownFactory() {
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const renderedGroupsLoadable = useLastLoadable(
+    thread.renderedGroupedChatMessages$,
+  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const renderedGroups =
+    renderedGroupsLoadable.state === "hasData"
+      ? renderedGroupsLoadable.data
+      : [];
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
+  const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
+  const pageSignal = useGet(pageSignal$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const githubPrTrackingOpen = useGithubPrTrackingOpen(
     thread,
     threadDataLoadable,
   );
+
+  const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
+    if (
+      event.currentTarget.scrollTop > CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX
+    ) {
+      return;
+    }
+    detach(loadMoreRenderedChatGroups(pageSignal), Reason.DomCallback);
+  };
 
   return (
     <>
@@ -3175,12 +3200,14 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               ref={setScrollContainer}
               data-scroll-container
               tabIndex={-1}
-              className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
+              onScroll={handleScroll}
+              className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
             >
               <ChatThreadMessagesMain
                 thread={thread}
                 groups={groups}
                 activeGroups={activeGroups}
+                renderedGroups={renderedGroups}
                 sessionError={sessionError}
                 skeletonVisible={skeletonVisible}
                 messagesLoading={messagesLoading}
