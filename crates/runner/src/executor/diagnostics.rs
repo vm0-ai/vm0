@@ -341,6 +341,7 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
 ) -> Option<ResourceFailureDiagnostics> {
     let request = ExecRequest {
         cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT,
+        label: "agent-abnormal-exit-diagnostics",
         timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
         env: &[],
         sudo: true,

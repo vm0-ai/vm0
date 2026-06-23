@@ -1490,6 +1490,46 @@ fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes
     )
 }
 
+fn exec_terminal_log_reason(slow: bool, notable: bool) -> Option<&'static str> {
+    if notable {
+        return Some("notable");
+    }
+    if slow {
+        return Some("slow");
+    }
+    None
+}
+
+struct ExecTerminalLogMessageInput<'a> {
+    request: &'a ExecOperationWorkerRequest,
+    elapsed_ms: u128,
+    termination: ExecTermination,
+    stdout_result: &'a BoundedDrainResult,
+    stderr_result: &'a BoundedDrainResult,
+    diagnostic: &'a str,
+    slow: bool,
+    notable: bool,
+}
+
+fn exec_terminal_log_message(input: ExecTerminalLogMessageInput<'_>) -> Option<String> {
+    let terminal_reason = exec_terminal_log_reason(input.slow, input.notable)?;
+    Some(format!(
+        "exec result: seq={} label={} elapsed_ms={} slow={} notable={} terminal_reason={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
+        input.request.seq,
+        truncate_command_preview(&input.request.label),
+        input.elapsed_ms,
+        input.slow,
+        input.notable,
+        terminal_reason,
+        input.termination,
+        input.stdout_result.captured.as_ref().map_or(0, Vec::len),
+        input.stderr_result.captured.as_ref().map_or(0, Vec::len),
+        input.stdout_result.capture_truncated,
+        input.stderr_result.capture_truncated,
+        !input.diagnostic.is_empty(),
+    ))
+}
+
 fn log_exec_terminal_if_notable(
     request: &ExecOperationWorkerRequest,
     started: Instant,
@@ -1505,25 +1545,18 @@ fn log_exec_terminal_if_notable(
         || stderr_result.capture_truncated
         || !diagnostic.is_empty();
 
-    if !slow && !notable {
-        return;
+    if let Some(message) = exec_terminal_log_message(ExecTerminalLogMessageInput {
+        request,
+        elapsed_ms: elapsed.as_millis(),
+        termination,
+        stdout_result,
+        stderr_result,
+        diagnostic,
+        slow,
+        notable,
+    }) {
+        log("WARN", &message);
     }
-
-    log(
-        "WARN",
-        &format!(
-            "exec result: seq={} label={} elapsed_ms={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
-            request.seq,
-            truncate_command_preview(&request.label),
-            elapsed.as_millis(),
-            termination,
-            stdout_result.captured.as_ref().map_or(0, Vec::len),
-            stderr_result.captured.as_ref().map_or(0, Vec::len),
-            stdout_result.capture_truncated,
-            stderr_result.capture_truncated,
-            !diagnostic.is_empty(),
-        ),
-    );
 }
 
 fn join_output_writer(handle: Option<JoinHandle<()>>) {
@@ -1608,6 +1641,96 @@ mod tests {
             ExecTermination::TimedOut,
             &[124]
         ));
+    }
+
+    #[test]
+    fn exec_terminal_log_message_marks_slow_only_result_as_latency_only() {
+        let request = request(7, "true");
+        let stdout = BoundedDrainResult::default();
+        let stderr = BoundedDrainResult::default();
+
+        let message = exec_terminal_log_message(ExecTerminalLogMessageInput {
+            request: &request,
+            elapsed_ms: 6000,
+            termination: ExecTermination::Exited { exit_code: 0 },
+            stdout_result: &stdout,
+            stderr_result: &stderr,
+            diagnostic: "",
+            slow: true,
+            notable: false,
+        })
+        .unwrap();
+
+        assert!(message.contains("seq=7"), "message={message}");
+        assert!(message.contains("label=test"), "message={message}");
+        assert!(message.contains("slow=true"), "message={message}");
+        assert!(message.contains("notable=false"), "message={message}");
+        assert!(
+            message.contains("terminal_reason=slow"),
+            "message={message}"
+        );
+        assert!(
+            message.contains("diagnostic_present=false"),
+            "message={message}"
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_message_marks_notable_result() {
+        let request = request(8, "false");
+        let stdout = BoundedDrainResult::default();
+        let stderr = BoundedDrainResult {
+            captured: Some(b"stderr".to_vec()),
+            capture_truncated: true,
+        };
+
+        let message = exec_terminal_log_message(ExecTerminalLogMessageInput {
+            request: &request,
+            elapsed_ms: 10,
+            termination: ExecTermination::Exited { exit_code: 1 },
+            stdout_result: &stdout,
+            stderr_result: &stderr,
+            diagnostic: "diagnostic",
+            slow: false,
+            notable: true,
+        })
+        .unwrap();
+
+        assert!(message.contains("slow=false"), "message={message}");
+        assert!(message.contains("notable=true"), "message={message}");
+        assert!(
+            message.contains("terminal_reason=notable"),
+            "message={message}"
+        );
+        assert!(
+            message.contains("stderr_truncated=true"),
+            "message={message}"
+        );
+        assert!(
+            message.contains("diagnostic_present=true"),
+            "message={message}"
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_message_suppresses_fast_clean_result() {
+        let request = request(9, "true");
+        let stdout = BoundedDrainResult::default();
+        let stderr = BoundedDrainResult::default();
+
+        assert!(
+            exec_terminal_log_message(ExecTerminalLogMessageInput {
+                request: &request,
+                elapsed_ms: 10,
+                termination: ExecTermination::Exited { exit_code: 0 },
+                stdout_result: &stdout,
+                stderr_result: &stderr,
+                diagnostic: "",
+                slow: false,
+                notable: false,
+            })
+            .is_none()
+        );
     }
 
     #[test]

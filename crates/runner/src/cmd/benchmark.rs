@@ -433,6 +433,7 @@ async fn run_in_sandbox(
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &args.command,
+            label: "benchmark-exec",
             timeout: Duration::from_secs(args.timeout_secs),
             env: &env_refs,
             sudo: args.sudo,

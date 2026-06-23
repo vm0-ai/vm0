@@ -143,6 +143,7 @@ async fn cleanup_existing_codex_session_files(
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &cleanup_cmd,
+            label: "codex-session-cleanup",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &env,
             sudo: false,

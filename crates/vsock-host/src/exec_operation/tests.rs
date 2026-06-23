@@ -199,6 +199,9 @@ fn exec_operation_diagnostic_preserves_terminal_log_fields() {
     assert_terminal_log_field(info_event, "message", "exec operation terminal result");
     assert_terminal_log_field(info_event, "seq", "7");
     assert_terminal_log_field(info_event, "label", "terminal-log");
+    assert_terminal_log_field(info_event, "slow", "true");
+    assert_terminal_log_field(info_event, "lifecycle", "supervised");
+    assert_terminal_log_field(info_event, "terminal_reason", "slow");
     assert!(
         terminal_log_field_u128(info_event, "elapsed_ms")
             >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD.as_millis(),
@@ -238,6 +241,9 @@ fn exec_operation_diagnostic_preserves_terminal_log_fields() {
     assert_terminal_log_field(warn_event, "message", "exec operation terminal result");
     assert_terminal_log_field(warn_event, "seq", "7");
     assert_terminal_log_field(warn_event, "label", "terminal-log");
+    assert_terminal_log_field(warn_event, "slow", "false");
+    assert_terminal_log_field(warn_event, "lifecycle", "supervised");
+    assert_terminal_log_field(warn_event, "terminal_reason", "notable");
     let _ = terminal_log_field_u128(warn_event, "elapsed_ms");
     assert_terminal_log_field(warn_event, "guest_duration_ms", "77");
     assert_terminal_log_field(warn_event, "termination", "TimedOut");
@@ -266,6 +272,7 @@ fn exec_operation_diagnostic_logs_host_requested_cancel_as_info() {
     assert_eq!(events[0].level, Level::INFO);
     assert_terminal_log_field(&events[0], "termination", "Cancelled");
     assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
+    assert_terminal_log_field(&events[0], "terminal_reason", "expected_cancel");
 }
 
 #[test]
@@ -483,6 +490,8 @@ async fn dispatch_result_logs_terminal_result_with_operation_lifecycle() {
         "label",
         "dispatch-supervised-terminal-log",
     );
+    assert_terminal_log_field(&supervised_events[0], "lifecycle", "supervised");
+    assert_terminal_log_field(&supervised_events[0], "terminal_reason", "slow");
     assert_eq!(
         supervised_result.termination,
         ExecTermination::Exited { exit_code: 0 }
@@ -503,6 +512,8 @@ async fn dispatch_result_logs_terminal_result_with_operation_lifecycle() {
         "label",
         "dispatch-one-shot-terminal-log",
     );
+    assert_terminal_log_field(&one_shot_events[0], "lifecycle", "one_shot");
+    assert_terminal_log_field(&one_shot_events[0], "terminal_reason", "slow");
     assert_eq!(
         one_shot_result.termination,
         ExecTermination::Exited { exit_code: 0 }
@@ -526,6 +537,7 @@ async fn dispatch_result_logs_host_requested_cancel_as_info() {
     assert_eq!(events[0].level, Level::INFO);
     assert_terminal_log_field(&events[0], "termination", "Cancelled");
     assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
+    assert_terminal_log_field(&events[0], "terminal_reason", "expected_cancel");
     assert_eq!(result.termination, ExecTermination::Cancelled);
 }
 
@@ -703,6 +715,45 @@ fn exec_terminal_log_severity_warns_for_slow_clean_one_shot_result() {
     assert_eq!(
         exec_terminal_log_severity(context),
         Some(ExecTerminalLogSeverity::Warn)
+    );
+}
+
+#[test]
+fn exec_terminal_log_decision_reports_low_cardinality_reason() {
+    let slow_one_shot = clean_terminal_log_context(
+        ExecTerminalLogLifecycle::OneShot,
+        true,
+        ExecTermination::Exited { exit_code: 0 },
+    );
+    let slow_decision = exec_terminal_log_decision(slow_one_shot).unwrap();
+    assert_eq!(slow_decision.severity, ExecTerminalLogSeverity::Warn);
+    assert_eq!(slow_decision.reason, ExecTerminalLogReason::Slow);
+
+    let notable = ExecTerminalLogContext {
+        diagnostic_present: true,
+        ..clean_terminal_log_context(
+            ExecTerminalLogLifecycle::OneShot,
+            true,
+            ExecTermination::Exited { exit_code: 0 },
+        )
+    };
+    let notable_decision = exec_terminal_log_decision(notable).unwrap();
+    assert_eq!(notable_decision.severity, ExecTerminalLogSeverity::Warn);
+    assert_eq!(notable_decision.reason, ExecTerminalLogReason::Notable);
+
+    let expected_cancel = ExecTerminalLogContext {
+        host_cancel_requested: true,
+        ..clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::Cancelled,
+        )
+    };
+    let cancel_decision = exec_terminal_log_decision(expected_cancel).unwrap();
+    assert_eq!(cancel_decision.severity, ExecTerminalLogSeverity::Info);
+    assert_eq!(
+        cancel_decision.reason,
+        ExecTerminalLogReason::ExpectedCancel
     );
 }
 

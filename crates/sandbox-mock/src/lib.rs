@@ -2025,6 +2025,7 @@ mod tests {
         let result = sandbox
             .exec(&ExecRequest {
                 cmd: "echo hello",
+                label: "test-exec",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
@@ -2043,6 +2044,7 @@ mod tests {
         let result = sandbox
             .exec(&ExecRequest {
                 cmd: "echo hello",
+                label: "test-exec",
                 timeout: Duration::from_secs(5),
                 env: &[("BAD-NAME", "x")],
                 sudo: false,
@@ -2187,6 +2189,7 @@ mod tests {
 
         let req = ExecRequest {
             cmd: "test",
+            label: "test-exec",
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -2576,6 +2579,7 @@ mod tests {
         let result = sandbox
             .exec(&ExecRequest {
                 cmd: "test",
+                label: "test-exec",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,

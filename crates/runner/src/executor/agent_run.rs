@@ -549,6 +549,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if !wait_cancelled && process_exit_oom_candidate(&exit) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
+            label: "oom-dmesg",
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,

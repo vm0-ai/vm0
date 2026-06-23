@@ -266,6 +266,7 @@ pub(super) async fn write_user_env_file(
     let mkdir_result = sandbox
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
+            label: "user-env-dir",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: false,
@@ -287,6 +288,7 @@ pub(super) async fn write_user_env_file(
     let chmod_result = sandbox
         .exec(&ExecRequest {
             cmd: &chmod_cmd,
+            label: "user-env-chmod",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: false,

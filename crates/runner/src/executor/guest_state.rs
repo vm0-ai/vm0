@@ -31,6 +31,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &date_cmd,
+            label: "guest-clock-sync",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
@@ -68,6 +69,7 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
     let result = sandbox
         .exec(&ExecRequest {
             cmd: "guest-reseed",
+            label: "guest-reseed",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
@@ -122,6 +124,7 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
     match sandbox
         .exec(&ExecRequest {
             cmd: &cmd,
+            label: "guest-timezone-sync",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,

@@ -1725,6 +1725,25 @@ fn supervised_stdout_receiver(
     )
 }
 
+fn exec_capture_request<'a>(
+    request: &'a ExecRequest<'a>,
+    timeout_ms: u32,
+) -> vsock_host::ExecCaptureRequest<'a> {
+    let limits = request.output_limits;
+    vsock_host::ExecCaptureRequest {
+        command: request.cmd,
+        timeout_ms,
+        env: request.env,
+        sudo: request.sudo,
+        label: request.label,
+        stdout_limit_bytes: limits.stdout_limit_bytes,
+        stderr_limit_bytes: limits.stderr_limit_bytes,
+        expected_exit_codes: &[],
+        stdin_bytes: request.stdin_bytes,
+        wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+    }
+}
+
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
     // -- identity --
@@ -2073,7 +2092,6 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::Exec;
-        let limits = request.output_limits;
         let timeout_ms = request.timeout_ms();
 
         self.run_bounded_guest_operation_with_validation(
@@ -2082,18 +2100,7 @@ impl Sandbox for FirecrackerSandbox {
             |guest| async move {
                 validate_exec_capture_timeout(timeout_ms)?;
                 guest
-                    .exec_operation_capture(vsock_host::ExecCaptureRequest {
-                        command: request.cmd,
-                        timeout_ms,
-                        env: request.env,
-                        sudo: request.sudo,
-                        label: "sandbox-exec",
-                        stdout_limit_bytes: limits.stdout_limit_bytes,
-                        stderr_limit_bytes: limits.stderr_limit_bytes,
-                        expected_exit_codes: &[],
-                        stdin_bytes: request.stdin_bytes,
-                        wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-                    })
+                    .exec_operation_capture(exec_capture_request(request, timeout_ms))
                     .await
                     .and_then(exec_result_from_operation_result)
             },
@@ -6989,6 +6996,33 @@ mod tests {
             .get(field)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
         assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    #[test]
+    fn exec_capture_request_preserves_stable_operation_label() {
+        let stdin = [1, 2, 3];
+        let request = ExecRequest {
+            cmd: "echo hello",
+            label: "storage-download",
+            timeout: Duration::from_millis(42),
+            env: &[("TEST_ENV", "value")],
+            sudo: true,
+            stdin_bytes: Some(&stdin),
+            output_limits: sandbox::ExecOutputLimits::separate(123, 456),
+        };
+
+        let capture = exec_capture_request(&request, 42);
+
+        assert_eq!(capture.command, "echo hello");
+        assert_eq!(capture.label, "storage-download");
+        assert_eq!(capture.timeout_ms, 42);
+        assert_eq!(capture.env, &[("TEST_ENV", "value")]);
+        assert!(capture.sudo);
+        assert_eq!(capture.stdin_bytes, Some(stdin.as_slice()));
+        assert_eq!(capture.stdout_limit_bytes, 123);
+        assert_eq!(capture.stderr_limit_bytes, 456);
+        assert!(capture.expected_exit_codes.is_empty());
+        assert_eq!(capture.wait_timeout, Duration::from_millis(5042));
     }
 
     fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {

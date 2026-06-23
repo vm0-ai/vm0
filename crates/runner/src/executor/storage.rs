@@ -158,6 +158,7 @@ pub(super) async fn download_storages(
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &download_cmd,
+            label: "storage-download",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &download_env,
             sudo: false,
