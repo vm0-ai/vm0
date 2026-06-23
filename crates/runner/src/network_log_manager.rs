@@ -642,7 +642,9 @@ fn append_lines(path: &Path, lines: &[String]) -> io::Result<()> {
 fn write_lines_vectored(writer: &mut impl Write, lines: &[String]) -> io::Result<()> {
     let mut bufs: Vec<IoSlice<'_>> = lines
         .iter()
-        .map(|line| IoSlice::new(line.as_bytes()))
+        .map(String::as_bytes)
+        .filter(|bytes| !bytes.is_empty())
+        .map(IoSlice::new)
         .collect();
     let mut bufs = &mut bufs[..];
 
@@ -818,6 +820,21 @@ mod tests {
 
         assert_eq!(error.kind(), io::ErrorKind::WriteZero);
         assert!(writer.bytes.is_empty());
+    }
+
+    #[test]
+    fn write_lines_vectored_accepts_empty_lines() {
+        let lines = vec!["".to_string(), "".to_string()];
+        let mut writer = FragmentedWriter {
+            max_chunk: 3,
+            zero_once: true,
+            ..Default::default()
+        };
+
+        write_lines_vectored(&mut writer, &lines).unwrap();
+
+        assert!(writer.bytes.is_empty());
+        assert!(writer.zero_once);
     }
 
     #[tokio::test]
