@@ -123,6 +123,7 @@ function mergeGoalPreference(
   current: unknown,
   update: {
     readonly objective?: string;
+    readonly objectiveBrief?: string;
     readonly tokenBudget?: number;
     readonly stopReason?: ZeroGoalStopReason | null;
   },
@@ -132,6 +133,10 @@ function mergeGoalPreference(
     version: 1,
     objective: update.objective ?? preference.objective,
   };
+  const objectiveBrief = update.objectiveBrief ?? preference.objectiveBrief;
+  if (objectiveBrief !== undefined) {
+    merged.objectiveBrief = objectiveBrief;
+  }
   const tokenBudget = update.tokenBudget ?? preference.tokenBudget;
   if (tokenBudget !== undefined) {
     merged.tokenBudget = tokenBudget;
@@ -230,6 +235,7 @@ export async function createGoalForCurrentThread(
   const preference = {
     version: 1 as const,
     objective: args.objective,
+    objectiveBrief,
     ...(args.tokenBudget ? { tokenBudget: args.tokenBudget } : {}),
   };
   const isNewThread = context.threadId === null;
@@ -556,6 +562,7 @@ export async function editCurrentGoal(
       : await generateGoalObjectiveBrief(args.objective);
   const nextPreference = mergeGoalPreference(goal.row.preference, {
     ...(args.objective !== undefined ? { objective: args.objective } : {}),
+    ...(objectiveBrief !== null ? { objectiveBrief } : {}),
     ...(args.tokenBudget !== undefined
       ? { tokenBudget: args.tokenBudget }
       : {}),
