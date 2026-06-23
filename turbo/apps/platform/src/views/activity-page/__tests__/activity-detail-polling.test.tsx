@@ -1207,9 +1207,12 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
-        error: {
-          message: "Codex build failed before retry.",
-          additionalDetails: "quota exhausted",
+        error: "Turn failed",
+        turn: {
+          error: {
+            message: "Codex build failed before retry.",
+            additionalDetails: "quota exhausted",
+          },
         },
         usage: {
           input_tokens: 10,

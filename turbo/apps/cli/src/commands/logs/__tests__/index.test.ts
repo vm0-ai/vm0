@@ -2032,6 +2032,53 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("[object Object]");
     });
 
+    it("should render nested turn.error when turn.failed top-level error is generic", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Turn failed",
+                    turn: {
+                      error: {
+                        message: "Nested Codex failure",
+                        additionalDetails: "quota exhausted",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("Nested Codex failure (quota exhausted)");
+      expect(logCalls).not.toContain("Error: Turn failed");
+    });
+
     it("should render top-level error event as a failure result", async () => {
       server.use(
         http.get(

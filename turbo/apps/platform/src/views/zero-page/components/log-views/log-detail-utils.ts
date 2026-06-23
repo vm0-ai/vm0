@@ -190,6 +190,7 @@ interface CodexEventData {
   usage?: CodexUsage;
   item?: CodexItem;
   error?: string;
+  turn_error?: string;
   message?: string;
 }
 
@@ -216,10 +217,27 @@ function getNumberField(
 function formatCodexEventMessage(
   message: unknown,
   error: unknown,
+  fallbackError?: unknown,
 ): string | undefined {
   const messageText = formatCodexString(message);
   const errorText = formatCodexErrorMessage(error);
+  const fallbackErrorText = formatCodexErrorMessage(fallbackError);
 
+  const result = selectCodexEventMessage(messageText, errorText);
+  if (!result) {
+    return fallbackErrorText;
+  }
+  if (fallbackErrorText && isGenericCodexFailureMessage(result)) {
+    return fallbackErrorText;
+  }
+
+  return result;
+}
+
+function selectCodexEventMessage(
+  messageText: string | undefined,
+  errorText: string | undefined,
+): string | undefined {
   if (!messageText) {
     return errorText;
   }
@@ -235,6 +253,13 @@ function formatCodexEventMessage(
   }
 
   return messageText;
+}
+
+function getCodexTurnError(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return value.error;
 }
 
 function formatCodexString(value: unknown): string | undefined {
@@ -352,6 +377,7 @@ function parseCodexEventData(value: unknown): CodexEventData | undefined {
     usage: parseCodexUsage(value.usage),
     item: parseCodexItem(value.item),
     error: formatCodexErrorMessage(value.error),
+    turn_error: formatCodexErrorMessage(getCodexTurnError(value.turn)),
     message: formatCodexString(value.message),
   };
 }
@@ -622,8 +648,11 @@ function normalizeCodexFailedTurnEvent(
     event,
     success: false,
     result:
-      formatCodexEventMessage(codexEvent?.message, codexEvent?.error) ??
-      "Turn failed",
+      formatCodexEventMessage(
+        codexEvent?.message,
+        codexEvent?.error,
+        codexEvent?.turn_error,
+      ) ?? "Turn failed",
     usage: codexEvent?.usage,
   });
 }

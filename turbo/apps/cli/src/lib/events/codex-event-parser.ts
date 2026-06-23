@@ -30,6 +30,7 @@ interface TurnFailedEvent {
   type: "turn.failed";
   message?: unknown;
   error?: unknown;
+  turn?: unknown;
 }
 
 interface TurnPlanUpdatedEvent {
@@ -156,7 +157,11 @@ export class CodexEventParser {
       data: {
         success: false,
         result:
-          formatCodexEventMessage(event.message, event.error) ?? "Turn failed",
+          formatCodexEventMessage(
+            event.message,
+            event.error,
+            getCodexTurnError(event.turn),
+          ) ?? "Turn failed",
         durationMs: 0,
         numTurns: 1,
         cost: 0,
@@ -476,10 +481,27 @@ function formatCodexWarningMessage(event: WarningEvent): string | null {
 function formatCodexEventMessage(
   message: unknown,
   error: unknown,
+  fallbackError?: unknown,
 ): string | null {
   const messageText = formatCodexString(message);
   const errorText = formatCodexErrorMessage(error);
+  const fallbackErrorText = formatCodexErrorMessage(fallbackError);
 
+  const result = selectCodexEventMessage(messageText, errorText);
+  if (!result) {
+    return fallbackErrorText;
+  }
+  if (fallbackErrorText && isGenericCodexFailureMessage(result)) {
+    return fallbackErrorText;
+  }
+
+  return result;
+}
+
+function selectCodexEventMessage(
+  messageText: string | null,
+  errorText: string | null,
+): string | null {
   if (!messageText) {
     return errorText;
   }
@@ -495,6 +517,13 @@ function formatCodexEventMessage(
   }
 
   return messageText;
+}
+
+function getCodexTurnError(turn: unknown): unknown {
+  if (!isRecord(turn)) {
+    return undefined;
+  }
+  return turn.error;
 }
 
 function formatCodexString(value: unknown): string | null {
