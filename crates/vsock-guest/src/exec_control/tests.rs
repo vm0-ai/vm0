@@ -979,6 +979,38 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
 }
 
 #[test]
+fn control_sink_failure_preserves_first_diagnostic() {
+    let sink = Arc::new(ControlSinkState::new());
+    let (stream, _peer) = UnixStream::pair().unwrap();
+    sink.connect(stream);
+    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
+        _ => panic!("sink should be connected"),
+    };
+
+    sink.fail("first failure".to_owned());
+    sink.fail("second failure".to_owned());
+
+    let error = match sink.wait_for_stream(request_deadline(5000)) {
+        Ok(_) => panic!("failed sink should reject future stream lookups"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        (ExecControlStatus::SinkError, "first failure".to_owned())
+    );
+
+    let error = match stream.lock_until(request_deadline(5000), &sink.active) {
+        Ok(_) => panic!("failed stream gate should preserve the first failure"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        ControlStreamLockError::SinkError(message) if message == "first failure"
+    ));
+}
+
+#[test]
 fn queued_control_request_is_not_delivered_after_close() {
     let sink = Arc::new(ControlSinkState::new());
     let (stream, mut peer) = UnixStream::pair().unwrap();

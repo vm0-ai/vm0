@@ -20,8 +20,8 @@
 //! `inner` and `ready` own connection-state changes and wake waiting forwarders.
 //! `active` is the operation-lifetime gate, so close/drop can stop queued or
 //! in-flight forwarding even when a connected stream guard is busy. The
-//! connected stream has a separate `locked` gate so waiters can keep their
-//! request deadlines and be woken by close/fail before taking the stream mutex.
+//! connected stream has a separate gate so waiters can keep their request
+//! deadlines and be woken by close/fail before taking the stream mutex.
 //! `pending` limits outstanding forwarding work; when it is full, new requests
 //! release their transient count and return `QueueFull`. `PendingControlSlot`
 //! releases reserved work. The shutdown stream clones let close/fail interrupt
@@ -63,9 +63,9 @@ pub(super) struct ConnectedControlSink {
 
 /// Shared connected stream plus a waitable serialization gate.
 ///
-/// `locked` is separate from `stream` so waiting forwarders can wait with their
-/// request deadline and can be woken by close/fail without contending on a busy
-/// stream mutex.
+/// `gate` is separate from `stream` so waiting forwarders can wait with their
+/// request deadline, observe terminal failure, and be woken by close/fail
+/// without contending on a busy stream mutex.
 pub(super) struct ControlStreamState {
     stream: Mutex<UnixStream>,
     gate: Mutex<ControlStreamGate>,
@@ -360,8 +360,8 @@ impl ControlStreamState {
                 .wait_timeout(gate, wait)
                 .unwrap_or_else(|e| e.into_inner());
             gate = next_gate;
-            // A timeout can race with unlock notification; re-check the locked
-            // flag unless the request deadline has actually elapsed.
+            // A timeout can race with gate notification; re-check the gate
+            // unless the request deadline has actually elapsed.
             if wait_result.timed_out() && duration_until(deadline).is_none() {
                 return Err(ControlStreamLockError::Timeout);
             }
