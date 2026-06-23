@@ -166,6 +166,13 @@ async function recordPreRunFailure(
     failureTime,
     shouldDisable,
   );
+  const triggerIsStillEligible =
+    trigger.scheduleType === "once"
+      ? eq(zeroWorkflowTriggers.id, trigger.id)
+      : and(
+          eq(zeroWorkflowTriggers.id, trigger.id),
+          eq(zeroWorkflowTriggers.enabled, true),
+        );
 
   await db
     .update(zeroWorkflowTriggers)
@@ -175,7 +182,7 @@ async function recordPreRunFailure(
       nextRunAt,
       updatedAt: failureTime,
     })
-    .where(eq(zeroWorkflowTriggers.id, trigger.id));
+    .where(triggerIsStillEligible);
   signal.throwIfAborted();
 
   if (shouldDisable) {
