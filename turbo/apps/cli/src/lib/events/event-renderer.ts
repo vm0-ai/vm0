@@ -90,11 +90,9 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
-        this.flush();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
-        this.flush();
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
@@ -197,6 +195,11 @@ export class EventRenderer {
     const input = (event.data.input as Record<string, unknown>) || {};
     const toolUseData: ToolUseData = { tool, input };
 
+    if (!toolUseId) {
+      this.renderToolUseOnly(toolUseData, prefix);
+      return;
+    }
+
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
     if (this.options.buffered !== false) {
@@ -238,6 +241,11 @@ export class EventRenderer {
     const toolUseId = String(event.data.toolUseId || "");
     const result = EventRenderer.formatDisplayValue(event.data.result);
     const isError = Boolean(event.data.isError);
+
+    if (!toolUseId) {
+      this.renderStandaloneToolResult({ result, isError }, prefix);
+      return;
+    }
 
     const pending = this.pendingToolUse.get(toolUseId);
 
