@@ -292,8 +292,9 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
     assert "Authorization" not in flow.request.headers
 
 
+@pytest.mark.parametrize("host_header", ["api.github.com:443", "api.github.com:000443"])
 async def test_accepts_equivalent_host_authority_default_https_port(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, host_header
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -302,7 +303,7 @@ async def test_accepts_equivalent_host_authority_default_https_port(
         host="203.0.113.10",
         sni="api.github.com",
         path="/repos",
-        request_headers=headers(("Host", "api.github.com:443")),
+        request_headers=headers(("Host", host_header)),
     )
 
     with (
@@ -844,6 +845,7 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
             "https://api.github.com/repos",
         ),
         (443, "api.github.com:" + ("9" * 128), "invalid_authority", "https://api.github.com/repos"),
+        (443, "api.github.com:00065536", "invalid_authority", "https://api.github.com/repos"),
         (443, "api.github.com..", "invalid_authority", "https://api.github.com/repos"),
         (443, "api%2egithub.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "b%C3%BCcher.example", "invalid_authority", "https://api.github.com/repos"),
