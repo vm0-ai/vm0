@@ -313,6 +313,23 @@ def test_header_auth_invalid_content_hash_header_raises_signing_error(
         )
 
 
+@pytest.mark.parametrize("header_value", ["a" * 64 + "\n", "UNSIGNED-PAYLOAD\r"])
+def test_header_auth_control_content_hash_header_raises_signing_error(
+    header_value: str,
+) -> None:
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match="AWS content hash header contains invalid text",
+    ):
+        sign_request(
+            method="POST",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_content_hash(header_value),
+            body=b"hello",
+            credentials=_credentials(),
+        )
+
+
 def test_header_auth_streaming_content_hash_header_raises_signing_error() -> None:
     with pytest.raises(
         AwsSigV4SigningError,
@@ -329,7 +346,7 @@ def test_header_auth_streaming_content_hash_header_raises_signing_error() -> Non
         )
 
 
-@pytest.mark.parametrize("header_value", ["a" * 64, "UNSIGNED-PAYLOAD"])
+@pytest.mark.parametrize("header_value", ["a" * 64, "UNSIGNED-PAYLOAD", " \t" + "a" * 64 + "\t "])
 def test_header_auth_supported_content_hash_header_signs(header_value: str) -> None:
     _url, headers = sign_request(
         method="POST",
