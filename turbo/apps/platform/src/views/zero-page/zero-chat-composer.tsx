@@ -2074,15 +2074,11 @@ function themedPreviewPresentationHtml(params: {
   readonly draft: PresentationEditDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
-  const html = previewPresentationHtml({
+  return previewPresentationHtml({
     activeSlideId: params.activeSlideId,
+    additionalHeadStyle: presentationTemplateThemeCss(params.theme),
     html: params.draft.html,
   });
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const style = doc.createElement("style");
-  style.textContent = presentationTemplateThemeCss(params.theme);
-  doc.head.append(style);
-  return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }
 
 async function loadPresentationTemplateHtmlPreview(params: {
@@ -2911,17 +2907,10 @@ function TemplatePreview({
         cache.activeIndexes.delete(item.embedUrl);
         cache.activeTokens.delete(item.embedUrl);
         setHover(null);
-        const cachedDraft = cache.drafts.get(item.embedUrl);
-        if (cachedDraft !== undefined) {
-          const previewState = createPresentationTemplateHtmlPreviewState({
-            draft: cachedDraft,
-            index: 0,
-            item,
-            previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
-            theme: previewTheme,
-          });
-          setHtmlPreview(previewState);
-        }
+        revokePresentationTemplateHtmlPreviewUrl(
+          previousActiveFrameUrlForImmediateRevocation,
+        );
+        setHtmlPreview(null);
       }}
     >
       <TemplatePreviewFrames

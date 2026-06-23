@@ -1739,7 +1739,16 @@ describe("chat composer templates", () => {
           "Slide two",
         );
       });
+      const createObjectUrlCountBeforeLeave = createObjectURL.mock.calls.length;
       fireEvent.mouseLeave(preview);
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId(`${template.title} card HTML preview`),
+        ).not.toBeInTheDocument();
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(
+        createObjectUrlCountBeforeLeave,
+      );
 
       await fill(
         screen.getByLabelText("Search templates"),
