@@ -209,6 +209,10 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
     )
     flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
 
+    # The billing payload cannot prove this negative side effect: the decoder
+    # fails closed, so a regression that decodes non-refinement request bodies
+    # could still emit `user.read`. Keep this addon-owned call-site spy to guard
+    # the resource boundary fixed in #15705/#17256.
     with patch(
         "usage.providers.connectors.x.billing_body.decode_request_body_for_billing"
     ) as decode_request_body:
