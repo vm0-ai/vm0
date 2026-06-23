@@ -276,6 +276,7 @@ jobs:
           HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ matrix.id == 'arm64' && secrets.AWS_METAL_RUNNER_HOSTS || matrix.id == 'x86_64' && secrets.X86_64_METAL_RUNNER_HOSTS || '' }}
+          EXPECTED_REMOTE_ARCH: ${{ matrix.unameM }}
           MANIFEST_PATH: runner-image-manifest/manifest.json
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
