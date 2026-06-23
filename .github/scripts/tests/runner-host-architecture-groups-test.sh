@@ -74,6 +74,9 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' X86_64_METAL_RUNNER_H
 assert_compact_json "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
+out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
+[ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
+
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'
