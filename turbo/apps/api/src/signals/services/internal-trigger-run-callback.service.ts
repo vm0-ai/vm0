@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { automationTriggers } from "@vm0/db/schema/automation";
-import { eq } from "drizzle-orm";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { and, eq, exists } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -96,7 +96,23 @@ export async function handleTriggerInternalCallback(
       nextRunAt,
       updatedAt: completedAt,
     })
-    .where(eq(automationTriggers.id, payload.data.triggerId));
+    .where(
+      and(
+        eq(automationTriggers.id, payload.data.triggerId),
+        eq(automationTriggers.enabled, true),
+        exists(
+          db
+            .select({ id: automations.id })
+            .from(automations)
+            .where(
+              and(
+                eq(automations.id, automationTriggers.automationId),
+                eq(automations.enabled, true),
+              ),
+            ),
+        ),
+      ),
+    );
   signal?.throwIfAborted();
 
   return { success: true };
