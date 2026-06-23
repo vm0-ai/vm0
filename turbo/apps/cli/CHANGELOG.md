@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.204.3](https://github.com/vm0-ai/vm0/compare/cli-v9.204.2...cli-v9.204.3) (2026-06-23)
+
+
+### Refactoring
+
+* move cli firewall commands off eager registry ([#18714](https://github.com/vm0-ai/vm0/issues/18714)) ([fce526b](https://github.com/vm0-ai/vm0/commit/fce526be235f8585c3f4e1d48ef6c7320fdf7394))
+
 ## [9.204.2](https://github.com/vm0-ai/vm0/compare/cli-v9.204.1...cli-v9.204.2) (2026-06-23)
 
 
