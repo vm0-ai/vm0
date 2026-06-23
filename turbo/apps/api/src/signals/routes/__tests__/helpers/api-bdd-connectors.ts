@@ -20,11 +20,14 @@ import {
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
   type PatchCustomConnectorBody,
+  type SaveCustomConnectorProposalBody,
+  type SaveCustomConnectorProposalResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -1565,6 +1568,31 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404 | 500)[] = [204],
     ): Promise<void> {
       await api.requestDeleteCustomConnector(actor, connectorId, statuses);
+    },
+
+    async requestSaveCustomConnectorProposal(
+      actor: ApiTestUser | null,
+      body: SaveCustomConnectorProposalBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorProposalContract);
+      return await accept(
+        client.save({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async saveCustomConnectorProposal(
+      actor: ApiTestUser,
+      body: SaveCustomConnectorProposalBody,
+    ): Promise<SaveCustomConnectorProposalResponse> {
+      const response = await api.requestSaveCustomConnectorProposal(
+        actor,
+        body,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
     },
 
     async requestSetCustomConnectorSecret(

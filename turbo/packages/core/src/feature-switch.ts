@@ -311,6 +311,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CustomConnectorProposals]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable custom connector proposal cards, multi-field custom connector definitions, and agent-driven custom connector setup.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

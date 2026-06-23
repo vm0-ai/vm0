@@ -10,6 +10,11 @@ import {
   zeroConnectorsSearchContract,
   type ConnectorSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroCustomConnectorByIdContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -97,4 +102,35 @@ export async function connectZeroConnectorManualGrant(
   }
 
   handleError(result, `Failed to connect connector "${type}"`);
+}
+
+export async function listZeroCustomConnectors(): Promise<
+  CustomConnectorResponse[]
+> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorsContract, config);
+
+  const result = await client.list({ headers: {} });
+  if (result.status === 200) {
+    return result.body.connectors;
+  }
+
+  handleError(result, "Failed to list custom connectors");
+}
+
+export async function getZeroCustomConnector(
+  id: string,
+): Promise<CustomConnectorResponse | null> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorByIdContract, config);
+
+  const result = await client.get({ params: { id }, headers: {} });
+  if (result.status === 200) {
+    return result.body;
+  }
+  if (result.status === 404) {
+    return null;
+  }
+
+  handleError(result, `Failed to get custom connector "${id}"`);
 }

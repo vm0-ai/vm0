@@ -8,6 +8,25 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+export interface OrgCustomConnectorField {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: "secret" | "variable";
+  readonly required: boolean;
+  readonly description?: string;
+}
+
+export interface OrgCustomConnectorHeaderInjection {
+  readonly name: string;
+  readonly valueTemplate: string;
+}
+
+export interface OrgCustomConnectorQueryInjection {
+  readonly name: string;
+  readonly valueTemplate: string;
+}
 
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
@@ -27,6 +46,22 @@ export const orgCustomConnectors = pgTable(
     prefixes: jsonb("prefixes").notNull().$type<string[]>(),
     headerName: varchar("header_name", { length: 128 }).notNull(),
     headerTemplate: text("header_template").notNull(),
+    prefixTemplates: jsonb("prefix_templates")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    fields: jsonb("fields")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<OrgCustomConnectorField[]>(),
+    headerInjections: jsonb("header_injections")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<OrgCustomConnectorHeaderInjection[]>(),
+    queryInjections: jsonb("query_injections")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<OrgCustomConnectorQueryInjection[]>(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

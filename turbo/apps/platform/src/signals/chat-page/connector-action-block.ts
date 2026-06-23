@@ -3,6 +3,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -14,6 +15,7 @@ import {
 } from "../zero-page/settings/connectors.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
 import { agentConnectorAuthorizationsReload$ } from "../zero-page/agent-connector-authorizations.ts";
+import { jsonParseBase64UrlOr } from "../utils.ts";
 
 export interface ConnectorActionDescriptor {
   connectorType: ConnectorType;
@@ -34,6 +36,17 @@ export type ConnectorActionBlock = ConnectorActionDescriptor &
     type: "connector-action";
     id: string;
   };
+
+export interface CustomConnectorActionDescriptor {
+  displayName: string;
+  agentId: string | null;
+  originalUrl: string;
+}
+
+export type CustomConnectorActionBlock = CustomConnectorActionDescriptor & {
+  type: "custom-connector-action";
+  id: string;
+};
 
 type ActiveChatConnectorAction = ConnectorActionDescriptor & {
   markComplete$: Command<void, []>;
@@ -100,6 +113,46 @@ export function parseConnectorAuthorizeUrl(
     connectorType,
     agentId,
     originalUrl: value,
+  };
+}
+
+export function parseCustomConnectorProposalUrl(
+  value: string,
+): CustomConnectorActionDescriptor | null {
+  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
+    return null;
+  }
+  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
+  if (url.pathname !== "/connectors/custom/proposal") {
+    return null;
+  }
+  const payload = url.searchParams.get("p");
+  if (!payload) {
+    return null;
+  }
+  const decoded = jsonParseBase64UrlOr<unknown | null>(payload, null);
+  if (decoded === null) {
+    return null;
+  }
+  const parsed = customConnectorProposalSchema.safeParse(decoded);
+  if (!parsed.success) {
+    return null;
+  }
+  return {
+    displayName: parsed.data.displayName,
+    agentId: url.searchParams.get("agentId"),
+    originalUrl: value,
+  };
+}
+
+export function createCustomConnectorActionBlock(
+  id: string,
+  descriptor: CustomConnectorActionDescriptor,
+): CustomConnectorActionBlock {
+  return {
+    type: "custom-connector-action",
+    id,
+    ...descriptor,
   };
 }
 

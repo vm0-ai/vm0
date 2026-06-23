@@ -77,6 +77,7 @@ import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
+import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
@@ -165,6 +166,7 @@ export const schema = {
   ...chatMessageSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
+  ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
