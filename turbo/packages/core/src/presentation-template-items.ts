@@ -38,43 +38,43 @@ export const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES = [
 const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES = {
   "playful-launch-presentation": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e244af58-76e0-4728-b560-5712f91655f8/template-card-presentation-playful-launch-presentation-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fdd4c9f-a935-494b-9536-c897951928e4/template-card-presentation-playful-launch-presentation-prism-card-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2a11bbb-d053-44a3-8054-7d807230a7b5/template-card-presentation-playful-launch-presentation-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23c9aaea-459a-4cbb-a32d-cc2d56104479/template-card-presentation-playful-launch-presentation-carnival-card-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6a245031-70b1-470b-aa1f-14cc40e87e6e/template-card-presentation-playful-launch-presentation-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b18715c6-cb7c-4b18-8592-95d85e952be9/template-card-presentation-playful-launch-presentation-pop-art-card-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/96c77a65-d0aa-4e2e-a1d1-b47c2205ff8f/template-card-presentation-playful-launch-presentation-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4cdf7311-1a9b-42ce-a636-d760e2e1371c/template-card-presentation-playful-launch-presentation-warm-sand-card-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6ba834f5-4568-45af-a3b0-08fc457017c5/template-card-presentation-playful-launch-presentation-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6340797e-1c29-48ba-85ed-1206c2261c01/template-card-presentation-playful-launch-presentation-bauhaus-primary-card-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32804737-fa32-4afc-8bf6-33becc573550/template-card-presentation-playful-launch-presentation-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee42f55e-cd52-4eb3-8def-98c67b5345f2/template-card-presentation-playful-launch-presentation-nordic-frost-card-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/52268c0c-b5d6-4d12-a46c-f0b9c9b95ddc/template-card-presentation-playful-launch-presentation-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7c6035d7-0bc2-4a2e-9b1d-b1281901c4d2/template-card-presentation-playful-launch-presentation-forest-editorial-card-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d1b177d9-abde-49d6-a752-6da53db9eb60/template-card-presentation-playful-launch-presentation-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0b0c614d-9935-4da2-b77d-f2f6731143fc/template-card-presentation-playful-launch-presentation-coral-studio-card-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6bbba149-e837-410e-aff4-ff096cbdf38b/template-card-presentation-playful-launch-presentation-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9e3e1c1-9cd5-453a-bc17-d95bb863277e/template-card-presentation-playful-launch-presentation-slate-corporate-card-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44b6506b-b831-40e2-991e-6824a3edca20/template-card-presentation-playful-launch-presentation-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af9fdc64-337e-448a-9777-875e6b014ef6/template-card-presentation-playful-launch-presentation-terracotta-clay-card-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a3322737-ddc0-402b-bbc3-9586e4d42ae6/template-card-presentation-playful-launch-presentation-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c2c7382-39ff-4894-b08f-1d4a4c57a1b1/template-card-presentation-playful-launch-presentation-berry-pop-card-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5db92c6f-cd25-4772-aad9-af79d7d7efbe/template-card-presentation-playful-launch-presentation-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/349a62cf-e185-4ee8-ae97-4e7bee04d6e1/template-card-presentation-playful-launch-presentation-citrus-fresh-card-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2f4d976-0cbf-471f-a5e6-192f32b9fa60/template-card-presentation-playful-launch-presentation-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90f44e0a-f4e0-4a67-b11f-229c543d3496/template-card-presentation-playful-launch-presentation-mauve-dusk-card-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fec7f863-13a3-4b55-94b4-719d49c6e193/template-card-presentation-playful-launch-presentation-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/126fa883-1d1d-4ee1-8b2b-8bdd9ef3d192/template-card-presentation-playful-launch-presentation-mono-ink-card-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3e9ce235-fe16-4179-8150-df419bd90b61/template-card-presentation-playful-launch-presentation-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41044d22-7e19-465f-a299-c61038c5af32/template-card-presentation-playful-launch-presentation-sunset-maroon-card-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2cf379b-d461-4c74-8bdf-884f947e7bbe/template-card-presentation-playful-launch-presentation-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aeaf37fa-8046-49d6-96f7-14791c73f8a6/template-card-presentation-playful-launch-presentation-mint-tech-card-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c17f4012-f71f-476f-b71c-b37398f6e599/template-card-presentation-playful-launch-presentation-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9432a0c8-5767-4b44-ba80-c27385648823/template-card-presentation-playful-launch-presentation-midnight-mono-card-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aed78cc2-a43d-4f9d-ace9-02b418c6f995/template-card-presentation-playful-launch-presentation-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0b690c81-7cc1-4123-9229-3d2ea2ae1d78/template-card-presentation-playful-launch-presentation-ocean-deep-card-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c1ceb27c-7287-4c5f-8caa-2ba247eaba04/template-card-presentation-playful-launch-presentation-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22af50ce-d3ac-4f01-9270-8f696441ddb9/template-card-presentation-playful-launch-presentation-gold-luxe-card-viewport-480x270.jpg",
   },
   "botane-organic-deck": {
     prism:

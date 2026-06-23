@@ -178,8 +178,6 @@ import {
   setIllustrationVariantIndex$,
   templateCardHover$,
   setTemplateCardHover$,
-  templateCardDefaultHtmlPreviews$,
-  setTemplateCardDefaultHtmlPreview$,
   templateCardLoadedHtmlFrameUrls$,
   setTemplateCardLoadedHtmlFrameUrl$,
   templateCardThemeIdBySlug$,
@@ -382,11 +380,6 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
-const PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_CONCURRENCY = 2;
-const PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_IDLE_TIMEOUT_MS = 250;
-const PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_ROOT_MARGIN = "960px 0px";
-const PRESENTATION_TEMPLATE_HTML_DRAFT_PREWARM_CONCURRENCY = 2;
-const PRESENTATION_TEMPLATE_HTML_DRAFT_PREWARM_COUNT = 6;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -1427,61 +1420,6 @@ function scheduleIdleTemplatePreviewPrewarm(
   }
 }
 
-function presentationTemplateHtmlDraftIdlePrewarmKeys(): Set<string> {
-  const cacheKey = "vm0PresentationTemplateHtmlDraftIdlePrewarmKeys";
-  const existing = Reflect.get(globalThis, cacheKey) as Set<string> | undefined;
-  if (existing !== undefined) {
-    return existing;
-  }
-  const keys = new Set<string>();
-  Reflect.set(globalThis, cacheKey, keys);
-  return keys;
-}
-
-function presentationTemplateHtmlDraftIdlePrewarmKey(
-  items: readonly PresentationTemplateItem[],
-): string {
-  return items
-    .slice(0, PRESENTATION_TEMPLATE_HTML_DRAFT_PREWARM_COUNT)
-    .map((item) => {
-      return item.embedUrl;
-    })
-    .join("|");
-}
-
-function scheduleIdlePresentationTemplateHtmlDraftPrewarm(
-  node: HTMLElement | null,
-  items: readonly PresentationTemplateItem[],
-): void {
-  if (node === null || typeof window === "undefined" || items.length === 0) {
-    return;
-  }
-
-  const keys = presentationTemplateHtmlDraftIdlePrewarmKeys();
-  const key = presentationTemplateHtmlDraftIdlePrewarmKey(items);
-  if (keys.has(key)) {
-    return;
-  }
-  keys.add(key);
-
-  const prewarm = () => {
-    if (!node.isConnected) {
-      keys.delete(key);
-      return;
-    }
-    prewarmPresentationTemplateHtmlDrafts(items);
-  };
-
-  if (window.requestIdleCallback !== undefined) {
-    window.requestIdleCallback(prewarm, {
-      timeout: TEMPLATE_IDLE_PREWARM_TIMEOUT_MS,
-    });
-    return;
-  }
-
-  window.setTimeout(prewarm, 0);
-}
-
 function presentationPreviewImageUrlsForItems(
   items: readonly PresentationTemplateItem[],
   themeIdBySlug: Readonly<Record<string, string>> = {},
@@ -2174,15 +2112,9 @@ interface PresentationTemplateHtmlPreviewCache {
   readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
   readonly activeTokens: Map<string, symbol>;
   readonly activeIndexes: Map<string, number>;
-  readonly defaultLoads: Set<string>;
-  defaultLoadQueue: (() => void)[];
-  defaultLoadsInFlight: number;
   readonly detailTokens: Map<string, symbol>;
-  observedDefaultLoadKeysByNode: WeakMap<HTMLElement, Set<string>>;
   pendingSlideAnimationFrames: Map<string, number>;
   pendingSlideIndexes: Map<string, number>;
-  prewarmedDrafts: Set<string>;
-  queuedDefaultLoads: Set<string>;
 }
 
 function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
@@ -2191,236 +2123,23 @@ function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreview
     | PresentationTemplateHtmlPreviewCache
     | undefined;
   if (existingCache !== undefined) {
-    existingCache.defaultLoadQueue ??= [];
-    existingCache.defaultLoadsInFlight ??= 0;
-    existingCache.observedDefaultLoadKeysByNode ??= new WeakMap<
-      HTMLElement,
-      Set<string>
-    >();
     existingCache.pendingSlideAnimationFrames ??= new Map<string, number>();
     existingCache.pendingSlideIndexes ??= new Map<string, number>();
-    existingCache.prewarmedDrafts ??= new Set<string>();
-    existingCache.queuedDefaultLoads ??= new Set<string>();
     return existingCache;
   }
 
   const cache: PresentationTemplateHtmlPreviewCache = {
     activeIndexes: new Map<string, number>(),
     activeTokens: new Map<string, symbol>(),
-    defaultLoads: new Set<string>(),
-    defaultLoadQueue: [],
-    defaultLoadsInFlight: 0,
     detailTokens: new Map<string, symbol>(),
     drafts: new Map<string, PresentationEditDraft>(),
     failed: new Set<string>(),
-    observedDefaultLoadKeysByNode: new WeakMap<HTMLElement, Set<string>>(),
     pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
     pendingSlideAnimationFrames: new Map<string, number>(),
     pendingSlideIndexes: new Map<string, number>(),
-    prewarmedDrafts: new Set<string>(),
-    queuedDefaultLoads: new Set<string>(),
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
-}
-
-async function prewarmPresentationTemplateHtmlDraft(
-  item: PresentationTemplateItem,
-): Promise<void> {
-  const cache = presentationTemplateHtmlPreviewCache();
-  if (
-    cache.drafts.has(item.embedUrl) ||
-    cache.failed.has(item.embedUrl) ||
-    cache.pendingLoads.has(item.embedUrl)
-  ) {
-    return;
-  }
-
-  const pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-  cache.pendingLoads.set(item.embedUrl, pendingLoad);
-  const result = await settle(pendingLoad);
-  if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-    cache.pendingLoads.delete(item.embedUrl);
-  }
-  if (!result.ok || result.value === null) {
-    cache.failed.add(item.embedUrl);
-    return;
-  }
-  cache.drafts.set(item.embedUrl, result.value);
-}
-
-function prewarmPresentationTemplateHtmlDrafts(
-  items: readonly PresentationTemplateItem[],
-  count = PRESENTATION_TEMPLATE_HTML_DRAFT_PREWARM_COUNT,
-): void {
-  const cache = presentationTemplateHtmlPreviewCache();
-  const candidates: PresentationTemplateItem[] = [];
-  for (const item of items) {
-    if (candidates.length >= count) {
-      break;
-    }
-    if (
-      cache.drafts.has(item.embedUrl) ||
-      cache.failed.has(item.embedUrl) ||
-      cache.pendingLoads.has(item.embedUrl) ||
-      cache.prewarmedDrafts.has(item.embedUrl)
-    ) {
-      continue;
-    }
-    cache.prewarmedDrafts.add(item.embedUrl);
-    candidates.push(item);
-  }
-  if (candidates.length === 0) {
-    return;
-  }
-
-  const runWorker = async (): Promise<void> => {
-    const item = candidates.shift();
-    if (item === undefined) {
-      return;
-    }
-    await prewarmPresentationTemplateHtmlDraft(item);
-    await runWorker();
-  };
-  const workers = Array.from(
-    {
-      length: Math.min(
-        PRESENTATION_TEMPLATE_HTML_DRAFT_PREWARM_CONCURRENCY,
-        candidates.length,
-      ),
-    },
-    runWorker,
-  );
-  detach(
-    (async () => {
-      await Promise.all(workers);
-    })(),
-    Reason.DomCallback,
-  );
-}
-
-function runNextPresentationTemplateCardHtmlPreviewLoad(): void {
-  const cache = presentationTemplateHtmlPreviewCache();
-  while (
-    cache.defaultLoadsInFlight <
-    PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_CONCURRENCY
-  ) {
-    const load = cache.defaultLoadQueue.shift();
-    if (load === undefined) {
-      return;
-    }
-    cache.defaultLoadsInFlight += 1;
-    load();
-  }
-}
-
-function enqueuePresentationTemplateCardHtmlPreviewLoad(params: {
-  readonly key: string;
-  readonly load: () => Promise<boolean>;
-}): void {
-  const cache = presentationTemplateHtmlPreviewCache();
-  if (
-    cache.defaultLoads.has(params.key) ||
-    cache.queuedDefaultLoads.has(params.key)
-  ) {
-    return;
-  }
-  cache.queuedDefaultLoads.add(params.key);
-  cache.defaultLoadQueue.push(() => {
-    cache.queuedDefaultLoads.delete(params.key);
-    cache.defaultLoads.add(params.key);
-    detach(
-      (async () => {
-        const completed = await params.load();
-        if (!completed) {
-          cache.defaultLoads.delete(params.key);
-        }
-        cache.defaultLoadsInFlight = Math.max(
-          0,
-          cache.defaultLoadsInFlight - 1,
-        );
-        runNextPresentationTemplateCardHtmlPreviewLoad();
-      })(),
-      Reason.DomCallback,
-    );
-  });
-  window.setTimeout(runNextPresentationTemplateCardHtmlPreviewLoad, 0);
-}
-
-function scheduleIdlePresentationTemplateCardHtmlPreviewLoad(params: {
-  readonly key: string;
-  readonly load: () => Promise<boolean>;
-  readonly node: HTMLElement;
-}): void {
-  const run = () => {
-    if (!params.node.isConnected) {
-      return;
-    }
-    enqueuePresentationTemplateCardHtmlPreviewLoad({
-      key: params.key,
-      load: params.load,
-    });
-  };
-
-  if (window.requestIdleCallback !== undefined) {
-    window.requestIdleCallback(run, {
-      timeout: PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_IDLE_TIMEOUT_MS,
-    });
-    return;
-  }
-
-  window.setTimeout(
-    run,
-    PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_IDLE_TIMEOUT_MS,
-  );
-}
-
-function observePresentationTemplateCardHtmlPreviewLoad(params: {
-  readonly key: string;
-  readonly load: () => Promise<boolean>;
-  readonly node: HTMLElement;
-}): void {
-  const cache = presentationTemplateHtmlPreviewCache();
-  if (
-    cache.defaultLoads.has(params.key) ||
-    cache.queuedDefaultLoads.has(params.key)
-  ) {
-    return;
-  }
-
-  const observedKeys =
-    cache.observedDefaultLoadKeysByNode.get(params.node) ?? new Set<string>();
-  if (observedKeys.has(params.key)) {
-    return;
-  }
-  observedKeys.add(params.key);
-  cache.observedDefaultLoadKeysByNode.set(params.node, observedKeys);
-
-  if (window.IntersectionObserver === undefined) {
-    scheduleIdlePresentationTemplateCardHtmlPreviewLoad(params);
-    return;
-  }
-
-  const root = params.node.closest<HTMLElement>(
-    PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-  );
-  const observer = new IntersectionObserver(
-    (entries) => {
-      const visible = entries.some((entry) => {
-        return entry.isIntersecting;
-      });
-      if (!visible) {
-        return;
-      }
-      observer.disconnect();
-      scheduleIdlePresentationTemplateCardHtmlPreviewLoad(params);
-    },
-    {
-      root,
-      rootMargin: PRESENTATION_TEMPLATE_CARD_HTML_PREVIEW_ROOT_MARGIN,
-    },
-  );
-  observer.observe(params.node);
 }
 
 function schedulePresentationTemplateCardSlideIndex(params: {
@@ -2826,19 +2545,6 @@ function createPresentationTemplateHtmlPreviewState(params: {
   };
 }
 
-function visiblePresentationTemplateCardHtmlPreview(params: {
-  readonly active: TemplateCardHtmlPreviewState | null;
-  readonly fallback: TemplateCardHtmlPreviewState | null;
-}): TemplateCardHtmlPreviewState | null {
-  if (params.active === null) {
-    return params.fallback;
-  }
-  if (params.active.frameUrl !== null || params.fallback === null) {
-    return params.active;
-  }
-  return params.fallback;
-}
-
 function presentationTemplateCardFrameUrls(params: {
   readonly currentFrameUrl: string | null;
   readonly loadedFrameUrl: string | null;
@@ -2864,14 +2570,12 @@ function presentationTemplateCardFrameUrls(params: {
 }
 
 function revokeLoadedTemplateCardFrameAfterReplacement(params: {
-  readonly defaultFrameUrl: string | null;
   readonly frameUrl: string;
   readonly previousLoadedFrameUrl: string | null;
 }): void {
   if (
     params.previousLoadedFrameUrl === null ||
-    params.previousLoadedFrameUrl === params.frameUrl ||
-    params.previousLoadedFrameUrl === params.defaultFrameUrl
+    params.previousLoadedFrameUrl === params.frameUrl
   ) {
     return;
   }
@@ -2880,12 +2584,10 @@ function revokeLoadedTemplateCardFrameAfterReplacement(params: {
 
 function presentationTemplateCardActiveFrameUrlForImmediateRevocation(params: {
   readonly activeFrameUrl: string | null;
-  readonly defaultFrameUrl: string | null;
   readonly loadedFrameUrl: string | null;
 }): string | null {
   if (
     params.activeFrameUrl === null ||
-    params.activeFrameUrl === params.defaultFrameUrl ||
     params.activeFrameUrl === params.loadedFrameUrl
   ) {
     return null;
@@ -2961,7 +2663,7 @@ function TemplatePreviewFrames({
             }
             src={frameUrl}
             sandbox="allow-same-origin"
-            className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+            className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
             onLoad={(event) => {
               revealTemplatePreviewFrameAfterPaint({
                 frame: event.currentTarget,
@@ -2995,8 +2697,6 @@ function TemplatePreview({
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
-  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
-  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
   const setThemePopoverOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
@@ -3017,26 +2717,18 @@ function TemplatePreview({
     hoverSlideIndex,
     previewTheme,
   );
-  const defaultHtmlPreviewKey = `card:${item.embedUrl}:${previewTheme.id}:0`;
-  const defaultHtmlPreview = defaultHtmlPreviews[defaultHtmlPreviewKey] ?? null;
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug &&
     htmlPreview.embedUrl === item.embedUrl &&
     htmlPreview.themeId === previewTheme.id
       ? htmlPreview
       : null;
-  const visibleHtmlPreview = visiblePresentationTemplateCardHtmlPreview({
-    active: activeHtmlPreview,
-    fallback: defaultHtmlPreview,
-  });
   const loadedHtmlFrameKey = `card:${item.embedUrl}:${previewTheme.id}:loaded`;
-  const defaultFrameUrl = defaultHtmlPreview?.frameUrl ?? null;
-  const currentFrameUrl = visibleHtmlPreview?.frameUrl ?? null;
+  const currentFrameUrl = activeHtmlPreview?.frameUrl ?? null;
   const loadedFrameUrl = loadedHtmlFrameUrls[loadedHtmlFrameKey] ?? null;
   const previousActiveFrameUrlForImmediateRevocation =
     presentationTemplateCardActiveFrameUrlForImmediateRevocation({
       activeFrameUrl: activeHtmlPreview?.frameUrl ?? null,
-      defaultFrameUrl,
       loadedFrameUrl,
     });
   const { overlayFrameUrl, primaryFrameUrl } =
@@ -3044,7 +2736,7 @@ function TemplatePreview({
       currentFrameUrl,
       loadedFrameUrl,
     });
-  const scrubSlideCount = visibleHtmlPreview?.slideCount ?? fallbackSlideCount;
+  const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
   const currentPreviewSlideIndex = () => {
     const cache = presentationTemplateHtmlPreviewCache();
     const index =
@@ -3058,7 +2750,6 @@ function TemplatePreview({
   };
   const handleFrameLoad = (frameUrl: string) => {
     revokeLoadedTemplateCardFrameAfterReplacement({
-      defaultFrameUrl,
       frameUrl,
       previousLoadedFrameUrl: loadedFrameUrl,
     });
@@ -3151,87 +2842,6 @@ function TemplatePreview({
     );
   };
 
-  const loadDefaultHtmlPreview = async (
-    node: HTMLDivElement,
-  ): Promise<boolean> => {
-    const cache = presentationTemplateHtmlPreviewCache();
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      if (!node.isConnected) {
-        return false;
-      }
-      const previewState = createPresentationTemplateHtmlPreviewState({
-        draft: cachedDraft,
-        index: 0,
-        item,
-        previousFrameUrl: defaultHtmlPreview?.frameUrl ?? null,
-        theme: previewTheme,
-      });
-      if (previewState !== null) {
-        setDefaultHtmlPreview(defaultHtmlPreviewKey, previewState);
-      }
-      return true;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      if (!node.isConnected) {
-        return false;
-      }
-      setDefaultHtmlPreview(defaultHtmlPreviewKey, {
-        slug: item.slug,
-        embedUrl: item.embedUrl,
-        themeId: previewTheme.id,
-        loading: false,
-        failed: true,
-        frameUrl: null,
-        slideCount: fallbackSlideCount,
-      });
-      return true;
-    }
-
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-
-    const result = await settle(pendingLoad);
-    if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-      cache.pendingLoads.delete(item.embedUrl);
-    }
-
-    if (!node.isConnected) {
-      return false;
-    }
-
-    if (!result.ok || result.value === null) {
-      cache.failed.add(item.embedUrl);
-      setDefaultHtmlPreview(defaultHtmlPreviewKey, {
-        slug: item.slug,
-        embedUrl: item.embedUrl,
-        themeId: previewTheme.id,
-        loading: false,
-        failed: true,
-        frameUrl: null,
-        slideCount: fallbackSlideCount,
-      });
-      return true;
-    }
-
-    cache.drafts.set(item.embedUrl, result.value);
-    const previewState = createPresentationTemplateHtmlPreviewState({
-      draft: result.value,
-      index: 0,
-      item,
-      previousFrameUrl: defaultHtmlPreview?.frameUrl ?? null,
-      theme: previewTheme,
-    });
-    if (previewState !== null) {
-      setDefaultHtmlPreview(defaultHtmlPreviewKey, previewState);
-    }
-    return true;
-  };
-
   const applySlideIndex = (index: number) => {
     const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
       item.embedUrl,
@@ -3281,22 +2891,8 @@ function TemplatePreview({
     event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
   };
 
-  const observeDefaultHtmlPreviewLoad = (node: HTMLDivElement | null) => {
-    if (node === null || defaultHtmlPreview !== null) {
-      return;
-    }
-    observePresentationTemplateCardHtmlPreviewLoad({
-      key: defaultHtmlPreviewKey,
-      load: async () => {
-        return await loadDefaultHtmlPreview(node);
-      },
-      node,
-    });
-  };
-
   return (
     <div
-      ref={observeDefaultHtmlPreviewLoad}
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         cancelPresentationTemplateCardSlideIndex(item.embedUrl);
@@ -3333,7 +2929,7 @@ function TemplatePreview({
     >
       <TemplatePreviewFrames
         fallbackImageUrl={fallbackImageUrl}
-        loading={visibleHtmlPreview?.loading === true}
+        loading={activeHtmlPreview?.loading === true}
         onFrameLoad={handleFrameLoad}
         overlayFrameUrl={overlayFrameUrl}
         primaryFrameUrl={primaryFrameUrl}
@@ -3622,7 +3218,7 @@ function TemplatePreviewPage({
               data-testid={`${item.title} detail HTML preview`}
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
               onLoad={(event) => {
                 const frameUrl = visibleDetailPreview?.frameUrl;
                 if (!frameUrl) {
@@ -5221,15 +4817,11 @@ function SelectedPresentationTemplateChipPreview({
   item: PresentationTemplateItem;
 }) {
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
-  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const selectedTheme = findPresentationTemplateTheme(
     colorSystemId?.replace("color-system:", "") ??
       themeIdBySlug[item.slug] ??
       defaultPresentationTemplateThemeId(item),
   );
-  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
-  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
   const fallbackImageUrl = presentationTemplateCardSlideImage(
     item,
     0,
@@ -5237,71 +4829,8 @@ function SelectedPresentationTemplateChipPreview({
     SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
   );
 
-  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
-    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
-      return;
-    }
-
-    const cache = presentationTemplateHtmlPreviewCache();
-    const setChipPreview = (draft: PresentationEditDraft) => {
-      if (!node.isConnected) {
-        return;
-      }
-      const previewState = createPresentationTemplateHtmlPreviewState({
-        draft,
-        index: 0,
-        item,
-        previousFrameUrl: null,
-        theme: selectedTheme,
-      });
-      if (previewState !== null) {
-        setDefaultHtmlPreview(previewKey, previewState);
-      }
-    };
-
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setChipPreview(cachedDraft);
-      return;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      return;
-    }
-
-    cache.defaultLoads.add(previewKey);
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-    detach(
-      (async () => {
-        const result = await settle(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
-        if (!result.ok || result.value === null) {
-          cache.failed.add(item.embedUrl);
-          return;
-        }
-        cache.drafts.set(item.embedUrl, result.value);
-        setChipPreview(result.value);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  return htmlPreview?.frameUrl ? (
-    <iframe
-      title={`${item.title} selected template preview`}
-      src={htmlPreview.frameUrl}
-      sandbox="allow-same-origin"
-      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
-    />
-  ) : (
+  return (
     <img
-      ref={loadChipHtmlPreviewAfterMount}
       src={fallbackImageUrl}
       alt=""
       className="h-full w-full object-cover"
@@ -5535,9 +5064,6 @@ function TemplatePickerButton({
       }),
       templatePreviewPrewarmImageCountForCategory(selectedCategory),
     );
-    if (selectedCategory === "slides" && hasPptTab) {
-      prewarmPresentationTemplateHtmlDrafts(presentationItems);
-    }
   };
 
   return (
@@ -5554,12 +5080,6 @@ function TemplatePickerButton({
                   hasVideoTab,
                   presentationThemeIdBySlug: cardThemeIdBySlug,
                 });
-                if (selectedCategory === "slides" && hasPptTab) {
-                  scheduleIdlePresentationTemplateHtmlDraftPrewarm(
-                    node,
-                    presentationItems,
-                  );
-                }
               }}
               type="button"
               className={cn(
