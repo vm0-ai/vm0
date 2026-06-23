@@ -14,7 +14,7 @@ JSON_PART = r"""{
       "base": "https://www.strava.com",
       "permissions": [
         {
-          "name": "activity:read",
+          "name": "activities:read",
           "rules": [
             "GET /api/v3/activities/{id}",
             "GET /api/v3/activities/{id}/comments",
@@ -26,28 +26,36 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "activity:read_all",
-          "rules": [
-            "GET /api/v3/activities/{id}",
-            "GET /api/v3/activities/{id}/comments",
-            "GET /api/v3/activities/{id}/kudos",
-            "GET /api/v3/activities/{id}/laps",
-            "GET /api/v3/activities/{id}/streams",
-            "GET /api/v3/activities/{id}/zones",
-            "GET /api/v3/athlete/activities"
-          ]
-        },
-        {
-          "name": "activity:write",
+          "name": "activities:write",
           "rules": [
             "POST /api/v3/activities",
-            "PUT /api/v3/activities/{id}",
-            "POST /api/v3/uploads",
-            "GET /api/v3/uploads/{uploadId}"
+            "PUT /api/v3/activities/{id}"
           ]
         },
         {
-          "name": "profile:read_all",
+          "name": "athlete_stats:read",
+          "rules": [
+            "GET /api/v3/athletes/{id}/stats"
+          ]
+        },
+        {
+          "name": "clubs:read",
+          "rules": [
+            "GET /api/v3/athlete/clubs",
+            "GET /api/v3/clubs/{id}",
+            "GET /api/v3/clubs/{id}/activities",
+            "GET /api/v3/clubs/{id}/admins",
+            "GET /api/v3/clubs/{id}/members"
+          ]
+        },
+        {
+          "name": "gear:read",
+          "rules": [
+            "GET /api/v3/gear/{id}"
+          ]
+        },
+        {
+          "name": "profile:read",
           "rules": [
             "GET /api/v3/athlete",
             "GET /api/v3/athlete/zones"
@@ -56,28 +64,35 @@ JSON_PART = r"""{
         {
           "name": "profile:write",
           "rules": [
-            "PUT /api/v3/athlete",
-            "PUT /api/v3/segments/{id}/starred"
+            "PUT /api/v3/athlete"
           ]
         },
         {
-          "name": "read",
+          "name": "routes:read",
           "rules": [
-            "GET /api/v3/athlete",
-            "GET /api/v3/athlete/clubs",
             "GET /api/v3/athletes/{id}/routes",
-            "GET /api/v3/athletes/{id}/stats",
-            "GET /api/v3/clubs/{id}",
-            "GET /api/v3/clubs/{id}/activities",
-            "GET /api/v3/clubs/{id}/admins",
-            "GET /api/v3/clubs/{id}/members",
-            "GET /api/v3/gear/{id}",
             "GET /api/v3/routes/{id}",
             "GET /api/v3/routes/{id}/export_gpx",
             "GET /api/v3/routes/{id}/export_tcx",
-            "GET /api/v3/routes/{id}/streams",
+            "GET /api/v3/routes/{id}/streams"
+          ]
+        },
+        {
+          "name": "segment_effort_streams:read",
+          "rules": [
+            "GET /api/v3/segment_efforts/{id}/streams"
+          ]
+        },
+        {
+          "name": "segment_efforts:read",
+          "rules": [
             "GET /api/v3/segment_efforts",
-            "GET /api/v3/segment_efforts/{id}",
+            "GET /api/v3/segment_efforts/{id}"
+          ]
+        },
+        {
+          "name": "segments:read",
+          "rules": [
             "GET /api/v3/segments/explore",
             "GET /api/v3/segments/starred",
             "GET /api/v3/segments/{id}",
@@ -85,17 +100,16 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "read_all",
+          "name": "segments:write",
           "rules": [
-            "GET /api/v3/athletes/{id}/routes",
-            "GET /api/v3/routes/{id}",
-            "GET /api/v3/routes/{id}/export_gpx",
-            "GET /api/v3/routes/{id}/export_tcx",
-            "GET /api/v3/routes/{id}/streams",
-            "GET /api/v3/segment_efforts/{id}/streams",
-            "GET /api/v3/segments/starred",
-            "GET /api/v3/segments/{id}",
-            "GET /api/v3/segments/{id}/streams"
+            "PUT /api/v3/segments/{id}/starred"
+          ]
+        },
+        {
+          "name": "uploads:write",
+          "rules": [
+            "POST /api/v3/uploads",
+            "GET /api/v3/uploads/{uploadId}"
           ]
         }
       ]

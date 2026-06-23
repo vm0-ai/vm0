@@ -21,7 +21,7 @@ interface PolicyRow {
 
 const migrationSql = readFileSync(
   new URL(
-    "../../migrations/0493_add_mimo_hy3_model_support.sql",
+    "../../migrations/0494_add_mimo_hy3_model_support.sql",
     import.meta.url,
   ),
   "utf8",
@@ -35,11 +35,11 @@ function sortPolicyRows(rows: readonly PolicyRow[]): readonly PolicyRow[] {
   });
 }
 
-async function runMigration0493(): Promise<void> {
+async function runMigration0494(): Promise<void> {
   await db.execute(sql.raw(migrationSql));
 }
 
-describe("migration 0493 add MiMo and Hy3 model support", () => {
+describe("migration 0494 add MiMo and Hy3 model support", () => {
   it("backfills production pricing and non-default VM0 model policies", async () => {
     const vm0OrgId = uniqueId("org-mimo-hy3-vm0");
     const existingMimoOrgId = uniqueId("org-mimo-existing");
@@ -121,8 +121,8 @@ describe("migration 0493 add MiMo and Hy3 model support", () => {
       },
     ]);
 
-    await runMigration0493();
-    await runMigration0493();
+    await runMigration0494();
+    await runMigration0494();
 
     const prices = await db
       .select({

@@ -38,443 +38,443 @@ export const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES = [
 const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES = {
   "playful-launch-presentation": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fdd4c9f-a935-494b-9536-c897951928e4/template-card-presentation-playful-launch-presentation-prism-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e516bfce-08dd-44c2-aeef-a7cab1ffb1f1/template-card-presentation-playful-launch-presentation-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23c9aaea-459a-4cbb-a32d-cc2d56104479/template-card-presentation-playful-launch-presentation-carnival-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e96ec7bc-bc0c-432f-a617-69aac96dbd76/template-card-presentation-playful-launch-presentation-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b18715c6-cb7c-4b18-8592-95d85e952be9/template-card-presentation-playful-launch-presentation-pop-art-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df5b4d27-0018-422a-9d16-e36969f5bc6a/template-card-presentation-playful-launch-presentation-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4cdf7311-1a9b-42ce-a636-d760e2e1371c/template-card-presentation-playful-launch-presentation-warm-sand-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/42b9f430-fe8f-4d16-a49e-45f99ae8a059/template-card-presentation-playful-launch-presentation-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6340797e-1c29-48ba-85ed-1206c2261c01/template-card-presentation-playful-launch-presentation-bauhaus-primary-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/01f032ec-30dd-41de-9d1f-405eb27cc308/template-card-presentation-playful-launch-presentation-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee42f55e-cd52-4eb3-8def-98c67b5345f2/template-card-presentation-playful-launch-presentation-nordic-frost-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/46686b18-0e43-4563-a73a-f05bb4966084/template-card-presentation-playful-launch-presentation-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7c6035d7-0bc2-4a2e-9b1d-b1281901c4d2/template-card-presentation-playful-launch-presentation-forest-editorial-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ef757d22-ea0e-4581-9592-cf113c4216f0/template-card-presentation-playful-launch-presentation-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0b0c614d-9935-4da2-b77d-f2f6731143fc/template-card-presentation-playful-launch-presentation-coral-studio-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/711f48e7-d9fd-499d-9731-d40810c38492/template-card-presentation-playful-launch-presentation-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9e3e1c1-9cd5-453a-bc17-d95bb863277e/template-card-presentation-playful-launch-presentation-slate-corporate-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d80ba3-b008-44f5-bf04-4eb5a7893191/template-card-presentation-playful-launch-presentation-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af9fdc64-337e-448a-9777-875e6b014ef6/template-card-presentation-playful-launch-presentation-terracotta-clay-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af1a6390-86b2-4800-8bc5-f1764ffbeb94/template-card-presentation-playful-launch-presentation-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c2c7382-39ff-4894-b08f-1d4a4c57a1b1/template-card-presentation-playful-launch-presentation-berry-pop-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/380de217-d30a-45af-8a12-b81a0a002cfd/template-card-presentation-playful-launch-presentation-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/349a62cf-e185-4ee8-ae97-4e7bee04d6e1/template-card-presentation-playful-launch-presentation-citrus-fresh-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c7c72f5e-8d28-4a49-a5c3-ea41e57c8c19/template-card-presentation-playful-launch-presentation-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90f44e0a-f4e0-4a67-b11f-229c543d3496/template-card-presentation-playful-launch-presentation-mauve-dusk-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/277b8cba-0a28-491b-b957-27362b8e902e/template-card-presentation-playful-launch-presentation-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/126fa883-1d1d-4ee1-8b2b-8bdd9ef3d192/template-card-presentation-playful-launch-presentation-mono-ink-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da108e93-faed-4d55-a992-a8b2e3347a66/template-card-presentation-playful-launch-presentation-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41044d22-7e19-465f-a299-c61038c5af32/template-card-presentation-playful-launch-presentation-sunset-maroon-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2fef9c56-6730-42ea-a037-f9dd52cd1f74/template-card-presentation-playful-launch-presentation-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aeaf37fa-8046-49d6-96f7-14791c73f8a6/template-card-presentation-playful-launch-presentation-mint-tech-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f86ce9c2-8127-4903-847d-c9941986f3f1/template-card-presentation-playful-launch-presentation-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9432a0c8-5767-4b44-ba80-c27385648823/template-card-presentation-playful-launch-presentation-midnight-mono-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3e9e3fbc-8ab6-466e-bd23-6cfaf6c4f471/template-card-presentation-playful-launch-presentation-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0b690c81-7cc1-4123-9229-3d2ea2ae1d78/template-card-presentation-playful-launch-presentation-ocean-deep-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/21ab7eb6-f409-4143-8402-71e70b8cdbf0/template-card-presentation-playful-launch-presentation-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22af50ce-d3ac-4f01-9270-8f696441ddb9/template-card-presentation-playful-launch-presentation-gold-luxe-card-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d5be839-0844-4632-95e7-c8307b994a81/template-card-presentation-playful-launch-presentation-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "botane-organic-deck": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22b39b00-a587-492b-8ee9-6de38d6b52c9/template-card-presentation-botane-organic-deck-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e19e33e-6c1a-4e3d-bb5d-9de1b154a61b/template-card-presentation-botane-organic-deck-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d67357a-5cf9-4908-b9a1-c593660b3069/template-card-presentation-botane-organic-deck-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d923c670-256d-427f-b720-dfa03f523090/template-card-presentation-botane-organic-deck-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6be84b44-e42a-4aa7-88ea-3f07d9b9ae44/template-card-presentation-botane-organic-deck-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9470f2f5-191f-4245-9494-c64b0f5e2acc/template-card-presentation-botane-organic-deck-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/88c3fd59-e5d6-47ef-b2fd-7dbbec97dafc/template-card-presentation-botane-organic-deck-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/65e100da-419a-4cbf-99dd-90ccbb1e6bd0/template-card-presentation-botane-organic-deck-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ea58157-a4b6-43ac-bd42-9ade3c116df6/template-card-presentation-botane-organic-deck-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99920d9a-a837-4554-9ed6-0c45371b2fea/template-card-presentation-botane-organic-deck-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aa13a247-9fca-43fd-8722-9c0b0e9903d3/template-card-presentation-botane-organic-deck-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee0b8ab9-1801-4a87-8973-f01da391273b/template-card-presentation-botane-organic-deck-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1d47bc73-1d8d-4564-b5b2-9d9d4397add7/template-card-presentation-botane-organic-deck-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d8679bb0-8b89-496c-8e85-9b95308fe79e/template-card-presentation-botane-organic-deck-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af44680b-3dd6-48f4-a731-20a3cc68d7a8/template-card-presentation-botane-organic-deck-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b2bfb2e7-4418-4f6a-933e-8924885e3da2/template-card-presentation-botane-organic-deck-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7dad7d60-be7b-43f6-82e6-fe134d14632b/template-card-presentation-botane-organic-deck-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e13c87d6-ecb6-4e0b-a32a-25d3d70aab45/template-card-presentation-botane-organic-deck-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27c9c014-5bb8-4b84-b877-b6eb695a513e/template-card-presentation-botane-organic-deck-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1e936869-7aee-453e-b5c5-fd9792bdca5d/template-card-presentation-botane-organic-deck-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f438407-226a-4c60-ade2-cc15cdfb6d56/template-card-presentation-botane-organic-deck-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b5a371cd-1972-42df-b6b9-afb23c10d321/template-card-presentation-botane-organic-deck-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/66393b8b-3858-43fe-8d7e-1fc937a21e18/template-card-presentation-botane-organic-deck-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62e8e14d-5d40-43c8-ace5-e2cfa4447bc5/template-card-presentation-botane-organic-deck-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c323733-847f-4075-9e8d-db8049567429/template-card-presentation-botane-organic-deck-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59ac5cad-a182-4fe1-bf5f-84011d92caa7/template-card-presentation-botane-organic-deck-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e72b4f99-6310-40aa-b063-5b78a1d16f0c/template-card-presentation-botane-organic-deck-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/816202cb-5e4d-4e0a-a988-71e9861f0675/template-card-presentation-botane-organic-deck-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d4a32e4-2536-40c9-a398-fc4be26422ed/template-card-presentation-botane-organic-deck-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/50a496c0-cefc-4800-a926-54603b064d49/template-card-presentation-botane-organic-deck-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c487c671-1a72-4021-a77a-dcf07c448398/template-card-presentation-botane-organic-deck-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4e9cb042-170c-4bb0-ae27-1170e665d696/template-card-presentation-botane-organic-deck-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b209d47-5c67-4b57-86a8-221f7cbc066d/template-card-presentation-botane-organic-deck-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e5588e4-28c0-49f3-8b41-a3051e7efcb2/template-card-presentation-botane-organic-deck-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c893c560-816c-43cf-9614-2afed6bcc61b/template-card-presentation-botane-organic-deck-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/68275cfe-5d08-4347-8515-933c543daf98/template-card-presentation-botane-organic-deck-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/53c17a02-b1d7-4d8f-9889-405d6a25c569/template-card-presentation-botane-organic-deck-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e515fa02-9789-476e-a0fa-9888864563cb/template-card-presentation-botane-organic-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "business-data-presentation": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a76f2e07-7dda-49d5-b564-042f4d148a85/template-card-presentation-business-data-presentation-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7422d136-aeba-4fb9-b2d2-001f6022ad7d/template-card-presentation-business-data-presentation-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/28ac093f-beb7-46b1-ae39-6c4c48516ad1/template-card-presentation-business-data-presentation-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/802d61cd-44c3-462b-8065-eb34f1c81fff/template-card-presentation-business-data-presentation-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/faf5cca5-e04d-4112-b332-9201ffb3862f/template-card-presentation-business-data-presentation-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9af0a230-679d-4b98-89d1-1634f3505dd3/template-card-presentation-business-data-presentation-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/636e3241-2612-476c-86c2-3db48a54bfba/template-card-presentation-business-data-presentation-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/36d944ce-548c-48ac-8d20-ef9789854cc9/template-card-presentation-business-data-presentation-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c3464a6-a12f-4a5d-b5ba-d046f365dd5d/template-card-presentation-business-data-presentation-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1b0a0751-3157-423d-8359-11fa404c1388/template-card-presentation-business-data-presentation-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e171c40-3981-437f-ace5-442a635bf7cd/template-card-presentation-business-data-presentation-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/69524f5b-e966-42fd-a2b2-f66cd73765d6/template-card-presentation-business-data-presentation-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0a4b0a9b-4f72-4ba9-82fb-740d812679b6/template-card-presentation-business-data-presentation-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bde4d93-1886-4c93-bcf1-063a1e69a86c/template-card-presentation-business-data-presentation-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/08a0e1d4-6fb4-46dc-91d8-47fa3c321c48/template-card-presentation-business-data-presentation-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd2284ea-0f30-4d15-8cde-63ae0edd3c0a/template-card-presentation-business-data-presentation-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5d7b4731-e7b3-4e90-a00f-054268537ea1/template-card-presentation-business-data-presentation-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/594f59da-1ae0-42e3-ac01-97af7f7ec88a/template-card-presentation-business-data-presentation-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f46ada8-a8bf-4151-8b5d-1eb6c556c496/template-card-presentation-business-data-presentation-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/791304f7-952e-4862-8209-2dd8e6735253/template-card-presentation-business-data-presentation-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/15719762-1f45-4a3c-a994-a1f845ce2b32/template-card-presentation-business-data-presentation-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/93c20663-bbf8-4ae2-b587-0dc4a7c75292/template-card-presentation-business-data-presentation-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92858b3d-806e-4054-9bad-30306700e36f/template-card-presentation-business-data-presentation-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/914e3fb7-d6c3-4bec-90b2-52b510e63c5e/template-card-presentation-business-data-presentation-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3223ef51-66a4-4944-9ae7-eba2a19c6a86/template-card-presentation-business-data-presentation-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/05dceaff-f3bd-4557-ac30-e7eda5443475/template-card-presentation-business-data-presentation-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/87f81cd6-4be9-4d9e-895a-b41388b65fc3/template-card-presentation-business-data-presentation-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f82b2e6f-56de-486e-a05e-b13f3fa7617e/template-card-presentation-business-data-presentation-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0510c1cd-39e8-4d5e-a704-2960b54ac57e/template-card-presentation-business-data-presentation-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d1c69b9-89ac-4d53-aedc-53d71987d190/template-card-presentation-business-data-presentation-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af5183df-fe5e-4abf-9e0c-be4beb5e39db/template-card-presentation-business-data-presentation-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/06cccce3-0c62-4883-a6e1-6f53642b8267/template-card-presentation-business-data-presentation-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b8d05f51-46bf-4246-8cbe-dee0dbd0ddf0/template-card-presentation-business-data-presentation-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/be635b63-8ffc-43b6-b050-8327a57951bb/template-card-presentation-business-data-presentation-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1e4c9873-c4a0-45a8-aaa9-6173aa2752b0/template-card-presentation-business-data-presentation-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/611b9af1-b28f-4bb1-9b59-0828081fee2d/template-card-presentation-business-data-presentation-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c354fb3-3181-4313-9ffd-900db05c9546/template-card-presentation-business-data-presentation-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bc89eaa4-71f4-4ea1-ac89-2b2fb8ba0d75/template-card-presentation-business-data-presentation-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "crayon-learning-deck": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5ad2a10b-e1b2-4068-b295-6f6ea980b10d/template-card-presentation-crayon-learning-deck-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/573d3324-9c37-4766-85da-a1028b067558/template-card-presentation-crayon-learning-deck-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f3d6fbeb-40c5-4d1a-927e-7351589d75ae/template-card-presentation-crayon-learning-deck-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5db0e73c-4312-4bcf-8b60-9094d2aafeac/template-card-presentation-crayon-learning-deck-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/45cc2914-953a-4696-9bcb-4a906f60206c/template-card-presentation-crayon-learning-deck-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7485a80b-eea3-46a4-a2be-507990a38b5f/template-card-presentation-crayon-learning-deck-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9f0395ef-644d-4d2d-9629-8bca7925ef23/template-card-presentation-crayon-learning-deck-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d6e15cb-91d9-4d72-8754-baa6ddb8085a/template-card-presentation-crayon-learning-deck-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/57e2967d-04ba-4803-9929-3e3b79dcea77/template-card-presentation-crayon-learning-deck-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94734712-0cc3-4b4c-9003-84af1a2514af/template-card-presentation-crayon-learning-deck-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f819453-92ab-4f62-8d24-10bbe07d3dd1/template-card-presentation-crayon-learning-deck-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/007f3750-d7d9-4ac2-aa1c-62e384f320c3/template-card-presentation-crayon-learning-deck-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec7efcc4-a75a-4d10-9394-fa1e0eb5f0af/template-card-presentation-crayon-learning-deck-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56596bbb-dd78-4005-9f59-d95d8ae8f740/template-card-presentation-crayon-learning-deck-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75836030-9d44-49fa-bdd5-376a9f1cded0/template-card-presentation-crayon-learning-deck-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d033dbf6-7795-4657-ba57-036d54613ba6/template-card-presentation-crayon-learning-deck-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa26e6dc-a24c-47e5-bd74-93c29fc57b02/template-card-presentation-crayon-learning-deck-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f0f6c062-7004-4827-8278-8bcf0ac60c7c/template-card-presentation-crayon-learning-deck-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47a76803-bdd3-4494-aa66-555aadbdeb7a/template-card-presentation-crayon-learning-deck-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ac6347b-85f4-4309-b900-dc7b1938c899/template-card-presentation-crayon-learning-deck-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19a13f79-1ac0-4626-8414-62a72782f98d/template-card-presentation-crayon-learning-deck-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b86464ef-6475-4d6c-a35c-b6f6a192864a/template-card-presentation-crayon-learning-deck-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5bdd32ad-1742-4297-ae0c-1983dcc86adf/template-card-presentation-crayon-learning-deck-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9747d98-4680-471e-8bda-d17a7e781f32/template-card-presentation-crayon-learning-deck-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/783c3fe0-84db-43aa-bf88-9f08c6111d85/template-card-presentation-crayon-learning-deck-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bac65be5-5285-4b74-bd74-ac7c3625e62b/template-card-presentation-crayon-learning-deck-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85aea6f3-8263-489e-a3b4-08787eb87dae/template-card-presentation-crayon-learning-deck-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db4d73de-6ac9-4976-93f0-83003d2ca127/template-card-presentation-crayon-learning-deck-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3ebc3f44-315f-40d2-a445-2d8b27b897e1/template-card-presentation-crayon-learning-deck-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/329b2c3a-443e-4300-9325-7fd9bcfc78e1/template-card-presentation-crayon-learning-deck-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/04ea9189-7b4d-409b-aeb6-bd3676b7b160/template-card-presentation-crayon-learning-deck-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8f780748-e093-46d8-9ed5-014b5638d4ee/template-card-presentation-crayon-learning-deck-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35741f02-e2f3-4fe5-b8cf-7151b08c795e/template-card-presentation-crayon-learning-deck-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4df5908d-e971-4a00-b109-e148d8f1b9c9/template-card-presentation-crayon-learning-deck-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddc8e4f0-7b1b-4114-aafc-1643c140c3e8/template-card-presentation-crayon-learning-deck-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/78ab4a40-cace-424a-bf00-9856cbefc208/template-card-presentation-crayon-learning-deck-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/61434bae-6617-41de-b2fe-2e80bb87c476/template-card-presentation-crayon-learning-deck-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1e153a66-0c52-4986-a09f-33d0eafd4f3e/template-card-presentation-crayon-learning-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "creative-agency-presentation": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51ee4460-a199-4d90-b153-ddb8c93c4a23/template-card-presentation-creative-agency-presentation-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f40c998e-8046-487c-9bbd-6de2cfcdc7c8/template-card-presentation-creative-agency-presentation-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/74ebfead-5a7e-4dca-ae53-537e22e8ea94/template-card-presentation-creative-agency-presentation-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ffc824b-516f-4187-b353-d3422b2d7436/template-card-presentation-creative-agency-presentation-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b44aba5-e1a2-45dc-830f-cdd8e73e34bf/template-card-presentation-creative-agency-presentation-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d69583c5-773a-4b29-8319-040858da2451/template-card-presentation-creative-agency-presentation-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37f903d6-4fa0-4e5b-b5b4-191312b01934/template-card-presentation-creative-agency-presentation-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/87fb4345-ec2d-42ee-940f-b1b447fdf660/template-card-presentation-creative-agency-presentation-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99b37c78-975f-4a9c-a1a3-afb48ea81dee/template-card-presentation-creative-agency-presentation-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/caf31c90-310b-4565-afbc-56417821d89b/template-card-presentation-creative-agency-presentation-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/101c03f5-933f-4d66-b27e-fa1b9becdca8/template-card-presentation-creative-agency-presentation-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8969312f-2959-4d7f-9d20-8a8e7086246d/template-card-presentation-creative-agency-presentation-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2fe07921-21f8-455e-8333-9a6414c8900d/template-card-presentation-creative-agency-presentation-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f5cc7730-ea22-4c98-840c-97f24eb3c605/template-card-presentation-creative-agency-presentation-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6678ba38-e067-4cfd-9035-07ef21ce08ef/template-card-presentation-creative-agency-presentation-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9186e9b5-54e6-4074-a218-13dab23a9407/template-card-presentation-creative-agency-presentation-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e758047b-7b7d-44da-af0b-1697488f59af/template-card-presentation-creative-agency-presentation-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/756ca741-5821-4d80-96eb-19d4c0e32676/template-card-presentation-creative-agency-presentation-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bc42341e-d67d-493f-b6e8-7dd8ab8c96b2/template-card-presentation-creative-agency-presentation-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9a7a0379-0c46-4bc0-b0f4-68d58955b615/template-card-presentation-creative-agency-presentation-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19b4dff9-e02f-4cde-86c0-c08386d99553/template-card-presentation-creative-agency-presentation-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9b5f41e4-ac6c-4196-8758-1bc3b8b3fc60/template-card-presentation-creative-agency-presentation-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ed72a37f-b391-4787-9bf3-e56b06ab18f5/template-card-presentation-creative-agency-presentation-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d178524d-c2ab-4f0d-89dd-39164f3928a5/template-card-presentation-creative-agency-presentation-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2595cc14-acac-477a-a248-464a99e5ed8a/template-card-presentation-creative-agency-presentation-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bd33d969-516d-4de3-9341-959a917a7fa7/template-card-presentation-creative-agency-presentation-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b734d3d5-2ad7-4414-ac8d-25513476bf73/template-card-presentation-creative-agency-presentation-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bbd6d782-d1d5-4fe5-9953-c96f8185e9be/template-card-presentation-creative-agency-presentation-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/be290733-629f-42d4-bc09-d36e43b9b204/template-card-presentation-creative-agency-presentation-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94c2b0dd-f91a-45d7-a6e7-11d802ab23f9/template-card-presentation-creative-agency-presentation-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af5a99b3-01a9-46b8-abe6-942175ad87d6/template-card-presentation-creative-agency-presentation-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce8fbeb8-7147-45d0-87c3-8369a6431d21/template-card-presentation-creative-agency-presentation-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aa3a2db2-5337-4635-a16b-c6112c98bfe0/template-card-presentation-creative-agency-presentation-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7996a715-00f6-4e49-b7dd-1c8544917fa6/template-card-presentation-creative-agency-presentation-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0f165828-caf1-48b2-8d54-13b2c2d0c5da/template-card-presentation-creative-agency-presentation-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9f67da1-e05f-4db2-aee2-d4346bdff8ca/template-card-presentation-creative-agency-presentation-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c28c840-2cee-4a8d-892a-f08ab8caf8dd/template-card-presentation-creative-agency-presentation-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9cfb560f-a59a-4284-8f7d-97cf101a77fb/template-card-presentation-creative-agency-presentation-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "data-report-presentation": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e42d11f9-ced9-4451-b488-e1aa97c4a1b8/template-card-presentation-data-report-presentation-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f8aa6480-16c2-4c20-8921-d1f9374a5583/template-card-presentation-data-report-presentation-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/828955a0-3356-45f8-88cf-b0aba3765a05/template-card-presentation-data-report-presentation-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77be1b72-eb93-40a3-8092-5f00d4773cf3/template-card-presentation-data-report-presentation-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ad7c60ec-9dfd-407b-ad9e-352f35ec94b5/template-card-presentation-data-report-presentation-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6bea2f09-6981-48b9-96d2-32dc7c041c33/template-card-presentation-data-report-presentation-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14577d14-c2ba-49f2-834e-baad8c5ce718/template-card-presentation-data-report-presentation-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/edb92e56-ec4f-4c68-9504-eab5a1c0d229/template-card-presentation-data-report-presentation-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b8481c1f-20b2-4845-8d22-735588ce1285/template-card-presentation-data-report-presentation-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5c2dbc64-ac8d-4227-b77a-54e438c945b2/template-card-presentation-data-report-presentation-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c8ae63e3-1fb5-49ca-9757-8eed48c1672f/template-card-presentation-data-report-presentation-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2103179a-6531-4d74-a783-f2a53d96db1c/template-card-presentation-data-report-presentation-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/edcea92f-d82b-40cc-8463-0698a5f38e29/template-card-presentation-data-report-presentation-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a6b0b5a2-ffe4-4cd4-ac0a-5248771f58da/template-card-presentation-data-report-presentation-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9c12e441-7ea3-46f0-b41c-15f5644ff767/template-card-presentation-data-report-presentation-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3fde814-becf-4201-80de-c15ad28b9877/template-card-presentation-data-report-presentation-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/baa3fde2-d161-4e98-8c16-44c6062584d8/template-card-presentation-data-report-presentation-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/afc0eb94-05bb-45fe-8941-13345a43b530/template-card-presentation-data-report-presentation-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c90dfbe1-d940-4eac-9397-83e42edc6112/template-card-presentation-data-report-presentation-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/627a0a57-4331-45c1-b85b-753748d32a49/template-card-presentation-data-report-presentation-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f93555ee-8a25-4845-8895-a9e64d0e7338/template-card-presentation-data-report-presentation-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e444ffa3-fbbe-46be-8bce-b82eb05185f0/template-card-presentation-data-report-presentation-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/856de09e-c8ed-4216-adc9-1834a9c9c307/template-card-presentation-data-report-presentation-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c0657808-bbe4-421c-a539-73f29a88a9c9/template-card-presentation-data-report-presentation-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ffaa999a-2198-4d49-8703-1b6f9efea15b/template-card-presentation-data-report-presentation-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/777500cb-5c20-4ad4-80f1-b03fbabfafd9/template-card-presentation-data-report-presentation-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ef87d43-c6cf-49e6-95c5-cad382fc4d74/template-card-presentation-data-report-presentation-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75e4fd23-7e64-4a46-bf48-b56fe40d1e04/template-card-presentation-data-report-presentation-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2ce9c3e6-349e-4e36-b312-2c76e7154f9c/template-card-presentation-data-report-presentation-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85e0270e-b8e0-4549-9361-9e809621fbc7/template-card-presentation-data-report-presentation-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0bf59fc-9118-4b97-9d6b-35e483c268f2/template-card-presentation-data-report-presentation-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9dddacc9-045a-4f59-9953-373f08fdbc33/template-card-presentation-data-report-presentation-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a58ad362-6591-4bd6-8c96-c7ac8d568deb/template-card-presentation-data-report-presentation-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9b92dcbc-44b4-4b5d-ab9d-eea720a40f64/template-card-presentation-data-report-presentation-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3fc150d1-0662-4862-aaa5-7854342efa1d/template-card-presentation-data-report-presentation-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99b8df33-52d3-4f4e-8449-bb3c3cbdc1cc/template-card-presentation-data-report-presentation-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23e79ef9-21ff-42b0-bc31-0bc3c63576eb/template-card-presentation-data-report-presentation-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/17a13840-f70b-48c4-8ac7-9b541a4a034f/template-card-presentation-data-report-presentation-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "editorial-magazine-deck": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/526c7e25-711e-4c95-9afe-f94980582ba2/template-card-presentation-editorial-magazine-deck-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1551e99d-7620-49ec-bf1e-b578632a0358/template-card-presentation-editorial-magazine-deck-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4295a1bb-fbc1-4899-9843-f1b87817e70b/template-card-presentation-editorial-magazine-deck-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/903c73a7-8b68-4f2d-8fde-b913b016ecf4/template-card-presentation-editorial-magazine-deck-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7cf45c65-148f-4575-8bef-e28b22a8917e/template-card-presentation-editorial-magazine-deck-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e549b9eb-9b2e-476a-88d1-ca7bb0d8667f/template-card-presentation-editorial-magazine-deck-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19ae2c4e-0eb0-478a-8304-32325bd4b439/template-card-presentation-editorial-magazine-deck-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a020ced3-6b94-408c-9936-3f9addd6a386/template-card-presentation-editorial-magazine-deck-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d84909f-a876-494b-abff-ad901d8ade4a/template-card-presentation-editorial-magazine-deck-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/547d59dd-2c5d-4d67-b0dd-bc23d288ceb6/template-card-presentation-editorial-magazine-deck-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fa5d3c39-fd3f-4158-b92a-c6138f97a0ad/template-card-presentation-editorial-magazine-deck-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41c954ab-40d3-450b-8224-12d8072e0a5f/template-card-presentation-editorial-magazine-deck-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94db032e-6920-4025-a392-74768c4c39e4/template-card-presentation-editorial-magazine-deck-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c7bf667b-c28e-41c9-8b3d-a05ecf28fd70/template-card-presentation-editorial-magazine-deck-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d9eec7b-a903-4bc8-bd4e-d31ceab50b24/template-card-presentation-editorial-magazine-deck-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32334be2-ab20-43f8-87b8-28a31777cacc/template-card-presentation-editorial-magazine-deck-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fe7c93ad-86ba-4014-9e21-5bfbaf1a38a6/template-card-presentation-editorial-magazine-deck-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12b85e98-ea95-4bb7-81d3-406560a37cd5/template-card-presentation-editorial-magazine-deck-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6db0a32c-3b27-4fe0-a2be-297b186c8a67/template-card-presentation-editorial-magazine-deck-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b81decad-3717-4619-8f34-4cb9eae5c56d/template-card-presentation-editorial-magazine-deck-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f33d0102-cf46-4f35-a17f-92dab9f3c6a6/template-card-presentation-editorial-magazine-deck-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/53d77993-878f-4a9f-a1fc-6739794660b6/template-card-presentation-editorial-magazine-deck-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/05eb7e18-a368-4cdd-9195-85a5dc080fd3/template-card-presentation-editorial-magazine-deck-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23fe637e-8bff-40f0-a9ec-1aff2cb3063a/template-card-presentation-editorial-magazine-deck-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/16658b63-c8c2-4ff6-a261-abc78f3e1400/template-card-presentation-editorial-magazine-deck-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e9a2615-eafb-4fbe-91be-1c50192cb42c/template-card-presentation-editorial-magazine-deck-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3086694c-f5bf-4a22-9bbf-552329c7cfeb/template-card-presentation-editorial-magazine-deck-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f725279-a3b0-4d30-b20f-4782d6301ec3/template-card-presentation-editorial-magazine-deck-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f37b2c3-6b9b-4ffb-a4a9-d1df97ce45a8/template-card-presentation-editorial-magazine-deck-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d8ce4a9-5ecb-4220-af1b-ab4d020dbd6c/template-card-presentation-editorial-magazine-deck-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d00fc3d6-1264-4ae0-8447-39649caa2c5e/template-card-presentation-editorial-magazine-deck-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8d1782b7-7ffe-46f2-9959-1401f8925f0b/template-card-presentation-editorial-magazine-deck-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a73d2e3-f8e2-48b2-b4da-18ee9149ae58/template-card-presentation-editorial-magazine-deck-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0f906828-9f9a-4511-b402-8eeaf76150eb/template-card-presentation-editorial-magazine-deck-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59d24086-15d8-4906-8d24-670151045382/template-card-presentation-editorial-magazine-deck-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/edccdf1a-affc-426c-8477-b86947032d70/template-card-presentation-editorial-magazine-deck-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3f82958-eb00-4f83-8041-712182d8fbea/template-card-presentation-editorial-magazine-deck-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3ed37006-a3a0-4347-adae-74ab5551972c/template-card-presentation-editorial-magazine-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "landing-consulting-deck": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/958f8825-0924-4468-b6d3-e3b52db0e53d/template-card-presentation-landing-consulting-deck-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f98d416d-0c26-4442-a72f-f960321c0bca/template-card-presentation-landing-consulting-deck-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/052c51d8-5da6-475e-990d-126d3b50d94f/template-card-presentation-landing-consulting-deck-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4273d3e4-08de-4a0a-b1d4-03f620310ac5/template-card-presentation-landing-consulting-deck-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51af1529-5019-4a3f-bf78-a5a653480afb/template-card-presentation-landing-consulting-deck-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b2d0970e-cdbe-406f-ae44-a544dc2058c9/template-card-presentation-landing-consulting-deck-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/05efe404-d3d7-4295-bde7-524435b1eaca/template-card-presentation-landing-consulting-deck-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41e46ea8-24f6-496e-834a-ea1f192024d7/template-card-presentation-landing-consulting-deck-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/eadfd062-60ea-49bf-86c3-7681d5245131/template-card-presentation-landing-consulting-deck-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c38f2446-4972-408b-8aa2-b870aac00c8c/template-card-presentation-landing-consulting-deck-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f5538f8-2c72-4b16-b379-eda7a28aeb7a/template-card-presentation-landing-consulting-deck-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54caa4f0-4db9-49ed-b94f-29610ee39844/template-card-presentation-landing-consulting-deck-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/eae820a9-c41d-470e-98f0-592e800b2528/template-card-presentation-landing-consulting-deck-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/915bfc6d-5fb8-48dd-8183-86794fc51680/template-card-presentation-landing-consulting-deck-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fc81f5ab-f7b8-45c8-a68d-cdb7d151f12d/template-card-presentation-landing-consulting-deck-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9805a606-0587-471d-9429-d9326dcfd31d/template-card-presentation-landing-consulting-deck-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2536880b-b6aa-446c-9b00-204cd03d5eb6/template-card-presentation-landing-consulting-deck-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60db33cd-70cf-4d07-bd4a-5746b3fed10f/template-card-presentation-landing-consulting-deck-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58d91f16-2eab-470a-9509-87ec96b6c97c/template-card-presentation-landing-consulting-deck-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99eafab2-1abc-4841-a3fb-f3625ee29546/template-card-presentation-landing-consulting-deck-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c1c29e5-3d04-4a49-9257-591a2c3a3db4/template-card-presentation-landing-consulting-deck-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e24adc64-24d6-4a8d-9b64-cfed4face42e/template-card-presentation-landing-consulting-deck-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92c9ef5a-2e9e-4268-b8b7-83fcbf93b388/template-card-presentation-landing-consulting-deck-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7f9ded5-98b3-4636-8c14-3aafb0ceb5b3/template-card-presentation-landing-consulting-deck-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dbc509d8-5244-4c7a-aa48-fbef7213b98d/template-card-presentation-landing-consulting-deck-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c2dc239f-52da-4468-9a55-82c7df87ebc5/template-card-presentation-landing-consulting-deck-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ed96861a-c353-40f9-8bf2-0d055c6cb88a/template-card-presentation-landing-consulting-deck-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f94ec43-c3c4-4044-a5f9-84006d39fdbd/template-card-presentation-landing-consulting-deck-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/867b502e-ff31-4bc0-9ec0-e843f2df768d/template-card-presentation-landing-consulting-deck-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/25479deb-9d31-4170-8827-77136e3c1d99/template-card-presentation-landing-consulting-deck-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1adbabc7-5978-4203-9166-67a1f85c8c38/template-card-presentation-landing-consulting-deck-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d94f2dae-e7d0-4d4f-a513-b2e89b9c61a6/template-card-presentation-landing-consulting-deck-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fdc7d3f5-00ae-44f0-bd5e-274983d7c956/template-card-presentation-landing-consulting-deck-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e5ffec05-27f0-49c6-942e-1000cc95f818/template-card-presentation-landing-consulting-deck-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2157f813-c843-4e77-a519-a9c6dbef4a1b/template-card-presentation-landing-consulting-deck-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dfbaabfd-287f-4dfe-a48e-003e9da5db0f/template-card-presentation-landing-consulting-deck-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/509192b6-3238-403a-9aa7-68cd592bd2a3/template-card-presentation-landing-consulting-deck-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85a5bd66-c044-4898-8c33-e64b874acaf1/template-card-presentation-landing-consulting-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "lumina-creative-studio": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/24ab5772-b44d-41ef-87b9-e3787576eaba/template-card-presentation-lumina-creative-studio-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a92421d1-e4b5-4485-94b8-ba503d4dc8f5/template-card-presentation-lumina-creative-studio-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37edb48b-e85b-4a11-a2f2-f4df04a231a0/template-card-presentation-lumina-creative-studio-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ed47289-d3ce-4e60-b6dd-642090cc5130/template-card-presentation-lumina-creative-studio-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e0984f5-37a1-49ff-ac7a-dd588606f70c/template-card-presentation-lumina-creative-studio-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/78ce10cb-cb36-4c11-b8c7-e5ad59ef0249/template-card-presentation-lumina-creative-studio-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8550a61b-3d22-4513-8a57-8f35fd826661/template-card-presentation-lumina-creative-studio-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9958589a-2a37-46ee-bda8-fcd671b5be84/template-card-presentation-lumina-creative-studio-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fee2df64-1e3d-42e4-8299-fac1ac7e3fe7/template-card-presentation-lumina-creative-studio-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3ef8c102-83e2-4690-800a-ecdca149d84a/template-card-presentation-lumina-creative-studio-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c43ccc1f-94fd-43dd-9c57-8d6b715aa99c/template-card-presentation-lumina-creative-studio-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f865d013-fa34-43ad-9552-0cbc3ffdfad2/template-card-presentation-lumina-creative-studio-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62a9514b-408c-42c8-9ffb-f687e11a3f32/template-card-presentation-lumina-creative-studio-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ca187a3a-e808-4eb3-9e34-e41856d52377/template-card-presentation-lumina-creative-studio-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58638cbd-d7b8-4b17-8eed-dbc05143cae5/template-card-presentation-lumina-creative-studio-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00c5d13f-9458-4d87-9ae6-637e896ebe62/template-card-presentation-lumina-creative-studio-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8776ce8c-62f4-4402-af88-6a22c4e95c92/template-card-presentation-lumina-creative-studio-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9de8dc58-dada-4807-bb42-9ddd2a67631d/template-card-presentation-lumina-creative-studio-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c9d17c2-ab0f-4958-a7e7-a307b99dfaab/template-card-presentation-lumina-creative-studio-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d6224e63-2243-4fae-946a-53ee478ee818/template-card-presentation-lumina-creative-studio-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f5920fef-6a64-4a87-80fd-ddd94b7b5edc/template-card-presentation-lumina-creative-studio-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/991d9715-1fda-40bc-81ca-e1a0b6d53b34/template-card-presentation-lumina-creative-studio-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3b640c98-9a29-4e45-9f5a-ad105185bac8/template-card-presentation-lumina-creative-studio-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d1b7289-aef4-404f-b00b-1471c29c6907/template-card-presentation-lumina-creative-studio-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ffaacf52-c017-43d3-8308-9befe4a5d0ac/template-card-presentation-lumina-creative-studio-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7bfe0e9-3871-41f3-9e13-eb0c5cd81893/template-card-presentation-lumina-creative-studio-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/57336143-0284-4d83-80dc-c51414bba94a/template-card-presentation-lumina-creative-studio-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3dc4e053-5613-4212-af8b-5f3454188e9f/template-card-presentation-lumina-creative-studio-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b11772b3-4bcc-4b5c-a3e9-40b10eebbcbe/template-card-presentation-lumina-creative-studio-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/21a22d38-ae77-4ff0-b7cb-8eeddf03efc7/template-card-presentation-lumina-creative-studio-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d82ce111-2a70-4dc0-ae3f-98ac611834e5/template-card-presentation-lumina-creative-studio-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c89fa05a-f56a-48bb-b022-947fc09604e0/template-card-presentation-lumina-creative-studio-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ea6a81a9-93e6-489e-86f1-04cba5f2ea70/template-card-presentation-lumina-creative-studio-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e7546735-b333-4dc8-a5f0-469043794f1e/template-card-presentation-lumina-creative-studio-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9fcabe71-161c-4274-a46a-2f3eb5b25977/template-card-presentation-lumina-creative-studio-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2d4f6e59-80ed-492e-8763-6ce2bbf32796/template-card-presentation-lumina-creative-studio-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c0542b96-b50b-4cd2-9007-1fe4f82bb587/template-card-presentation-lumina-creative-studio-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e043033-bda0-44ed-acd6-2d5eacd54104/template-card-presentation-lumina-creative-studio-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "mosaic-geometric-pitch": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a982a6b1-8fdc-4289-8795-2b7246a2d726/template-card-presentation-mosaic-geometric-pitch-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75c14836-a2b8-4f8a-b191-485317971dd9/template-card-presentation-mosaic-geometric-pitch-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0db220d0-9738-4b99-b5a3-e7eee40a88aa/template-card-presentation-mosaic-geometric-pitch-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9f6d4b35-3bc5-45be-aca3-18f6ec21530f/template-card-presentation-mosaic-geometric-pitch-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2521733-073a-4da2-8455-b283f571927b/template-card-presentation-mosaic-geometric-pitch-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/014a0d17-b78a-48e7-b5cf-62d221204996/template-card-presentation-mosaic-geometric-pitch-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/57565ff1-d558-4936-8e24-1cd5b0014b87/template-card-presentation-mosaic-geometric-pitch-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14a7405a-25fe-4fe6-a05e-37e00fe78b2c/template-card-presentation-mosaic-geometric-pitch-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/88a60e0f-df7b-49a2-a8f7-19f0c801622e/template-card-presentation-mosaic-geometric-pitch-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/20a6c016-082d-40c1-af47-a1a61c2f9e24/template-card-presentation-mosaic-geometric-pitch-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aa6f8884-167d-4d6d-82a4-85d40bac19bb/template-card-presentation-mosaic-geometric-pitch-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/125f9f28-64ec-4ec7-861b-7f508de7e1cf/template-card-presentation-mosaic-geometric-pitch-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/22567c61-5586-43ec-b3c4-aab8deca4ffe/template-card-presentation-mosaic-geometric-pitch-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c545c12-fa00-4928-9d10-03cb3aaa99c2/template-card-presentation-mosaic-geometric-pitch-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3db12737-3136-41a6-a5e7-6d0ccff7340f/template-card-presentation-mosaic-geometric-pitch-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7f73d59-ea59-4b2f-a5b9-0482ddeed21e/template-card-presentation-mosaic-geometric-pitch-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4df0a838-acbd-4f53-ae63-74f505d1129c/template-card-presentation-mosaic-geometric-pitch-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/564b4bf7-ea19-4dd0-b320-2696db573aa9/template-card-presentation-mosaic-geometric-pitch-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a64204a2-0680-41bd-b397-1e20a6446408/template-card-presentation-mosaic-geometric-pitch-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47350842-757c-4c4c-bf0f-ca8b14a3248a/template-card-presentation-mosaic-geometric-pitch-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4e634d29-0a68-4fd3-b07e-836c0c3cf2d6/template-card-presentation-mosaic-geometric-pitch-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/736c1ca8-0cd7-4832-87af-26ab7368252c/template-card-presentation-mosaic-geometric-pitch-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e9305416-c3bc-41e4-a6a1-9d6194e1ec4d/template-card-presentation-mosaic-geometric-pitch-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b2a98f28-8e60-4125-be6d-55b57fb69761/template-card-presentation-mosaic-geometric-pitch-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0d787389-008e-46c4-9b81-752a24de857a/template-card-presentation-mosaic-geometric-pitch-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0d8eb614-f292-4992-b54e-917b35107446/template-card-presentation-mosaic-geometric-pitch-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/04e86233-ea5d-4282-bbad-2985264cd343/template-card-presentation-mosaic-geometric-pitch-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e17df1f3-5530-4049-88d0-7c1287c0919f/template-card-presentation-mosaic-geometric-pitch-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ad1adc8-7729-411b-8afd-97651654d02e/template-card-presentation-mosaic-geometric-pitch-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4303dc0c-a8d6-45dc-80c0-18cbd993646f/template-card-presentation-mosaic-geometric-pitch-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99b30c38-c342-4084-b355-f56c7b4cacfd/template-card-presentation-mosaic-geometric-pitch-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/41557a1c-924f-4004-82e2-96689a341470/template-card-presentation-mosaic-geometric-pitch-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/20f96dd0-d516-438a-ad19-3039b7c507fd/template-card-presentation-mosaic-geometric-pitch-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/91c4c7ec-bc83-4279-8d17-7bc918c83cc3/template-card-presentation-mosaic-geometric-pitch-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c01fdb2-c583-4da8-85c1-f7f3049205a9/template-card-presentation-mosaic-geometric-pitch-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f3a8270e-5b43-4dac-b1af-4594b8093a7c/template-card-presentation-mosaic-geometric-pitch-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ce1152f-4e00-4776-bee4-e05a36001f22/template-card-presentation-mosaic-geometric-pitch-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d889c78b-afae-494c-b912-8fd4fc79407d/template-card-presentation-mosaic-geometric-pitch-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "playful-pop-deck": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/713a8a9f-bbe8-46c0-bab6-7ee2ef7b3214/template-card-presentation-playful-pop-deck-prism-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/824ca947-243b-468d-b2f2-cca11ac2fc21/template-card-presentation-playful-pop-deck-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4eb1fc1e-626e-4268-9063-3a0473a4404d/template-card-presentation-playful-pop-deck-carnival-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7fd0063f-1782-41e7-beb6-8348b49b2854/template-card-presentation-playful-pop-deck-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/abe35004-601e-4f18-b911-e602087cd9e9/template-card-presentation-playful-pop-deck-pop-art-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9de5f4ed-f828-43ba-9817-059006bfae14/template-card-presentation-playful-pop-deck-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/538836ed-a51e-4206-861a-1b78aa96be4f/template-card-presentation-playful-pop-deck-warm-sand-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35cd8145-7eb0-48f7-a125-031a9fb306d1/template-card-presentation-playful-pop-deck-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94540e77-ffcd-4efa-b4de-6ca9f59f0225/template-card-presentation-playful-pop-deck-bauhaus-primary-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b43ed5f-49c6-4b02-a363-04df4f63fffb/template-card-presentation-playful-pop-deck-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a8e06483-b673-4b7e-9092-2de06e8324dc/template-card-presentation-playful-pop-deck-nordic-frost-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3cee34f8-ea65-4d88-8640-63e642d07115/template-card-presentation-playful-pop-deck-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1af2e5f2-b49e-4acf-b33c-46e31178fb33/template-card-presentation-playful-pop-deck-forest-editorial-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ff194e5b-df8c-49ae-9b85-f17b9015b73f/template-card-presentation-playful-pop-deck-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/933f157f-0bf2-49f0-a2de-59aa6b66fa01/template-card-presentation-playful-pop-deck-coral-studio-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/982e5b49-3ed8-474e-8c36-448bcd4a6e80/template-card-presentation-playful-pop-deck-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bb4846ee-5c6b-4a74-b5f5-d34c9fb5bd47/template-card-presentation-playful-pop-deck-slate-corporate-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b27357bd-7424-41c6-bdf9-6b45af2f8976/template-card-presentation-playful-pop-deck-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ecb0c14-c424-4587-827e-ca1b5cd373b2/template-card-presentation-playful-pop-deck-terracotta-clay-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60ae9b9e-a4b6-4c7f-8890-98f838386af2/template-card-presentation-playful-pop-deck-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0d0aaed1-ebac-41a6-824b-420f3f4210a8/template-card-presentation-playful-pop-deck-berry-pop-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/38a1e94b-de28-4ec7-ad53-22d0f8fccfb6/template-card-presentation-playful-pop-deck-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce9e7da3-9bac-40b6-a890-d8dc8f1bbf7f/template-card-presentation-playful-pop-deck-citrus-fresh-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b0d43553-5c35-44fa-b34b-c3ea8617a09a/template-card-presentation-playful-pop-deck-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e579c875-3bc1-40ee-aefc-3ac2ab34c042/template-card-presentation-playful-pop-deck-mauve-dusk-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e0f8f22-3078-4aec-bb6d-f759adc31524/template-card-presentation-playful-pop-deck-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/edb23ae4-33be-4ec1-a3eb-bc58bad2c9f3/template-card-presentation-playful-pop-deck-mono-ink-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51d0681e-cbf3-4dcd-9072-359c8770c92b/template-card-presentation-playful-pop-deck-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/de043c23-a139-4bc4-874d-cbacac71de30/template-card-presentation-playful-pop-deck-sunset-maroon-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14ba252c-5e1a-4f2f-abcb-d62849b96ffd/template-card-presentation-playful-pop-deck-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc9f54cb-6fb8-46c8-8b7f-56ea5f942b79/template-card-presentation-playful-pop-deck-mint-tech-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e8c4886-9433-4336-92e6-8a518f3135dd/template-card-presentation-playful-pop-deck-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6e8f80f4-0455-489f-b8f9-61fa7baab714/template-card-presentation-playful-pop-deck-midnight-mono-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9fcb63ea-85cd-4347-8ad9-488d9a9db0d7/template-card-presentation-playful-pop-deck-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e20b7280-f848-43f9-a3b7-dd4aef57b252/template-card-presentation-playful-pop-deck-ocean-deep-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18fa6a6b-faee-4f8f-bdf0-733d0580bf6e/template-card-presentation-playful-pop-deck-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd5b80cd-6816-48a8-b341-7de669c623d8/template-card-presentation-playful-pop-deck-gold-luxe-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c7eb7646-65ae-463b-903e-4766f0721d70/template-card-presentation-playful-pop-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
 } as const satisfies Readonly<
   Record<

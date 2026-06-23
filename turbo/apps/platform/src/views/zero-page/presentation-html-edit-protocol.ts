@@ -699,42 +699,7 @@ export function applyPresentationSpeakerNotesPatch(params: {
   return { appliedCount, slides };
 }
 
-export function previewPresentationHtml(params: {
-  readonly activeSlideId: string;
-  readonly html: string;
-}): string {
-  const doc = new DOMParser().parseFromString(params.html, "text/html");
-  materializePresentationThemeSwitcherDefaults(doc);
-  sanitizePreviewTree(doc);
-  const previewDoc = document.implementation.createHTMLDocument(
-    doc.title || "Presentation preview",
-  );
-  for (const node of Array.from(doc.head.childNodes)) {
-    previewDoc.head.append(node.cloneNode(true));
-  }
-  const stage = previewDoc.createElement("div");
-  stage.dataset.vm0EditorStage = "true";
-  previewDoc.body.append(stage);
-  for (const [index, slide] of selectSlideElements(doc).entries()) {
-    if (slideIdForElement(slide, index) === params.activeSlideId) {
-      const slideId = slideIdForElement(slide, index);
-      for (const [editableIndex, editable] of selectEditableElements(
-        slide,
-      ).entries()) {
-        if (editable instanceof HTMLElement) {
-          editable.dataset.vm0EditorSlideId = slideId;
-          editable.dataset.vm0EditorEditId =
-            editIdForElement(editable, editableIndex) ?? "";
-        }
-      }
-      const slideClone = slide.cloneNode(true);
-      if (slideClone instanceof Element) {
-        sanitizePreviewTree(slideClone);
-      }
-      stage.append(slideClone);
-      break;
-    }
-  }
+function appendPresentationPreviewStyle(previewDoc: Document): void {
   const style = previewDoc.createElement("style");
   style.textContent = `
     html, body {
@@ -824,6 +789,59 @@ export function previewPresentationHtml(params: {
     }
   `;
   previewDoc.head.append(style);
+}
+
+function appendAdditionalHeadStyle(
+  previewDoc: Document,
+  styleText: string | undefined,
+): void {
+  if (styleText === undefined) {
+    return;
+  }
+  const style = previewDoc.createElement("style");
+  style.textContent = styleText;
+  previewDoc.head.append(style);
+}
+
+export function previewPresentationHtml(params: {
+  readonly activeSlideId: string;
+  readonly additionalHeadStyle?: string;
+  readonly html: string;
+}): string {
+  const doc = new DOMParser().parseFromString(params.html, "text/html");
+  materializePresentationThemeSwitcherDefaults(doc);
+  sanitizePreviewTree(doc);
+  const previewDoc = document.implementation.createHTMLDocument(
+    doc.title || "Presentation preview",
+  );
+  for (const node of Array.from(doc.head.childNodes)) {
+    previewDoc.head.append(node.cloneNode(true));
+  }
+  const stage = previewDoc.createElement("div");
+  stage.dataset.vm0EditorStage = "true";
+  previewDoc.body.append(stage);
+  for (const [index, slide] of selectSlideElements(doc).entries()) {
+    if (slideIdForElement(slide, index) === params.activeSlideId) {
+      const slideId = slideIdForElement(slide, index);
+      for (const [editableIndex, editable] of selectEditableElements(
+        slide,
+      ).entries()) {
+        if (editable instanceof HTMLElement) {
+          editable.dataset.vm0EditorSlideId = slideId;
+          editable.dataset.vm0EditorEditId =
+            editIdForElement(editable, editableIndex) ?? "";
+        }
+      }
+      const slideClone = slide.cloneNode(true);
+      if (slideClone instanceof Element) {
+        sanitizePreviewTree(slideClone);
+      }
+      stage.append(slideClone);
+      break;
+    }
+  }
+  appendPresentationPreviewStyle(previewDoc);
+  appendAdditionalHeadStyle(previewDoc, params.additionalHeadStyle);
   sanitizePreviewDocument(previewDoc);
   return serializeDoc(previewDoc);
 }

@@ -343,6 +343,103 @@ function resetPresentationTemplateThumbnailCache(): void {
   Reflect.deleteProperty(globalThis, "vm0PresentationTemplateThumbnailCache");
 }
 
+function resetTemplatePreviewPrewarmCache(): void {
+  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
+  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewIdlePrewarmKeys");
+}
+
+function trackTemplatePreviewImagePreloads(): {
+  readonly srcs: readonly string[];
+  readonly restore: () => void;
+} {
+  const srcs: string[] = [];
+  const originalGlobalImage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "Image",
+  );
+  const originalWindowImage = Object.getOwnPropertyDescriptor(window, "Image");
+
+  class TestImagePreload {
+    decoding = "";
+    loading = "";
+    fetchPriority = "";
+    #src = "";
+
+    decode(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    get src(): string {
+      return this.#src;
+    }
+
+    set src(value: string) {
+      this.#src = value;
+      srcs.push(value);
+    }
+  }
+
+  const imageConstructor = TestImagePreload as unknown as typeof Image;
+  Object.defineProperty(globalThis, "Image", {
+    configurable: true,
+    value: imageConstructor,
+    writable: true,
+  });
+  Object.defineProperty(window, "Image", {
+    configurable: true,
+    value: imageConstructor,
+    writable: true,
+  });
+
+  return {
+    srcs,
+    restore: () => {
+      if (originalGlobalImage) {
+        Object.defineProperty(globalThis, "Image", originalGlobalImage);
+      } else {
+        Reflect.deleteProperty(globalThis, "Image");
+      }
+      if (originalWindowImage) {
+        Object.defineProperty(window, "Image", originalWindowImage);
+      } else {
+        Reflect.deleteProperty(window, "Image");
+      }
+    },
+  };
+}
+
+function mockImmediateIdleCallback(): () => void {
+  const originalRequestIdleCallback = Object.getOwnPropertyDescriptor(
+    window,
+    "requestIdleCallback",
+  );
+  Object.defineProperty(window, "requestIdleCallback", {
+    configurable: true,
+    value: (callback: IdleRequestCallback): number => {
+      callback({
+        didTimeout: false,
+        timeRemaining: () => {
+          return 50;
+        },
+      });
+      return 1;
+    },
+    writable: true,
+  });
+
+  return () => {
+    if (originalRequestIdleCallback) {
+      Object.defineProperty(
+        window,
+        "requestIdleCallback",
+        originalRequestIdleCallback,
+      );
+    } else {
+      Reflect.deleteProperty(window, "requestIdleCallback");
+    }
+  };
+}
+
 async function expectComposerModel(label: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
@@ -546,6 +643,7 @@ beforeEach(() => {
   resetPresentationTemplateHtmlPreviewCache();
   resetPresentationCardPreviewImageDecodeCache();
   resetPresentationTemplateThumbnailCache();
+  resetTemplatePreviewPrewarmCache();
 });
 
 describe("chat composer models", () => {
@@ -1517,6 +1615,44 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
+  it("prewarms template previews only after the template button is used", async () => {
+    const imagePreloads = trackTemplatePreviewImagePreloads();
+    const restoreIdleCallback = mockImmediateIdleCallback();
+    const templatePreviewSrcs = () => {
+      return imagePreloads.srcs.filter((src) => {
+        return src.includes("/cdn-cgi/image/width=480,height=270");
+      });
+    };
+
+    try {
+      mockChatLifecycle(context, { threadId: THREAD_ID });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: true,
+        },
+      });
+
+      const templateButton = await waitFor(() => {
+        return screen.getByLabelText("Template");
+      });
+
+      expect(templatePreviewSrcs()).toStrictEqual([]);
+
+      click(templateButton);
+
+      await waitFor(() => {
+        expect(templatePreviewSrcs().length).toBeGreaterThan(0);
+      });
+    } finally {
+      restoreIdleCallback();
+      imagePreloads.restore();
+      resetTemplatePreviewPrewarmCache();
+    }
+  });
+
   it("places the template control immediately after attach", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1739,7 +1875,16 @@ describe("chat composer templates", () => {
           "Slide two",
         );
       });
+      const createObjectUrlCountBeforeLeave = createObjectURL.mock.calls.length;
       fireEvent.mouseLeave(preview);
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId(`${template.title} card HTML preview`),
+        ).not.toBeInTheDocument();
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(
+        createObjectUrlCountBeforeLeave,
+      );
 
       await fill(
         screen.getByLabelText("Search templates"),
