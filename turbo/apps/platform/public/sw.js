@@ -30,6 +30,23 @@ function isCacheableAssetResponse(response) {
   );
 }
 
+async function fetchRevalidatedStaticAsset(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const response = await fetch(request, { cache: "no-cache" });
+    if (isCacheableAssetResponse(response)) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached && isCacheableAssetResponse(cached)) {
+      return cached;
+    }
+    throw error;
+  }
+}
+
 self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
@@ -59,8 +76,8 @@ self.addEventListener("fetch", (event) => {
 
   if (isRevalidatedStaticAsset(url)) {
     // Stable generated metadata URLs must revalidate instead of being served
-    // from Cache Storage like content-hashed Vite assets.
-    event.respondWith(fetch(event.request, { cache: "no-cache" }));
+    // cache-first like content-hashed Vite assets.
+    event.respondWith(fetchRevalidatedStaticAsset(event.request));
     return;
   }
 
