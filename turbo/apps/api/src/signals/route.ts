@@ -53,7 +53,6 @@ import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewal
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
-import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
@@ -191,11 +190,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiHealth$,
   },
   ...authMeRoutes,
-  // Inbound webhook dispatch (POST /api/automations/webhooks/:token) is
-  // registered before the resource routes so the static "webhooks" segment
-  // wins over the `/api/automations/:ref/...` params for that path shape.
-  ...webhooksAutomationRoutes,
-  // The unified Automation resource: one automation, N triggers of any kind.
+  // The unified Automation resource: one automation, N schedule triggers.
   ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,

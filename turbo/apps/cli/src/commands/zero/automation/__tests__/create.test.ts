@@ -73,17 +73,6 @@ const onceTrigger = {
   updatedAt: "2026-06-01T00:00:00Z",
 };
 
-const webhookTrigger = {
-  id: TRIGGER_ID,
-  automationId: AUTOMATION_ID,
-  enabled: true,
-  kind: "webhook",
-  webhookToken: "whk_deadbeef",
-  webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
-  createdAt: "2026-06-01T00:00:00Z",
-  updatedAt: "2026-06-01T00:00:00Z",
-};
-
 function composeByNameHandler() {
   return http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
     const url = new URL(request.url);
@@ -298,38 +287,6 @@ describe("zero automation create command", () => {
     });
   });
 
-  it("should print the webhook URL and one-time secret with --webhook", async () => {
-    server.use(
-      composeByNameHandler(),
-      http.post("http://localhost:3000/api/automations", () => {
-        return HttpResponse.json(
-          {
-            automation: baseAutomation([webhookTrigger]),
-            webhookSecret: "whsec_supersecretvalue",
-          },
-          { status: 201 },
-        );
-      }),
-    );
-
-    await createCommand.parseAsync([
-      "node",
-      "cli",
-      "-n",
-      "alerts",
-      "--agent",
-      "my-agent",
-      "-p",
-      "Summarize alerts",
-      "--webhook",
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain(webhookTrigger.webhookUrl);
-    expect(logCalls).toContain("whsec_supersecretvalue");
-    expect(logCalls).toContain("shown only once");
-  });
-
   it("should reject an invalid --loop duration", async () => {
     await expect(async () => {
       await createCommand.parseAsync([
@@ -365,14 +322,13 @@ describe("zero automation create command", () => {
         "poll",
         "--cron",
         "0 9 * * *",
-        "--webhook",
+        "--loop",
+        "15m",
       ]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Use at most one of --cron, --once, --loop, --webhook",
-      ),
+      expect.stringContaining("Use at most one of --cron, --once, --loop"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

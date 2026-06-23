@@ -22,8 +22,8 @@ import { chatThreads } from "./chat-thread";
  * First-class, unified target schema for the Automation model (events-first).
  * An automation pairs a user intent (`instruction`) with an agent and a linked
  * chat thread; an interpreter turns the instruction plus a trigger event into
- * a concrete run prompt. The webhook trigger kind ships first; the `time` kind
- * lands when schedules are migrated in a later slice.
+ * a concrete run prompt. Automation triggers are schedule-like time triggers
+ * (cron / once / loop).
  *
  * Each automation carries its own (orgId, userId) pair for execution identity,
  * mirroring the schedule precedent so cross-org sharing resolves secrets from
@@ -66,7 +66,7 @@ export const automations = pgTable(
         { onDelete: "cascade" },
       ),
 
-    // Which interpreter turns trigger events into prompts, e.g. "webhook".
+    // Which interpreter turns trigger events into prompts.
     interpreterKind: varchar("interpreter_kind", { length: 32 }).notNull(),
 
     enabled: boolean("enabled").default(true).notNull(),
@@ -93,14 +93,8 @@ export const automations = pgTable(
 /**
  * Automation triggers table
  *
- * The event source(s) that fire an automation. `kind` discriminates the trigger
- * type ("webhook" for now); `config` holds kind-specific extensibility as jsonb.
- *
- * For webhook triggers:
- * - `webhookToken` is the unguessable, indexed-unique URL token used for O(1)
- *   inbound lookup (identity).
- * - `encryptedSecret` stores the HMAC signing secret, encrypted with the API
- *   stored-secret encryption envelope (reused from the secrets table).
+ * The event source(s) that fire an automation. `kind` discriminates the time
+ * trigger type; `config` holds kind-specific extensibility as jsonb.
  *
  * For time triggers (`kind ∈ {cron,once,loop}`), the config columns mirror
  * `zero_agent_schedules` (mutually exclusive based on kind):
@@ -123,17 +117,11 @@ export const automationTriggers = pgTable(
         { onDelete: "cascade" },
       ),
 
-    // Trigger kind discriminator: "webhook" | "cron" | "once" | "loop".
+    // Trigger kind discriminator: "cron" | "once" | "loop".
     kind: varchar("kind", { length: 32 }).notNull(),
 
     // Kind-specific extensibility.
     config: jsonb("config").$type<Record<string, unknown>>(),
-
-    // Unguessable URL token for O(1) inbound webhook lookup (identity).
-    webhookToken: varchar("webhook_token", { length: 64 }),
-
-    // HMAC signing secret, encrypted with the API stored-secret envelope.
-    encryptedSecret: text("encrypted_secret"),
 
     // Time-trigger configuration (mutually exclusive based on kind).
     cronExpression: varchar("cron_expression", { length: 100 }),
@@ -165,23 +153,18 @@ export const automationTriggers = pgTable(
   (table) => {
     return [
       index("idx_automation_triggers_automation").on(table.automationId),
-      uniqueIndex("idx_automation_triggers_webhook_token").on(
-        table.webhookToken,
-      ),
       // Partial index for efficient time-trigger polling: enabled triggers with
       // due next_run_at (mirrors idx_zero_agent_schedules_next_run).
       index("idx_automation_triggers_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
       // Each kind carries exactly its own config (B4 on #16847): one of
-      // cron_expression/at_time/interval_seconds for time kinds, the URL token
-      // for webhooks.
+      // cron_expression/at_time/interval_seconds.
       check(
         "automation_triggers_kind_config_check",
         sql`(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)
           OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
-          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
-          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)`,
+          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)`,
       ),
     ];
   },

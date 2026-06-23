@@ -129,7 +129,8 @@ function triggerFields(
       timezone: "UTC",
     };
   }
-  throw new Error("Webhook triggers are not modeled by the automation mocks");
+  const exhaustive: never = trigger;
+  return exhaustive;
 }
 
 function findByRef(ref: string): AutomationView | undefined {

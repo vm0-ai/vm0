@@ -194,16 +194,6 @@ function createMultiTriggerAutomationResponse(): AutomationResponse {
         lastRunAt: null,
         consecutiveFailures: 0,
       },
-      {
-        id: "f0000001-0000-4000-a000-000000000302",
-        automationId,
-        enabled: true,
-        createdAt: "2026-03-01T00:00:00Z",
-        updatedAt: "2026-03-01T00:00:00Z",
-        kind: "webhook",
-        webhookToken: "webhook-token",
-        webhookUrl: "https://example.test/api/automations/webhooks/token",
-      },
     ],
   });
 }
@@ -441,10 +431,9 @@ describe("zero automation detail page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getAllByText("3 triggers").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2 triggers").length).toBeGreaterThan(0);
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getByText("Loop")).toBeInTheDocument();
-    expect(screen.getByText("Webhook")).toBeInTheDocument();
     expect(
       screen.getByText(
         "This automation has multiple triggers. Manage them from the CLI or API.",

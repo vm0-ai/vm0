@@ -90,14 +90,6 @@ const AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE = `/api/automation-triggers/:id
 const AUTOMATION_TRIGGERS_DISABLE_PATH_RE = new RegExp(
   `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
 );
-const AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
-const AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE = new RegExp(
-  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
-);
-const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
-  "/api/automations/webhooks/:token";
-const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
-  /^\/api\/automations\/webhooks\/[^/]+$/;
 const ZERO_WORKFLOWS_BY_NAME_REWRITE_SOURCE = "/api/zero/workflows/:name";
 const ZERO_WORKFLOWS_BY_NAME_PATH_RE = /^\/api\/zero\/workflows\/[^/]+$/;
 const ZERO_WORKFLOW_APPROVE_PUBLISH_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/approve-publish`;
@@ -1256,11 +1248,6 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
   ],
-  [
-    AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE,
-    "/api/automations/webhooks/:token",
-    AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
-  ],
   ["/api/automations", "/api/automations"],
   [
     AUTOMATIONS_ENABLE_REWRITE_SOURCE,
@@ -1301,11 +1288,6 @@ export const API_BACKEND_REWRITES = [
     AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE,
     "/api/automation-triggers/:id/disable",
     AUTOMATION_TRIGGERS_DISABLE_PATH_RE,
-  ],
-  [
-    AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE,
-    "/api/automation-triggers/:id/rotate-secret",
-    AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE,
   ],
   [
     AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE,
