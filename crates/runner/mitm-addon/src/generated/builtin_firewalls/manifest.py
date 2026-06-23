@@ -55,7 +55,6 @@ FIREWALL_MODULES = {
     "cloudflare": (
         "cloudflare_0",
         "cloudflare_1",
-        "cloudflare_2",
     ),
     "coda": ("coda_0",),
     "coingecko": ("coingecko_0",),

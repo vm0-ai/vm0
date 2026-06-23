@@ -48,26 +48,6 @@ function expectCloudflareMatches(
   expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
 }
 
-function expectCloudflareMatchesContaining(
-  method: string,
-  path: string,
-  includedPermissionNames: readonly string[],
-  excludedPermissionNames: readonly string[],
-): void {
-  const matches = findMatchingPermissions(
-    method,
-    path,
-    getConnectorFirewall("cloudflare"),
-  );
-
-  for (const permissionName of includedPermissionNames) {
-    expect(matches).toContain(permissionName);
-  }
-  for (const permissionName of excludedPermissionNames) {
-    expect(matches).not.toContain(permissionName);
-  }
-}
-
 describe("cloudflare firewall", () => {
   it("registers the Cloudflare firewall with API token auth", () => {
     expect(isFirewallConnectorType("cloudflare")).toBe(true);
@@ -90,6 +70,14 @@ describe("cloudflare firewall", () => {
 
   it("exposes official Cloudflare API token groups for representative resources", () => {
     expectCloudflareRule(
+      "access-ssh-auditing.read",
+      "GET /v4/accounts/{account_id}/access/gateway_ca",
+    );
+    expectCloudflareRule(
+      "access-ssh-auditing.write",
+      "POST /v4/accounts/{account_id}/access/gateway_ca",
+    );
+    expectCloudflareRule(
       "dns-firewall.read",
       "GET /v4/accounts/{account_id}/dns_firewall",
     );
@@ -98,22 +86,14 @@ describe("cloudflare firewall", () => {
       "POST /v4/accounts/{account_id}/dns_firewall",
     );
     expectCloudflareRule(
-      "account-firewall-access-rules.read",
-      "GET /v4/accounts/{account_id}/firewall/access_rules/rules",
-    );
-    expectCloudflareRule(
       "account-firewall-access-rules.write",
       "POST /v4/accounts/{account_id}/firewall/access_rules/rules",
     );
     expectCloudflareRule(
-      "account-waf.read",
+      "account-rulesets.read",
       "GET /v4/accounts/{account_id}/rulesets",
     );
     expectCloudflareRule("zone-waf.read", "GET /v4/zones/{zone_id}/rulesets");
-    expectCloudflareRule(
-      "magic-firewall.read",
-      "GET /v4/accounts/{account_id}/rulesets",
-    );
     expectCloudflareRule(
       "d1.read",
       "GET /v4/accounts/{account_id}/d1/database",
@@ -138,34 +118,61 @@ describe("cloudflare firewall", () => {
       "request-tracer.read",
       "POST /v4/accounts/{account_id}/request-tracer/trace",
     );
+    expectCloudflareRule(
+      "account-rule-lists.read",
+      "GET /v4/accounts/{account_id}/rules/lists/{list_id}",
+    );
+    expectCloudflareRule(
+      "account-settings.read",
+      "GET /v4/accounts/{account_id}/scim/v2/Users",
+    );
+    expectCloudflareRule(
+      "workers-tail.read",
+      "GET /v4/accounts/{account_id}/workers/scripts/{script_name}/tails",
+    );
+    expectCloudflareRule(
+      "api-gateway.read",
+      "GET /v4/zones/{zone_id}/schema_validation/schemas",
+    );
   });
 
-  it("maps endpoints to every official Cloudflare API token group", () => {
+  it("selects one owning Cloudflare API token group for routes with multiple official groups", () => {
+    expectCloudflareMatches(
+      "GET",
+      "/v4/accounts/account-id/access/gateway_ca",
+      ["access-ssh-auditing.read"],
+    );
     expectCloudflareMatches("GET", "/v4/accounts/account-id/dns_firewall", [
       "dns-firewall.read",
-      "dns-firewall.write",
     ]);
-    expectCloudflareMatchesContaining(
-      "GET",
-      "/v4/accounts/account-id/rulesets",
-      [
-        "account-rulesets.read",
-        "account-rulesets.write",
-        "account-waf.read",
-        "account-waf.write",
-        "magic-firewall.read",
-        "magic-firewall.write",
-      ],
-      [],
-    );
+    expectCloudflareMatches("GET", "/v4/accounts/account-id/rulesets", [
+      "account-rulesets.read",
+    ]);
+    expectCloudflareMatches("GET", "/v4/zones/zone-id/rulesets", [
+      "zone-waf.read",
+    ]);
     expectCloudflareMatches(
       "GET",
       "/v4/accounts/account-id/cfd_tunnel/tunnel-id/token",
-      [
-        "argotunnel.write",
-        "teams-connector-cloudflared.write",
-        "teams-connectors.write",
-      ],
+      ["argotunnel.write"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/access/apps/app-id/revoke_tokens",
+      ["access-app.revoke"],
+    );
+    expectCloudflareMatches(
+      "GET",
+      "/v4/zones/zone-id/schema_validation/schemas",
+      ["api-gateway.read"],
+    );
+    expectCloudflareMatches("GET", "/v4/accounts/account-id/scim/v2/Users", [
+      "account-settings.read",
+    ]);
+    expectCloudflareMatches(
+      "GET",
+      "/v4/accounts/account-id/workers/scripts/script-name/tails",
+      ["workers-tail.read"],
     );
     expectCloudflareMatches(
       "POST",
@@ -177,15 +184,77 @@ describe("cloudflare firewall", () => {
     ]);
   });
 
+  it("does not assign any route to more than one permission", () => {
+    const firewall = getConnectorFirewall("cloudflare");
+    const routePermissions = new Map<string, string[]>();
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        for (const rule of permission.rules) {
+          const permissions = routePermissions.get(rule) ?? [];
+          permissions.push(permission.name);
+          routePermissions.set(rule, permissions);
+        }
+      }
+    }
+
+    const conflicts = [...routePermissions.entries()].filter(
+      ([, permissions]) => {
+        return permissions.length > 1;
+      },
+    );
+    expect(conflicts).toStrictEqual([]);
+  });
+
+  it("does not assign any route to both default-allowed and default-denied permissions", () => {
+    const firewall = getConnectorFirewall("cloudflare");
+    const defaultAllowed: ReadonlySet<string> = new Set(
+      cloudflareDefaultAllowed,
+    );
+    const routePolicies = new Map<string, Set<"allow" | "deny">>();
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        const policy = defaultAllowed.has(permission.name) ? "allow" : "deny";
+        for (const rule of permission.rules) {
+          const policies =
+            routePolicies.get(rule) ?? new Set<"allow" | "deny">();
+          policies.add(policy);
+          routePolicies.set(rule, policies);
+        }
+      }
+    }
+
+    const conflicts = [...routePolicies.entries()].filter(([, policies]) => {
+      return policies.size > 1;
+    });
+    expect(conflicts).toStrictEqual([]);
+  });
+
   it("maps mutating endpoints to write permissions", () => {
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/access/gateway_ca",
+      ["access-ssh-auditing.write"],
+    );
+    expectCloudflareMatches(
+      "DELETE",
+      "/v4/accounts/account-id/access/gateway_ca/cert-id",
+      ["access-ssh-auditing.write"],
+    );
     expectCloudflareMatches("POST", "/v4/accounts/account-id/dns_firewall", [
       "dns-firewall.write",
     ]);
-    expectCloudflareMatchesContaining(
+    expectCloudflareMatches("POST", "/v4/accounts/account-id/rulesets", [
+      "account-rulesets.write",
+    ]);
+    expectCloudflareMatches("POST", "/v4/accounts/account-id/scim/v2/Users", [
+      "scim-provisioning.write",
+    ]);
+    expectCloudflareMatches(
       "POST",
-      "/v4/accounts/account-id/rulesets",
-      ["account-rulesets.write", "account-waf.write", "magic-firewall.write"],
-      ["account-rulesets.read", "account-waf.read", "magic-firewall.read"],
+      "/v4/accounts/account-id/workers/scripts/script-name/tails",
+      ["workers-scripts.write"],
     );
   });
 
@@ -204,19 +273,37 @@ describe("cloudflare firewall", () => {
     expect(cloudflareGenerationStats.unmappedOperations).toBe(495);
     expect(cloudflareGenerationStats.ambiguousOperations).toBe(0);
     expect(cloudflareGenerationStats.multiGroupOperations).toBe(1673);
-    expect(cloudflareGenerationStats.permissionCount).toBe(255);
+    expect(cloudflareGenerationStats.operationsWithPrioritizedOwners).toBe(496);
+    expect(cloudflareGenerationStats.groupsDroppedByOwnerPriority).toBe(1230);
+    expect(cloudflareGenerationStats.operationsWithUnscoredOwnerSelection).toBe(
+      0,
+    );
+    expect(cloudflareGenerationStats.operationsWithPrioritizedReadGroups).toBe(
+      147,
+    );
+    expect(cloudflareGenerationStats.readGroupsDroppedByPriority).toBe(167);
+    expect(cloudflareGenerationStats.permissionCount).toBe(213);
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });
 
   it("groups Cloudflare permissions by official OAuth scope UI category", () => {
     expect(cloudflareCategories["dns-firewall.read"]).toBe("DNS & Zones");
-    expect(cloudflareCategories["account-waf.write"]).toBe("App Security");
+    expect(cloudflareCategories["dns-firewall.write"]).toBe("DNS & Zones");
+    expect(cloudflareCategories["api-gateway.read"]).toBe("App Security");
+    expect(cloudflareCategories["api-gateway.write"]).toBe("App Security");
     expect(cloudflareCategories["zone-waf.read"]).toBe("App Security");
-    expect(cloudflareCategories["magic-firewall.write"]).toBe(
-      "Network Services",
-    );
+    expect(cloudflareCategories["zone-waf.write"]).toBe("App Security");
+    expect(cloudflareCategories["magic-wan.read"]).toBe("Network Services");
+    expect(cloudflareCategories["magic-wan.write"]).toBe("Network Services");
     expect(cloudflareCategories["d1.read"]).toBe("Developer Platform");
-    expect(cloudflareCategories["api-tokens.read"]).toBe("Account & Billing");
+    expect(cloudflareCategories["d1.write"]).toBe("Developer Platform");
+    expect(cloudflareCategories["workers-tail.read"]).toBe(
+      "Developer Platform",
+    );
+    expect(cloudflareCategories["account-settings.read"]).toBe(
+      "Account & Billing",
+    );
+    expect(cloudflareCategories["api-tokens.write"]).toBe("Account & Billing");
     expect(cloudflareCategories["sso-connector.read"]).toBe(
       "Cloudflare One / Zero Trust",
     );
@@ -231,16 +318,26 @@ describe("cloudflare firewall", () => {
   it("defaults Cloudflare readonly permissions to allow and unknown endpoints to deny", () => {
     const policy = getDefaultFirewallPolicies("cloudflare");
 
-    expect(policy.policies["dns-firewall.read"]).toBe("allow");
-    expect(policy.policies["account-firewall-access-rules.read"]).toBe("allow");
-    expect(policy.policies["account-waf.read"]).toBe("allow");
-    expect(policy.policies["zone-waf.read"]).toBe("allow");
+    expect(policy.policies["account-rule-lists.read"]).toBe("allow");
+    expect(policy.policies["account-settings.read"]).toBe("allow");
+    expect(policy.policies["access-ssh-auditing.read"]).toBe("allow");
+    expect(policy.policies["api-gateway.read"]).toBe("allow");
     expect(policy.policies["d1.read"]).toBe("allow");
+    expect(policy.policies["dns-firewall.read"]).toBe("allow");
+    expect(policy.policies["logs.read"]).toBe("allow");
+    expect(policy.policies["request-tracer.read"]).toBe("allow");
+    expect(policy.policies["sso-connector.read"]).toBe("allow");
+    expect(policy.policies["zone-waf.read"]).toBe("allow");
+    expect(policy.policies["zone.read"]).toBe("allow");
+    expect(policy.policies["workers-tail.read"]).toBe("allow");
+    expect(policy.policies["account-waf.read"]).toBeUndefined();
+    expect(policy.policies["account-waf.write"]).toBeUndefined();
+    expect(policy.policies["access-ssh-auditing.write"]).toBe("deny");
     expect(policy.policies["dns-firewall.write"]).toBe("deny");
     expect(policy.policies["account-firewall-access-rules.write"]).toBe("deny");
-    expect(policy.policies["account-waf.write"]).toBe("deny");
     expect(policy.policies["zone-waf.write"]).toBe("deny");
     expect(policy.policies["d1.write"]).toBe("deny");
+    expect(policy.policies["api-gateway.write"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
 
@@ -259,12 +356,20 @@ describe("cloudflare firewall", () => {
     expect([...cloudflareDefaultAllowed].sort()).toStrictEqual(
       readOnlyPermissions.sort(),
     );
-    expect(cloudflareDefaultAllowed).toHaveLength(125);
+    expect(cloudflareDefaultAllowed).toHaveLength(106);
+    expect(cloudflareDefaultAllowed).toContain("access-ssh-auditing.read");
+    expect(cloudflareDefaultAllowed).toContain("account-settings.read");
+    expect(cloudflareDefaultAllowed).toContain("account-rule-lists.read");
+    expect(cloudflareDefaultAllowed).toContain("api-gateway.read");
+    expect(cloudflareDefaultAllowed).toContain("d1.read");
     expect(cloudflareDefaultAllowed).toContain("dns-firewall.read");
-    expect(cloudflareDefaultAllowed).toContain("account-waf.read");
-    expect(cloudflareDefaultAllowed).toContain("zone-waf.read");
-    expect(cloudflareDefaultAllowed).toContain("magic-firewall.read");
+    expect(cloudflareDefaultAllowed).toContain("logs.read");
     expect(cloudflareDefaultAllowed).toContain("request-tracer.read");
+    expect(cloudflareDefaultAllowed).toContain("workers-tail.read");
+    expect(cloudflareDefaultAllowed).toContain("workers-scripts.read");
+    expect(cloudflareDefaultAllowed).toContain("zone-waf.read");
+    expect(cloudflareDefaultAllowed).toContain("zone.read");
+    expect(cloudflareDefaultAllowed).not.toContain("account-waf.read");
     expect(cloudflareDefaultAllowed).not.toContain("dns-firewall.write");
     expect(cloudflareDefaultAllowed).not.toContain("realtime.realtime");
   });
