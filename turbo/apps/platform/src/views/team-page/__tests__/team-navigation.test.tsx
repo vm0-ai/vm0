@@ -987,16 +987,6 @@ describe("team page navigation", () => {
     expect(miscGroupElement).toBeInTheDocument();
 
     click(screen.getByText(miscGroupLabel));
-    const miscGroup = screen.getByText(miscGroupLabel).closest("div");
-    if (!(miscGroup instanceof HTMLElement)) {
-      throw new Error("Misc permission group not found");
-    }
-    click(buttonByText("Allow", miscGroup));
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow for 7d"));
-    await waitFor(() => {
-      expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
-    });
     const channelsJoinRow = await permissionRowByName(
       loadedGroupedDialog,
       "channels:join",
@@ -1005,10 +995,15 @@ describe("team page navigation", () => {
     click(
       within(channelsJoinRow).getByLabelText("channels:join allow options"),
     );
-    click(menuItemByText("Allow always"));
+    click(menuItemByText("Allow for 7d"));
     await waitFor(() => {
-      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
+      expect(within(channelsJoinRow).getByText("7d")).toBeInTheDocument();
     });
+    click(buttonByText("Deny", channelsJoinRow));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).queryByText("7d")).not.toBeInTheDocument();
+    });
+    click(buttonByText("Allow", channelsJoinRow));
     click(
       within(channelsJoinRow).getByLabelText("channels:join allow options"),
     );
@@ -1016,13 +1011,6 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
     });
-    click(buttonByText("Deny", miscGroup));
-    await waitFor(() => {
-      expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
-    });
-    click(buttonByText("Allow", miscGroup));
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow always"));
 
     const permissionsScrollArea =
       loadedGroupedDialog.querySelector(".overflow-y-auto");
