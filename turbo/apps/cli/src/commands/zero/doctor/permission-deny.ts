@@ -1,10 +1,7 @@
 import { Command, Option } from "commander";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
-import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
+import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import {
@@ -52,12 +49,13 @@ Notes:
           return;
         }
 
-        if (!isFirewallConnectorType(connectorRef)) {
+        const config = await loadConnectorFirewall(connectorRef);
+        if (!config) {
           throw new Error(`Unknown connector type: ${connectorRef}`);
         }
 
-        const { label } = CONNECTOR_TYPES[connectorRef];
-        const config = getConnectorFirewall(connectorRef);
+        const label =
+          getFirewallPermissionSummary(connectorRef)?.label ?? connectorRef;
         const permissions = findMatchingPermissions(
           opts.method,
           opts.path,

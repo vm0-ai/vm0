@@ -1,6 +1,5 @@
 import { Command, Option } from "commander";
 import {
-  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -21,9 +20,10 @@ import {
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+  loadConnectorFirewall,
+  loadConnectorFirewalls,
+  RUNTIME_FIREWALL_CONNECTOR_TYPES,
+} from "@vm0/connectors/firewalls/runtime";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
 import {
@@ -74,22 +74,35 @@ async function connectorTypeIsAvailable(type: string): Promise<boolean> {
   });
 }
 
+function hasPermissionRules(config: FirewallConfig): boolean {
+  return config.apis.some((api) => {
+    return (
+      api.permissions?.some((permission) => {
+        return permission.rules.length > 0;
+      }) ?? false
+    );
+  });
+}
+
 /**
  * Reverse-lookup a full URL to find which connector handles it.
  * Iterates all connector firewall configs and checks if the URL
  * starts with any registered base URL (scheme + host + optional path prefix).
  */
-function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
-  const allTypes = CONNECTOR_TYPE_KEYS;
-
+async function resolveConnectorFromUrl(
+  url: string,
+): Promise<UrlLookupResult | null> {
   let bestMatch: {
     connectorType: string;
     match: FirewallBaseUrlMatch;
   } | null = null;
 
-  for (const type of allTypes) {
-    if (!isFirewallConnectorType(type)) continue;
-    const config = getConnectorFirewall(type);
+  const firewalls = await loadConnectorFirewalls(
+    RUNTIME_FIREWALL_CONNECTOR_TYPES,
+  );
+  for (const type of RUNTIME_FIREWALL_CONNECTOR_TYPES) {
+    const config = firewalls[type];
+    if (!config) continue;
     for (const api of config.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
       if (match !== null) {
@@ -118,17 +131,15 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   };
 }
 
-function runContextFirewallPermissionConfig(
+async function runContextFirewallPermissionConfig(
   firewall: RunContextResponse["firewalls"][number],
-): FirewallConfig | null {
+): Promise<FirewallConfig | null> {
   if (!("apis" in firewall)) {
     if (!isConnectorType(firewall.name)) {
       return null;
     }
-    if (!isFirewallConnectorType(firewall.name)) {
-      return null;
-    }
-    const config = getConnectorFirewall(firewall.name);
+    const config = await loadConnectorFirewall(firewall.name);
+    if (!config) return null;
     return resolveFirewallBaseUrlVars(
       [{ name: config.name, apis: config.apis }],
       firewall.baseUrlVars,
@@ -146,10 +157,10 @@ function runContextFirewallPermissionConfig(
   };
 }
 
-function resolveConnectorFromRunContext(
+async function resolveConnectorFromRunContext(
   url: string,
   runContext: RunContextResponse,
-): UrlLookupResult | null {
+): Promise<UrlLookupResult | null> {
   let bestMatch: {
     connectorType: string;
     match: FirewallBaseUrlMatch;
@@ -158,8 +169,7 @@ function resolveConnectorFromRunContext(
 
   for (const firewall of runContext.firewalls) {
     if (!isConnectorType(firewall.name)) continue;
-    if (!isFirewallConnectorType(firewall.name)) continue;
-    const permissionConfig = runContextFirewallPermissionConfig(firewall);
+    const permissionConfig = await runContextFirewallPermissionConfig(firewall);
     if (!permissionConfig) continue;
     for (const api of permissionConfig.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
@@ -187,7 +197,9 @@ function resolveConnectorFromRunContext(
     envName,
     matchedBase: bestMatch.match.displayBase,
     relativePath: bestMatch.match.relativePath,
-    permissionConfig: bestMatch.permissionConfig,
+    ...(hasPermissionRules(bestMatch.permissionConfig)
+      ? { permissionConfig: bestMatch.permissionConfig }
+      : {}),
   };
 }
 
@@ -333,15 +345,15 @@ async function checkConnectorDomains(
     return null;
   }
 
-  printConnectorDomains(ctx, runContext);
+  await printConnectorDomains(ctx, runContext);
   console.log("");
   return runContext.networkPolicies;
 }
 
-function printConnectorDomains(
+async function printConnectorDomains(
   ctx: DiagContext,
   runContext: RunContextResponse,
-): void {
+): Promise<void> {
   const matchingEntry = runContext.firewalls.find((fw) => {
     return fw.name === ctx.connectorType;
   });
@@ -355,7 +367,8 @@ function printConnectorDomains(
     );
     return;
   }
-  const permissionConfig = runContextFirewallPermissionConfig(matchingEntry);
+  const permissionConfig =
+    await runContextFirewallPermissionConfig(matchingEntry);
   if (!permissionConfig) {
     console.log(
       `No configuration found for the ${ctx.label} connector in this run.`,
@@ -377,8 +390,8 @@ function printConnectorDomains(
     "When the sandbox sends an HTTP request matching one of these URL prefixes, the network boundary intercepts the request and injects real credentials into the auth headers.",
   );
 
-  if (isFirewallConnectorType(ctx.connectorType)) {
-    const firewallConfig = getConnectorFirewall(ctx.connectorType);
+  const firewallConfig = await loadConnectorFirewall(ctx.connectorType);
+  if (firewallConfig) {
     const secretNames = extractSecretNamesFromApis(firewallConfig.apis);
     if (secretNames.length > 0) {
       console.log(`Credentials resolved from: ${secretNames.join(", ")}`);
@@ -456,7 +469,7 @@ function unknownPermissionChangeCommand(connectorRef: string): string {
  * When --url is provided, auto-detect the matching permission by running
  * the URL's relative path against the connector's firewall rules.
  */
-function resolvePermissionFromUrl(
+async function resolvePermissionFromUrl(
   connectorType: string,
   label: string,
   method: string,
@@ -464,7 +477,7 @@ function resolvePermissionFromUrl(
   matchedBase: string,
   permissionConfig: FirewallConfig | undefined,
   networkPolicies: NetworkPolicies | null,
-): void {
+): Promise<void> {
   console.log("## Step 3: Permission policy check (auto-detected from URL)");
   console.log("");
   console.log(
@@ -472,7 +485,9 @@ function resolvePermissionFromUrl(
   );
   console.log("");
 
-  if (!isFirewallConnectorType(connectorType)) {
+  const config =
+    permissionConfig ?? (await loadConnectorFirewall(connectorType));
+  if (!config) {
     console.log(
       `The ${label} connector does not have permission rules defined.`,
     );
@@ -480,7 +495,6 @@ function resolvePermissionFromUrl(
     return;
   }
 
-  const config = permissionConfig ?? getConnectorFirewall(connectorType);
   const matchedPermissions = findMatchingPermissions(
     method,
     relativePath,
@@ -608,12 +622,15 @@ How connectors work:
       let runContext: RunContextResponse | null | undefined;
 
       if (opts.url) {
-        urlLookup = resolveConnectorFromUrl(opts.url);
+        runContext = await getCurrentRunContext();
+        if (runContext) {
+          urlLookup = await resolveConnectorFromRunContext(
+            opts.url,
+            runContext,
+          );
+        }
         if (!urlLookup) {
-          runContext = await getCurrentRunContext();
-          if (runContext) {
-            urlLookup = resolveConnectorFromRunContext(opts.url, runContext);
-          }
+          urlLookup = await resolveConnectorFromUrl(opts.url);
         }
         if (!urlLookup) {
           throw new Error(
@@ -676,7 +693,7 @@ How connectors work:
       // Step 3: Permission policy check
       if (urlLookup) {
         // --url mode: auto-detect permission from URL path
-        resolvePermissionFromUrl(
+        await resolvePermissionFromUrl(
           connectorType,
           label,
           opts.method,

@@ -9,7 +9,7 @@ import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionChangeCommand } from "../permission-change";
 
 describe("zero doctor permission-change command", () => {
-  const SLACK_READ_PERMISSION = "conversations:read";
+  const SLACK_READ_PERMISSION = "admin.conversations:read";
 
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -46,7 +46,9 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).toContain("ref=slack");
-    expect(logCalls).toContain("permission=conversations%3Aread");
+    expect(logCalls).toContain(
+      `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
+    );
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("expiresIn=1h");
     expect(logCalls).toContain("Requested duration: 1h");

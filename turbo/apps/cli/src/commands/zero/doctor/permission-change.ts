@@ -1,10 +1,9 @@
 import { Command, Option } from "commander";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "@vm0/connectors/firewalls";
+  findFirewallMetadataPermission,
+  loadFirewallPermissionMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
@@ -20,19 +19,6 @@ const PERMISSION_GRANT_DURATIONS = [
   "7d",
   "always",
 ] as const satisfies readonly UserPermissionGrantExpiresIn[];
-
-function findPermissionInConfig(ref: string, permissionName: string): boolean {
-  if (!isFirewallConnectorType(ref)) return false;
-  if (permissionName === UNKNOWN_PERMISSION_GRANT) return true;
-  const config = getConnectorFirewall(ref);
-  for (const api of config.apis) {
-    if (!api.permissions) continue;
-    for (const p of api.permissions) {
-      if (p.name === permissionName) return true;
-    }
-  }
-  return false;
-}
 
 type PermissionAction = "enable" | "disable";
 
@@ -103,13 +89,11 @@ function printPermissionActionMessage(args: {
 
 async function outputPermissionChangeMessage(
   connectorRef: string,
+  label: string,
   permission: string,
   action: PermissionAction,
   duration: UserPermissionGrantExpiresIn | undefined,
 ): Promise<void> {
-  const { label } =
-    CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
-
   const platformOrigin = await getPlatformOrigin();
   const agentId = process.env.ZERO_AGENT_ID;
 
@@ -215,11 +199,15 @@ Notes:
           return;
         }
 
-        if (!isFirewallConnectorType(connectorRef)) {
+        const metadata = await loadFirewallPermissionMetadata(connectorRef);
+        if (!metadata) {
           throw new Error(`Unknown connector type: ${connectorRef}`);
         }
 
-        if (!findPermissionInConfig(connectorRef, opts.permission)) {
+        if (
+          opts.permission !== UNKNOWN_PERMISSION_GRANT &&
+          !findFirewallMetadataPermission(metadata, opts.permission)
+        ) {
           throw new Error(
             `Unknown permission "${opts.permission}" for ${connectorRef}`,
           );
@@ -228,6 +216,7 @@ Notes:
         const action = opts.enable ? "enable" : "disable";
         await outputPermissionChangeMessage(
           connectorRef,
+          metadata.label,
           opts.permission,
           action,
           opts.duration,
