@@ -51,7 +51,6 @@ export enum FeatureSwitchKey {
   MemoryDevRefresh = "memoryDevRefresh",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatSlashWorkflowCommands = "chatSlashWorkflowCommands",
-  AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
   GoalWorkflows = "goalWorkflows",
   MobileSingleLineComposer = "mobileSingleLineComposer",

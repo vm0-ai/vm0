@@ -6,7 +6,6 @@ import {
   automationTriggersContract,
 } from "@vm0/api-contracts/contracts/automations";
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -15,7 +14,6 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import {
   zeroWorkflowTriggers,
   zeroWorkflows,
@@ -38,7 +36,6 @@ import {
   deleteAutomationsScenario$,
   seedAutomationsScenario$,
 } from "./helpers/automations";
-import { decryptSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import {
   createFixtureTracker,
@@ -127,21 +124,6 @@ async function seedFixture(): Promise<AutomationsFixture> {
   return fixture;
 }
 
-async function enableWebhookTriggers(
-  fixture: AutomationsFixture,
-  options?: { readonly webhookTriggers?: boolean },
-): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: {
-      [FeatureSwitchKey.AutomationWebhookTriggers]:
-        options?.webhookTriggers ?? true,
-    },
-  });
-}
-
 interface CreateArgs {
   readonly name: string;
   readonly agentId: string;
@@ -156,8 +138,7 @@ interface CreateArgs {
         readonly atTime: string;
         readonly timezone?: string;
       }
-    | { readonly kind: "loop"; readonly intervalSeconds: number }
-    | { readonly kind: "webhook" };
+    | { readonly kind: "loop"; readonly intervalSeconds: number };
 }
 
 async function createAutomation(args: CreateArgs) {
@@ -195,7 +176,6 @@ async function findTriggerRows(automationId: string) {
 describe("Automations API", () => {
   it("creates a triggerless automation with a server-created chat thread", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "daily-digest",
@@ -204,7 +184,6 @@ describe("Automations API", () => {
       description: "Daily digest",
     });
 
-    expect(created.webhookSecret).toBeUndefined();
     const { automation } = created;
     expect(automation.name).toBe("daily-digest");
     expect(automation.displayName).toBe("Test Agent");
@@ -245,14 +224,12 @@ describe("Automations API", () => {
 
   it("creates an automation with a first cron trigger via sugar", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "cron-sugar",
       agentId: fixture.composeId,
       trigger: { kind: "cron", cronExpression: "0 9 * * *" },
     });
-    expect(created.webhookSecret).toBeUndefined();
     const [trigger] = created.automation.triggers;
     if (trigger?.kind !== "cron") {
       throw new Error("Expected a cron trigger");
@@ -283,7 +260,6 @@ describe("Automations API", () => {
   it("creates and updates one-time triggers by interpreting local atTime in timezone", async () => {
     mockNow(Date.parse("2026-06-22T07:50:00.000Z"));
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "once-local-sugar",
@@ -360,104 +336,8 @@ describe("Automations API", () => {
     expect(trigger.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
   });
 
-  it("creates an automation with a webhook trigger and returns the secret once", async () => {
-    const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
-
-    const created = await createAutomation({
-      name: "on-deploy",
-      agentId: fixture.composeId,
-      trigger: { kind: "webhook" },
-    });
-    expect(created.webhookSecret).toMatch(/^[0-9a-f]{64}$/);
-    const [trigger] = created.automation.triggers;
-    if (trigger?.kind !== "webhook") {
-      throw new Error("Expected a webhook trigger");
-    }
-    expect(trigger.webhookToken).toMatch(/^whk_[0-9a-f]{48}$/);
-    expect(trigger.webhookUrl).toBe(
-      `http://localhost:3000/api/automations/webhooks/${trigger.webhookToken}`,
-    );
-
-    // The stored secret is encrypted at rest and decrypts to the one-shot value.
-    const [row] = await findTriggerRows(created.automation.id);
-    expect(row?.encryptedSecret).not.toBeNull();
-    expect(row?.encryptedSecret).not.toContain(created.webhookSecret!);
-    expect(decryptSecretForTests(row!.encryptedSecret!)).toBe(
-      created.webhookSecret,
-    );
-
-    // The secret is never projected again: show/list surface only the token.
-    const shown = await accept(
-      refApi().show({
-        params: { ref: created.automation.id },
-        headers: SESSION_HEADERS,
-      }),
-      [200],
-    );
-    expect(Object.keys(shown.body)).not.toContain("webhookSecret");
-  });
-
-  it("rejects webhook trigger creation and rotation while the switch is off", async () => {
-    // Webhook triggers are a feature-gated NEW capability (#17307): with the
-    // switch off the surface stays feature-equivalent to legacy schedules.
-    const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture, { webhookTriggers: false });
-
-    const viaSugar = await accept(
-      mainApi().create({
-        body: {
-          name: "gated-webhook",
-          agentId: fixture.composeId,
-          instruction: "Handle the hook",
-          trigger: { kind: "webhook" },
-        },
-        headers: SESSION_HEADERS,
-      }),
-      [400],
-    );
-    expect(viaSugar.body.error.message).toContain("not enabled");
-
-    const created = await createAutomation({
-      name: "gated-add",
-      agentId: fixture.composeId,
-    });
-    const viaAdd = await accept(
-      refApi().addTrigger({
-        params: { ref: created.automation.id },
-        body: { kind: "webhook" },
-        headers: SESSION_HEADERS,
-      }),
-      [400],
-    );
-    expect(viaAdd.body.error.message).toContain("not enabled");
-
-    // Rotation is gated before trigger resolution, so any id is rejected.
-    const viaRotate = await accept(
-      triggerApi().rotateSecret({
-        params: { id: "00000000-0000-0000-0000-000000000000" },
-        headers: SESSION_HEADERS,
-        body: {},
-      }),
-      [400],
-    );
-    expect(viaRotate.body.error.message).toContain("not enabled");
-
-    // Time triggers stay fully available.
-    const cron = await accept(
-      refApi().addTrigger({
-        params: { ref: created.automation.id },
-        body: { kind: "cron", cronExpression: "0 9 * * *" },
-        headers: SESSION_HEADERS,
-      }),
-      [201],
-    );
-    expect(cron.body.trigger.kind).toBe("cron");
-  });
-
   it("rejects an invalid cron expression, a past atTime, and a bad timezone", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const badCron = await accept(
       mainApi().create({
@@ -507,7 +387,6 @@ describe("Automations API", () => {
 
   it("rejects a duplicate name on the same agent", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     await createAutomation({ name: "dup", agentId: fixture.composeId });
     const conflictResponse = await accept(
@@ -526,7 +405,6 @@ describe("Automations API", () => {
 
   it("rejects an ambiguous name ref and still resolves by id", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const extraComposeId = await trackExtraComposes(
       Promise.resolve(randomUUID()),
@@ -566,7 +444,6 @@ describe("Automations API", () => {
 
   it("shows and lists automations with all their triggers", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "multi-trigger",
@@ -577,12 +454,11 @@ describe("Automations API", () => {
       refApi().addTrigger({
         params: { ref: "multi-trigger" },
         headers: SESSION_HEADERS,
-        body: { kind: "webhook" },
+        body: { kind: "loop", intervalSeconds: 300 },
       }),
       [201],
     );
-    expect(added.body.webhookSecret).toMatch(/^[0-9a-f]{64}$/);
-    expect(added.body.trigger.kind).toBe("webhook");
+    expect(added.body.trigger.kind).toBe("loop");
 
     const shown = await accept(
       refApi().show({
@@ -596,7 +472,7 @@ describe("Automations API", () => {
       shown.body.triggers.map((trigger) => {
         return trigger.kind;
       }),
-    ).toStrictEqual(expect.arrayContaining(["cron", "webhook"]));
+    ).toStrictEqual(expect.arrayContaining(["cron", "loop"]));
 
     const listed = await accept(
       mainApi().list({ headers: SESSION_HEADERS }),
@@ -737,7 +613,6 @@ describe("Automations API", () => {
 
   it("updates identity fields and rejects a rename onto a taken name", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     await createAutomation({
       name: "alpha",
@@ -781,7 +656,6 @@ describe("Automations API", () => {
 
   it("disable clears time-trigger next runs and enable recomputes them", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
     mockEnv("CRON_SECRET", CRON_SECRET);
 
     const created = await createAutomation({
@@ -873,7 +747,6 @@ describe("Automations API", () => {
 
   it("creating a loop trigger on a disabled automation leaves next run unscheduled", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const disabled = await createAutomation({
       name: "loop-disabled",
@@ -893,7 +766,6 @@ describe("Automations API", () => {
 
   it("disable clears cron and loop next runs but keeps enabled and last run; re-enable recomputes", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "round-trip",
@@ -1192,7 +1064,6 @@ describe("Automations API", () => {
 
   it("enables and disables a single trigger", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "per-trigger",
@@ -1229,25 +1100,6 @@ describe("Automations API", () => {
       throw new Error("Expected a cron trigger");
     }
     expect(Date.parse(enabledTrigger.body.nextRunAt!)).toBeGreaterThan(now());
-
-    // A webhook trigger toggles its inbound gate flag.
-    const webhookAdded = await accept(
-      refApi().addTrigger({
-        params: { ref: "per-trigger" },
-        headers: SESSION_HEADERS,
-        body: { kind: "webhook" },
-      }),
-      [201],
-    );
-    const webhookDisabled = await accept(
-      triggerApi().disable({
-        params: { id: webhookAdded.body.trigger.id },
-        headers: SESSION_HEADERS,
-        body: {},
-      }),
-      [200],
-    );
-    expect(webhookDisabled.body.enabled).toBeFalsy();
 
     // Re-enabling an expired one-time trigger is rejected.
     const onceAdded = await accept(
@@ -1355,9 +1207,8 @@ describe("Automations API", () => {
     expect(switchedRow?.enabled).toBeTruthy();
   });
 
-  it("rejects invalid schedule updates and webhook trigger updates", async () => {
+  it("rejects invalid schedule updates", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "update-validate",
@@ -1390,27 +1241,6 @@ describe("Automations API", () => {
     const [row] = await findTriggerRows(created.automation.id);
     expect(row?.kind).toBe("loop");
     expect(row?.intervalSeconds).toBe(300);
-
-    // Webhook triggers carry no schedule.
-    const webhookAdded = await accept(
-      refApi().addTrigger({
-        params: { ref: "update-validate" },
-        headers: SESSION_HEADERS,
-        body: { kind: "webhook" },
-      }),
-      [201],
-    );
-    const webhookRejected = await accept(
-      triggerApi().update({
-        params: { id: webhookAdded.body.trigger.id },
-        headers: SESSION_HEADERS,
-        body: { kind: "loop", intervalSeconds: 60 },
-      }),
-      [400],
-    );
-    expect(webhookRejected.body.error.message).toContain(
-      "no schedule to update",
-    );
   });
 
   it("scopes trigger updates to the caller and gates cron next runs on the automation flag", async () => {
@@ -1465,7 +1295,6 @@ describe("Automations API", () => {
 
   it("manually fires an automation: chat callback only, automation-only provenance", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "fire-now",
@@ -1564,7 +1393,6 @@ describe("Automations API", () => {
 
   it("manually fires a triggerless automation without a conflict check", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "triggerless-run",
@@ -1593,71 +1421,13 @@ describe("Automations API", () => {
     });
   });
 
-  it("rotates a webhook trigger's secret and rejects non-webhook rotation", async () => {
-    const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
-
-    const created = await createAutomation({
-      name: "rotate-me",
-      agentId: fixture.composeId,
-      trigger: { kind: "webhook" },
-    });
-    const triggerId = created.automation.triggers[0]!.id;
-    const [before] = await findTriggerRows(created.automation.id);
-
-    const rotated = await accept(
-      triggerApi().rotateSecret({
-        params: { id: triggerId },
-        headers: SESSION_HEADERS,
-        body: {},
-      }),
-      [200],
-    );
-    expect(rotated.body.webhookSecret).toMatch(/^[0-9a-f]{64}$/);
-    expect(rotated.body.webhookSecret).not.toBe(created.webhookSecret);
-    if (rotated.body.trigger.kind !== "webhook") {
-      throw new Error("Expected a webhook trigger");
-    }
-    // Rotation replaces the secret but keeps the URL token (identity).
-    expect(rotated.body.trigger.webhookToken).toBe(
-      created.automation.triggers[0]?.kind === "webhook"
-        ? created.automation.triggers[0].webhookToken
-        : undefined,
-    );
-
-    const [after] = await findTriggerRows(created.automation.id);
-    expect(after?.encryptedSecret).not.toBe(before?.encryptedSecret);
-    expect(decryptSecretForTests(after!.encryptedSecret!)).toBe(
-      rotated.body.webhookSecret,
-    );
-
-    const cronAdded = await accept(
-      refApi().addTrigger({
-        params: { ref: "rotate-me" },
-        headers: SESSION_HEADERS,
-        body: { kind: "cron", cronExpression: "0 9 * * *" },
-      }),
-      [201],
-    );
-    const rejected = await accept(
-      triggerApi().rotateSecret({
-        params: { id: cronAdded.body.trigger.id },
-        headers: SESSION_HEADERS,
-        body: {},
-      }),
-      [400],
-    );
-    expect(rejected.body.error.code).toBe("BAD_REQUEST");
-  });
-
   it("deletes an automation and cascades its triggers; removes single triggers", async () => {
     const fixture = await seedFixture();
-    await enableWebhookTriggers(fixture);
 
     const created = await createAutomation({
       name: "remove-me",
       agentId: fixture.composeId,
-      trigger: { kind: "webhook" },
+      trigger: { kind: "cron", cronExpression: "0 9 * * *" },
     });
     const added = await accept(
       refApi().addTrigger({

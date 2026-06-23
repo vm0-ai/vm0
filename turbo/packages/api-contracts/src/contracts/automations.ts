@@ -6,10 +6,9 @@ const c = initContract();
 
 /**
  * The unified Automation resource API: one automation = identity + intent
- * (agent, instruction, one linked chat thread, enabled), carrying N triggers
- * (cron / once / loop / webhook) that only decide WHEN it fires. It replaced
- * the split schedule/webhook surfaces (deleted in #17307) and lives on the
- * /api/automations* paths.
+ * (agent, instruction, one linked chat thread, enabled), carrying N schedule
+ * triggers (cron / once / loop) that only decide WHEN it fires. It replaced
+ * the legacy schedule surfaces and lives on the /api/automations* paths.
  *
  * `:ref` resolves an automation by id (UUID) or by name; a name shared across
  * agents within the org/user scope is ambiguous and rejected with 400 — use
@@ -49,15 +48,6 @@ export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("loop"),
     intervalSeconds: z.number(),
     ...timeTriggerRuntimeShape,
-  }),
-  z.object({
-    ...triggerBaseShape,
-    kind: z.literal("webhook"),
-    // Unguessable URL token identifying the inbound trigger. Identity only;
-    // the HMAC signing secret is separate and surfaced exactly once (at
-    // creation or rotation).
-    webhookToken: z.string(),
-    webhookUrl: z.string(),
   }),
 ]);
 
@@ -130,25 +120,18 @@ const loopTriggerConfigSchema = z.object({
   intervalSeconds: z.number().int().positive(),
 });
 
-/**
- * Trigger creation input: the kind plus exactly its own config. Webhook
- * triggers mint their token + HMAC secret server-side.
- */
+/** Trigger creation input: the kind plus exactly its own config. */
 export const createTriggerRequestSchema = z.discriminatedUnion("kind", [
   cronTriggerConfigSchema,
   onceTriggerConfigSchema,
   loopTriggerConfigSchema,
-  z.object({
-    kind: z.literal("webhook"),
-  }),
 ]);
 
 /**
  * Trigger update input: updating replaces the trigger's schedule in place —
  * id, enabled flag, and lastRunId history are preserved; nextRunAt is
  * recomputed and the consecutive-failure counter resets (same revive
- * semantics as enable). The kind may switch among cron/once/loop; webhook
- * triggers have no schedule and are not updatable.
+ * semantics as enable). The kind may switch among cron/once/loop.
  */
 export const updateTriggerRequestSchema = z.discriminatedUnion("kind", [
   cronTriggerConfigSchema,
@@ -178,18 +161,12 @@ const updateAutomationRequestSchema = z.object({
   appendSystemPrompt: z.string().nullable().optional(),
 });
 
-/**
- * Create/rotate responses surface the webhook HMAC `secret` exactly once;
- * callers must persist it on receipt because it is unrecoverable.
- */
 export const automationMutationResponseSchema = z.object({
   automation: automationResponseSchema,
-  webhookSecret: z.string().optional(),
 });
 
 export const triggerMutationResponseSchema = z.object({
   trigger: automationTriggerResponseSchema,
-  webhookSecret: z.string().optional(),
 });
 
 export const automationRunResponseSchema = z.object({
@@ -448,21 +425,6 @@ export const automationTriggersContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Disable a single trigger",
-  },
-  rotateSecret: {
-    method: "POST",
-    path: "/api/automation-triggers/:id/rotate-secret",
-    headers: authHeadersSchema,
-    pathParams: triggerIdParamsSchema,
-    body: z.object({}).optional(),
-    responses: {
-      200: triggerMutationResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Rotate a webhook trigger's HMAC secret (returned once)",
   },
 });
 

@@ -14,18 +14,14 @@ import type {
 
 /**
  * Client for the unified Automation resource API (#16847 slice 2): one
- * automation = identity + intent, carrying N triggers (cron / once / loop /
- * webhook).
+ * automation = identity + intent, carrying N schedule triggers (cron / once /
+ * loop).
  *
  * `ref` is an automation id (UUID) or its unique name; an ambiguous name is
  * rejected by the server with 400. Triggers are addressed by UUID only.
- * Webhook HMAC secrets surface exactly once (creation/rotation responses).
  */
 
-/**
- * Create an automation, optionally with its first trigger. When the trigger is
- * a webhook, the response carries the one-time `webhookSecret`.
- */
+/** Create an automation, optionally with its first trigger. */
 export async function createAutomation(body: {
   name: string;
   agentId: string;
@@ -33,7 +29,7 @@ export async function createAutomation(body: {
   description?: string;
   chatThreadId?: string;
   trigger?: CreateTriggerRequest;
-}): Promise<{ automation: AutomationResponse; webhookSecret?: string }> {
+}): Promise<{ automation: AutomationResponse }> {
   const config = await getClientConfig();
   const client = initClient(automationsMainContract, config);
 
@@ -171,14 +167,11 @@ export async function runAutomation(ref: string): Promise<{ runId: string }> {
   handleError(result, `Failed to run automation "${ref}"`);
 }
 
-/**
- * Add a trigger to an automation. When the trigger is a webhook, the response
- * carries the one-time `webhookSecret`.
- */
+/** Add a trigger to an automation. */
 export async function addAutomationTrigger(
   ref: string,
   body: CreateTriggerRequest,
-): Promise<{ trigger: AutomationTriggerResponse; webhookSecret?: string }> {
+): Promise<{ trigger: AutomationTriggerResponse }> {
   const config = await getClientConfig();
   const client = initClient(automationsByRefContract, config);
 
@@ -298,24 +291,4 @@ export async function disableAutomationTrigger(
   }
 
   handleError(result, `Failed to disable trigger ${id}`);
-}
-
-/**
- * Rotate a webhook trigger's HMAC secret. The new secret is returned exactly
- * once and is unrecoverable afterwards.
- */
-export async function rotateAutomationTriggerSecret(id: string): Promise<{
-  trigger: AutomationTriggerResponse;
-  webhookSecret?: string;
-}> {
-  const config = await getClientConfig();
-  const client = initClient(automationTriggersContract, config);
-
-  const result = await client.rotateSecret({ params: { id }, body: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to rotate secret of trigger ${id}`);
 }

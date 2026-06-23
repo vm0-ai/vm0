@@ -30,7 +30,7 @@ const log = logger("api:automations:trigger-poller");
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-/** The time-trigger kinds the poller scans; webhook triggers are not time-driven. */
+/** The time-trigger kinds the poller scans. */
 const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
 
 // Upper bound on triggers claimed per cron tick. Loop triggers are perpetually

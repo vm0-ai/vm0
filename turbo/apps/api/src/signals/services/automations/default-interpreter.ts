@@ -13,15 +13,13 @@ import type {
  * Automation as the future hook for the first fetching interpreter (e.g. Gmail),
  * at which point a registry replaces the single impl.
  */
-type InterpreterKind = "time" | "webhook" | "default";
+type InterpreterKind = "time" | "default";
 
 /**
  * Domain view of an Automation as the interpreter sees it. This is a thin
  * projection down to the fields needed to build an agent-run input: the prompt,
- * the append-prompt context, the agent / chat-thread linkage, and the recurrence
- * (for time-trigger reschedule callbacks). A webhook automation carries no
- * recurrence — its `triggerType` is "webhook" and its `cronExpression` is null —
- * and supplies its dynamic payload through the trigger event instead.
+ * the append-prompt context, the agent / chat-thread linkage, and the
+ * recurrence for time-trigger reschedule callbacks.
  */
 interface Automation {
   readonly interpreterKind: InterpreterKind;
@@ -32,7 +30,7 @@ interface Automation {
   readonly chatThreadId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
-  readonly triggerType: "cron" | "once" | "loop" | "webhook" | "manual";
+  readonly triggerType: "cron" | "once" | "loop" | "manual";
   readonly cronExpression: string | null;
   readonly timezone: string;
 }
@@ -47,10 +45,10 @@ type RunCallback = InternalRunCallback;
 
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
- * or webhook fire tags the originating automation plus the trigger that fired
- * it (run provenance); a manual fire was not fired by any trigger, so its
- * `triggerId` is absent — the run-create layer's metadata fields are all
- * optional, this local shape just keeps `automationId` required.
+ * fire tags the originating automation plus the trigger that fired it (run
+ * provenance); a manual fire was not fired by any trigger, so its `triggerId`
+ * is absent — the run-create layer's metadata fields are all optional, this
+ * local shape just keeps `automationId` required.
  */
 type ZeroRunInputMetadata = {
   readonly automationId: string;
@@ -76,20 +74,6 @@ interface ZeroRunInput<
 }
 
 /**
- * Trigger event for a webhook fire: the inbound request reduced to the parts the
- * interpreter renders into the run context. `triggerId` is the firing
- * `automation_triggers` row (run provenance); `headers` is the request header
- * map; `body` is the parsed JSON payload (an object/array/primitive) or the raw
- * string when the body is not JSON.
- */
-export interface WebhookTriggerEvent {
-  readonly kind: "webhook";
-  readonly triggerId: string;
-  readonly headers: Record<string, string>;
-  readonly body: unknown;
-}
-
-/**
  * Trigger event for an automation-table time fire (the trigger poller, U4).
  * It is instruction-only — no inbound payload — and tags the run with the
  * originating automation + the firing `automation_triggers` row (run
@@ -112,45 +96,11 @@ interface ManualTriggerEvent {
 }
 
 /**
- * The trigger that fired an Automation. A time fire carries the firing
- * trigger identity; a webhook fire carries the raw inbound payload; a manual
- * fire carries nothing. The interpreter keys its context/callbacks/metadata
- * off this discriminant.
+ * The trigger that fired an Automation. A time fire carries the firing trigger
+ * identity; a manual fire carries nothing. The interpreter keys its
+ * context/callbacks/metadata off this discriminant.
  */
-type TriggerEvent =
-  | AutomationTimeTriggerEvent
-  | WebhookTriggerEvent
-  | ManualTriggerEvent;
-
-/**
- * Maps an `automations` row (joined with its firing trigger) to the Automation
- * view the interpreter consumes. A webhook automation carries no recurrence, so
- * the time-only fields collapse to their inert values; its dynamic payload
- * arrives through the trigger event instead.
- */
-export function webhookRowToAutomation(row: {
-  readonly id: string;
-  readonly agentId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string;
-  readonly instruction: string;
-  readonly appendSystemPrompt: string | null;
-}): Automation {
-  return {
-    interpreterKind: "webhook",
-    id: row.id,
-    agentId: row.agentId,
-    orgId: row.orgId,
-    userId: row.userId,
-    chatThreadId: row.chatThreadId,
-    prompt: row.instruction,
-    appendSystemPrompt: row.appendSystemPrompt,
-    triggerType: "webhook",
-    cronExpression: null,
-    timezone: "UTC",
-  };
-}
+type TriggerEvent = AutomationTimeTriggerEvent | ManualTriggerEvent;
 
 /**
  * Maps an `automations` row (joined with its firing time trigger) to the
@@ -240,31 +190,6 @@ function buildAutomationAppendSystemPrompt(automation: Automation): string {
     : integrationContext;
 }
 
-/**
- * Render the webhook payload (headers + body) as a single fenced JSON block so
- * the agent can read the trigger that fired it. v1 does no templating: the
- * payload is passed through verbatim as run context (YAGNI — no JSONPath).
- */
-function buildWebhookAppendSystemPrompt(event: WebhookTriggerEvent): string {
-  const payload = JSON.stringify(
-    { headers: event.headers, body: event.body },
-    null,
-    2,
-  );
-  return [
-    "# Current Integration",
-    "You are currently running inside: Webhook automation",
-    "",
-    "This automation was fired by an inbound webhook. The request that triggered it is below as JSON (request headers and body).",
-    "",
-    "```json",
-    payload,
-    "```",
-    "",
-    "This run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
-  ].join("\n");
-}
-
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -333,10 +258,6 @@ function buildTriggerCallbacks(
  * `(automation, triggerEvent)`:
  *
  * - `prompt` is always the automation's user instruction.
- * - A webhook fire (raw inbound payload) renders headers + body into the run
- *   context as a fenced JSON block, and tags the run with the originating
- *   automation + trigger (run provenance). No reschedule callback (webhooks
- *   don't recur).
  * - A time fire (no raw payload) is instruction-only: it renders the
  *   automation integration context plus any user append prompt, attaches the
  *   recurrence reschedule callback, and tags the run with the originating
@@ -351,20 +272,6 @@ export class DefaultInterpreter {
     automation: Automation,
     triggerEvent: TriggerEvent,
   ): Promise<ZeroRunInput> {
-    if (triggerEvent.kind === "webhook") {
-      return Promise.resolve({
-        prompt: automation.prompt,
-        agentId: automation.agentId,
-        chatThreadId: automation.chatThreadId,
-        appendSystemPrompt: buildWebhookAppendSystemPrompt(triggerEvent),
-        callbacks: [buildChatCallback(automation)],
-        zeroRunMetadata: {
-          automationId: automation.id,
-          triggerId: triggerEvent.triggerId,
-        },
-      });
-    }
-
     // Manual fire: instruction-only automation context, tagged with the
     // automation alone — no trigger was claimed, so there is no trigger
     // provenance and no reschedule callback, only the chat callback.
