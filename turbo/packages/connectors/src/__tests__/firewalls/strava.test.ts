@@ -29,7 +29,7 @@ const STRAVA_RESOURCE_PERMISSIONS = [
   "uploads:write",
 ] as const;
 
-const STRAVA_OFFICIAL_SCOPES = [
+const STRAVA_REMOVED_OAUTH_SCOPE_GROUPS = [
   "activity:read",
   "activity:read_all",
   "activity:write",
@@ -65,7 +65,7 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("strava firewall", () => {
-  it("uses vm0 resource permissions instead of official OAuth scopes", () => {
+  it("replaces broad OAuth scope groups with vm0 resource permissions", () => {
     const permissions = new Set(
       getConnectorFirewall("strava").apis.flatMap((api) => {
         return (api.permissions ?? []).map((permission) => {
@@ -75,8 +75,8 @@ describe("strava firewall", () => {
     );
 
     expect(permissions).toStrictEqual(new Set(STRAVA_RESOURCE_PERMISSIONS));
-    for (const officialScope of STRAVA_OFFICIAL_SCOPES) {
-      expect(permissions.has(officialScope)).toBe(false);
+    for (const oldScopeGroup of STRAVA_REMOVED_OAUTH_SCOPE_GROUPS) {
+      expect(permissions.has(oldScopeGroup)).toBe(false);
     }
   });
 
