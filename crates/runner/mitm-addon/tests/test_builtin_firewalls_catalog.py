@@ -73,3 +73,52 @@ def test_gmail_firewall_uses_resource_permissions():
     assert "gmail.send" not in permissions
     assert "gmail.modify" not in permissions
     assert not [name for name in permissions if name.startswith("gmail.")]
+
+
+def test_figma_firewall_uses_granular_permissions():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["figma"]
+    permissions = {
+        permission["name"] for api in firewall["apis"] for permission in api.get("permissions", [])
+    }
+
+    assert "file_content:read" in permissions
+    assert "file_metadata:read" in permissions
+    assert "file_comments:read" in permissions
+    assert "projects:read" in permissions
+    assert "webhooks:read" in permissions
+    assert "files:read" not in permissions
+
+
+def test_figma_firewall_has_one_owner_per_route():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["figma"]
+    route_owners: dict[tuple[str, str], str] = {}
+    duplicates: list[tuple[str, str, str, str]] = []
+
+    for api in firewall["apis"]:
+        base = api["base"]
+        for permission in api.get("permissions", []):
+            permission_name = permission["name"]
+            for rule in permission.get("rules", []):
+                key = (base, rule)
+                existing = route_owners.get(key)
+                if existing is not None:
+                    duplicates.append((base, rule, existing, permission_name))
+                    continue
+                route_owners[key] = permission_name
+
+    assert duplicates == []
+    assert route_owners[("https://api.figma.com", "GET /v1/files/{file_key}")] == (
+        "file_content:read"
+    )
+    assert route_owners[("https://api.figma.com", "GET /v1/files/{file_key}/meta")] == (
+        "file_metadata:read"
+    )
+    assert route_owners[("https://api.figma.com", "GET /v1/files/{file_key}/comments")] == (
+        "file_comments:read"
+    )
+    assert route_owners[("https://api.figma.com", "GET /v1/projects/{project_id}/files")] == (
+        "projects:read"
+    )
+    assert route_owners[("https://api.figma.com", "GET /v2/webhooks/{webhook_id}")] == (
+        "webhooks:read"
+    )

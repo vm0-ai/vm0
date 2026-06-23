@@ -30,8 +30,102 @@ const OPENAPI_URL =
 const PLACEHOLDER_VALUE = "figd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 const OAUTH_SCHEME_KEYS = new Set(["OAuth2", "OrgOAuth2"]);
+const LEGACY_BROAD_SCOPES = new Set(["files:read"]);
 
 // ── Grouping ─────────────────────────────────────────────────────────────
+
+interface FigmaScopePriority {
+  readonly isGranular: boolean;
+}
+
+function figmaScopePriority(scope: string): FigmaScopePriority {
+  return {
+    isGranular: !LEGACY_BROAD_SCOPES.has(scope),
+  };
+}
+
+function compareFigmaScopePriority(
+  left: FigmaScopePriority,
+  right: FigmaScopePriority,
+): number {
+  if (left.isGranular !== right.isGranular) {
+    return left.isGranular ? 1 : -1;
+  }
+  return 0;
+}
+
+export function pickPrimaryFigmaScope(
+  scopes: readonly string[],
+  rule: string,
+): string {
+  const uniqueScopes = [...new Set(scopes)];
+  if (uniqueScopes.length === 0) {
+    throw new Error(`No Figma scopes available for ${rule}`);
+  }
+  if (uniqueScopes.length === 1) {
+    return uniqueScopes[0]!;
+  }
+
+  const ranked = uniqueScopes
+    .map((scope) => {
+      return { scope, priority: figmaScopePriority(scope) };
+    })
+    .sort((left, right) => {
+      const priorityDifference = compareFigmaScopePriority(
+        right.priority,
+        left.priority,
+      );
+      if (priorityDifference !== 0) return priorityDifference;
+      return left.scope.localeCompare(right.scope);
+    });
+
+  const first = ranked[0];
+  if (!first) {
+    throw new Error(`No Figma scopes available for ${rule}`);
+  }
+
+  const second = ranked[1];
+  if (
+    second &&
+    compareFigmaScopePriority(first.priority, second.priority) === 0
+  ) {
+    throw new Error(
+      `Ambiguous Figma scope owner for ${rule}: ${uniqueScopes.join(", ")}`,
+    );
+  }
+
+  return first.scope;
+}
+
+function assertUniqueFigmaRules(permissions: readonly PermissionGroup[]): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      const existing = owners.get(rule);
+      if (existing) {
+        duplicates.push(`${rule}: ${existing}, ${permission.name}`);
+        continue;
+      }
+      owners.set(rule, permission.name);
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Figma generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
+}
 
 function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
@@ -64,14 +158,13 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       if (oauthScopes.size === 0) continue;
 
       const rule = `${methodLower.toUpperCase()} ${apiPath}`;
-      for (const scope of oauthScopes) {
-        let ruleSet = groups.get(scope);
-        if (!ruleSet) {
-          ruleSet = new Set();
-          groups.set(scope, ruleSet);
-        }
-        ruleSet.add(rule);
+      const primaryScope = pickPrimaryFigmaScope([...oauthScopes], rule);
+      let ruleSet = groups.get(primaryScope);
+      if (!ruleSet) {
+        ruleSet = new Set();
+        groups.set(primaryScope, ruleSet);
       }
+      ruleSet.add(rule);
     }
   }
 
@@ -88,7 +181,7 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
     }
   }
 
-  return [...groups.entries()]
+  const permissions = [...groups.entries()]
     .filter(([, ruleSet]) => ruleSet.size > 0)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
@@ -96,6 +189,8 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       description: scopeDescs.get(name) ?? "",
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
+  assertUniqueFigmaRules(permissions);
+  return permissions;
 }
 
 // ── TypeScript generation ────────────────────────────────────────────────
