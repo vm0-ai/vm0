@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   TransformComponent,
@@ -19,6 +19,18 @@ const IMAGE_ZOOM_STEP = 0.15;
 const IMAGE_ZOOM_ANIMATION_MS = 180;
 const IMAGE_ZOOM_ANIMATION_TYPE = "linear";
 const NATIVE_MEDIA_INTERACTION_CLASS = "zero-native-media-interaction";
+const ZOOMABLE_IMAGE_WRAPPER_STYLE = {
+  height: "100%",
+  width: "100%",
+} satisfies CSSProperties;
+const ZOOMABLE_IMAGE_CONTENT_STYLE = {
+  alignItems: "center",
+  boxSizing: "border-box",
+  display: "flex",
+  justifyContent: "center",
+  maxHeight: "100%",
+  maxWidth: "100%",
+} satisfies CSSProperties;
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -152,6 +164,7 @@ export function ZoomableArtifactImageCanvas({
       maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
       limitToBounds
       centerZoomedOut
+      centerOnInit
       smooth
       wheel={{ step: 0.008, wheelDisabled: true }}
       trackPadPanning={{
@@ -212,15 +225,8 @@ export function ZoomableArtifactImageCanvas({
             {children?.(controls)}
             <TransformComponent
               contentClass={contentClassName}
-              wrapperStyle={{ height: "100%", width: "100%" }}
-              contentStyle={{
-                alignItems: "center",
-                boxSizing: "border-box",
-                display: "flex",
-                height: "100%",
-                justifyContent: "center",
-                width: "100%",
-              }}
+              wrapperStyle={ZOOMABLE_IMAGE_WRAPPER_STYLE}
+              contentStyle={ZOOMABLE_IMAGE_CONTENT_STYLE}
             >
               <img
                 ref={imageRef}
