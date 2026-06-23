@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -638,7 +638,18 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
               type: "tool_use",
               id: "tool-empty-todos",
               name: "TodoWrite",
-              input: { todos: "not an array" },
+              input: {
+                todos: [
+                  {
+                    content: { value: "object todo content" },
+                    status: { value: "object todo status" },
+                  },
+                  {
+                    content: "Recover release queue",
+                    status: "in_progress",
+                  },
+                ],
+              },
             },
           ],
         },
@@ -658,14 +669,15 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 7,
-      eventType: "assistant",
+      eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
         message: {
           content: [
             {
-              type: "text",
-              text: "Child task found one risky deployment.",
+              type: "tool_result",
+              content: "early child orphan result",
+              is_error: false,
             },
           ],
         },
@@ -680,10 +692,8 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         message: {
           content: [
             {
-              type: "tool_use",
-              id: "tool-child-bash",
-              name: "Bash",
-              input: { command: "zero deploy status --json" },
+              type: "text",
+              text: "Child task found one risky deployment.",
             },
           ],
         },
@@ -692,6 +702,24 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 9,
+      eventType: "assistant",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-child-bash",
+              name: "Bash",
+              input: { command: "zero deploy status --json" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
       eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
@@ -706,10 +734,10 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
           ],
         },
       },
-      createdAt: "2026-03-10T17:00:10Z",
+      createdAt: "2026-03-10T17:00:11Z",
     },
     {
-      sequenceNumber: 10,
+      sequenceNumber: 11,
       eventType: "result",
       eventData: {
         type: "result",
@@ -718,7 +746,7 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         num_turns: 1,
         duration_ms: 1000,
       },
-      createdAt: "2026-03-10T17:00:11Z",
+      createdAt: "2026-03-10T17:00:12Z",
     },
   ];
 }
@@ -1676,11 +1704,24 @@ describe("activity detail polling", () => {
       screen.getAllByText(/Ask release assistant to verify the deployment/u),
     ).not.toHaveLength(0);
     expect(
+      screen.getByText('{"value":"object todo content"}'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Recover release queue")).not.toHaveLength(0);
+    expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
+    expect(
       screen.getByText(
         "Collect incident channel status and deployment owner notes",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Inspect release child task")).toBeInTheDocument();
+    const childTaskDetails = screen
+      .getByText("Inspect release child task")
+      .closest("details");
+    expect(childTaskDetails).not.toBeNull();
+    if (childTaskDetails) {
+      expect(
+        within(childTaskDetails).getByText("early child orphan result"),
+      ).toBeInTheDocument();
+    }
     expect(
       screen.getByText("Child task found one risky deployment."),
     ).toBeInTheDocument();

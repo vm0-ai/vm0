@@ -26,6 +26,10 @@ interface ToolResultContent {
  * The API may return non-string values that need to be converted.
  */
 function normalizeToolResultContent(content: unknown): string {
+  return formatUnknownContent(content);
+}
+
+function formatUnknownContent(content: unknown): string {
   if (typeof content === "string") {
     return content;
   }
@@ -1048,15 +1052,36 @@ function processTodoWrite(
   }
   let newInProgressTask: string | null = null;
   for (const todo of todos) {
-    const item = todo as { content?: string; status?: string };
-    const content = item.content ?? String(todo);
-    const status = item.status ?? "pending";
-    todoState.set(content, { content, status });
-    if (status === "in_progress") {
-      newInProgressTask = content;
+    const item = normalizeTodoItem(todo);
+    if (!item) {
+      continue;
+    }
+    todoState.set(item.content, item);
+    if (item.status === "in_progress") {
+      newInProgressTask = item.content;
     }
   }
   return newInProgressTask;
+}
+
+function normalizeTodoItem(todo: unknown): TodoItem | null {
+  if (!isRecord(todo)) {
+    const content = formatUnknownContent(todo);
+    return content ? { content, status: "pending" } : null;
+  }
+
+  const rawContent = todo.content;
+  const content =
+    typeof rawContent === "string"
+      ? rawContent
+      : formatUnknownContent(rawContent ?? todo);
+  if (!content) {
+    return null;
+  }
+  return {
+    content,
+    status: getStringField(todo, "status")?.trim() || "pending",
+  };
 }
 
 interface GroupingContext {
@@ -1311,7 +1336,7 @@ function processUserEvent(
 ): void {
   // Child user events belong to a task — route orphan results there
   const parentTask = findParentTask(eventData, ctx);
-  const target = parentTask?.childMessages ?? ctx.grouped;
+  const target = parentTask ? (parentTask.childMessages ??= []) : ctx.grouped;
 
   const contents = getMessageContents(eventData);
   const toolMeta = eventData.tool_use_result;
