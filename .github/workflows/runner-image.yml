@@ -182,10 +182,18 @@ jobs:
       - name: Resolve runner host architecture groups
         id: host-groups
         env:
+          RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           X86_64_METAL_RUNNER_HOSTS: ${{ secrets.X86_64_METAL_RUNNER_HOSTS }}
         run: |
           set -euo pipefail
+          if [ "$RELEASE_SKIP" = "true" ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping runner host architecture groups for release skip"
+            exit 0
+          fi
+
           matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
           configured=$(.github/scripts/runner-host-architecture-groups.sh has-groups)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
