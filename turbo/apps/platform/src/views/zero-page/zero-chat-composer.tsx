@@ -7094,6 +7094,7 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
@@ -7104,7 +7105,6 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot
