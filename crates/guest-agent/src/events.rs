@@ -207,14 +207,14 @@ fn codex_structured_turn_error(event: &Value) -> Option<&Value> {
 fn codex_turn_failed_message(error: Option<&Value>, turn_error: Option<&Value>) -> String {
     let top_level_message = codex_error_message(error);
     let top_level_primary_message = codex_error_primary_message(error);
-    let top_level_is_generic = top_level_primary_message
+    let top_level_should_yield = top_level_primary_message
         .as_deref()
-        .or(top_level_message.as_deref())
-        .is_some_and(is_generic_codex_failure_diagnostic);
+        .map(is_generic_codex_failure_diagnostic)
+        .unwrap_or(true);
     let turn_error_message = codex_error_message(turn_error);
 
     match (top_level_message, turn_error_message) {
-        (Some(_), Some(turn_error_message)) if top_level_is_generic => turn_error_message,
+        (Some(_), Some(turn_error_message)) if top_level_should_yield => turn_error_message,
         (Some(message), _) => message,
         (None, Some(turn_error_message)) => turn_error_message,
         (None, None) => "turn failed".into(),
@@ -1035,6 +1035,31 @@ mod tests {
             "type": "turn.failed",
             "error": {
                 "message": "turn failed",
+                "additionalDetails": "wrapper-level detail"
+            },
+            "turn": {
+                "error": {
+                    "message": "nested turn failure",
+                    "additionalDetails": "quota exhausted"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "nested turn failure (quota exhausted)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_uses_nested_message_when_top_level_object_message_is_absent() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
                 "additionalDetails": "wrapper-level detail"
             },
             "turn": {
