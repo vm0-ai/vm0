@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.169.0](https://github.com/vm0-ai/vm0/compare/api-v1.168.3...api-v1.169.0) (2026-06-22)
+
+
+### Features
+
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
+
+### Bug Fixes
+
+* respect timezone for once trigger atTime ([#18514](https://github.com/vm0-ai/vm0/issues/18514)) ([823fd8d](https://github.com/vm0-ai/vm0/commit/823fd8dfcdc3d552c5d9ec2874da587911b6c4e2))
+* update presentation R2 deck archives ([#18531](https://github.com/vm0-ai/vm0/issues/18531)) ([eeb8699](https://github.com/vm0-ai/vm0/commit/eeb86999675c9989cd8a59c1fd84ebb9f6d9495f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+    * @vm0/core bumped to 8.363.0
+    * @vm0/db bumped to 1.65.0
+
 ## [1.168.3](https://github.com/vm0-ai/vm0/compare/api-v1.168.2...api-v1.168.3) (2026-06-22)
 
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [8.363.0](https://github.com/vm0-ai/vm0/compare/core-v8.362.5...core-v8.363.0) (2026-06-22)
+
+
+### Features
+
+* add presentation card theme picker ([#18454](https://github.com/vm0-ai/vm0/issues/18454)) ([6060078](https://github.com/vm0-ai/vm0/commit/60600789f2b3b0bcf048905672ca13fafb77e966))
+* enable computer use by default ([#18521](https://github.com/vm0-ai/vm0/issues/18521)) ([317e825](https://github.com/vm0-ai/vm0/commit/317e8253c92e0f4afc8733f508ee985ee87a1586))
+
+
+### Bug Fixes
+
+* respect timezone for once trigger atTime ([#18514](https://github.com/vm0-ai/vm0/issues/18514)) ([823fd8d](https://github.com/vm0-ai/vm0/commit/823fd8dfcdc3d552c5d9ec2874da587911b6c4e2))
+* update presentation R2 deck archives ([#18531](https://github.com/vm0-ai/vm0/issues/18531)) ([eeb8699](https://github.com/vm0-ai/vm0/commit/eeb86999675c9989cd8a59c1fd84ebb9f6d9495f))
+
+
+### Refactoring
+
+* remove runtime firewall root exports ([#18520](https://github.com/vm0-ai/vm0/issues/18520)) ([fc016aa](https://github.com/vm0-ai/vm0/commit/fc016aa92cdeab86b597c019d2e9a59b4c0dbca2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.108.4
+    * @vm0/connectors bumped to 1.103.0
+
 ## [8.362.5](https://github.com/vm0-ai/vm0/compare/core-v8.362.4...core-v8.362.5) (2026-06-22)
 
 
