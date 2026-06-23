@@ -14,7 +14,7 @@ from tests.jsonl_log_helpers import (
 
 
 def test_logs_single_resource_get(x_usage, tmp_path, real_flow):
-    """GET /2/tweets/:id -> category=tweet.read, quantity=1."""
+    """GET /2/tweets/:id with tweet.read permission bills posts.read, quantity=1."""
     body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
     flow = x_usage.make_flow(
         real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
@@ -25,7 +25,7 @@ def test_logs_single_resource_get(x_usage, tmp_path, real_flow):
 
 
 def test_logs_batch_ids(x_usage, tmp_path, real_flow):
-    """GET /2/tweets?ids=1,2,3 -> category=tweet.read, quantity=3."""
+    """GET /2/tweets?ids=1,2,3 with tweet.read permission bills posts.read, quantity=3."""
     body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
     flow = x_usage.make_flow(real_flow, tmp_path, query="ids=1,2,3", body=body)
     p = x_usage.call_and_get_single_billing(flow)
@@ -330,7 +330,7 @@ def test_logs_search_meta_result_count(x_usage, tmp_path, real_flow):
 
 
 def test_logs_users_by_usernames_batch(x_usage, tmp_path, real_flow):
-    """GET /2/users/by?usernames=a,b,c -> category=users.read, quantity=2."""
+    """GET /2/users/by?usernames=a,b,c with users.read permission bills user.read, quantity=2."""
     body = json.dumps(
         {"data": [{"id": "1", "username": "a"}, {"id": "2", "username": "b"}]}
     ).encode()
@@ -349,7 +349,7 @@ def test_logs_users_by_usernames_batch(x_usage, tmp_path, real_flow):
 
 
 def test_logs_tweet_counts_total_tweet_count(x_usage, tmp_path, real_flow):
-    """GET /2/tweets/counts/recent -> category=tweet.read, quantity=12567."""
+    """GET /2/tweets/counts/recent with tweet.read permission bills posts.read, quantity=12567."""
     body = json.dumps(
         {
             "data": [
