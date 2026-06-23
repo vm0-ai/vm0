@@ -493,13 +493,15 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
 }
 
 fn is_claude_output_token_limit_error(normalized: &str) -> bool {
-    let response_exceeded =
-        normalized.contains("response exceeded") || normalized.contains("response has exceeded");
-    response_exceeded
-        && (normalized.contains("output token maximum")
-            || normalized.contains("maximum output tokens")
-            || normalized.contains("max output tokens")
-            || normalized.contains("claude_code_max_output_tokens"))
+    let response_exceeded = normalized.contains("response exceeded")
+        || normalized.contains("response has exceeded")
+        || normalized.contains("response exceeds");
+    let output_token_limit = normalized.contains("output token maximum")
+        || normalized.contains("output token limit")
+        || normalized.contains("maximum output token")
+        || normalized.contains("max output token")
+        || normalized.contains("claude_code_max_output_tokens");
+    response_exceeded && output_token_limit
 }
 
 fn claude_529_error_detail(detail: &str) -> Option<&str> {
@@ -1482,6 +1484,9 @@ mod tests {
             "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
             "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
             "API Error: Claude's response exceeded the maximum output tokens for this model.",
+            "API Error: Claude's response exceeded the maximum output token limit for this model.",
+            "API Error: Claude's response exceeds the output token limit for this model.",
+            "API Error: Claude's response has exceeded the max output token budget.",
         ] {
             let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
 
