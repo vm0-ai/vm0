@@ -1414,7 +1414,10 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "turn.failed",
-                    error: "Rate limit exceeded",
+                    error: {
+                      message: "Rate limit exceeded",
+                      additionalDetails: "try again later",
+                    },
                   },
                 },
               ],
@@ -1429,6 +1432,7 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).not.toContain("[object Object]");
     });
 
     it("should render top-level error event as a failure result", async () => {
@@ -1453,7 +1457,10 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "error",
-                    message: "API connection failed",
+                    error: {
+                      message: "API connection failed",
+                      additional_details: "network unreachable",
+                    },
                   },
                 },
               ],
@@ -1468,6 +1475,7 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).not.toContain("[object Object]");
     });
 
     it("should collapse paired top-level error and turn.failed into one Codex failure", async () => {

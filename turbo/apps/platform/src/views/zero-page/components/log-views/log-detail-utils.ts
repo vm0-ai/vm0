@@ -203,6 +203,40 @@ function getNumberField(
   return typeof value === "number" ? value : undefined;
 }
 
+function formatCodexEventMessage(
+  message: unknown,
+  error: unknown,
+): string | undefined {
+  return formatCodexString(message) ?? formatCodexErrorMessage(error);
+}
+
+function formatCodexString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  return value.trim() || undefined;
+}
+
+function formatCodexErrorMessage(error: unknown): string | undefined {
+  if (typeof error === "string") {
+    return error.trim() || undefined;
+  }
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const message = getStringField(error, "message")?.trim();
+  const details =
+    getStringField(error, "additional_details")?.trim() ??
+    getStringField(error, "additionalDetails")?.trim();
+
+  if (message && details) {
+    return `${message} (${details})`;
+  }
+
+  return message || details || undefined;
+}
+
 function parseCodexUsage(value: unknown): CodexUsage | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -279,8 +313,8 @@ function parseCodexEventData(value: unknown): CodexEventData | undefined {
     plan: parseCodexPlanSteps(value.plan),
     usage: parseCodexUsage(value.usage),
     item: parseCodexItem(value.item),
-    error: getStringField(value, "error"),
-    message: getStringField(value, "message"),
+    error: formatCodexErrorMessage(value.error),
+    message: formatCodexString(value.message),
   };
 }
 
@@ -450,12 +484,9 @@ function formatCodexPlanUpdate(
 function formatCodexWarningMessage(
   codexEvent: CodexEventData | undefined,
 ): string | null {
-  const message = codexEvent?.message?.trim();
-  if (message) {
-    return message;
-  }
-
-  return codexEvent?.error?.trim() || null;
+  return (
+    formatCodexEventMessage(codexEvent?.message, codexEvent?.error) ?? null
+  );
 }
 
 function formatCodexPlanStatus(status: string | undefined): string {

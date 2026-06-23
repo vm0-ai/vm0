@@ -32,7 +32,8 @@ interface TurnCompletedEvent {
 
 interface TurnFailedEvent {
   type: "turn.failed";
-  error?: string;
+  message?: unknown;
+  error?: unknown;
 }
 
 interface TurnPlanUpdatedEvent {
@@ -72,8 +73,8 @@ interface ItemEvent {
 
 interface ErrorEvent {
   type: "error";
-  message?: string;
-  error?: string;
+  message?: unknown;
+  error?: unknown;
 }
 
 interface WarningEvent {
@@ -182,7 +183,8 @@ export class CodexEventParser {
       timestamp: new Date(),
       data: {
         success: false,
-        result: event.error || "Turn failed",
+        result:
+          formatCodexEventMessage(event.message, event.error) ?? "Turn failed",
         durationMs: 0,
         numTurns: 1,
         cost: 0,
@@ -373,7 +375,9 @@ export class CodexEventParser {
       timestamp: new Date(),
       data: {
         success: false,
-        result: event.message || event.error || "Unknown error",
+        result:
+          formatCodexEventMessage(event.message, event.error) ??
+          "Unknown error",
         durationMs: 0,
         numTurns: 0,
         cost: 0,
@@ -432,14 +436,21 @@ function formatFileChangeAction(kind: unknown): string {
 }
 
 function formatCodexWarningMessage(event: WarningEvent): string | null {
-  if (typeof event.message === "string") {
-    const message = event.message.trim();
-    if (message) {
-      return message;
-    }
-  }
+  return formatCodexEventMessage(event.message, event.error);
+}
 
-  return formatCodexErrorMessage(event.error);
+function formatCodexEventMessage(
+  message: unknown,
+  error: unknown,
+): string | null {
+  return formatCodexString(message) ?? formatCodexErrorMessage(error);
+}
+
+function formatCodexString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.trim() || null;
 }
 
 function formatCodexErrorMessage(error: unknown): string | null {

@@ -1120,7 +1120,10 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventType: "turn.failed",
       eventData: {
         type: "turn.failed",
-        error: "Codex build failed before retry.",
+        error: {
+          message: "Codex build failed before retry.",
+          additionalDetails: "quota exhausted",
+        },
         usage: {
           input_tokens: 10,
           output_tokens: 2,
@@ -1133,7 +1136,10 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventType: "error",
       eventData: {
         type: "error",
-        message: "Codex stream disconnected.",
+        error: {
+          message: "Codex stream disconnected.",
+          additional_details: "stdio closed",
+        },
       },
       createdAt: "2026-03-10T15:30:09Z",
     },
@@ -2296,11 +2302,11 @@ describe("activity detail polling", () => {
     expect(screen.getByText("src/edge.ts")).toBeInTheDocument();
     expect(screen.getByText("File read completed")).toBeInTheDocument();
     expect(
-      screen.getByText("Codex build failed before retry."),
+      screen.getByText("Codex build failed before retry. (quota exhausted)"),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Codex stream disconnected.")).not.toHaveLength(
-      0,
-    );
+    expect(
+      screen.getAllByText("Codex stream disconnected. (stdio closed)"),
+    ).not.toHaveLength(0);
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {
