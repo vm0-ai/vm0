@@ -605,6 +605,90 @@ describe("logs command", () => {
       expect(logCalls).toContain("File content here");
     });
 
+    it("should render unmatched trailing tool_use events", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Bash",
+                          id: "tool-123",
+                          input: { command: "pnpm test" },
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "1"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Bash");
+      expect(logCalls).toContain("pnpm test");
+    });
+
+    it("should render orphan tool_result events", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "tool-123",
+                          content: {
+                            output: "File content outside fetched range",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "1"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Tool result");
+      expect(logCalls).toContain(
+        '{"output":"File content outside fetched range"}',
+      );
+      expect(logCalls).not.toContain("[object Object]");
+    });
+
     it("should handle tool_result events", async () => {
       server.use(
         http.get(
@@ -1321,6 +1405,44 @@ describe("logs command", () => {
       expect(logCalls).toContain("apply_patch");
       expect(logCalls).toContain("✗");
       expect(logCalls).toContain("patch failed");
+    });
+
+    it("should render codex command results without matching started event", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "pnpm test",
+                      status: "completed",
+                      exit_code: 0,
+                      aggregated_output: "tests passed",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "1"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Tool result");
+      expect(logCalls).toContain("tests passed");
     });
 
     it("should render file_edit, file_write, and file_read tools", async () => {

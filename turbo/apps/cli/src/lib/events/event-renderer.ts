@@ -90,9 +90,11 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
+        this.flush();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
+        this.flush();
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
@@ -102,9 +104,24 @@ export class EventRenderer {
         this.handleToolResult(event, timestampPrefix);
         break;
       case "result":
+        this.flush();
         this.renderResult(event, timestampPrefix);
         break;
     }
+  }
+
+  /**
+   * Render buffered tool uses that never received a matching result.
+   */
+  flush(): void {
+    if (this.pendingToolUse.size === 0) {
+      return;
+    }
+
+    for (const pending of this.pendingToolUse.values()) {
+      this.renderToolUseOnly(pending.toolUse, pending.prefix);
+    }
+    this.pendingToolUse.clear();
   }
 
   /**
@@ -219,7 +236,7 @@ export class EventRenderer {
    */
   private handleToolResult(event: ParsedEvent, prefix: string): void {
     const toolUseId = String(event.data.toolUseId || "");
-    const result = String(event.data.result || "");
+    const result = EventRenderer.formatDisplayValue(event.data.result);
     const isError = Boolean(event.data.isError);
 
     const pending = this.pendingToolUse.get(toolUseId);
@@ -228,8 +245,10 @@ export class EventRenderer {
       // Render grouped output
       this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
       this.pendingToolUse.delete(toolUseId);
+      return;
     }
-    // Skip orphan tool_results (no matching tool_use in buffer)
+
+    this.renderStandaloneToolResult({ result, isError }, prefix);
   }
 
   /**
@@ -270,6 +289,27 @@ export class EventRenderer {
       console.log(cont + line);
     }
     console.log(); // Empty line after each group
+    this.lastEventType = "tool";
+  }
+
+  private renderStandaloneToolResult(
+    result: ToolResultData,
+    prefix: string,
+  ): void {
+    if (this.lastEventType === "text") {
+      console.log();
+    }
+
+    const cont = this.getContinuationPrefix();
+    console.log(prefix + "● Tool result");
+    for (const line of formatToolResult(
+      { tool: "Tool result", input: {} },
+      result,
+      this.options.verbose ?? false,
+    )) {
+      console.log(cont + line);
+    }
+    console.log();
     this.lastEventType = "tool";
   }
 
@@ -366,5 +406,18 @@ export class EventRenderer {
       return String(value);
     }
     return null;
+  }
+
+  private static formatDisplayValue(value: unknown): string {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value === null || value === undefined) {
+      return "";
+    }
+    if (Array.isArray(value) || typeof value === "object") {
+      return JSON.stringify(value) ?? "";
+    }
+    return String(value);
   }
 }
