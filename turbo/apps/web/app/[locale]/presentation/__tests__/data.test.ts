@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 
-import { buildPresentationRemixHref, type PresentationItem } from "../data";
+import {
+  PRESENTATION_ITEMS,
+  buildPresentationRemixHref,
+  type PresentationItem,
+} from "../data";
 
 const item: PresentationItem = {
   slug: "test-deck",
@@ -12,6 +17,12 @@ const item: PresentationItem = {
   designSystemId: "design-system:test",
   templateId: "template:test",
 };
+
+describe("presentation items", () => {
+  it("uses the shared template picker catalog", () => {
+    expect(PRESENTATION_ITEMS).toBe(PRESENTATION_TEMPLATE_PICKER_ITEMS);
+  });
+});
 
 describe("presentation remix links", () => {
   it("marks presentation try-it links with source attribution", () => {
