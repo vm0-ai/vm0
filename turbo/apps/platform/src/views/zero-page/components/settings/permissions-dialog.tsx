@@ -15,10 +15,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
 } from "@vm0/ui";
 import {
   CONNECTOR_TYPES,
@@ -44,9 +40,7 @@ import {
   explicitGrantStateKey,
   hasAnyPermissionDraftChange,
   hasPermissionDraftDefaultDifference,
-  hasPermissionDraftPermissionChange,
   hasPermissionDraftResetPersistedEffect,
-  hasPermissionDraftUnknownChange,
   isPermissionDraftPristine,
   permissionDraftInitialPolicyKey,
   permissionDraftMetadataKey,
@@ -54,8 +48,6 @@ import {
   resolvePermissionDraftListPolicy,
   resolvePermissionDraftPolicy,
   resolvePermissionDraftUnknownPolicy,
-  restorePermissionDraftPermission,
-  restorePermissionDraftUnknown,
   setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
   setPermissionDraftPolicy,
@@ -84,7 +76,6 @@ import {
   IconChevronRight,
   IconClock,
   IconChevronDown,
-  IconArrowBackUp,
   IconLoader2,
   IconSearch,
   IconX,
@@ -493,47 +484,6 @@ function isDurationMenuOptionActive({
   return value === "always" && allowAlwaysActive;
 }
 
-function PermissionGrantResetButton({
-  disabled,
-  permission,
-  visible,
-  onReset,
-}: {
-  disabled?: boolean;
-  permission: string;
-  visible: boolean;
-  onReset: () => void;
-}) {
-  return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-      {visible && (
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                disabled={disabled}
-                aria-label={`Undo ${permission} changes`}
-                onClick={() => {
-                  onReset();
-                }}
-                className={`flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors ${
-                  disabled
-                    ? "cursor-default text-muted-foreground/50"
-                    : "hover:bg-muted/50 hover:text-foreground"
-                }`}
-              >
-                <IconArrowBackUp size={13} stroke={2.2} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Undo changes</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-    </span>
-  );
-}
-
 function PermissionAllowDurationDropdown({
   permission,
   label,
@@ -606,7 +556,6 @@ function PermissionGrantPolicyControl({
   policy,
   grant,
   selected,
-  hasPendingChange,
   allowAlwaysActive,
   expirationStatusExpiresAt,
   readOnly,
@@ -616,13 +565,11 @@ function PermissionGrantPolicyControl({
   onClearExpiration,
   onAllowDurationChange,
   onPolicyChange,
-  onReset,
 }: {
   permission: string;
   policy: FirewallPolicyValue | "mixed";
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
-  hasPendingChange: boolean;
   allowAlwaysActive: boolean;
   expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
@@ -632,7 +579,6 @@ function PermissionGrantPolicyControl({
   onClearExpiration: () => void;
   onAllowDurationChange: (expiresIn: UserPermissionGrantExpiresIn) => void;
   onPolicyChange: (policy: PermissionPolicy) => void;
-  onReset: () => void;
 }) {
   const allowGrant = grant?.action === "allow" ? grant : undefined;
   const showExpirationStatus =
@@ -716,14 +662,6 @@ function PermissionGrantPolicyControl({
           </span>
         </>
       )}
-      {showSplitPolicy && (
-        <PermissionGrantResetButton
-          disabled={saving}
-          permission={permission}
-          visible={hasPendingChange}
-          onReset={onReset}
-        />
-      )}
     </div>
   );
 }
@@ -765,7 +703,6 @@ function PermissionRows({
   onPolicyChange,
   onGrantExpirationChange,
   onClearInheritedExpiration,
-  onResetPermission,
   onShowMore,
 }: {
   context: PermissionDraftContext;
@@ -784,7 +721,6 @@ function PermissionRows({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
   onClearInheritedExpiration: (permission: string) => void;
-  onResetPermission: (name: string) => void;
   onShowMore: (key: string) => void;
 }) {
   if (groups) {
@@ -832,7 +768,6 @@ function PermissionRows({
                   onPolicyChange={onPolicyChange}
                   onGrantExpirationChange={onGrantExpirationChange}
                   onClearInheritedExpiration={onClearInheritedExpiration}
-                  onResetPermission={onResetPermission}
                 />
               );
             })}
@@ -867,7 +802,6 @@ function PermissionRows({
             onPolicyChange={onPolicyChange}
             onGrantExpirationChange={onGrantExpirationChange}
             onClearInheritedExpiration={onClearInheritedExpiration}
-            onResetPermission={onResetPermission}
           />
         );
       })}
@@ -895,7 +829,6 @@ function PermissionRow({
   onPolicyChange,
   onGrantExpirationChange,
   onClearInheritedExpiration,
-  onResetPermission,
 }: {
   context: PermissionDraftContext;
   draft: PermissionDraftIntent;
@@ -911,7 +844,6 @@ function PermissionRow({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
   onClearInheritedExpiration: (permission: string) => void;
-  onResetPermission: (name: string) => void;
 }) {
   const policy = resolvePermissionDraftPolicy({
     context,
@@ -928,13 +860,6 @@ function PermissionRow({
   const hasGroupExpiration =
     category !== undefined && draft.groupExpirations[category] !== undefined;
   const allowGrant = grant?.action === "allow" ? grant : undefined;
-  const hasPendingChange = hasPermissionDraftPermissionChange({
-    context,
-    draft,
-    permissionName: permission.name,
-    selected,
-    grant,
-  });
   return (
     <div>
       {showSeparator && <div className="mx-3 border-t border-border/40" />}
@@ -956,7 +881,6 @@ function PermissionRow({
           policy={policy}
           grant={grant}
           selected={selected}
-          hasPendingChange={hasPendingChange}
           allowAlwaysActive={hasAllowAlwaysPolicy(grant, policy)}
           readOnly={readOnly}
           saving={saving}
@@ -984,9 +908,6 @@ function PermissionRow({
           }}
           onPolicyChange={(p) => {
             onPolicyChange(permission.name, p);
-          }}
-          onReset={() => {
-            onResetPermission(permission.name);
           }}
         />
       </div>
@@ -1151,21 +1072,6 @@ function LoadedPermissionsDrawerContent({
     });
   };
 
-  const handleResetPermission = (name: string) => {
-    setDraft(stateKey, (current) => {
-      return restorePermissionDraftPermission({
-        draft: current,
-        permissionName: name,
-      });
-    });
-  };
-
-  const handleResetUnknownPermission = () => {
-    setDraft(stateKey, (current) => {
-      return restorePermissionDraftUnknown({ context, draft: current });
-    });
-  };
-
   const handleResetConnector = () => {
     setDraft(stateKey, (current) => {
       return stagePermissionDraftConnectorRestore({ draft: current });
@@ -1241,7 +1147,7 @@ function LoadedPermissionsDrawerContent({
     <>
       <div className="flex flex-1 flex-col min-h-0">
         <div
-          className={`flex flex-col gap-2 pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+          className={`flex flex-col gap-2 pb-3 -mx-6 px-6 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
         >
           <div className="relative w-full">
             <IconSearch
@@ -1312,7 +1218,6 @@ function LoadedPermissionsDrawerContent({
               onPolicyChange={handlePolicyChange}
               onGrantExpirationChange={handleGrantExpirationChange}
               onClearInheritedExpiration={handleClearInheritedExpiration}
-              onResetPermission={handleResetPermission}
               onShowMore={handleShowMore}
             />
           )}
@@ -1325,12 +1230,6 @@ function LoadedPermissionsDrawerContent({
               policy={unknownPolicy}
               grant={unknownGrant}
               selected={unknownSelectedExpiration}
-              hasPendingChange={hasPermissionDraftUnknownChange({
-                context,
-                draft,
-                selected: unknownSelectedExpiration,
-                grant: unknownGrant,
-              })}
               allowAlwaysActive={hasAllowAlwaysPolicy(
                 unknownGrant,
                 unknownPolicy,
@@ -1364,7 +1263,6 @@ function LoadedPermissionsDrawerContent({
                   });
                 });
               }}
-              onReset={handleResetUnknownPermission}
             />
           }
         />

@@ -1030,10 +1030,6 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(unknownRow).getByText("1h")).toBeInTheDocument();
     });
-    click(within(unknownRow).getByLabelText("Undo __unknown__ changes"));
-    await waitFor(() => {
-      expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
-    });
 
     click(buttonByText("Apply", loadedGroupedDialog));
 
