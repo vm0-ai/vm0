@@ -1794,6 +1794,80 @@ describe("chat composer templates", () => {
     }
   });
 
+  it("keeps the presentation card image stable while the hover preview is loading", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.previewImages.length > 1;
+    });
+    if (template === undefined) {
+      throw new Error("Presentation template with multiple slides not found");
+    }
+    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    let previewFetchCount = 0;
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      previewFetchCount += 1;
+      return previewFetch.promise;
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+    const previewImage = screen.getByTestId(
+      `${template.title} card image preview`,
+    );
+    const initialPreviewSrc = previewImage.getAttribute("src");
+    const preview = screen.getByLabelText(
+      `Preview ${template.title} at current slide`,
+    ).parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    try {
+      fireEvent.mouseEnter(preview);
+      await waitFor(() => {
+        expect(previewFetchCount).toBe(1);
+      });
+      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+      const animationFrame = createDeferredPromise<void>(AbortSignal.any([]));
+      window.requestAnimationFrame(() => {
+        animationFrame.resolve();
+      });
+      try {
+        await animationFrame.promise;
+      } finally {
+        if (!animationFrame.settled()) {
+          animationFrame.reject(new Error("Animation frame cancelled"));
+        }
+      }
+
+      expect(
+        screen.getByTestId(`${template.title} card image preview`),
+      ).toHaveAttribute("src", initialPreviewSrc);
+    } finally {
+      if (!previewFetch.settled()) {
+        previewFetch.reject(new Error("Preview fetch intentionally cancelled"));
+      }
+    }
+  });
+
   it("uses the presentation detail theme for template selection", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
@@ -1988,6 +2062,25 @@ describe("chat composer templates", () => {
   it("opens presentation template detail at the scrubbed card slide", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const lastSlideNumber = template.previewImages.length;
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `
+          <!doctype html>
+          <html>
+            <body>
+              ${template.previewImages
+                .map((_, index) => {
+                  return `<section data-vm0-slide data-slide-id="slide-${String(
+                    index + 1,
+                  )}"><h1>Slide ${String(index + 1)}</h1></section>`;
+                })
+                .join("")}
+            </body>
+          </html>
+        `,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2018,7 +2111,24 @@ describe("chat composer templates", () => {
       },
     });
 
+    fireEvent.mouseEnter(preview);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} card HTML preview`),
+      ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+    });
     fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+    const animationFrame = createDeferredPromise<void>(AbortSignal.any([]));
+    window.requestAnimationFrame(() => {
+      animationFrame.resolve();
+    });
+    try {
+      await animationFrame.promise;
+    } finally {
+      if (!animationFrame.settled()) {
+        animationFrame.reject(new Error("Animation frame cancelled"));
+      }
+    }
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     await waitFor(() => {

@@ -2858,6 +2858,10 @@ function TemplatePreview({
   };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const cache = presentationTemplateHtmlPreviewCache();
+    if (!cache.drafts.has(item.embedUrl)) {
+      return;
+    }
     if (scrubSlideCount < 2) {
       return;
     }
@@ -2873,7 +2877,6 @@ function TemplatePreview({
       scrubSlideCount - 1,
       Math.round((offsetX / rect.width) * (scrubSlideCount - 1)),
     );
-    const cache = presentationTemplateHtmlPreviewCache();
     const currentIndex =
       cache.pendingSlideIndexes.get(item.embedUrl) ??
       currentPreviewSlideIndex();
@@ -2898,9 +2901,6 @@ function TemplatePreview({
           0,
         );
         setHover({ slug: item.slug, index: 0 });
-        startHtmlPreviewLoad();
-      }}
-      onFocus={() => {
         startHtmlPreviewLoad();
       }}
       onMouseMove={handleMouseMove}
