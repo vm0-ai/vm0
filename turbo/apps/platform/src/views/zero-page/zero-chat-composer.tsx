@@ -2916,6 +2916,7 @@ function TemplatePreviewFrames({
             }
             src={frameUrl}
             sandbox="allow-same-origin"
+            tabIndex={-1}
             className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
             onLoad={(event) => {
               revealTemplatePreviewFrameAfterPaint({
@@ -3297,6 +3298,56 @@ function TemplatePreview({
   );
 }
 
+const TEMPLATE_DETAIL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[tabindex]:not([tabindex="-1"]):not([role="group"])',
+].join(",");
+
+function templateDetailFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(TEMPLATE_DETAIL_FOCUSABLE_SELECTOR),
+  ).filter((element) => {
+    return (
+      element.tabIndex >= 0 &&
+      !element.hasAttribute("disabled") &&
+      !element.closest("[inert]")
+    );
+  });
+}
+
+function handleTemplateDetailTabKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+): void {
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const candidates = templateDetailFocusableElements(event.currentTarget);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const target =
+    event.target instanceof HTMLElement ? event.target : document.activeElement;
+  const currentIndex = candidates.findIndex((candidate) => {
+    return target instanceof Node && candidate.contains(target);
+  });
+  const direction = event.shiftKey ? -1 : 1;
+  const nextIndex =
+    currentIndex === -1
+      ? event.shiftKey
+        ? candidates.length - 1
+        : 0
+      : (currentIndex + direction + candidates.length) % candidates.length;
+
+  event.preventDefault();
+  candidates[nextIndex]?.focus();
+}
+
 interface PresentationTemplateDetailPreviewState {
   readonly embedUrl: string;
   readonly failed: boolean;
@@ -3630,6 +3681,7 @@ function TemplatePreviewPage({
               data-testid={`${item.title} detail HTML preview`}
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
+              tabIndex={-1}
               className="pointer-events-none aspect-[16/9] w-full border-0 bg-background"
             />
             <button
@@ -4758,6 +4810,9 @@ function TemplatePickerDialog({
         className={dialogContentClassName}
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
+        onKeyDownCapture={
+          isPreviewing ? handleTemplateDetailTabKeyDown : undefined
+        }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           if (!isPreviewing) {
@@ -5011,6 +5066,7 @@ function SelectedPresentationTemplateChipPreview({
       title={`${item.title} selected template preview`}
       src={htmlPreview.frameUrl}
       sandbox="allow-same-origin"
+      tabIndex={-1}
       className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
     />
   ) : (

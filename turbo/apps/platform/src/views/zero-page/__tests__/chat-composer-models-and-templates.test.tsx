@@ -1649,6 +1649,7 @@ describe("chat composer templates", () => {
           screen.getByTestId(`${template.title} card HTML preview`),
         ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
       });
+      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
       const firstPreviewHtml = await htmlForFrame(currentPreviewFrame());
       expect(firstPreviewHtml).toContain("Slide one");
       expect(firstPreviewHtml).toContain("--accent:#FF7A1A");
@@ -2054,9 +2055,30 @@ describe("chat composer templates", () => {
         within(templateDialog).getByLabelText("Preview slide 1"),
       ).toHaveAttribute("aria-pressed", "true");
     });
+    const detailPreviewFrame = screen.getByTestId(
+      `${template.title} detail HTML preview`,
+    );
+    expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
     expect(screen.queryByText("1 of 15")).not.toBeInTheDocument();
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
+    const secondSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 2");
+    const backButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!backButton) {
+      throw new Error("Template button not found");
+    }
+    backButton.focus();
+    fireEvent.keyDown(backButton, { key: "Tab" });
+    expect(document.activeElement).toBe(firstSlidePreviewButton);
+    fireEvent.keyDown(firstSlidePreviewButton, { key: "Tab" });
+    expect(document.activeElement).toBe(secondSlidePreviewButton);
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
     expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
       "src",
