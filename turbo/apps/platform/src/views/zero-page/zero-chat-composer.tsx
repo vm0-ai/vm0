@@ -4551,6 +4551,43 @@ function scrollIllustrationThumbnailIntoView(
   }
 }
 
+function activeIllustrationThumbnailScrollDirection(
+  node: HTMLButtonElement,
+): IllustrationThumbnailScrollDirection | null {
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return null;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const thumbnailRect = node.getBoundingClientRect();
+  const edgeTolerance = 1;
+  const maxScrollLeft = Math.max(
+    0,
+    thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth,
+  );
+
+  if (
+    thumbnailRect.right >= thumbnailStripRect.right - edgeTolerance &&
+    (node.nextElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft < maxScrollLeft)
+  ) {
+    return 1;
+  }
+
+  if (
+    thumbnailRect.left <= thumbnailStripRect.left + edgeTolerance &&
+    (node.previousElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft > 0)
+  ) {
+    return -1;
+  }
+
+  return null;
+}
+
 function IllustrationTemplateCard({
   item,
   selected,
@@ -4630,10 +4667,17 @@ function IllustrationTemplateCard({
                     item,
                     onVariantChange,
                   });
-                  if (!active) {
+                  const scrollDirection = active
+                    ? activeIllustrationThumbnailScrollDirection(
+                        event.currentTarget,
+                      )
+                    : index > safeIndex
+                      ? 1
+                      : -1;
+                  if (scrollDirection !== null) {
                     scrollIllustrationThumbnailIntoView(
                       event.currentTarget,
-                      index > safeIndex ? 1 : -1,
+                      scrollDirection,
                     );
                   }
                 }}

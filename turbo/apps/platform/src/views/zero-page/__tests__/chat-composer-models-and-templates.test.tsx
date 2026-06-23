@@ -2442,6 +2442,16 @@ describe("chat composer templates", () => {
     expect(scrollTo).toHaveBeenCalledWith({ left: 112 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
+    // Clicking the active thumbnail at the right edge still reveals the next
+    // two thumbnails.
+    scrollTo.mockClear();
+    click(variant2Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 112 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
     // Move to the last thumbnail without scrolling the thumbnail strip, then
     // click left to reveal the two thumbnails before the clicked one.
     scrollTo.mockClear();
@@ -2471,6 +2481,16 @@ describe("chat composer templates", () => {
         return rect({ left: 0, right: 48 });
       },
     });
+    click(variant3Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking the active thumbnail at the left edge still reveals the previous
+    // two thumbnails.
+    scrollTo.mockClear();
     click(variant3Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
