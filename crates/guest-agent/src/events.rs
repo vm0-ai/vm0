@@ -155,7 +155,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             let error = event.get("error");
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
-                message: codex_first_error_message([turn_error, error])
+                message: codex_best_error_message([turn_error, error])
                     .unwrap_or_else(|| format!("turn {status}")),
                 failure_reason: codex_event_failure_reason_from_errors(event, [turn_error, error]),
             })
@@ -225,8 +225,20 @@ fn codex_turn_failed_message(error: Option<&Value>, turn_error: Option<&Value>) 
     }
 }
 
-fn codex_first_error_message<const N: usize>(errors: [Option<&Value>; N]) -> Option<String> {
-    errors.into_iter().find_map(codex_error_message)
+fn codex_best_error_message<const N: usize>(errors: [Option<&Value>; N]) -> Option<String> {
+    let mut first_generic_message = None;
+    for error in errors {
+        let Some(message) = codex_error_message(error) else {
+            continue;
+        };
+        if !is_generic_codex_failure_diagnostic(&message) {
+            return Some(message);
+        }
+        if first_generic_message.is_none() {
+            first_generic_message = Some(message);
+        }
+    }
+    first_generic_message
 }
 
 fn codex_error_message(error: Option<&Value>) -> Option<String> {
@@ -1450,6 +1462,27 @@ mod tests {
             "turn": {
                 "status": "failed",
                 "error": {}
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "top-level completed failure".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_failed_turn_completed_generic_nested_error_uses_specific_top_level_error() {
+        let event = serde_json::json!({
+            "type": "turn.completed",
+            "error": {"message": "top-level completed failure"},
+            "turn": {
+                "status": "failed",
+                "error": {"message": "turn failed"}
             }
         });
 
