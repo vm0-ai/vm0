@@ -708,7 +708,7 @@ fn cli_failure_message(
         } else {
             Some((message, diagnostic.source, diagnostic.failure_reason))
         }
-    }) && (!is_generic_stdout_failure_diagnostic(message) || stderr_lines.is_empty())
+    }) && (!is_generic_stdout_failure_diagnostic(source, message) || stderr_lines.is_empty())
     {
         return CliFailureMessage {
             message: message.to_string(),
@@ -754,8 +754,12 @@ fn cli_failure_message(
     }
 }
 
-fn is_generic_stdout_failure_diagnostic(message: &str) -> bool {
-    events::is_generic_codex_failure_diagnostic(message)
+fn is_generic_stdout_failure_diagnostic(source: FailureDetailSource, message: &str) -> bool {
+    if source == FailureDetailSource::CodexJsonl {
+        return events::is_generic_codex_failure_diagnostic(message);
+    }
+
+    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
 }
 
 fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
@@ -1321,6 +1325,16 @@ mod tests {
 
         assert_eq!(msg.source, FailureDetailSource::Stderr);
         assert_eq!(msg.message, "specific stderr failure");
+    }
+
+    #[test]
+    fn cli_failure_message_does_not_apply_codex_generic_messages_to_claude_result() {
+        let stderr_lines = vec!["background task noise".to_string()];
+        let diagnostic = cli_diagnostic("Unknown error", FailureDetailSource::ClaudeResult);
+        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(msg.message, "Unknown error");
     }
 
     #[test]
