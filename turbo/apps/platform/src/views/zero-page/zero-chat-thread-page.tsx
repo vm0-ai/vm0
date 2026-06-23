@@ -3200,7 +3200,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               data-scroll-container
               tabIndex={-1}
               onScroll={handleScroll}
-              className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
+              className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
             >
               <ChatThreadMessagesMain
                 thread={thread}

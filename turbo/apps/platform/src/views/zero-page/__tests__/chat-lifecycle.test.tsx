@@ -2857,6 +2857,7 @@ describe("chat lifecycle", () => {
     });
 
     scrollContainer.scrollTop = 420;
+    fireEvent.scroll(scrollContainer);
     const composer = screen.getByPlaceholderText(PLACEHOLDER);
     composer.focus();
     fireEvent.keyDown(composer, { key: "ArrowUp" });
@@ -2883,7 +2884,7 @@ describe("chat lifecycle", () => {
     let markReadCalls = 0;
     const threadId = "render-window-thread";
     const chatMessages: PagedChatMessage[] = Array.from(
-      { length: 14 },
+      { length: 24 },
       (_, index) => {
         return {
           id: `render-window-message-${index}`,
@@ -2904,7 +2905,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       markReadCalls += 1;
       return respond(200, {
-        lastReadMessageId: "render-window-message-13",
+        lastReadMessageId: "render-window-message-23",
         unreads: [],
       });
     });
@@ -2912,8 +2913,8 @@ describe("chat lifecycle", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Render window reply 13")).toBeInTheDocument();
-      expect(screen.queryByText("Render window reply 3")).toBeNull();
+      expect(screen.getByText("Render window reply 23")).toBeInTheDocument();
+      expect(screen.queryByText("Render window reply 13")).toBeNull();
       expect(markReadCalls).toBeGreaterThan(0);
     });
 
@@ -2926,12 +2927,31 @@ describe("chat lifecycle", () => {
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
+      expect(screen.getByText("Render window reply 4")).toBeInTheDocument();
     });
+    expect(screen.queryByText("Render window reply 3")).toBeNull();
     setScrollMetrics(scrollContainer, {
       scrollHeight: 1400,
       clientHeight: 300,
     });
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(480);
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(480);
+
+    scrollContainer.scrollTop = 80;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
+    });
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1800,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 480;
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(480);
     resizeObserver.triggerAll();
     expect(scrollContainer.scrollTop).toBe(480);
   });
