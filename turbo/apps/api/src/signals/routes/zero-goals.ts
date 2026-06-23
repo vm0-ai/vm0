@@ -5,7 +5,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -14,6 +14,7 @@ import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.servi
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
 import {
+  blockGoalForChatThread,
   blockCurrentGoal,
   completeCurrentGoal,
   createGoalForCurrentThread,
@@ -39,6 +40,13 @@ const goalWriteAuth = {
   missingOrganizationStatus: 401,
   requiredCapability: "goal:write",
   accept: ["zero"],
+} as const;
+
+const sessionGoalWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "goal:write",
+  accept: ["session"],
 } as const;
 
 const goalEditAuth = {
@@ -240,6 +248,23 @@ const blockGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
+const blockChatThreadGoalInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroGoalsContract.blockForChatThread));
+    const result = await blockGoalForChatThread(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      threadId: params.threadId,
+    });
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 200 as const, body: result.goal };
+    }
+    return goalErrorResponse(result);
+  },
+);
+
 const resumeGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
@@ -276,6 +301,10 @@ export const zeroGoalsRoutes: readonly RouteEntry[] = [
   {
     route: zeroGoalsContract.block,
     handler: authRoute(goalWriteAuth, blockGoalInner$),
+  },
+  {
+    route: zeroGoalsContract.blockForChatThread,
+    handler: authRoute(sessionGoalWriteAuth, blockChatThreadGoalInner$),
   },
   {
     route: zeroGoalsContract.resume,

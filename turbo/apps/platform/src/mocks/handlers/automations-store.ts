@@ -1,4 +1,4 @@
-import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
+import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 
 // Shared in-memory store backing the automations mock handlers
@@ -29,15 +29,15 @@ export function resetMockAutomations(): void {
   mockWorkflowTriggers = [];
 }
 
-/** A workflow-trigger store row (a goal by default) with sensible defaults. */
+/** A workflow-trigger store row with sensible defaults. */
 export function createMockWorkflowTrigger(
   overrides?: Partial<ChatThreadWorkflowTrigger>,
 ): ChatThreadWorkflowTrigger {
   return {
     id: "e0000001-0000-4000-a000-000000000001",
-    kind: "event",
-    scheduleSummary: null,
-    eventType: "thread-idle",
+    kind: "schedule",
+    scheduleSummary: "Every 60s",
+    eventType: null,
     enabled: true,
     chatThreadId: DEFAULT_CHAT_THREAD_ID,
     nextRunAt: null,
@@ -45,11 +45,9 @@ export function createMockWorkflowTrigger(
     ...overrides,
     workflow: {
       id: "a0000001-0000-4000-a000-000000000001",
-      name: "goal-abc123",
-      displayName: "Goal",
-      description: null,
-      objective: "Drive the release to merge",
-      type: "goal",
+      name: "nightly-sync",
+      displayName: "Nightly sync",
+      description: "Sync the changelog every night",
       ...overrides?.workflow,
     },
   };

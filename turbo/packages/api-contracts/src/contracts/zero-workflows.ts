@@ -218,6 +218,26 @@ export type ZeroWorkflowTriggerSummary = z.infer<
   typeof zeroWorkflowTriggerSummarySchema
 >;
 
+export const chatThreadWorkflowTriggerSchema = z.object({
+  id: z.string().uuid(),
+  kind: zeroWorkflowTriggerKindSchema,
+  scheduleSummary: z.string().nullable(),
+  eventType: zeroWorkflowEventTypeSchema.nullable(),
+  enabled: z.boolean(),
+  chatThreadId: z.string().min(1),
+  nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  workflow: z.object({
+    id: z.string().uuid(),
+    name: zeroWorkflowNameSchema,
+    displayName: z.string().nullable(),
+    description: z.string().nullable(),
+  }),
+});
+export type ChatThreadWorkflowTrigger = z.infer<
+  typeof chatThreadWorkflowTriggerSchema
+>;
+
 export const zeroWorkflowScheduleTriggerCreateRequestSchema = z.object({
   kind: z.literal("schedule").optional(),
   schedule: zeroWorkflowScheduleSchema,
@@ -525,8 +545,22 @@ export const zeroWorkflowVisibilityContract = c.router({
 });
 
 const triggerIdParams = z.object({ id: z.string().uuid() });
+const chatThreadIdParams = z.object({ threadId: z.string().min(1) });
 
 export const zeroWorkflowTriggersContract = c.router({
+  listForChatThread: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/workflow-triggers",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdParams,
+    responses: {
+      200: z.array(chatThreadWorkflowTriggerSchema),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List workflow triggers bound to a chat thread",
+  },
   list: {
     method: "GET",
     path: "/api/zero/workflows/:workflowId/triggers",

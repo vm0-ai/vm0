@@ -11,7 +11,10 @@ import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import {
+  zeroWorkflowTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -215,6 +218,73 @@ describe("zero workflow triggers", () => {
       throw new Error("Expected a schedule trigger");
     }
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
+  });
+
+  it("lists thread-bound workflow triggers and excludes goal triggers", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId) {
+      throw new Error("Expected the workflow trigger to bind a chat thread");
+    }
+
+    const db = store.set(writeDb$);
+    const [goalWorkflow] = await db
+      .insert(zeroWorkflows)
+      .values({
+        orgId: fixture.orgId,
+        agentId,
+        name: `goal-${randomUUID().slice(0, 8)}`,
+        visibility: "private",
+        type: "goal",
+        active: true,
+        preference: { version: 1, objective: "ship it" },
+        ownerUserId: fixture.userId,
+        displayName: "Goal",
+        createdBy: fixture.userId,
+      })
+      .returning({ id: zeroWorkflows.id });
+    const [goalTrigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId: goalWorkflow!.id,
+        ownerUserId: fixture.userId,
+        kind: "event",
+        eventType: "thread-idle",
+        enabled: true,
+        chatThreadId: threadId,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+
+    const listed = await accept(
+      triggersClient().listForChatThread({
+        headers: authHeaders(),
+        params: { threadId },
+      }),
+      [200],
+    );
+
+    expect(listed.body).toHaveLength(1);
+    expect(listed.body[0]).toMatchObject({
+      id: created.body.id,
+      kind: "schedule",
+      scheduleSummary: "Every 60s",
+      chatThreadId: threadId,
+      workflow: { id: workflowId, name: WORKFLOW_NAME },
+    });
+    expect(
+      listed.body.some((trigger) => {
+        return trigger.id === goalTrigger!.id;
+      }),
+    ).toBeFalsy();
   });
 
   it("creates and updates one-time schedules from local atTime and timezone", async () => {

@@ -331,7 +331,7 @@ interface ZeroChatComposerProps {
    * Absent when the thread has no in-progress goal.
    */
   activeGoal?: ActiveGoalComposerItem;
-  /** Cancels the active goal (disables its trigger via the caller). */
+  /** Cancels the active goal through the goal API. */
   onCancelActiveGoal?: () => void;
   /**
    * Inline feedback drafted from selected assistant text. When at least one
@@ -636,7 +636,7 @@ function QueuedMessagesStrip({
         {/* The active goal sits last — below every queued message — because a
             goal only runs once the queue drains, so it reads as lower priority
             than the queue. Like a queued message it can be cancelled; cancelling
-            disables the goal's trigger so it no longer runs behind the queue. */}
+            blocks the goal so it no longer runs behind the queue. */}
         {activeGoal ? (
           <ComposerStripRow
             kind="goal"

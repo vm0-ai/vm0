@@ -3,11 +3,17 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
+  type ChatThreadWorkflowTrigger,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
+import {
+  getMockWorkflowTriggers,
+  setMockWorkflowTriggers,
+} from "./automations-store.ts";
 
 const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 
@@ -32,6 +38,38 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
     canManage: workflow.canManage,
+  };
+}
+
+function triggerSummary(
+  trigger: ChatThreadWorkflowTrigger,
+): ZeroWorkflowTriggerSummary {
+  if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
+    return {
+      id: trigger.id,
+      ownerUserId: "test-user-123",
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: { provider: "gmail", event: "new_message" },
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+
+  return {
+    id: trigger.id,
+    ownerUserId: "test-user-123",
+    enabled: trigger.enabled,
+    chatThreadId: trigger.chatThreadId,
+    nextRunAt: trigger.nextRunAt,
+    lastRunAt: trigger.lastRunAt,
+    kind: "schedule",
+    schedule: { type: "loop", intervalSeconds: 60 },
+    scheduleSummary: trigger.scheduleSummary ?? "Every 60s",
   };
 }
 
@@ -169,6 +207,7 @@ export const apiWorkflowsHandlers = [
   }),
 
   ...visibilityHandlers(),
+  ...workflowTriggerHandlers(),
 ];
 
 function visibilityHandlers() {
@@ -240,7 +279,11 @@ function visibilityHandlers() {
         ? respond(200, result)
         : respond(404, notFound(params.workflowId));
     }),
+  ];
+}
 
+function workflowTriggerHandlers() {
+  return [
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
         return item.id === params.workflowId;
@@ -249,6 +292,62 @@ function visibilityHandlers() {
         return respond(404, notFound(params.workflowId));
       }
       return respond(200, workflow.triggers);
+    }),
+
+    mockApi(
+      zeroWorkflowTriggersContract.listForChatThread,
+      ({ params, respond }) => {
+        return respond(
+          200,
+          getMockWorkflowTriggers().filter((trigger) => {
+            return trigger.chatThreadId === params.threadId;
+          }),
+        );
+      },
+    ),
+
+    mockApi(zeroWorkflowTriggersContract.enable, ({ params, respond }) => {
+      const triggers = getMockWorkflowTriggers();
+      const trigger = triggers.find((item) => {
+        return item.id === params.id;
+      });
+      if (!trigger) {
+        return respond(404, {
+          error: {
+            message: "Workflow trigger not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      const updated = { ...trigger, enabled: true };
+      setMockWorkflowTriggers(
+        triggers.map((item) => {
+          return item.id === params.id ? updated : item;
+        }),
+      );
+      return respond(200, triggerSummary(updated));
+    }),
+
+    mockApi(zeroWorkflowTriggersContract.disable, ({ params, respond }) => {
+      const triggers = getMockWorkflowTriggers();
+      const trigger = triggers.find((item) => {
+        return item.id === params.id;
+      });
+      if (!trigger) {
+        return respond(404, {
+          error: {
+            message: "Workflow trigger not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      const updated = { ...trigger, enabled: false };
+      setMockWorkflowTriggers(
+        triggers.map((item) => {
+          return item.id === params.id ? updated : item;
+        }),
+      );
+      return respond(200, triggerSummary(updated));
     }),
   ];
 }

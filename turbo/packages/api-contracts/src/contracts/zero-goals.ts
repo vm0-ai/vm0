@@ -40,6 +40,10 @@ export const zeroGoalResponseSchema = z.object({
 });
 export type ZeroGoalResponse = z.infer<typeof zeroGoalResponseSchema>;
 
+const chatThreadGoalParamsSchema = z.object({
+  threadId: z.string().min(1),
+});
+
 export const zeroGoalsContract = c.router({
   create: {
     method: "POST",
@@ -106,6 +110,20 @@ export const zeroGoalsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Pause continuation for the current thread goal",
+  },
+  blockForChatThread: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/goal/block",
+    headers: authHeadersSchema,
+    pathParams: chatThreadGoalParamsSchema,
+    body: c.noBody(),
+    responses: {
+      200: zeroGoalResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Pause continuation for a chat thread goal",
   },
   resume: {
     method: "POST",

@@ -180,14 +180,14 @@ import {
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
   headerAutomationMenu$,
-  headerWorkflowTriggers$,
+  headerWorkflowTriggersForThread,
   reloadHeaderAutomationMenu$,
   toggleWorkflowTriggerEnabled$,
   automationsForThread,
-  workflowTriggersForThread,
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
+import { blockChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
   currentHeaderAutomationThreadId$,
@@ -989,23 +989,22 @@ export function AutomationMenuButton({
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
-  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
-  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
+  const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
+  const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(workflowTriggers$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
-  const allTriggers =
+  const workflowTriggers =
     workflowTriggersLoadable.state === "hasData"
       ? workflowTriggersLoadable.data
       : (lastResolvedTriggers ?? []);
-  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const open = openThreadId === threadId;
 
-  // Show the opener when the thread has an automation or a (non-goal) workflow
-  // trigger. Goals live in the composer, so a goal-only thread has nothing to
-  // show in the automation sidebar.
+  // Show the opener when the thread has an automation or workflow trigger.
+  // Goals live in the composer, so a goal-only thread has nothing here.
   if (automations.length === 0 && workflowTriggers.length === 0) {
     return null;
   }
@@ -2120,11 +2119,7 @@ function HeaderWorkflowTriggerCard({
   );
   const toggling = togglingLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
-  // Goals have no description — their human text is the objective. Workflows use
-  // their description.
-  const description = (
-    trigger.workflowObjective ?? trigger.workflowDescription
-  )?.trim();
+  const description = trigger.workflowDescription?.trim();
 
   const toggleEnabled = (enabled: boolean) => {
     detach(
@@ -2178,19 +2173,19 @@ function HeaderWorkflowTriggerCard({
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
-  const workflowTriggersLoadable = useLastLoadable(headerWorkflowTriggers$);
-  const lastResolvedTriggers = useLastResolved(headerWorkflowTriggers$);
+  const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
+  const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
+  const lastResolvedTriggers = useLastResolved(workflowTriggers$);
   const close = useSet(closeHeaderAutomationSidebar$);
   const allAutomations =
     automationsLoadable.state === "hasData"
       ? automationsLoadable.data
       : (lastResolvedAutomations ?? []);
   const automations = automationsForThread(allAutomations, threadId);
-  const allTriggers =
+  const workflowTriggers =
     workflowTriggersLoadable.state === "hasData"
       ? workflowTriggersLoadable.data
       : (lastResolvedTriggers ?? []);
-  const workflowTriggers = workflowTriggersForThread(allTriggers, threadId);
   const isEmpty = automations.length === 0 && workflowTriggers.length === 0;
   const loading =
     isEmpty &&
@@ -3564,21 +3559,18 @@ function useChatComposerQueue(
 }
 
 // The thread's active goal (folded from goal-state markers, no /api/automations
-// poll) plus its cancel handler. Cancelling disables the goal's trigger; the
-// backend then emits a goal-trigger:inactive marker, so the row folds away.
+// poll) plus its cancel handler. Cancelling blocks the goal through the goal API;
+// the backend then emits a goal-trigger:inactive marker, so the row folds away.
 function useChatComposerActiveGoal(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
   const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
-  const toggleWorkflowTrigger = useSet(toggleWorkflowTriggerEnabled$);
+  const blockChatThreadGoal = useSet(blockChatThreadGoal$);
   const onCancelActiveGoal = activeGoal
     ? () => {
         detach(
-          toggleWorkflowTrigger(
-            { triggerId: activeGoal.triggerId, enabled: false },
-            pageSignal,
-          ),
+          blockChatThreadGoal(thread.threadId, pageSignal),
           Reason.DomCallback,
         );
       }
@@ -3880,8 +3872,8 @@ function ChatThreadComposer({
     thread,
     groups,
   );
-  // The active goal row above the composer, with its cancel (disable-trigger)
-  // handler — folded from the thread's message stream, no /api/automations poll.
+  // The active goal row above the composer, with its cancel handler folded from
+  // the thread's message stream, no /api/automations poll.
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
