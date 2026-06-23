@@ -128,22 +128,41 @@ function transformArticle(article: StrapiArticle): BlogPost {
 export async function getPostsFromStrapi(
   locale: string = "en",
 ): Promise<BlogPost[]> {
-  const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc`;
+  // Strapi caps a single page at its default pageSize (25), so older posts
+  // would silently fall off the listing. Walk every page to return them all.
+  const pageSize = 100;
+  const articles: StrapiArticle[] = [];
+  let page = 1;
+  let pageCount = 1;
 
-  const res = await fetch(url, {
-    next: { revalidate: 3600 },
-    signal: AbortSignal.timeout(10_000),
-  });
+  do {
+    const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc&pagination[page]=${page}&pagination[pageSize]=${pageSize}`;
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch posts: ${res.status} ${res.statusText}`);
-  }
+    const res = await fetch(url, {
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(10_000),
+    });
 
-  const data = await parseJsonResponse<StrapiResponse<StrapiArticle[]>>(
-    res,
-    url,
-  );
-  return data.data.map(transformArticle);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch posts: ${res.status} ${res.statusText}`);
+    }
+
+    const data = await parseJsonResponse<StrapiResponse<StrapiArticle[]>>(
+      res,
+      url,
+    );
+
+    articles.push(...data.data);
+
+    if (data.data.length === 0) {
+      break;
+    }
+
+    pageCount = data.meta.pagination?.pageCount ?? page;
+    page += 1;
+  } while (page <= pageCount);
+
+  return articles.map(transformArticle);
 }
 
 export async function getPostBySlugFromStrapi(
