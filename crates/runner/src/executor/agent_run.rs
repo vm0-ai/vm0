@@ -549,14 +549,16 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if !wait_cancelled && process_exit_oom_candidate(&exit) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
-            label: "oom-dmesg",
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
-        match sandbox.exec(&dmesg_req).await {
+        match sandbox
+            .exec_with_diagnostic_label(&dmesg_req, "oom-dmesg")
+            .await
+        {
             Ok(dmesg)
                 if helper_exec_succeeded(&dmesg)
                     && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) =>

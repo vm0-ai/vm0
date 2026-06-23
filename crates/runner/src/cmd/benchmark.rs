@@ -431,15 +431,17 @@ async fn run_in_sandbox(
 
     let t_exec = Instant::now();
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd: &args.command,
-            label: "benchmark-exec",
-            timeout: Duration::from_secs(args.timeout_secs),
-            env: &env_refs,
-            sudo: args.sudo,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_7_MIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &args.command,
+                timeout: Duration::from_secs(args.timeout_secs),
+                env: &env_refs,
+                sudo: args.sudo,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_7_MIB,
+            },
+            "benchmark-exec",
+        )
         .await
         .map_err(Into::into);
     timing.exec_ms = Some(t_exec.elapsed().as_millis());

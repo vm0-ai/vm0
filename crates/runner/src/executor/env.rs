@@ -264,15 +264,17 @@ pub(super) async fn write_user_env_file(
     let mkdir_cmd =
         format!("mkdir -p -m 700 {runtime_dir} {dir_path} && chmod 700 {runtime_dir} {dir_path}");
     let mkdir_result = sandbox
-        .exec(&ExecRequest {
-            cmd: &mkdir_cmd,
-            label: "user-env-dir",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &mkdir_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "user-env-dir",
+        )
         .await?;
     if !helper_exec_succeeded(&mkdir_result) {
         return Err(RunnerError::Internal(format_helper_exec_failure(
@@ -286,15 +288,17 @@ pub(super) async fn write_user_env_file(
     sandbox.write_file(&file_path, &payload).await?;
     let chmod_cmd = format!("chmod 600 {file_path}");
     let chmod_result = sandbox
-        .exec(&ExecRequest {
-            cmd: &chmod_cmd,
-            label: "user-env-chmod",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &chmod_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "user-env-chmod",
+        )
         .await?;
     if !helper_exec_succeeded(&chmod_result) {
         return Err(RunnerError::Internal(format_helper_exec_failure(

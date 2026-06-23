@@ -1104,6 +1104,14 @@ mod tests {
             self.inner.exec(request).await
         }
 
+        async fn exec_with_diagnostic_label(
+            &self,
+            request: &sandbox::ExecRequest<'_>,
+            label: &'static str,
+        ) -> sandbox::Result<sandbox::ExecResult> {
+            self.inner.exec_with_diagnostic_label(request, label).await
+        }
+
         async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
             self.inner.read_file(path, max_bytes).await
         }

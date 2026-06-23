@@ -29,15 +29,17 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     );
     let date_cmd = format!("date -s \"@{timestamp}\"");
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd: &date_cmd,
-            label: "guest-clock-sync",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: true,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &date_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: true,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "guest-clock-sync",
+        )
         .await?;
     if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(format_helper_exec_failure(
@@ -67,15 +69,17 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
 
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd: "guest-reseed",
-            label: "guest-reseed",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: true,
-            stdin_bytes: Some(&entropy),
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: "guest-reseed",
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: true,
+                stdin_bytes: Some(&entropy),
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "guest-reseed",
+        )
         .await?;
 
     if !helper_exec_succeeded(&result) {
@@ -122,15 +126,17 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
     );
     // Best-effort: don't fail the run if timezone setup fails.
     match sandbox
-        .exec(&ExecRequest {
-            cmd: &cmd,
-            label: "guest-timezone-sync",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: true,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: true,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "guest-timezone-sync",
+        )
         .await
     {
         Ok(result) if !helper_exec_succeeded(&result) => {

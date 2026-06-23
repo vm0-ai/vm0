@@ -44,9 +44,6 @@ pub const EXEC_OUTPUT_LIMIT_7_MIB: ExecOutputLimits = ExecOutputLimits::same(7 *
 pub struct ExecRequest<'a> {
     /// Shell command to run inside the guest.
     pub cmd: &'a str,
-    /// Stable low-cardinality operation label used in diagnostics. Do not
-    /// include raw command text, user input, env values, or request payloads.
-    pub label: &'a str,
     /// Guest-side command timeout.
     pub timeout: Duration,
     /// Environment variables passed to the command. Keys must satisfy the vm0
@@ -697,7 +694,6 @@ mod tests {
     fn timeout_ms_normal() {
         let req = ExecRequest {
             cmd: "echo hi",
-            label: "test-exec",
             timeout: Duration::from_millis(5000),
             env: &[],
             sudo: false,
@@ -711,7 +707,6 @@ mod tests {
     fn timeout_ms_zero() {
         let req = ExecRequest {
             cmd: "true",
-            label: "test-exec",
             timeout: Duration::ZERO,
             env: &[],
             sudo: false,
@@ -725,7 +720,6 @@ mod tests {
     fn timeout_ms_rounds_nonzero_submillisecond_up() {
         let req = ExecRequest {
             cmd: "true",
-            label: "test-exec",
             timeout: Duration::from_nanos(1),
             env: &[],
             sudo: false,
@@ -762,7 +756,6 @@ mod tests {
     fn timeout_ms_saturates_at_u32_max() {
         let req = ExecRequest {
             cmd: "sleep infinity",
-            label: "test-exec",
             timeout: Duration::from_secs(u64::MAX / 1000),
             env: &[],
             sudo: false,
@@ -776,7 +769,6 @@ mod tests {
     fn timeout_ms_exact_u32_max() {
         let req = ExecRequest {
             cmd: "cmd",
-            label: "test-exec",
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,

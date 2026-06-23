@@ -49,15 +49,17 @@ async fn run_workspace_drive_command(
     label: &'static str,
 ) -> RunnerResult<()> {
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd,
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd,
+                timeout: WORKSPACE_MOUNT_TIMEOUT,
+                env: &[],
+                sudo: true,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
             label,
-            timeout: WORKSPACE_MOUNT_TIMEOUT,
-            env: &[],
-            sudo: true,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        )
         .await
         .map_err(RunnerError::from)?;
     if helper_exec_succeeded(&result) {

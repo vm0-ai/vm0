@@ -141,15 +141,17 @@ async fn cleanup_existing_codex_session_files(
         ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
     ];
     let result = sandbox
-        .exec(&ExecRequest {
-            cmd: &cleanup_cmd,
-            label: "codex-session-cleanup",
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &env,
-            sudo: false,
-            stdin_bytes: None,
-            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-        })
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &cleanup_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &env,
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "codex-session-cleanup",
+        )
         .await?;
     if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(redact_session_restore_diagnostic(

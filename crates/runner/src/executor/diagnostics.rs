@@ -341,7 +341,6 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
 ) -> Option<ResourceFailureDiagnostics> {
     let request = ExecRequest {
         cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT,
-        label: "agent-abnormal-exit-diagnostics",
         timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
         env: &[],
         sudo: true,
@@ -349,7 +348,10 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
 
-    match sandbox.exec(&request).await {
+    match sandbox
+        .exec_with_diagnostic_label(&request, "agent-abnormal-exit-diagnostics")
+        .await
+    {
         Ok(result) => {
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);

@@ -1726,8 +1726,9 @@ fn supervised_stdout_receiver(
 }
 
 fn exec_capture_request<'a>(
-    request: &'a ExecRequest<'a>,
+    request: &ExecRequest<'a>,
     timeout_ms: u32,
+    label: &'a str,
 ) -> vsock_host::ExecCaptureRequest<'a> {
     let limits = request.output_limits;
     vsock_host::ExecCaptureRequest {
@@ -1735,7 +1736,7 @@ fn exec_capture_request<'a>(
         timeout_ms,
         env: request.env,
         sudo: request.sudo,
-        label: request.label,
+        label,
         stdout_limit_bytes: limits.stdout_limit_bytes,
         stderr_limit_bytes: limits.stderr_limit_bytes,
         expected_exit_codes: &[],
@@ -2091,6 +2092,15 @@ impl Sandbox for FirecrackerSandbox {
     // already polling.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+        self.exec_with_diagnostic_label(request, "sandbox-exec")
+            .await
+    }
+
+    async fn exec_with_diagnostic_label(
+        &self,
+        request: &ExecRequest<'_>,
+        label: &'static str,
+    ) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::Exec;
         let timeout_ms = request.timeout_ms();
 
@@ -2100,7 +2110,7 @@ impl Sandbox for FirecrackerSandbox {
             |guest| async move {
                 validate_exec_capture_timeout(timeout_ms)?;
                 guest
-                    .exec_operation_capture(exec_capture_request(request, timeout_ms))
+                    .exec_operation_capture(exec_capture_request(request, timeout_ms, label))
                     .await
                     .and_then(exec_result_from_operation_result)
             },
@@ -7003,7 +7013,6 @@ mod tests {
         let stdin = [1, 2, 3];
         let request = ExecRequest {
             cmd: "echo hello",
-            label: "storage-download",
             timeout: Duration::from_millis(42),
             env: &[("TEST_ENV", "value")],
             sudo: true,
@@ -7011,7 +7020,7 @@ mod tests {
             output_limits: sandbox::ExecOutputLimits::separate(123, 456),
         };
 
-        let capture = exec_capture_request(&request, 42);
+        let capture = exec_capture_request(&request, 42, "storage-download");
 
         assert_eq!(capture.command, "echo hello");
         assert_eq!(capture.label, "storage-download");
