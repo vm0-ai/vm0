@@ -46,7 +46,6 @@ import {
 import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
-  expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
@@ -141,7 +140,7 @@ import {
   customConnectorSecretKey,
   decryptCustomConnectorValues,
   loadCustomConnectorRuntimeData,
-  renderPrefixTemplate,
+  renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
 import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
@@ -2151,7 +2150,7 @@ async function loadCustomConnectorContext(
     });
     const apis: ExpandedFirewallConfig["apis"] = [];
     for (const prefixTemplate of row.connector.prefixTemplates) {
-      const renderedPrefix = renderPrefixTemplate({
+      const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
         values: decryptedValues,
       });
@@ -2159,7 +2158,7 @@ async function loadCustomConnectorContext(
         continue;
       }
       apis.push({
-        base: expandHostWildcardsInBaseUrl(renderedPrefix),
+        base: renderedPrefix,
         auth: {
           headers: Object.fromEntries(
             row.connector.headerInjections.map((header) => {

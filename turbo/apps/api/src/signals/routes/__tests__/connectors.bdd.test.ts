@@ -1510,6 +1510,124 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("rejects connector proposal host variables that change URL structure", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorProposals]: true,
+    });
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "create",
+          displayName: "BDD Unsafe Proposal API",
+          prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: true,
+            },
+            {
+              key: "subdomain",
+              label: "Subdomain",
+              kind: "variable",
+              required: true,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+        },
+        values: [
+          { key: "api_key", kind: "secret", value: "unsafe-secret" },
+          { key: "subdomain", kind: "variable", value: "evil.test/path" },
+        ],
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain(
+      "not safe in custom connector host templates",
+    );
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorProposals]: true,
+    });
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Legacy Delete API",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.subdomain}}",
+          },
+        ],
+      },
+      values: [
+        { key: "secret", kind: "secret", value: "legacy-delete-secret" },
+        { key: "subdomain", kind: "variable", value: "acme" },
+      ],
+    });
+
+    await connectorsApi.deleteCustomConnectorSecret(admin, saved.connector.id);
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["secret"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+  });
+
   it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {
     const bdd = createBddApi(context);
     const noOrgActor = bdd.user({ orgId: null });

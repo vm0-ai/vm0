@@ -45,6 +45,7 @@ const TEMPLATE_REFERENCE_REGEX =
   /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
+const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -380,6 +381,38 @@ function extractTemplateReferences(template: string): readonly {
       key: match[2]!,
     };
   });
+}
+
+function prefixTemplateVariableKeys(
+  prefixTemplates: readonly string[],
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const template of prefixTemplates) {
+    for (const ref of extractTemplateReferences(template)) {
+      if (ref.namespace === "variables") {
+        keys.add(ref.key);
+      }
+    }
+  }
+  return keys;
+}
+
+function isSafeHostTemplateVariableValue(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !HOST_TEMPLATE_VALUE_UNSAFE_REGEX.test(value) &&
+    !hasRawWhitespaceOrControlCharacter(value)
+  );
+}
+
+function hasRawWhitespaceOrControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x20 || codeUnit === 0x7f) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function validateTemplateReferences(args: {
@@ -997,15 +1030,17 @@ export function getCustomConnectorResponse(args: {
   });
 }
 
-function validateValueInputs(args: {
-  readonly connector: CustomConnectorRow;
+function validateValueInputsForDefinition(args: {
+  readonly fields: readonly CustomConnectorField[];
+  readonly prefixTemplates: readonly string[];
   readonly values: readonly CustomConnectorValueInput[];
 }): readonly CustomConnectorValueInput[] | BadRequestResponse {
   const allowed = new Set(
-    args.connector.fields.map((field) => {
+    args.fields.map((field) => {
       return valueMarkerKey(field);
     }),
   );
+  const prefixVariables = prefixTemplateVariableKeys(args.prefixTemplates);
   const seen = new Set<string>();
   const values: CustomConnectorValueInput[] = [];
   for (const value of args.values) {
@@ -1019,10 +1054,30 @@ function validateValueInputs(args: {
     if (seen.has(marker)) {
       return badRequestMessage(`Duplicate value for field: ${marker}`);
     }
+    if (
+      value.kind === "variable" &&
+      prefixVariables.has(key) &&
+      !isSafeHostTemplateVariableValue(value.value)
+    ) {
+      return badRequestMessage(
+        `Value for variable ${key} contains characters that are not safe in custom connector host templates`,
+      );
+    }
     seen.add(marker);
     values.push({ key, kind: value.kind, value: value.value });
   }
   return values;
+}
+
+function validateValueInputs(args: {
+  readonly connector: CustomConnectorRow;
+  readonly values: readonly CustomConnectorValueInput[];
+}): readonly CustomConnectorValueInput[] | BadRequestResponse {
+  return validateValueInputsForDefinition({
+    fields: args.connector.fields,
+    prefixTemplates: args.connector.prefixTemplates,
+    values: args.values,
+  });
 }
 
 export const setCustomConnectorValues$ = command(
@@ -1174,6 +1229,53 @@ export const deleteCustomConnectorValues$ = command(
   },
 );
 
+export const deleteLegacyCustomConnectorSecret$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly connectorId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<NotFoundResponse | undefined> => {
+    const connector = await get(
+      getCustomConnectorById({
+        orgId: args.orgId,
+        connectorId: args.connectorId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (!connector) {
+      return notFound("Custom connector not found");
+    }
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(orgCustomConnectorValues)
+      .where(
+        and(
+          eq(orgCustomConnectorValues.connectorId, args.connectorId),
+          eq(orgCustomConnectorValues.userId, args.userId),
+          eq(orgCustomConnectorValues.orgId, args.orgId),
+          eq(orgCustomConnectorValues.kind, "secret"),
+          eq(orgCustomConnectorValues.key, LEGACY_SECRET_KEY),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgCustomConnectorSecrets)
+      .where(
+        and(
+          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+          eq(orgCustomConnectorSecrets.userId, args.userId),
+          eq(orgCustomConnectorSecrets.orgId, args.orgId),
+        ),
+      );
+    signal.throwIfAborted();
+    return undefined;
+  },
+);
+
 async function loadStoredValuesForConnector(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
@@ -1303,7 +1405,7 @@ export function renderTemplateForRuntime(args: {
     );
 }
 
-export function renderPrefixTemplate(args: {
+function renderPrefixTemplate(args: {
   readonly template: string;
   readonly values: Readonly<Record<string, string>>;
 }): string | null {
@@ -1316,7 +1418,7 @@ export function renderPrefixTemplate(args: {
         return TEMPLATE_PLACEHOLDER_VALUE;
       }
       const value = args.values[valueMarkerKey({ kind: "variable", key })];
-      if (!value) {
+      if (!value || !isSafeHostTemplateVariableValue(value)) {
         missing = true;
         return TEMPLATE_PLACEHOLDER_VALUE;
       }
@@ -1324,6 +1426,21 @@ export function renderPrefixTemplate(args: {
     },
   );
   return missing ? null : rendered;
+}
+
+export function renderCustomConnectorRuntimePrefix(args: {
+  readonly template: string;
+  readonly values: Readonly<Record<string, string>>;
+}): string | null {
+  const rendered = renderPrefixTemplate(args);
+  if (!rendered) {
+    return null;
+  }
+  const base = expandHostWildcardsInBaseUrl(rendered);
+  const validation = safeSync(() => {
+    validateBaseUrl(base, "custom connector");
+  });
+  return "error" in validation ? null : base;
 }
 
 export async function loadCustomConnectorRuntimeData(
@@ -1506,6 +1623,21 @@ export const saveCustomConnectorProposal$ = command(
     args: SaveCustomConnectorProposalArgs,
     signal: AbortSignal,
   ): Promise<SaveCustomConnectorProposalResult> => {
+    const proposalDefinition = validateDefinition(
+      definitionFromUpdateInput(proposalUpdateInput(args.proposal)),
+    );
+    if (isBadRequest(proposalDefinition)) {
+      return proposalDefinition;
+    }
+    const proposalValues = validateValueInputsForDefinition({
+      fields: proposalDefinition.fields,
+      prefixTemplates: proposalDefinition.prefixTemplates,
+      values: args.values,
+    });
+    if (isBadRequest(proposalValues)) {
+      return proposalValues;
+    }
+
     const connector = await set(saveProposalDefinition$, args, signal);
     signal.throwIfAborted();
     if ("status" in connector) {
