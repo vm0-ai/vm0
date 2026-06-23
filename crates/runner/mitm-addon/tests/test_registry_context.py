@@ -57,6 +57,42 @@ def _install_test_builtin_firewall(monkeypatch, *, name: str, base: str) -> None
     )
 
 
+def _write_multi_vm_registry(path, vms: dict) -> None:
+    path.write_text(json.dumps({"vms": vms, "updatedAt": 0}))
+
+
+def _builtin_vm(run_id: str, name: str, base_url_vars: dict[str, str] | None = None) -> dict:
+    entry: dict[str, object] = {"kind": "builtin", "name": name}
+    if base_url_vars is not None:
+        entry["baseUrlVars"] = base_url_vars
+    return {"runId": run_id, "firewalls": [entry]}
+
+
+def _inline_vm(run_id: str) -> dict:
+    return {
+        "runId": run_id,
+        "firewalls": [
+            {
+                "kind": "inline",
+                "firewall": {
+                    "name": "example",
+                    "apis": [
+                        {
+                            "base": "https://api.example.com",
+                            "auth": {"headers": {"Authorization": "Bearer token"}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                },
+            }
+        ],
+    }
+
+
+def _first_firewall_core(compiled_firewalls: matching.CompiledFirewallSet):
+    return compiled_firewalls.firewalls[0].core
+
+
 class TestGetVmInfo:
     def test_known_ip(self, registry_file):
         info = registry.get_vm_info("10.200.0.1", str(registry_file))
@@ -171,6 +207,47 @@ class TestGetVmContext:
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://api.github.com"
         assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-github:0"
 
+    def test_repeated_builtin_firewall_refs_share_core_but_keep_vm_api_ids(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": _builtin_vm("run-github-a", "github"),
+                "10.200.0.2": _builtin_vm("run-github-b", "github"),
+            },
+        )
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, first_policies = first_context
+        second_vm_info, second_compiled, second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is _first_firewall_core(second_compiled)
+
+        first_result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/vm0-ai/vm0",
+            "GET",
+            first_compiled,
+            first_policies,
+        )
+        second_result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/vm0-ai/vm0",
+            "GET",
+            second_compiled,
+            second_policies,
+        )
+
+        assert isinstance(first_result, matching.FirewallAllow)
+        assert isinstance(second_result, matching.FirewallAllow)
+        assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
+        assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
+        assert first_result.api_entry["id"] == "run-github-a:0"
+        assert second_result.api_entry["id"] == "run-github-b:0"
+
     def test_builtin_firewall_entry_resolves_dynamic_base_url_vars(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
@@ -199,6 +276,141 @@ class TestGetVmContext:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
+
+    def test_builtin_refs_with_different_base_url_vars_do_not_share_core(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": _builtin_vm(
+                    "run-zendesk-a",
+                    "zendesk",
+                    {"ZENDESK_SUBDOMAIN": "acme"},
+                ),
+                "10.200.0.2": _builtin_vm(
+                    "run-zendesk-b",
+                    "zendesk",
+                    {"ZENDESK_SUBDOMAIN": "beta"},
+                ),
+            },
+        )
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, first_policies = first_context
+        second_vm_info, second_compiled, second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+        assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
+        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://beta.zendesk.com"
+
+        first_result = matching.match_compiled_firewall_request(
+            "https://acme.zendesk.com/api/v2/tickets",
+            "GET",
+            first_compiled,
+            first_policies,
+        )
+        second_result = matching.match_compiled_firewall_request(
+            "https://beta.zendesk.com/api/v2/tickets",
+            "GET",
+            second_compiled,
+            second_policies,
+        )
+
+        assert isinstance(first_result, matching.FirewallAllow)
+        assert isinstance(second_result, matching.FirewallAllow)
+        assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
+        assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
+
+    def test_builtin_compile_cache_is_scoped_to_registry_path(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        data = {"10.200.0.1": _builtin_vm("run-github", "github")}
+        _write_multi_vm_registry(path_a, data)
+        _write_multi_vm_registry(path_b, data)
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path_a))
+        second_context = registry.get_vm_context("10.200.0.1", str(path_b))
+
+        assert first_context is not None
+        assert second_context is not None
+        _, first_compiled, _ = first_context
+        _, second_compiled, _ = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+
+    def test_invalid_builtin_entry_does_not_poison_valid_vm_core_cache(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": _builtin_vm("run-github", "github"),
+                "10.200.0.2": _builtin_vm("run-missing", "missing-firewall"),
+            },
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            valid_context = registry.get_vm_context("10.200.0.1", str(path))
+            invalid_context = registry.get_vm_context("10.200.0.2", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert valid_context is not None
+        assert invalid_context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.invalid_vms["10.200.0.2"].reason == "invalid_firewalls"
+        _, compiled_firewalls, compiled_policies = valid_context
+        assert compiled_firewalls is not None
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/vm0-ai/vm0",
+            "GET",
+            compiled_firewalls,
+            compiled_policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
+    def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": _inline_vm("run-inline-a"),
+                "10.200.0.2": _inline_vm("run-inline-b"),
+            },
+        )
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, first_policies = first_context
+        second_vm_info, second_compiled, second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+
+        first_result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            first_compiled,
+            first_policies,
+        )
+        second_result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            second_compiled,
+            second_policies,
+        )
+
+        assert isinstance(first_result, matching.FirewallAllow)
+        assert isinstance(second_result, matching.FirewallAllow)
+        assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
+        assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
 
     def test_builtin_fixed_provider_suffix_rejects_authority_escape(self, tmp_path):
         path = tmp_path / "registry.json"
