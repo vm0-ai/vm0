@@ -3424,6 +3424,13 @@
       "when": 1782187145276,
       "tag": "0488_pink_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1782201437904,
+      "tag": "0489_clear_figma_files_read_permission_grants",
+      "breakpoints": true
     }
   ]
 }
