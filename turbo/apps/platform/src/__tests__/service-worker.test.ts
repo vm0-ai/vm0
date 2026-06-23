@@ -160,6 +160,29 @@ describe("platform service worker", () => {
     await expect(response.text()).resolves.toBe("cached");
   });
 
+  it("uses the network response when cache storage cannot be updated", async () => {
+    const runtime = createServiceWorkerRuntime();
+    const request = new Request(
+      "https://app.test/firewall-metadata/v1/gmail.generated.js",
+    );
+    runtime.cache.entries.set(
+      request.url,
+      new Response("stale", {
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    runtime.fetchMock.mockResolvedValueOnce(
+      new Response("fresh", {
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    runtime.cache.put.mockRejectedValueOnce(new Error("quota exceeded"));
+
+    const response = await dispatchFetch(runtime, request);
+
+    await expect(response.text()).resolves.toBe("fresh");
+  });
+
   it("does not hide reachable 404 responses behind cached firewall metadata", async () => {
     const runtime = createServiceWorkerRuntime();
     const request = new Request(

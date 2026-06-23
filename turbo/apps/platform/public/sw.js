@@ -31,17 +31,26 @@ function isCacheableAssetResponse(response) {
 }
 
 async function fetchRevalidatedStaticAsset(request) {
-  const cache = await caches.open(STATIC_CACHE);
   try {
     const response = await fetch(request, { cache: "no-cache" });
     if (isCacheableAssetResponse(response)) {
-      await cache.put(request, response.clone());
+      try {
+        const cache = await caches.open(STATIC_CACHE);
+        await cache.put(request, response.clone());
+      } catch {
+        // The network response is authoritative; Cache Storage is best effort.
+      }
     }
     return response;
   } catch (error) {
-    const cached = await cache.match(request);
-    if (cached && isCacheableAssetResponse(cached)) {
-      return cached;
+    try {
+      const cache = await caches.open(STATIC_CACHE);
+      const cached = await cache.match(request);
+      if (cached && isCacheableAssetResponse(cached)) {
+        return cached;
+      }
+    } catch {
+      // Preserve the original network error if the fallback cache is unusable.
     }
     throw error;
   }
