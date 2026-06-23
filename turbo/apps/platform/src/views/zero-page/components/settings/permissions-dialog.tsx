@@ -1471,9 +1471,9 @@ function LoadedPermissionsDrawerContent({
     <>
       <div className="flex flex-1 flex-col min-h-0">
         <div
-          className={`flex items-center gap-2 pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+          className={`flex flex-col gap-2 pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
         >
-          <div className="relative flex-1">
+          <div className="relative w-full">
             <IconSearch
               size={14}
               stroke={1.7}
@@ -1502,15 +1502,17 @@ function LoadedPermissionsDrawerContent({
             )}
           </div>
           {!groups && !searchActive && (
-            <span className="text-xs font-medium text-foreground">
-              {readOnly ? "Permissions" : "Select all"} ({permissions.length})
-            </span>
-          )}
-          {!groups && !searchActive && !readOnly && (
-            <PolicyPill
-              policy={getGroupPolicy(context, draft, permissions)}
-              onChange={handleSetAll}
-            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-foreground">
+                {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+              </span>
+              {!readOnly && (
+                <PolicyPill
+                  policy={getGroupPolicy(context, draft, permissions)}
+                  onChange={handleSetAll}
+                />
+              )}
+            </div>
           )}
         </div>
 
