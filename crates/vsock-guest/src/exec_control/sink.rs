@@ -74,8 +74,14 @@ pub(super) struct ControlStreamState {
 
 /// RAII guard for the forwarder that owns the connected-stream gate.
 pub(super) struct ControlStreamGuard<'a> {
-    state: &'a ControlStreamState,
+    /// This field must be declared before `_gate` so the stream mutex is
+    /// released before the serialization gate is reopened.
     stream: MutexGuard<'a, UnixStream>,
+    _gate: ControlStreamGateGuard<'a>,
+}
+
+struct ControlStreamGateGuard<'a> {
+    state: &'a ControlStreamState,
 }
 
 #[derive(Debug)]
@@ -343,8 +349,8 @@ impl ControlStreamState {
                     drop(gate);
                     let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
                     return Ok(ControlStreamGuard {
-                        state: self,
                         stream,
+                        _gate: ControlStreamGateGuard { state: self },
                     });
                 }
                 ControlStreamGate::Failed(message) => {
@@ -396,7 +402,7 @@ impl std::ops::DerefMut for ControlStreamGuard<'_> {
     }
 }
 
-impl Drop for ControlStreamGuard<'_> {
+impl Drop for ControlStreamGateGuard<'_> {
     fn drop(&mut self) {
         let mut gate = self.state.gate.lock().unwrap_or_else(|e| e.into_inner());
         if matches!(*gate, ControlStreamGate::Locked) {
