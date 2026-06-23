@@ -1,6 +1,6 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 
-import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
+import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import {
@@ -71,10 +71,8 @@ export function automationsForThread(
 }
 
 /**
- * A workflow or goal trigger bound to a chat thread, projected for the header
- * automation sidebar. Carries the linked workflow's identity + description so a
- * thread's automation panel can show the recurring workflows/goals attached to
- * it next to the automations.
+ * A workflow trigger bound to a chat thread, projected for the header
+ * automation sidebar. Goal triggers live in the composer through the goal API.
  */
 export interface HeaderWorkflowTriggerEntry {
   readonly id: string;
@@ -83,8 +81,6 @@ export interface HeaderWorkflowTriggerEntry {
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
-  readonly workflowObjective: string | null;
-  readonly workflowType: "workflow" | "goal";
   readonly summary: string;
 }
 
@@ -99,34 +95,51 @@ function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
 }
 
 /**
- * All workflow + goal triggers bound to the user's chat threads, for the header
- * automation sidebar. Refetched alongside the automation menu; consumers filter
- * to the current thread via workflowTriggersForThread.
+ * Workflow triggers bound to a chat thread, for the header automation sidebar.
  */
-export const headerWorkflowTriggers$ = computed(
-  async (get): Promise<readonly HeaderWorkflowTriggerEntry[]> => {
-    get(headerAutomationMenuReload$);
-    const triggers = await listThreadWorkflowTriggers(get(zeroClient$), {
-      cache: "no-store",
-    });
-    return triggers.map((trigger) => {
-      return {
-        id: trigger.id,
-        chatThreadId: trigger.chatThreadId,
-        enabled: trigger.enabled,
-        workflowName: trigger.workflow.name,
-        workflowDisplayName: trigger.workflow.displayName,
-        workflowDescription: trigger.workflow.description,
-        workflowObjective: trigger.workflow.objective,
-        workflowType: trigger.workflow.type,
-        summary: workflowTriggerSummary(trigger),
-      };
-    });
-  },
-);
+function createHeaderWorkflowTriggersFactory(): (
+  threadId: string,
+) => Computed<Promise<readonly HeaderWorkflowTriggerEntry[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly HeaderWorkflowTriggerEntry[]>>
+  >();
+  return (threadId: string) => {
+    const cached = cache.get(threadId);
+    if (cached) {
+      return cached;
+    }
+    const triggers$ = computed(
+      async (get): Promise<readonly HeaderWorkflowTriggerEntry[]> => {
+        get(headerAutomationMenuReload$);
+        const triggers = await listThreadWorkflowTriggers(
+          get(zeroClient$),
+          { threadId },
+          { cache: "no-store" },
+        );
+        return triggers.map((trigger) => {
+          return {
+            id: trigger.id,
+            chatThreadId: trigger.chatThreadId,
+            enabled: trigger.enabled,
+            workflowName: trigger.workflow.name,
+            workflowDisplayName: trigger.workflow.displayName,
+            workflowDescription: trigger.workflow.description,
+            summary: workflowTriggerSummary(trigger),
+          };
+        });
+      },
+    );
+    cache.set(threadId, triggers$);
+    return triggers$;
+  };
+}
+
+export const headerWorkflowTriggersForThread =
+  createHeaderWorkflowTriggersFactory();
 
 /**
- * Enable/disable a thread's workflow or goal trigger from the sidebar toggle,
+ * Enable/disable a thread's workflow trigger from the sidebar toggle,
  * then refetch so the card reflects the new state. The backend also publishes
  * the realtime signal so other open clients refresh.
  */
@@ -141,17 +154,3 @@ export const toggleWorkflowTriggerEnabled$ = command(
     set(reloadHeaderAutomationMenu$);
   },
 );
-
-/**
- * Workflow triggers bound to a specific chat thread, for the sidebar. Goals are
- * excluded — they are surfaced in the composer (folded from the thread's
- * goal-state message stream), not the automation sidebar.
- */
-export function workflowTriggersForThread(
-  triggers: readonly HeaderWorkflowTriggerEntry[],
-  threadId: string,
-): readonly HeaderWorkflowTriggerEntry[] {
-  return triggers.filter((trigger) => {
-    return trigger.chatThreadId === threadId && trigger.workflowType !== "goal";
-  });
-}

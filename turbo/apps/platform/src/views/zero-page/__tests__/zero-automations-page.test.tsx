@@ -493,7 +493,6 @@ describe("zero automations page", () => {
             }),
           ),
         ],
-        workflowTriggers: [],
       });
     });
 

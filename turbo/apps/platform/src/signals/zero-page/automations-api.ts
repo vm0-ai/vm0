@@ -4,9 +4,12 @@ import {
   automationTriggersContract,
   type AutomationResponse,
   type AutomationTriggerResponse,
-  type ChatThreadWorkflowTrigger,
   type UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
+import {
+  zeroWorkflowTriggersContract,
+  type ChatThreadWorkflowTrigger,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
@@ -174,34 +177,35 @@ export async function listAutomations(
 }
 
 /**
- * List the workflow + goal triggers bound to the caller's chat threads. Surfaced
- * in the chat-thread automation sidebar; consumers filter by `chatThreadId`.
+ * List workflow triggers bound to a chat thread. Goal triggers are managed by
+ * the goal API and are not part of this workflow sidebar surface.
  */
 export async function listThreadWorkflowTriggers(
   client: ZeroClientFactory,
+  params: { readonly threadId: string },
   fetchOptions?: RequestInit,
 ): Promise<ChatThreadWorkflowTrigger[]> {
   const result = await accept(
-    client(automationsMainContract).list({ fetchOptions }),
+    client(zeroWorkflowTriggersContract).listForChatThread({
+      params: { threadId: params.threadId },
+      fetchOptions,
+    }),
     [200],
     { toast: false },
   );
-  return result.body.workflowTriggers;
+  return result.body;
 }
 
-/** Enable or disable a thread-bound workflow/goal trigger. */
+/** Enable or disable a thread-bound workflow trigger. */
 export async function setWorkflowTriggerEnabled(
   client: ZeroClientFactory,
   params: { triggerId: string; enabled: boolean },
 ): Promise<void> {
-  await accept(
-    client(automationsMainContract).toggleWorkflowTrigger({
-      params: { id: params.triggerId },
-      body: { enabled: params.enabled },
-    }),
-    [204],
-    { toast: false },
-  );
+  const workflowTriggers = client(zeroWorkflowTriggersContract);
+  const request = params.enabled
+    ? workflowTriggers.enable({ params: { id: params.triggerId } })
+    : workflowTriggers.disable({ params: { id: params.triggerId } });
+  await accept(request, [200], { toast: false });
 }
 
 async function createAutomation(

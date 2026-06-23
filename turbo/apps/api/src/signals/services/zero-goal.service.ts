@@ -215,6 +215,43 @@ export async function loadActiveGoalForThread(
   return row ?? null;
 }
 
+async function loadOwnedActiveGoalForThread(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<ActiveGoalRow | null> {
+  const [row] = await db
+    .select({
+      workflowId: zeroWorkflows.id,
+      triggerId: zeroWorkflowTriggers.id,
+      workflowActive: zeroWorkflows.active,
+      triggerEnabled: zeroWorkflowTriggers.enabled,
+      preference: zeroWorkflows.preference,
+    })
+    .from(zeroWorkflowTriggers)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+        eq(zeroWorkflowTriggers.chatThreadId, args.threadId),
+        eq(zeroWorkflowTriggers.kind, "event"),
+        eq(zeroWorkflowTriggers.eventType, "thread-idle"),
+        eq(zeroWorkflows.type, "goal"),
+        eq(zeroWorkflows.active, true),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function createGoalForCurrentThread(
   db: Db,
   args: GoalAuth & {
@@ -455,38 +492,73 @@ export async function blockCurrentGoal(
     return goal;
   }
 
+  return await blockGoalRow(db, {
+    userId: args.userId,
+    threadId: goal.threadId,
+    row: goal.row,
+  });
+}
+
+export async function blockGoalForChatThread(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<GoalResult> {
+  const goal = await loadOwnedActiveGoalForThread(db, args);
+  if (!goal) {
+    return { kind: "not-found" };
+  }
+
+  return await blockGoalRow(db, {
+    userId: args.userId,
+    threadId: args.threadId,
+    row: goal,
+  });
+}
+
+async function blockGoalRow(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly threadId: string;
+    readonly row: ActiveGoalRow;
+  },
+): Promise<GoalResult> {
   const blockedAt = nowDate();
   await db.transaction(async (tx) => {
-    await lockGoalThread(tx, goal.threadId);
+    await lockGoalThread(tx, args.threadId);
     await tx
       .update(zeroWorkflows)
       .set({
-        preference: mergeGoalPreference(goal.row.preference, {
+        preference: mergeGoalPreference(args.row.preference, {
           stopReason: "blocked",
         }),
         updatedAt: blockedAt,
       })
-      .where(eq(zeroWorkflows.id, goal.row.workflowId));
+      .where(eq(zeroWorkflows.id, args.row.workflowId));
     await tx
       .update(zeroWorkflowTriggers)
       .set({ enabled: false, updatedAt: blockedAt })
-      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
+      .where(eq(zeroWorkflowTriggers.id, args.row.triggerId));
     // Trigger disabled while the workflow stays active folds to "blocked".
     await appendGoalStateMarker(tx, {
-      chatThreadId: goal.threadId,
+      chatThreadId: args.threadId,
       eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
       content: null,
     });
   });
-  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
-  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
+  await publishChatThreadAutomationsChangedSafely(args.userId, args.threadId);
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
 
   return {
     kind: "ok",
     goal: goalResponse({
-      ...goal.row,
+      ...args.row,
       triggerEnabled: false,
-      preference: mergeGoalPreference(goal.row.preference, {
+      preference: mergeGoalPreference(args.row.preference, {
         stopReason: "blocked",
       }),
     }),

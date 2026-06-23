@@ -382,6 +382,34 @@ describe("zero goals", () => {
     });
   });
 
+  it("blocks a chat thread goal with session auth", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "ship goal workflows" },
+      }),
+      [201],
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const blocked = await accept(
+      goalsClient().blockForChatThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: fixture.threadId },
+      }),
+      [200],
+    );
+
+    expect(blocked.body).toMatchObject({
+      active: true,
+      objective: "ship goal workflows",
+      status: "blocked",
+    });
+    const rows = await loadGoalRows(fixture);
+    expect(rows?.enabled).toBeFalsy();
+  });
+
   it("enforces one thread-idle goal trigger per chat thread at the database layer", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
     await accept(

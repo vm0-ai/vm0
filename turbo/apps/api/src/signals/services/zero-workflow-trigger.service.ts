@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/automations";
 import {
   gmailNewMessageEventConfigSchema,
+  type ChatThreadWorkflowTrigger,
   type GmailNewMessageEventConfig,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
@@ -15,21 +15,13 @@ import {
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import {
-  publishChatThreadAutomationsChangedSafely,
-  publishChatThreadMessageCreatedSafely,
-} from "../external/realtime";
+import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
-import {
-  GOAL_TRIGGER_ACTIVE_EVENT_ID,
-  GOAL_TRIGGER_INACTIVE_EVENT_ID,
-  appendGoalStateMarker,
-} from "./zero-chat-goal-marker.service";
 import { fireWorkflowTriggerTestRun$ } from "./zero-workflow-trigger-poller.service";
 import {
   loadVisibleWorkflowById,
@@ -331,15 +323,18 @@ export async function loadWorkflowTriggers(
 }
 
 /**
- * List every workflow trigger (schedule or goal/event) the caller owns that is
- * bound to a chat thread, joined with its workflow's identity + description.
- * Surfaced alongside automations so the chat-thread automation list shows the
- * recurring workflows/goals attached to the thread. Filtered to the open thread
- * client-side via `chatThreadId`.
+ * List workflow triggers the caller owns that are bound to a chat thread,
+ * joined with the workflow identity needed by the chat sidebar. Goal
+ * `thread-idle` triggers stay behind the goal API and are intentionally
+ * excluded here.
  */
-export async function listChatThreadWorkflowTriggers(
+export async function listThreadBoundWorkflowTriggers(
   db: ReadonlyDb,
-  args: { readonly orgId: string; readonly userId: string },
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
 ): Promise<readonly ChatThreadWorkflowTrigger[]> {
   const rows = await db
     .select({ trigger: zeroWorkflowTriggers, workflow: zeroWorkflows })
@@ -352,119 +347,36 @@ export async function listChatThreadWorkflowTriggers(
       and(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        isNotNull(zeroWorkflowTriggers.chatThreadId),
+        eq(zeroWorkflowTriggers.chatThreadId, args.threadId),
+        eq(zeroWorkflows.type, "workflow"),
       ),
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
 
   return rows.flatMap(({ trigger, workflow }) => {
-    if (trigger.chatThreadId === null) {
+    const summary = rowToPublicSummary(trigger);
+    if (!summary || trigger.chatThreadId === null) {
       return [];
     }
     return [
       {
-        id: trigger.id,
-        kind: trigger.kind,
-        scheduleSummary:
-          trigger.kind === "schedule"
-            ? summarizeSchedule(rowToSchedule(trigger))
-            : null,
-        eventType: trigger.eventType,
-        enabled: trigger.enabled,
+        id: summary.id,
+        kind: summary.kind,
+        scheduleSummary: summary.scheduleSummary,
+        eventType: summary.kind === "event" ? summary.eventType : null,
+        enabled: summary.enabled,
         chatThreadId: trigger.chatThreadId,
-        nextRunAt: trigger.nextRunAt ? trigger.nextRunAt.toISOString() : null,
-        lastRunAt: trigger.lastRunAt ? trigger.lastRunAt.toISOString() : null,
+        nextRunAt: summary.nextRunAt,
+        lastRunAt: summary.lastRunAt,
         workflow: {
           id: workflow.id,
           name: workflow.name,
           displayName: workflow.displayName,
           description: workflow.description,
-          // A goal carries no `description`; its human text is the objective in
-          // `preference`. Surface it separately so the UI can show it.
-          objective: workflow.preference?.objective ?? null,
-          type: workflow.type,
         },
       },
     ];
   });
-}
-
-/**
- * Enable or disable a chat-thread-bound workflow or goal trigger (the rows the
- * automation sidebar lists). Owner-scoped. Schedule triggers reseed/clear their
- * next run; event (goal) triggers just flip `enabled`. Publishes the realtime
- * automations-changed signal so open sidebars refresh.
- */
-export async function setChatThreadWorkflowTriggerEnabled(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly triggerId: string;
-    readonly enabled: boolean;
-  },
-): Promise<"ok" | "not-found"> {
-  const [trigger] = await db
-    .select()
-    .from(zeroWorkflowTriggers)
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.id, args.triggerId),
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-      ),
-    )
-    .limit(1);
-  if (!trigger) {
-    return "not-found";
-  }
-
-  const now = nowDate();
-  const nextRunAt =
-    trigger.kind === "schedule"
-      ? args.enabled
-        ? resolveNextRunAt(rowToSchedule(trigger), true, now)
-        : null
-      : trigger.nextRunAt;
-
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({
-      enabled: args.enabled,
-      nextRunAt,
-      ...(args.enabled ? { consecutiveFailures: 0 } : {}),
-      updatedAt: now,
-    })
-    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
-
-  if (trigger.chatThreadId) {
-    // For a goal trigger, the sidebar toggle is the same active/inactive
-    // transition the goal API makes — publish it into the thread so the
-    // composer's folded goal state stays in sync.
-    const [workflow] = await db
-      .select({ type: zeroWorkflows.type })
-      .from(zeroWorkflows)
-      .where(eq(zeroWorkflows.id, trigger.workflowId))
-      .limit(1);
-    if (workflow?.type === "goal") {
-      await appendGoalStateMarker(db, {
-        chatThreadId: trigger.chatThreadId,
-        eventId: args.enabled
-          ? GOAL_TRIGGER_ACTIVE_EVENT_ID
-          : GOAL_TRIGGER_INACTIVE_EVENT_ID,
-        content: args.enabled ? args.triggerId : null,
-      });
-      await publishChatThreadMessageCreatedSafely(
-        args.userId,
-        trigger.chatThreadId,
-      );
-    }
-    await publishChatThreadAutomationsChangedSafely(
-      args.userId,
-      trigger.chatThreadId,
-    );
-  }
-  return "ok";
 }
 
 /**
@@ -764,6 +676,16 @@ interface OwnedTrigger {
   readonly trigger: TriggerRow;
 }
 
+async function publishThreadBoundWorkflowTriggerChanged(
+  userId: string,
+  chatThreadId: string | null,
+): Promise<void> {
+  if (chatThreadId === null) {
+    return;
+  }
+  await publishChatThreadAutomationsChangedSafely(userId, chatThreadId);
+}
+
 async function loadOwnedTrigger(
   db: ReadonlyDb,
   args: {
@@ -902,6 +824,11 @@ export const deleteWorkflowTrigger$ = command(
       .delete(zeroWorkflowTriggers)
       .where(eq(zeroWorkflowTriggers.id, owned.trigger.id));
     signal.throwIfAborted();
+    await publishThreadBoundWorkflowTriggerChanged(
+      args.member.userId,
+      owned.trigger.chatThreadId,
+    );
+    signal.throwIfAborted();
     return { kind: "deleted" };
   },
 );
@@ -1002,6 +929,11 @@ export const enableWorkflowTrigger$ = command(
     if (!row) {
       throw new Error("Failed to enable workflow trigger");
     }
+    await publishThreadBoundWorkflowTriggerChanged(
+      args.member.userId,
+      row.chatThreadId,
+    );
+    signal.throwIfAborted();
     return { kind: "ok", summary: rowToSummary(row) };
   },
 );
@@ -1030,6 +962,11 @@ export const disableWorkflowTrigger$ = command(
     if (!row) {
       throw new Error("Failed to disable workflow trigger");
     }
+    await publishThreadBoundWorkflowTriggerChanged(
+      args.member.userId,
+      row.chatThreadId,
+    );
+    signal.throwIfAborted();
     return { kind: "ok", summary: rowToSummary(row) };
   },
 );

@@ -33,7 +33,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
+import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   createMockAutomationView,
   createMockWorkflowTrigger,
@@ -3231,10 +3231,9 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists workflow triggers in the sidebar but excludes goals", async () => {
+  it("lists workflow triggers in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
-      // A scheduled workflow trigger — shown in the sidebar.
       createMockWorkflowTrigger({
         id: "e0000001-0000-4000-a000-000000000002",
         chatThreadId: AUTOMATION_THREAD_ID,
@@ -3246,12 +3245,8 @@ describe("chat lifecycle", () => {
           name: "nightly-sync",
           displayName: "Nightly sync",
           description: "Sync the changelog every night",
-          objective: null,
-          type: "workflow",
         },
       }),
-      // A goal trigger — goals now live in the composer, so it must not appear.
-      createMockWorkflowTrigger({ chatThreadId: AUTOMATION_THREAD_ID }),
     ]);
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, { runs: [] });
@@ -3278,13 +3273,6 @@ describe("chat lifecycle", () => {
     expect(
       within(sidebar).getByText("Sync the changelog every night"),
     ).toBeInTheDocument();
-    // The goal is excluded from the automation sidebar.
-    expect(
-      within(sidebar).queryByText("Drive the release to merge"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByLabelText("Disable Goal"),
-    ).not.toBeInTheDocument();
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
@@ -3321,8 +3309,6 @@ describe("chat lifecycle", () => {
           id: "msg-goal-trigger-active",
           runId: undefined,
           role: "assistant",
-          // The trigger-active marker carries the trigger id for the cancel
-          // control to disable.
           content: "trigger-goal-fold-1",
           runEventId: "goal-trigger:active",
           createdAt: "2026-06-09T10:00:03Z",
@@ -3330,12 +3316,16 @@ describe("chat lifecycle", () => {
       ],
       activeRunIds: ["run-active"],
     });
-    let canceledTrigger: { id: string; enabled: boolean } | null = null;
+    let blockedGoalThreadId: string | null = null;
     context.mocks.api(
-      automationsMainContract.toggleWorkflowTrigger,
-      ({ params, body, respond }) => {
-        canceledTrigger = { id: params.id, enabled: body.enabled };
-        return respond(204);
+      zeroGoalsContract.blockForChatThread,
+      ({ params, respond }) => {
+        blockedGoalThreadId = params.threadId;
+        return respond(200, {
+          active: true,
+          objective: "Drive the release to merge",
+          status: "blocked",
+        });
       },
     );
 
@@ -3368,13 +3358,10 @@ describe("chat lifecycle", () => {
     expect(queuedIndex).toBeGreaterThanOrEqual(0);
     expect(goalIndex).toBeGreaterThan(queuedIndex);
 
-    // Cancelling the goal row disables its trigger (by the folded trigger id).
+    // Cancelling the goal row blocks the active goal by thread.
     await user.click(within(goalRow).getByLabelText("Cancel goal"));
     await waitFor(() => {
-      expect(canceledTrigger).toStrictEqual({
-        id: "trigger-goal-fold-1",
-        enabled: false,
-      });
+      expect(blockedGoalThreadId).toBe(threadId);
     });
   });
 
