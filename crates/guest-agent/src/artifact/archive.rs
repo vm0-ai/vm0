@@ -48,18 +48,13 @@ fn walk_entries(
 ) -> Result<(), ArchiveError> {
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let name_str = artifact_path_component(&name, relative)?;
-        if name_str == ".git" || name_str == ".vm0" {
+        if is_excluded_artifact_entry(&name) {
             continue;
         }
 
-        let rel = if relative.is_empty() {
-            name_str.to_string()
-        } else {
-            format!("{relative}/{name_str}")
-        };
-
         if let Ok(dir) = current.open_child_dir(&name) {
+            let name_str = artifact_path_component(&name, relative)?;
+            let rel = relative_artifact_path(relative, name_str);
             walk_dir(&dir, &rel, out)?;
             continue;
         }
@@ -73,6 +68,8 @@ fn walk_entries(
         if !metadata.is_file() {
             continue;
         }
+        let name_str = artifact_path_component(&name, relative)?;
+        let rel = relative_artifact_path(relative, name_str);
         match compute_file_hash_from_reader(file) {
             Ok((hash, size)) => out.push(FileEntry {
                 path: rel,
@@ -85,6 +82,20 @@ fn walk_entries(
         }
     }
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_excluded_artifact_entry(name: &std::ffi::OsStr) -> bool {
+    name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new(".vm0")
+}
+
+#[cfg(target_os = "linux")]
+fn relative_artifact_path(parent: &str, component: &str) -> String {
+    if parent.is_empty() {
+        component.to_string()
+    } else {
+        format!("{parent}/{component}")
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -675,6 +686,25 @@ mod tests {
 
         assert!(paths.contains(&"real.txt"));
         assert!(!paths.contains(&"pipe"));
+    }
+
+    #[test]
+    fn collect_file_metadata_skips_non_utf8_paths_for_ignored_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("real.txt"), "hello").unwrap();
+
+        let symlink_name = OsStr::from_bytes(b"link\xff.txt");
+        unix_fs::symlink(root.join("real.txt"), root.join(Path::new(symlink_name))).unwrap();
+
+        let fifo_name = OsStr::from_bytes(b"pipe\xff");
+        make_fifo(&root.join(Path::new(fifo_name))).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        assert_eq!(paths, vec!["real.txt"]);
     }
 
     #[test]
