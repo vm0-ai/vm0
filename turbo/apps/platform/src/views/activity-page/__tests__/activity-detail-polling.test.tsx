@@ -1283,6 +1283,35 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       },
       createdAt: "2026-03-10T15:30:17Z",
     },
+    {
+      sequenceNumber: 17,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        turn_id: "turn-a",
+        message: "Previous turn lost connection",
+      },
+      createdAt: "2026-03-10T15:30:18Z",
+    },
+    {
+      sequenceNumber: 18,
+      eventType: "turn.started",
+      eventData: {
+        type: "turn.started",
+        turn: { id: "turn-b" },
+      },
+      createdAt: "2026-03-10T15:30:19Z",
+    },
+    {
+      sequenceNumber: 19,
+      eventType: "turn.failed",
+      eventData: {
+        type: "turn.failed",
+        turn: { id: "turn-b" },
+        error: "New turn quota failed",
+      },
+      createdAt: "2026-03-10T15:30:20Z",
+    },
   ];
 }
 
@@ -2479,6 +2508,10 @@ describe("activity detail polling", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument();
     expect(screen.queryByText("API connection failed")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Previous turn lost connection"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("New turn quota failed")).toBeInTheDocument();
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {

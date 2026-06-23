@@ -20,7 +20,10 @@ function getEventType(
  * presentation fixes that require one-event lookahead.
  */
 export class EventStreamNormalizer {
-  private pendingCodexError: ParsedEvent | null = null;
+  private pendingCodexError: {
+    event: ParsedEvent;
+    turnId: string | null;
+  } | null = null;
 
   process(
     rawEvent: unknown,
@@ -30,35 +33,46 @@ export class EventStreamNormalizer {
     const isCodex = framework === "codex";
     const rawRecord = asRecord(rawEvent);
     const eventType = getEventType(rawRecord);
+    const turnId = getCodexTurnId(rawRecord);
     const parsed = rawRecord ? parseEvent(rawRecord, framework) : null;
     if (parsed && timestamp) {
       parsed.timestamp = timestamp;
     }
 
     if (!isCodex) {
+      return this.processNonCodexEvent(parsed);
+    }
+
+    return this.processCodexEvent(eventType, turnId, parsed);
+  }
+
+  private processNonCodexEvent(parsed: ParsedEvent | null): ParsedEvent[] {
+    const output = this.flush();
+    if (parsed) {
+      output.push(parsed);
+    }
+    return output;
+  }
+
+  private processCodexEvent(
+    eventType: string | undefined,
+    turnId: string | null,
+    parsed: ParsedEvent | null,
+  ): ParsedEvent[] {
+    if (eventType === "error" && parsed?.type === "result") {
+      return this.processCodexError(parsed, turnId);
+    }
+
+    if (eventType === "turn.failed") {
+      return this.processCodexTurnFailed(turnId, parsed);
+    }
+
+    if (this.shouldFlushPendingCodexErrorBefore(eventType, turnId)) {
       const output = this.flush();
       if (parsed) {
         output.push(parsed);
       }
       return output;
-    }
-
-    if (eventType === "error" && parsed?.type === "result") {
-      const output = this.flush();
-      this.pendingCodexError = parsed;
-      return output;
-    }
-
-    if (eventType === "turn.failed") {
-      const pendingCodexError = this.pendingCodexError;
-      this.pendingCodexError = null;
-      if (
-        pendingCodexError &&
-        shouldPreferPendingCodexError(pendingCodexError, parsed)
-      ) {
-        return [pendingCodexError];
-      }
-      return parsed ? [parsed] : [];
     }
 
     const output = parsed?.type === "result" ? this.flush() : [];
@@ -68,14 +82,88 @@ export class EventStreamNormalizer {
     return output;
   }
 
+  private processCodexError(
+    parsed: ParsedEvent,
+    turnId: string | null,
+  ): ParsedEvent[] {
+    const output = this.flush();
+    this.pendingCodexError = { event: parsed, turnId };
+    return output;
+  }
+
+  private processCodexTurnFailed(
+    turnId: string | null,
+    parsed: ParsedEvent | null,
+  ): ParsedEvent[] {
+    const pendingCodexError = this.pendingCodexError;
+    this.pendingCodexError = null;
+
+    if (
+      pendingCodexError &&
+      shouldPairCodexFailureEvents(pendingCodexError.turnId, turnId)
+    ) {
+      if (shouldPreferPendingCodexError(pendingCodexError.event, parsed)) {
+        return [pendingCodexError.event];
+      }
+      return parsed ? [parsed] : [];
+    }
+
+    const output = pendingCodexError ? [pendingCodexError.event] : [];
+    if (parsed) {
+      output.push(parsed);
+    }
+    return output;
+  }
+
+  private shouldFlushPendingCodexErrorBefore(
+    eventType: string | undefined,
+    turnId: string | null,
+  ): boolean {
+    return (
+      Boolean(this.pendingCodexError) &&
+      eventType === "turn.started" &&
+      Boolean(turnId) &&
+      this.pendingCodexError?.turnId !== turnId
+    );
+  }
+
   flush(): ParsedEvent[] {
     if (!this.pendingCodexError) {
       return [];
     }
-    const output = [this.pendingCodexError];
+    const output = [this.pendingCodexError.event];
     this.pendingCodexError = null;
     return output;
   }
+}
+
+function getCodexTurnId(
+  rawEvent: Record<string, unknown> | null,
+): string | null {
+  const topLevelTurnId = getTrimmedString(rawEvent?.turn_id);
+  if (topLevelTurnId) {
+    return topLevelTurnId;
+  }
+
+  const turn = asRecord(rawEvent?.turn);
+  return getTrimmedString(turn?.id);
+}
+
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.trim() || null;
+}
+
+function shouldPairCodexFailureEvents(
+  pendingTurnId: string | null,
+  turnFailedTurnId: string | null,
+): boolean {
+  if (pendingTurnId && turnFailedTurnId) {
+    return pendingTurnId === turnFailedTurnId;
+  }
+  return true;
 }
 
 function shouldPreferPendingCodexError(

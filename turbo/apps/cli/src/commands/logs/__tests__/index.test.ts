@@ -2234,6 +2234,67 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("API connection failed");
     });
 
+    it("should not collapse Codex failures from different turns", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-a",
+                    message: "Previous turn lost connection",
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.started",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "turn.started",
+                    turn: { id: "turn-b" },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "turn.failed",
+                    turn: { id: "turn-b" },
+                    error: "New turn quota failed",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("Previous turn lost connection");
+      expect(logCalls).toContain("New turn quota failed");
+    });
+
     it("should preserve top-level Codex error detail when paired turn.failed is generic", async () => {
       server.use(
         http.get(

@@ -894,6 +894,23 @@ function getCodexEventType(event: AgentEvent): string | undefined {
   return codexType && isCodexEventType(codexType) ? codexType : undefined;
 }
 
+function getCodexTurnId(event: AgentEvent): string | undefined {
+  if (!isRecord(event.eventData)) {
+    return undefined;
+  }
+
+  const topLevelTurnId = getStringField(event.eventData, "turn_id")?.trim();
+  if (topLevelTurnId) {
+    return topLevelTurnId;
+  }
+
+  const turn = event.eventData.turn;
+  if (!isRecord(turn)) {
+    return undefined;
+  }
+  return getStringField(turn, "id")?.trim() || undefined;
+}
+
 function getResultText(event: AgentEvent | null): string | undefined {
   if (event?.eventType !== "result") {
     return undefined;
@@ -920,20 +937,34 @@ function shouldPreferPendingCodexError(
   );
 }
 
+function shouldPairCodexFailureEvents(
+  pendingTurnId: string | undefined,
+  turnFailedTurnId: string | undefined,
+): boolean {
+  if (pendingTurnId && turnFailedTurnId) {
+    return pendingTurnId === turnFailedTurnId;
+  }
+  return true;
+}
+
 function normalizeEventsForGrouping(events: AgentEvent[]): AgentEvent[] {
   const normalizedEvents: AgentEvent[] = [];
-  let pendingCodexError: AgentEvent | null = null;
+  let pendingCodexError: {
+    event: AgentEvent;
+    turnId: string | undefined;
+  } | null = null;
 
   const flushPendingCodexError = () => {
     if (!pendingCodexError) {
       return;
     }
-    normalizedEvents.push(pendingCodexError);
+    normalizedEvents.push(pendingCodexError.event);
     pendingCodexError = null;
   };
 
   for (const rawEvent of events) {
     const codexType = getCodexEventType(rawEvent);
+    const turnId = getCodexTurnId(rawEvent);
     const normalized = normalizeCodexEventForGrouping(rawEvent);
     if (!normalized) {
       continue;
@@ -941,19 +972,35 @@ function normalizeEventsForGrouping(events: AgentEvent[]): AgentEvent[] {
 
     if (codexType === "error" && normalized.eventType === "result") {
       flushPendingCodexError();
-      pendingCodexError = normalized;
+      pendingCodexError = { event: normalized, turnId };
       continue;
     }
 
     if (codexType === "turn.failed") {
       const pending = pendingCodexError;
       pendingCodexError = null;
-      if (pending && shouldPreferPendingCodexError(pending, normalized)) {
-        normalizedEvents.push(pending);
+      if (pending && shouldPairCodexFailureEvents(pending.turnId, turnId)) {
+        normalizedEvents.push(
+          shouldPreferPendingCodexError(pending.event, normalized)
+            ? pending.event
+            : normalized,
+        );
+      } else if (pending) {
+        normalizedEvents.push(pending.event);
+        normalizedEvents.push(normalized);
       } else {
         normalizedEvents.push(normalized);
       }
       continue;
+    }
+
+    if (
+      pendingCodexError &&
+      codexType === "turn.started" &&
+      turnId &&
+      pendingCodexError.turnId !== turnId
+    ) {
+      flushPendingCodexError();
     }
 
     if (normalized.eventType === "result") {
