@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.484.0](https://github.com/vm0-ai/vm0/compare/app-v0.483.3...app-v0.484.0) (2026-06-23)
+
+
+### Features
+
+* add custom connector proposal flow ([#18654](https://github.com/vm0-ai/vm0/issues/18654)) ([211c963](https://github.com/vm0-ai/vm0/commit/211c9637b01ffa1764928d83cf5e079c5232a4db))
+* add themed presentation template previews ([#18577](https://github.com/vm0-ai/vm0/issues/18577)) ([6d94bff](https://github.com/vm0-ai/vm0/commit/6d94bffcb9f2729e087d6ae78107ac1aea58f4cf))
+
+
+### Bug Fixes
+
+* preserve presentation theme in PPTX export ([#18645](https://github.com/vm0-ai/vm0/issues/18645)) ([a2408db](https://github.com/vm0-ai/vm0/commit/a2408dbff8c6534d1c9ed348eb7901f4b16efa02))
+* remove presentation card theme picker ([#18683](https://github.com/vm0-ai/vm0/issues/18683)) ([febefde](https://github.com/vm0-ai/vm0/commit/febefdeca2a9b4d7def4c608afeda21753c40316))
+
+
+### Refactoring
+
+* remove automation multi trigger ([#18668](https://github.com/vm0-ai/vm0/issues/18668)) ([95ef04f](https://github.com/vm0-ai/vm0/commit/95ef04fa79b65821d26fb8b74525c5b954caaa7c))
+
+
+### Performance Improvements
+
+* reduce chat thread render work ([#18633](https://github.com/vm0-ai/vm0/issues/18633)) ([39c0f2e](https://github.com/vm0-ai/vm0/commit/39c0f2e7b19a6641fab5d892f5475a74f859a982))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.110.0
+    * @vm0/connectors bumped to 1.105.0
+    * @vm0/core bumped to 8.365.0
+
 ## [0.483.3](https://github.com/vm0-ai/vm0/compare/app-v0.483.2...app-v0.483.3) (2026-06-23)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.129.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.4...runner-rs-v0.129.5) (2026-06-23)
+
+
+### Bug Fixes
+
+* reject non-ascii authority port digits ([#18669](https://github.com/vm0-ai/vm0/issues/18669)) ([73c402a](https://github.com/vm0-ai/vm0/commit/73c402a7c237b93eecd6fcb266ecb54d6909ce69))
+
+
+### Documentation
+
+* clarify storage cache file url contract ([#18662](https://github.com/vm0-ai/vm0/issues/18662)) ([708fcd5](https://github.com/vm0-ai/vm0/commit/708fcd5e76de843cbb2c1375447be77d7758aa4b))
+
+
+### Refactoring
+
+* **runner:** split dns module by responsibility ([#18673](https://github.com/vm0-ai/vm0/issues/18673)) ([959c682](https://github.com/vm0-ai/vm0/commit/959c682ff689140f0f1efd1d5b7300905fd6096e))
+
 ## [0.129.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.3...runner-rs-v0.129.4) (2026-06-23)
 
 

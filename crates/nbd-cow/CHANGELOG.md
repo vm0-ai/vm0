@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.44](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.43...nbd-cow-v0.4.44) (2026-06-23)
+
+
+### Refactoring
+
+* **nbd-cow:** simplify protocol header codec ([#18671](https://github.com/vm0-ai/vm0/issues/18671)) ([6d4a349](https://github.com/vm0-ai/vm0/commit/6d4a34912fe37ad2ed8f750de87dbf46b23f4953))
+
 ## [0.4.43](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.42...nbd-cow-v0.4.43) (2026-06-18)
 
 

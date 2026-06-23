@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.33](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.32...guest-download-v0.20.33) (2026-06-23)
+
+
+### Documentation
+
+* clarify storage cache file url contract ([#18662](https://github.com/vm0-ai/vm0/issues/18662)) ([708fcd5](https://github.com/vm0-ai/vm0/commit/708fcd5e76de843cbb2c1375447be77d7758aa4b))
+
 ## [0.20.32](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.31...guest-download-v0.20.32) (2026-06-23)
 
 
