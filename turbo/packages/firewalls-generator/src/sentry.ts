@@ -34,6 +34,8 @@ const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCo";
 
 interface SentryOperation {
   security?: Array<Record<string, string[]>>;
+  tags?: string[];
+  operationId?: string;
 }
 
 const SENTRY_SCOPE_LEVELS = {
@@ -62,6 +64,72 @@ interface SentryPermissionPolicies {
   standardMethods: Map<string, Map<string, SentryScopeLevel>>;
   customMethods: Map<string, Set<string>>;
 }
+
+interface SentryOwnerContext {
+  readonly rule: string;
+  readonly method: string;
+  readonly tags: readonly string[];
+  readonly operationId: string | null;
+}
+
+interface SentryOwnerScopePreference {
+  readonly kind: "scope";
+  readonly scope: string;
+}
+
+interface SentryOwnerFamilyPreference {
+  readonly kind: "family";
+  readonly family: string;
+}
+
+type SentryOwnerPreference =
+  | SentryOwnerScopePreference
+  | SentryOwnerFamilyPreference;
+
+const RUNTIME_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
+function preferScope(scope: string): SentryOwnerScopePreference {
+  return { kind: "scope", scope };
+}
+
+function preferFamily(family: string): SentryOwnerFamilyPreference {
+  return { kind: "family", family };
+}
+
+const SENTRY_TAG_OWNER_PREFERENCES = new Map<
+  string,
+  readonly SentryOwnerPreference[]
+>([
+  ["Users", [preferFamily("org")]],
+  ["Organizations", [preferScope("member:invite"), preferFamily("org")]],
+  ["Integrations", [preferScope("org:integrations"), preferFamily("org")]],
+  ["Integration", [preferScope("org:integrations"), preferFamily("org")]],
+  ["Dashboards", [preferFamily("org")]],
+  ["Discover", [preferFamily("org")]],
+  ["Environments", [preferFamily("org")]],
+  ["Explore", [preferFamily("org")]],
+  ["Profiling", [preferFamily("org")]],
+  ["Replays", [preferFamily("org")]],
+  ["Spike Protection", [preferFamily("org")]],
+  ["Mobile Builds", [preferScope("project:distribution"), preferFamily("org")]],
+  ["Monitors", [preferFamily("alerts")]],
+  ["Crons", [preferFamily("alerts")]],
+  ["Events", [preferFamily("event")]],
+  ["Seer", [preferFamily("event")]],
+  ["Projects", [preferScope("project:releases"), preferFamily("project")]],
+  ["Teams", [preferFamily("team")]],
+  ["SCIM", [preferFamily("team"), preferFamily("member")]],
+  ["Releases", [preferScope("project:releases"), preferFamily("project")]],
+  ["Snapshots", [preferScope("project:releases"), preferFamily("project")]],
+]);
 
 function parseScope(scope: string): SentryStandardScopePolicy | null {
   const separatorIndex = scope.lastIndexOf(":");
@@ -204,6 +272,176 @@ function scopeAllowsMethod(
   return standardScope.level >= requiredLevel;
 }
 
+function scopeFamily(scope: string): string {
+  const separatorIndex = scope.lastIndexOf(":");
+  return separatorIndex === -1 ? scope : scope.slice(0, separatorIndex);
+}
+
+function uniqueValues(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function pickPreferredStandardScope(
+  scopes: readonly string[],
+  context: SentryOwnerContext,
+): string {
+  const ranked = scopes
+    .map((scope) => {
+      const standardScope = parseScope(scope);
+      if (!standardScope) return null;
+      return { scope, standardScope };
+    })
+    .filter((entry) => {
+      return entry !== null;
+    })
+    .sort((left, right) => {
+      const levelDifference =
+        left.standardScope.level - right.standardScope.level;
+      if (levelDifference !== 0) return levelDifference;
+      return left.scope.localeCompare(right.scope);
+    });
+
+  const first = ranked[0];
+  if (!first) {
+    throw new Error(`No standard Sentry scopes available for ${context.rule}`);
+  }
+
+  const second = ranked[1];
+  if (
+    second &&
+    first.standardScope.level === second.standardScope.level &&
+    first.standardScope.family === second.standardScope.family
+  ) {
+    throw new Error(
+      `Ambiguous Sentry scope owner for ${context.rule}: ${scopes.join(", ")}`,
+    );
+  }
+
+  return first.scope;
+}
+
+function pickPreferredScopeInSet(
+  scopes: readonly string[],
+  context: SentryOwnerContext,
+): string {
+  const uniqueScopes = uniqueValues(scopes);
+  if (uniqueScopes.length === 0) {
+    throw new Error(`No Sentry scopes available for ${context.rule}`);
+  }
+  if (uniqueScopes.length === 1) {
+    return uniqueScopes[0]!;
+  }
+
+  const standardScopes = uniqueScopes.filter((scope) => {
+    return parseScope(scope) !== null;
+  });
+  if (standardScopes.length > 0) {
+    return pickPreferredStandardScope(standardScopes, context);
+  }
+
+  throw new Error(
+    `Ambiguous Sentry custom scope owner for ${context.rule}: ${uniqueScopes.join(", ")}`,
+  );
+}
+
+function scopesMatchingPreference(
+  scopes: readonly string[],
+  preference: SentryOwnerPreference,
+): string[] {
+  if (preference.kind === "scope") {
+    return scopes.includes(preference.scope) ? [preference.scope] : [];
+  }
+  return scopes.filter((scope) => {
+    return scopeFamily(scope) === preference.family;
+  });
+}
+
+function pickPrimarySentryScope(
+  scopes: readonly string[],
+  policies: SentryPermissionPolicies,
+  context: SentryOwnerContext,
+): string | null {
+  const candidates = uniqueValues(scopes).filter((scope) => {
+    return scopeAllowsMethod(policies, scope, context.method);
+  });
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0]!;
+
+  for (const tag of context.tags) {
+    const preferences = SENTRY_TAG_OWNER_PREFERENCES.get(tag);
+    if (!preferences) continue;
+
+    for (const preference of preferences) {
+      const preferredScopes = scopesMatchingPreference(candidates, preference);
+      if (preferredScopes.length === 0) continue;
+      return pickPreferredScopeInSet(preferredScopes, context);
+    }
+  }
+
+  const families = uniqueValues(candidates.map(scopeFamily));
+  if (families.length === 1) {
+    return pickPreferredScopeInSet(candidates, context);
+  }
+
+  throw new Error(
+    [
+      `Ambiguous Sentry scope owner for ${context.rule}`,
+      context.operationId ? `operation: ${context.operationId}` : null,
+      context.tags.length > 0 ? `tags: ${context.tags.join(", ")}` : null,
+      `scopes: ${candidates.join(", ")}`,
+    ]
+      .filter((part) => {
+        return part !== null;
+      })
+      .join("; "),
+  );
+}
+
+function expandRuntimeRule(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+function assertUniqueSentryRules(
+  permissions: readonly PermissionGroup[],
+): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      for (const runtimeRule of expandRuntimeRule(rule)) {
+        const existing = owners.get(runtimeRule);
+        if (existing) {
+          duplicates.push(`${runtimeRule}: ${existing}, ${permission.name}`);
+          continue;
+        }
+        owners.set(runtimeRule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Sentry generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 function buildGroups(
@@ -238,29 +476,37 @@ function buildGroups(
       }
       if (scopes.size === 0) continue;
 
-      const rule = `${methodLower.toUpperCase()} ${apiPath}`;
+      const method = methodLower.toUpperCase();
+      const rule = `${method} ${apiPath}`;
+      const primaryScope = pickPrimarySentryScope([...scopes], policies, {
+        rule,
+        method,
+        tags: operation.tags ?? [],
+        operationId: operation.operationId ?? null,
+      });
 
-      for (const scope of scopes) {
-        if (!scopeAllowsMethod(policies, scope, methodLower.toUpperCase())) {
-          continue;
-        }
-        let ruleSet = groups.get(scope);
-        if (!ruleSet) {
-          ruleSet = new Set();
-          groups.set(scope, ruleSet);
-        }
-        ruleSet.add(rule);
+      if (!primaryScope) {
+        continue;
       }
+
+      let ruleSet = groups.get(primaryScope);
+      if (!ruleSet) {
+        ruleSet = new Set();
+        groups.set(primaryScope, ruleSet);
+      }
+      ruleSet.add(rule);
     }
   }
 
-  return [...groups.entries()]
+  const permissions = [...groups.entries()]
     .filter(([, ruleSet]) => ruleSet.size > 0)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
+  assertUniqueSentryRules(permissions);
+  return permissions;
 }
 
 // ── TypeScript generation ────────────────────────────────────────────────
