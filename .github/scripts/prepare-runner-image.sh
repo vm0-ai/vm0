@@ -43,7 +43,7 @@ if [ "${#HOSTS[@]}" -lt 1 ]; then
   exit 1
 fi
 for host in "${HOSTS[@]}"; do
-  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
     echo "invalid METAL_HOSTS entry: ${host}" >&2
     exit 2
   fi

@@ -66,6 +66,17 @@ grep -q "invalid METAL_HOSTS entry: user@host" "${TMPDIR}/invalid-user-host.err"
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
+  METAL_HOSTS='host-' \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/invalid-alias.out" 2>"${TMPDIR}/invalid-alias.err"; then
+  fail "expected invalid metal host alias to fail"
+fi
+grep -q "invalid METAL_HOSTS entry: host-" "${TMPDIR}/invalid-alias.err" || fail "expected invalid metal host alias message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
   METAL_HOSTS='dev-1, dev-1' \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \

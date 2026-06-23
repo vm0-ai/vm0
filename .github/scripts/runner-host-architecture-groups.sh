@@ -68,7 +68,7 @@ append_group() {
 
 validate_host_entry() {
   local host=$1
-  if [[ ! "$host" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
     echo "invalid runner host entry: ${host}" >&2
     return 2
   fi
