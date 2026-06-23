@@ -28,8 +28,8 @@
 //! ```
 //!
 //! Design:
-//! - Pool lazily pre-warms a small number of namespaces at init, then
-//!   replenishes in the background on each [`NetnsPool::acquire`]
+//! - Pool lazily pre-warms the active namespace queue at init, then replenishes
+//!   that queue in the background on each [`NetnsPool::acquire`]
 //! - [`NetnsPool::acquire`] returns a non-cloneable [`NetnsLease`] from the
 //!   pool, or creates one on-demand as fallback
 //! - [`NetnsPool::release`] takes `&mut Option<NetnsLease>` so cancellation
