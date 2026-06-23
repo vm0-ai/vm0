@@ -3741,6 +3741,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
     await flushWaitUntilForTest();
+    expect(
+      context.mocks.s3.send.mock.calls.some(([command]) => {
+        const prefix = commandInput(command).Prefix;
+        return (
+          typeof prefix === "string" &&
+          prefix.startsWith(`${orgOf(doomed)}/artifact/`)
+        );
+      }),
+    ).toBeTruthy();
 
     await waitForExpectation(() => {
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
