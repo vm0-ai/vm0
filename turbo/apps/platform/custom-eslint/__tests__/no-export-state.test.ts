@@ -25,6 +25,12 @@ ruleTester.run("no-export-state", rule, {
     {
       code: "export function useCount() { return count$ }",
     },
+    {
+      code: "interface InternalSignals { state$: State<Foo> }",
+    },
+    {
+      code: "export interface PublicSignals { value$: Computed<Foo>; setValue$: Command<void, [Foo]> }",
+    },
   ],
   invalid: [
     {
@@ -34,6 +40,18 @@ ruleTester.run("no-export-state", rule, {
     {
       code: "export const items$ = state([])",
       errors: [{ messageId: "noExportState" }],
+    },
+    {
+      code: "export interface PublicSignals { state$: State<Foo> }",
+      errors: [{ messageId: "noExportStateType" }],
+    },
+    {
+      code: "export type PublicSignals = { state$: State<Foo> }",
+      errors: [{ messageId: "noExportStateType" }],
+    },
+    {
+      code: "export type PublicSignals = { nested: { state$: State<Foo> } }",
+      errors: [{ messageId: "noExportStateType" }],
     },
   ],
 });

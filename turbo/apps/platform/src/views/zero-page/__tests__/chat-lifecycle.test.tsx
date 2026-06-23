@@ -2878,6 +2878,64 @@ describe("chat lifecycle", () => {
     expect(scrollContainer.scrollTop).toBe(1500);
   });
 
+  it("renders the latest chat groups first and prepends older in-memory groups near the top", async () => {
+    const resizeObserver = mockResizeObserver();
+    let markReadCalls = 0;
+    const threadId = "render-window-thread";
+    const chatMessages: PagedChatMessage[] = Array.from(
+      { length: 14 },
+      (_, index) => {
+        return {
+          id: `render-window-message-${index}`,
+          role: "assistant",
+          content: `Render window reply ${index}`,
+          runId: `render-window-run-${index}`,
+          runLifecycleEvent: "completed",
+          createdAt: `2026-06-09T10:${String(index).padStart(2, "0")}:00Z`,
+        };
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Render window",
+      chatMessages,
+    });
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      markReadCalls += 1;
+      return respond(200, {
+        lastReadMessageId: "render-window-message-13",
+        unreads: [],
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Render window reply 13")).toBeInTheDocument();
+      expect(screen.queryByText("Render window reply 3")).toBeNull();
+      expect(markReadCalls).toBeGreaterThan(0);
+    });
+
+    const scrollContainer = chatScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 80;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
+    });
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1400,
+      clientHeight: 300,
+    });
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(480);
+  });
+
   it("moves between chat threads with keyboard shortcuts", async () => {
     const resizeObserver = mockResizeObserver();
     mockKeyboardNavigationThreads();

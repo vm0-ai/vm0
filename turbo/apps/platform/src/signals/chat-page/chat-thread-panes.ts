@@ -52,6 +52,10 @@ const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
 export const unloadRightThread$ = command(({ get, set }) => {
+  const currentRightThread = get(internalRightThread$);
+  if (currentRightThread) {
+    set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
+  }
   set(resetRightSetupSignal$);
   set(internalRightThread$, null);
   const next = new URLSearchParams(get(searchParams$));
@@ -205,6 +209,11 @@ export const loadLeftThread$ = command(
       set(unloadRightThread$);
     }
 
+    const currentLeftThread = get(internalLeftThread$);
+    if (currentLeftThread && currentLeftThread.threadId !== threadId) {
+      set(currentLeftThread.resetRenderedChatGroupsIfAtBottom$);
+    }
+
     if (get(currentChatThreadId$) !== threadId) {
       // Drop right sidebar state before switching threads — open artifact
       // and automation panels are anchored to the previous thread's messages.
@@ -241,6 +250,11 @@ export const loadRightThread$ = command(
 
     if (get(internalRightThread$)?.threadId === threadId) {
       return;
+    }
+
+    const currentRightThread = get(internalRightThread$);
+    if (currentRightThread && currentRightThread.threadId !== threadId) {
+      set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
     }
 
     set(clearArtifactPreview$);

@@ -1,4 +1,4 @@
-import { command, state, type State } from "ccstate";
+import { command, computed, state, type State } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -351,7 +351,10 @@ export function createScrollSignals(id?: string) {
   const autoScrollDisabled$ = state(false);
   // Readable "scrolled away from the bottom" flag for UI (the scroll-to-bottom
   // button). Purely reflects distance from bottom, unlike autoScrollDisabled$.
-  const awayFromBottom$ = state(false);
+  const awayFromBottomState$ = state(false);
+  const awayFromBottom$ = computed((get) => {
+    return get(awayFromBottomState$);
+  });
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
@@ -378,7 +381,7 @@ export function createScrollSignals(id?: string) {
         el.scrollTop = saved;
         set(autoScrollDisabled$, true);
         // A cached position is always non-bottom — reflect it immediately.
-        set(awayFromBottom$, true);
+        set(awayFromBottomState$, true);
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
       }
 
@@ -408,8 +411,8 @@ export function createScrollSignals(id?: string) {
           }
         },
         setAwayFromBottom: (v) => {
-          if (get(awayFromBottom$) !== v) {
-            set(awayFromBottom$, v);
+          if (get(awayFromBottomState$) !== v) {
+            set(awayFromBottomState$, v);
           }
         },
       };
