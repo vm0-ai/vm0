@@ -842,18 +842,24 @@ impl ObservedProcessGroup {
         }
         let leader_identity = linux_process_identity(pid)?;
         let group_exists = process_group_exists(pgid)?;
+        let procfs_available = linux_procfs_available();
         if let Some(identity) = leader_identity
             && identity.process_group_id != pgid
         {
             return Ok(None);
         }
         if !group_exists {
-            if leader_identity.is_none() {
+            if leader_identity.is_none() && procfs_available {
                 return Err(format!(
                     "app-server child process group {pgid} was not running before drop"
                 ));
             }
             return Ok(None);
+        }
+        if leader_identity.is_none() && procfs_available {
+            return Err(format!(
+                "app-server child {pid} disappeared before drop while process group {pgid} still exists"
+            ));
         }
 
         Ok(Some(Self {
@@ -950,6 +956,10 @@ fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, Stri
     parse_linux_process_identity(&stat)
         .map(Some)
         .map_err(|error| format!("parse {stat_path}: {error}"))
+}
+
+fn linux_procfs_available() -> bool {
+    std::path::Path::new("/proc").is_dir()
 }
 
 fn parse_linux_process_identity(stat: &str) -> Result<LinuxProcessIdentity, String> {
