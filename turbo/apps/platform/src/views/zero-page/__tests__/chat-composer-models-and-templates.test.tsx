@@ -2107,8 +2107,31 @@ describe("chat composer templates", () => {
       `${template.title} detail HTML preview`,
     );
     expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
+    expect(
+      within(templateDialog).getByLabelText("Preview previous slide"),
+    ).toHaveAttribute("tabindex", "-1");
+    expect(
+      within(templateDialog).getByLabelText("Preview next slide"),
+    ).toHaveAttribute("tabindex", "-1");
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
+    const secondSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 2");
+    const backButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!backButton) {
+      throw new Error("Template button not found");
+    }
+    backButton.focus();
+    fireEvent.keyDown(backButton, { key: "Tab" });
+    expect(document.activeElement).toBe(firstSlidePreviewButton);
+    fireEvent.keyDown(firstSlidePreviewButton, { key: "Tab" });
+    expect(document.activeElement).toBe(secondSlidePreviewButton);
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
     expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
       "src",

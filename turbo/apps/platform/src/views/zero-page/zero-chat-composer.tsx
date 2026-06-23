@@ -3306,6 +3306,56 @@ function TemplatePreview({
   );
 }
 
+const TEMPLATE_DETAIL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+function templateDetailFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(TEMPLATE_DETAIL_FOCUSABLE_SELECTOR),
+  ).filter((element) => {
+    return (
+      element.tabIndex >= 0 &&
+      !element.hasAttribute("disabled") &&
+      !element.closest("[inert]")
+    );
+  });
+}
+
+function handleTemplateDetailTabKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+): void {
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const candidates = templateDetailFocusableElements(event.currentTarget);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const target =
+    event.target instanceof HTMLElement ? event.target : document.activeElement;
+  const currentIndex = candidates.findIndex((candidate) => {
+    return target instanceof Node && candidate.contains(target);
+  });
+  const direction = event.shiftKey ? -1 : 1;
+  const nextIndex =
+    currentIndex === -1
+      ? event.shiftKey
+        ? candidates.length - 1
+        : 0
+      : (currentIndex + direction + candidates.length) % candidates.length;
+
+  event.preventDefault();
+  candidates[nextIndex]?.focus();
+}
+
 function TemplatePreviewPage({
   item,
   onBack,
@@ -3554,6 +3604,7 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Preview previous slide"
               disabled={activeSlideIndex === 0}
+              tabIndex={-1}
               onClick={() => {
                 selectDetailSlide(activeSlideIndex - 1);
               }}
@@ -3563,6 +3614,7 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Preview next slide"
               disabled={activeSlideIndex >= detailSlideCount - 1}
+              tabIndex={-1}
               onClick={() => {
                 selectDetailSlide(activeSlideIndex + 1);
               }}
@@ -4956,6 +5008,9 @@ function TemplatePickerDialog({
       <DialogContent
         className={dialogContentClassName}
         aria-describedby={undefined}
+        onKeyDownCapture={
+          isPreviewing ? handleTemplateDetailTabKeyDown : undefined
+        }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           if (!isPreviewing) {
