@@ -4234,8 +4234,49 @@ function preloadIllustrationVariant(
   );
 }
 
+type IllustrationThumbnailScrollDirection = -1 | 1;
+
+const ILLUSTRATION_THUMBNAIL_REVEAL_COUNT = 2;
+const ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX = 1;
+
+type IllustrationThumbnailScrollTarget = {
+  element: HTMLElement;
+  targetIsBoundary: boolean;
+};
+
+function illustrationThumbnailScrollTarget(
+  node: HTMLElement,
+  direction: IllustrationThumbnailScrollDirection,
+): IllustrationThumbnailScrollTarget {
+  let target = node;
+  for (let i = 0; i < ILLUSTRATION_THUMBNAIL_REVEAL_COUNT; i += 1) {
+    const sibling =
+      direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+    if (!(sibling instanceof HTMLElement)) {
+      return {
+        element: target,
+        targetIsBoundary: true,
+      };
+    }
+    target = sibling;
+  }
+  const boundarySibling =
+    direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+  return {
+    element: target,
+    targetIsBoundary: !(boundarySibling instanceof HTMLElement),
+  };
+}
+
+function maxIllustrationThumbnailScrollLeft(
+  thumbnailStrip: HTMLElement,
+): number {
+  return Math.max(0, thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth);
+}
+
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
+  direction: IllustrationThumbnailScrollDirection,
 ): void {
   if (node === null) {
     return;
@@ -4248,23 +4289,83 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
-  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
-  const thumbnailRect = node.getBoundingClientRect();
+  const { element: target, targetIsBoundary } =
+    illustrationThumbnailScrollTarget(node, direction);
 
-  const leftOverflow = thumbnailStripRect.left - thumbnailRect.left;
-  if (leftOverflow > 0) {
-    thumbnailStrip.scrollTo({
-      left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
-    });
+  if (direction < 0) {
+    if (targetIsBoundary) {
+      if (thumbnailStrip.scrollLeft > 0) {
+        thumbnailStrip.scrollTo({
+          left: 0,
+        });
+      }
+      return;
+    }
+
+    const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const leftOverflow = thumbnailStripRect.left - targetRect.left;
+    if (leftOverflow > 0) {
+      thumbnailStrip.scrollTo({
+        left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+      });
+    }
     return;
   }
 
-  const rightOverflow = thumbnailRect.right - thumbnailStripRect.right;
+  if (targetIsBoundary) {
+    const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+    if (thumbnailStrip.scrollLeft < maxScrollLeft) {
+      thumbnailStrip.scrollTo({
+        left: maxScrollLeft,
+      });
+    }
+    return;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const rightOverflow = targetRect.right - thumbnailStripRect.right;
   if (rightOverflow > 0) {
     thumbnailStrip.scrollTo({
       left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),
     });
   }
+}
+
+function activeIllustrationThumbnailScrollDirection(
+  node: HTMLButtonElement,
+): IllustrationThumbnailScrollDirection | null {
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return null;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const thumbnailRect = node.getBoundingClientRect();
+  const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+
+  if (
+    thumbnailRect.right >=
+      thumbnailStripRect.right - ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.nextElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft < maxScrollLeft)
+  ) {
+    return 1;
+  }
+
+  if (
+    thumbnailRect.left <=
+      thumbnailStripRect.left + ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.previousElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft > 0)
+  ) {
+    return -1;
+  }
+
+  return null;
 }
 
 function IllustrationTemplateCard({
@@ -4346,8 +4447,18 @@ function IllustrationTemplateCard({
                     item,
                     onVariantChange,
                   });
-                  if (!active) {
-                    scrollIllustrationThumbnailIntoView(event.currentTarget);
+                  const scrollDirection = active
+                    ? activeIllustrationThumbnailScrollDirection(
+                        event.currentTarget,
+                      )
+                    : index > safeIndex
+                      ? 1
+                      : -1;
+                  if (scrollDirection !== null) {
+                    scrollIllustrationThumbnailIntoView(
+                      event.currentTarget,
+                      scrollDirection,
+                    );
                   }
                 }}
               >
