@@ -4464,20 +4464,31 @@ function preloadIllustrationVariant(
 
 type IllustrationThumbnailScrollDirection = -1 | 1;
 
+type IllustrationThumbnailScrollTarget = {
+  element: HTMLElement;
+  reachedBoundary: boolean;
+};
+
 function illustrationThumbnailScrollTarget(
   node: HTMLElement,
   direction: IllustrationThumbnailScrollDirection,
-): HTMLElement {
+): IllustrationThumbnailScrollTarget {
   let target = node;
   for (let i = 0; i < 2; i += 1) {
     const sibling =
       direction > 0 ? target.nextElementSibling : target.previousElementSibling;
     if (!(sibling instanceof HTMLElement)) {
-      break;
+      return {
+        element: target,
+        reachedBoundary: true,
+      };
     }
     target = sibling;
   }
-  return target;
+  return {
+    element: target,
+    reachedBoundary: false,
+  };
 }
 
 function scrollIllustrationThumbnailIntoView(
@@ -4496,14 +4507,37 @@ function scrollIllustrationThumbnailIntoView(
   }
 
   const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
-  const target = illustrationThumbnailScrollTarget(node, direction);
+  const { element: target, reachedBoundary } =
+    illustrationThumbnailScrollTarget(node, direction);
   const targetRect = target.getBoundingClientRect();
 
   if (direction < 0) {
+    if (reachedBoundary) {
+      if (thumbnailStrip.scrollLeft > 0) {
+        thumbnailStrip.scrollTo({
+          left: 0,
+        });
+      }
+      return;
+    }
+
     const leftOverflow = thumbnailStripRect.left - targetRect.left;
     if (leftOverflow > 0) {
       thumbnailStrip.scrollTo({
         left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+      });
+    }
+    return;
+  }
+
+  if (reachedBoundary) {
+    const maxScrollLeft = Math.max(
+      0,
+      thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth,
+    );
+    if (thumbnailStrip.scrollLeft < maxScrollLeft) {
+      thumbnailStrip.scrollTo({
+        left: maxScrollLeft,
       });
     }
     return;

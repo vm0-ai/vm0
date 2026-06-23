@@ -2478,7 +2478,7 @@ describe("chat composer templates", () => {
     expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
-    // Clicking a left-clipped thumbnail nudges the strip back just enough.
+    // Clicking near the left boundary scrolls all the way to the start.
     scrollTo.mockClear();
     Object.defineProperty(thumbnailStrip, "scrollLeft", {
       configurable: true,
@@ -2495,7 +2495,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
-    expect(scrollTo).toHaveBeenCalledWith({ left: 48 });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0 });
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     // Switching away and back to Illustration remounts the active thumbnail but
@@ -2527,6 +2527,52 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
     expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    // Clicking near the right boundary scrolls all the way to the end.
+    const remountedCard = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("div.group");
+    if (!remountedCard) {
+      throw new Error("Remounted illustration card not found");
+    }
+    const remountedVariant4Thumbnail =
+      within(remountedCard).getByLabelText("Show variant 4");
+    const remountedThumbnailStrip = remountedVariant4Thumbnail.parentElement;
+    if (!remountedThumbnailStrip) {
+      throw new Error("Remounted illustration thumbnail strip not found");
+    }
+    scrollTo.mockClear();
+    Object.defineProperty(remountedThumbnailStrip, "scrollLeft", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    Object.defineProperty(remountedThumbnailStrip, "scrollWidth", {
+      configurable: true,
+      value: 240,
+    });
+    Object.defineProperty(remountedThumbnailStrip, "clientWidth", {
+      configurable: true,
+      value: 96,
+    });
+    Object.defineProperty(remountedThumbnailStrip, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 0, right: 96 });
+      },
+    });
+    Object.defineProperty(remountedVariant4Thumbnail, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return rect({ left: 48, right: 96 });
+      },
+    });
+    click(remountedVariant4Thumbnail);
+    await waitFor(() => {
+      expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 144 });
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
