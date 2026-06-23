@@ -5321,26 +5321,15 @@ function ComputerUseConnectorMenuSection({
   onOpenDownloadDialog: () => void;
 }) {
   return (
-    <div className="border-t border-border/50 py-1">
-      <PopoverClose asChild>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
-          onClick={onOpenDownloadDialog}
-        >
-          <IconPlug
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
-          Connect my computer
-        </button>
-      </PopoverClose>
+    <div className="border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
+      <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
+        Your computer
+      </div>
       {computerUse.loading ? (
         <div className="flex flex-col animate-pulse">
           {Array.from({ length: 2 }, (_, i) => {
             return (
-              <div key={i} className="flex items-center gap-2 px-3 py-2">
+              <div key={i} className="flex items-center gap-2 px-2 py-2">
                 <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
                 <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
                 <span className="h-3 w-6 rounded-full bg-muted/50" />
@@ -5360,8 +5349,8 @@ function ComputerUseConnectorMenuSection({
               <div
                 key={host.id}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 transition-colors",
-                  checked ? "bg-primary/5" : "hover:bg-muted/50",
+                  "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
+                  checked ? "bg-primary/5" : "hover:bg-background/70",
                 )}
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
@@ -5391,10 +5380,24 @@ function ComputerUseConnectorMenuSection({
           })}
         </div>
       ) : (
-        <div className="px-3 py-2 text-sm text-muted-foreground">
+        <div className="px-2 py-2 text-sm text-muted-foreground">
           No online computers
         </div>
       )}
+      <PopoverClose asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-background/70"
+          onClick={onOpenDownloadDialog}
+        >
+          <IconPlug
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          Connect my computer
+        </button>
+      </PopoverClose>
     </div>
   );
 }
@@ -5480,7 +5483,11 @@ function ConnectorsPopoverButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-72 overflow-hidden rounded-lg p-0"
+      >
         {(agentConnectors.length > 0 || connectorsLoading) && (
           <div className="py-1">
             {showSearch && (
@@ -5538,6 +5545,23 @@ function ConnectorsPopoverButton({
             )}
           </div>
         )}
+        <div className="flex flex-col p-1">
+          {(agentConnectors.length > 0 || connectorsLoading) && (
+            <div className="mx-2 mb-1 border-t border-border/50" />
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            onClick={() => {
+              return onOpenAddDialog();
+            }}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+              <IconPlus size={13} stroke={1.5} />
+            </span>
+            Add connectors
+          </button>
+        </div>
         {computerUse && (
           <ComputerUseConnectorMenuSection
             computerUse={computerUse}
@@ -5546,22 +5570,6 @@ function ConnectorsPopoverButton({
             }}
           />
         )}
-        <div className="border-t border-border/50 p-1 flex flex-col">
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            onClick={() => {
-              return onOpenAddDialog();
-            }}
-          >
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Add connectors
-          </button>
-        </div>
       </PopoverContent>
       {computerUse && (
         <ComputerUseDownloadDialog
