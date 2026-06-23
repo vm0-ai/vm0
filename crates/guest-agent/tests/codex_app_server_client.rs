@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+const PROCESS_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const BLOCKED_STDIN_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 static MOCK_CODEX_BUILD: OnceLock<Result<PathBuf, String>> = OnceLock::new();
@@ -665,13 +666,14 @@ async fn codex_app_server_shutdown_kills_stderr_holder_without_drain_timeout() -
 
 #[tokio::test]
 async fn codex_app_server_drop_kills_open_child() -> Result<(), String> {
-    let client = spawn_client(None)?;
+    let client = spawn_client(Some("hang-on-stdin-eof"))?;
     let pid = client
         .process_id()
         .ok_or_else(|| "app-server child missing pid".to_string())?;
+    let process_group = wait_for_child_process_group(pid).await?;
 
     drop(client);
-    wait_for_process_exit(pid).await
+    wait_for_process_group_exit(process_group).await
 }
 
 #[test]
@@ -824,33 +826,175 @@ fn assert_disconnect_like<T: std::fmt::Debug>(
     }
 }
 
-async fn wait_for_process_exit(pid: u32) -> Result<(), String> {
-    let wait_task = tokio::task::spawn_blocking(move || wait_for_process_exit_blocking(pid));
-    match tokio::time::timeout(CLIENT_TIMEOUT, wait_task).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(error)) => Err(format!("waitpid task failed: {error}")),
-        Err(_) => {
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
-            }
-            Err(format!("process {pid} did not exit"))
+#[derive(Clone, Copy)]
+struct ObservedProcessGroup {
+    pgid: i32,
+    leader_pid: u32,
+    leader_identity: Option<LinuxProcessIdentity>,
+}
+
+impl ObservedProcessGroup {
+    fn from_child_pid(pid: u32) -> Result<Option<Self>, String> {
+        let pgid = i32::try_from(pid).map_err(|_| format!("child pid {pid} exceeds i32"))?;
+        let current_pgid = unsafe { libc::getpgrp() };
+        if pgid <= 1 || pgid == current_pgid {
+            return Err(format!("refusing to observe unsafe process group {pgid}"));
         }
+        let leader_identity = linux_process_identity(pid)?;
+        let group_exists = process_group_exists(pgid)?;
+        let procfs_available = linux_procfs_available();
+        if let Some(identity) = leader_identity
+            && identity.process_group_id != pgid
+        {
+            return Ok(None);
+        }
+        if !group_exists {
+            if leader_identity.is_none() && procfs_available {
+                return Err(format!(
+                    "app-server child process group {pgid} was not running before drop"
+                ));
+            }
+            return Ok(None);
+        }
+        if leader_identity.is_none() && procfs_available {
+            return Err(format!(
+                "app-server child {pid} disappeared before drop while process group {pgid} still exists"
+            ));
+        }
+
+        Ok(Some(Self {
+            pgid,
+            leader_pid: pid,
+            leader_identity,
+        }))
     }
 }
 
-fn wait_for_process_exit_blocking(pid: u32) -> Result<(), String> {
-    let mut status = 0;
-    let wait_result = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, 0) };
-    if wait_result == pid as libc::pid_t {
-        return Ok(());
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct LinuxProcessIdentity {
+    process_group_id: i32,
+    start_time_ticks: u64,
+}
+
+async fn wait_for_child_process_group(pid: u32) -> Result<ObservedProcessGroup, String> {
+    let deadline = tokio::time::Instant::now() + CLIENT_TIMEOUT;
+    loop {
+        if let Some(process_group) = ObservedProcessGroup::from_child_pid(pid)? {
+            return Ok(process_group);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "app-server child {pid} did not become a running process-group leader"
+            ));
+        }
+        tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
+    }
+}
+
+async fn wait_for_process_group_exit(process_group: ObservedProcessGroup) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + CLIENT_TIMEOUT;
+    loop {
+        if process_group_exited(process_group)? {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            unsafe {
+                libc::kill(-process_group.pgid, libc::SIGKILL);
+            }
+            let cleanup_deadline = tokio::time::Instant::now() + CLIENT_TIMEOUT;
+            while !process_group_exited(process_group)?
+                && tokio::time::Instant::now() < cleanup_deadline
+            {
+                tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
+            }
+            return Err(format!(
+                "process group {} for app-server child {} did not exit",
+                process_group.pgid, process_group.leader_pid
+            ));
+        }
+        tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
+    }
+}
+
+fn process_group_exited(process_group: ObservedProcessGroup) -> Result<bool, String> {
+    if !process_group_exists(process_group.pgid)? {
+        return Ok(true);
     }
 
-    let wait_error = std::io::Error::last_os_error();
-    if wait_error.raw_os_error() == Some(libc::ECHILD) && process_exited(pid)? {
-        return Ok(());
+    if let Some(original_identity) = process_group.leader_identity {
+        let current_identity = linux_process_identity(process_group.leader_pid)?;
+        if current_identity.is_some_and(|identity| identity != original_identity) {
+            return Ok(true);
+        }
     }
 
-    Err(format!("waitpid({pid}) failed: {wait_error}"))
+    Ok(false)
+}
+
+fn process_group_exists(pgid: i32) -> Result<bool, String> {
+    let kill_result = unsafe { libc::kill(-pgid, 0) };
+    if kill_result == 0 {
+        return Ok(true);
+    }
+
+    let kill_error = std::io::Error::last_os_error();
+    match kill_error.raw_os_error() {
+        Some(libc::ESRCH) => Ok(false),
+        Some(libc::EPERM) => Ok(true),
+        _ => Err(format!("kill -0 -{pgid} failed: {kill_error}")),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, String> {
+    let stat_path = format!("/proc/{pid}/stat");
+    let stat = match std::fs::read_to_string(&stat_path) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("read {stat_path}: {error}")),
+    };
+
+    parse_linux_process_identity(&stat)
+        .map(Some)
+        .map_err(|error| format!("parse {stat_path}: {error}"))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_process_identity(_pid: u32) -> Result<Option<LinuxProcessIdentity>, String> {
+    Ok(None)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_procfs_available() -> bool {
+    std::path::Path::new("/proc/self/stat").is_file()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_procfs_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn parse_linux_process_identity(stat: &str) -> Result<LinuxProcessIdentity, String> {
+    let (_comm, fields_text) = stat
+        .rsplit_once(") ")
+        .ok_or_else(|| "missing command terminator".to_string())?;
+    let fields = fields_text.split_whitespace().collect::<Vec<_>>();
+    let process_group_id = fields
+        .get(2)
+        .ok_or_else(|| "missing process group field".to_string())?
+        .parse::<i32>()
+        .map_err(|error| format!("invalid process group field: {error}"))?;
+    let start_time_ticks = fields
+        .get(19)
+        .ok_or_else(|| "missing start time field".to_string())?
+        .parse::<u64>()
+        .map_err(|error| format!("invalid start time field: {error}"))?;
+
+    Ok(LinuxProcessIdentity {
+        process_group_id,
+        start_time_ticks,
+    })
 }
 
 fn assert_process_exited(pid: u32) -> Result<(), String> {

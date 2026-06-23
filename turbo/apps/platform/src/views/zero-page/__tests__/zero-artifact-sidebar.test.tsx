@@ -825,6 +825,10 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
       expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
 
     click(screen.getByLabelText("Download artifact"));
     await waitFor(() => {

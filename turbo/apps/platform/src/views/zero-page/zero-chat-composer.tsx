@@ -187,6 +187,8 @@ import {
   setTemplateCardThemePopoverOpenSlug$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
+  templateCardDefaultHtmlPreviews$,
+  setTemplateCardDefaultHtmlPreview$,
   type TemplateCardThemePopoverPlacement,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
@@ -2662,6 +2664,7 @@ function TemplatePreviewFrames({
             }
             src={frameUrl}
             sandbox="allow-same-origin"
+            tabIndex={-1}
             className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
             onLoad={(event) => {
               revealTemplatePreviewFrameAfterPaint({
@@ -2941,6 +2944,56 @@ function TemplatePreview({
       />
     </div>
   );
+}
+
+const TEMPLATE_DETAIL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[tabindex]:not([tabindex="-1"]):not([role="group"])',
+].join(",");
+
+function templateDetailFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(TEMPLATE_DETAIL_FOCUSABLE_SELECTOR),
+  ).filter((element) => {
+    return (
+      element.tabIndex >= 0 &&
+      !element.hasAttribute("disabled") &&
+      !element.closest("[inert]")
+    );
+  });
+}
+
+function handleTemplateDetailTabKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+): void {
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const candidates = templateDetailFocusableElements(event.currentTarget);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const target =
+    event.target instanceof HTMLElement ? event.target : document.activeElement;
+  const currentIndex = candidates.findIndex((candidate) => {
+    return target instanceof Node && candidate.contains(target);
+  });
+  const direction = event.shiftKey ? -1 : 1;
+  const nextIndex =
+    currentIndex === -1
+      ? event.shiftKey
+        ? candidates.length - 1
+        : 0
+      : (currentIndex + direction + candidates.length) % candidates.length;
+
+  event.preventDefault();
+  candidates[nextIndex]?.focus();
 }
 
 interface PresentationTemplateDetailPreviewState {
@@ -3296,6 +3349,7 @@ function TemplatePreviewPage({
               data-testid={`${item.title} detail HTML preview`}
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
+              tabIndex={-1}
               className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
               onLoad={(event) => {
                 const frameUrl = visibleDetailPreview?.frameUrl;
@@ -4210,8 +4264,49 @@ function preloadIllustrationVariant(
   );
 }
 
+type IllustrationThumbnailScrollDirection = -1 | 1;
+
+const ILLUSTRATION_THUMBNAIL_REVEAL_COUNT = 2;
+const ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX = 1;
+
+type IllustrationThumbnailScrollTarget = {
+  element: HTMLElement;
+  targetIsBoundary: boolean;
+};
+
+function illustrationThumbnailScrollTarget(
+  node: HTMLElement,
+  direction: IllustrationThumbnailScrollDirection,
+): IllustrationThumbnailScrollTarget {
+  let target = node;
+  for (let i = 0; i < ILLUSTRATION_THUMBNAIL_REVEAL_COUNT; i += 1) {
+    const sibling =
+      direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+    if (!(sibling instanceof HTMLElement)) {
+      return {
+        element: target,
+        targetIsBoundary: true,
+      };
+    }
+    target = sibling;
+  }
+  const boundarySibling =
+    direction > 0 ? target.nextElementSibling : target.previousElementSibling;
+  return {
+    element: target,
+    targetIsBoundary: !(boundarySibling instanceof HTMLElement),
+  };
+}
+
+function maxIllustrationThumbnailScrollLeft(
+  thumbnailStrip: HTMLElement,
+): number {
+  return Math.max(0, thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth);
+}
+
 function scrollIllustrationThumbnailIntoView(
   node: HTMLButtonElement | null,
+  direction: IllustrationThumbnailScrollDirection,
 ): void {
   if (node === null) {
     return;
@@ -4224,23 +4319,83 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
-  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
-  const thumbnailRect = node.getBoundingClientRect();
+  const { element: target, targetIsBoundary } =
+    illustrationThumbnailScrollTarget(node, direction);
 
-  const leftOverflow = thumbnailStripRect.left - thumbnailRect.left;
-  if (leftOverflow > 0) {
-    thumbnailStrip.scrollTo({
-      left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
-    });
+  if (direction < 0) {
+    if (targetIsBoundary) {
+      if (thumbnailStrip.scrollLeft > 0) {
+        thumbnailStrip.scrollTo({
+          left: 0,
+        });
+      }
+      return;
+    }
+
+    const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const leftOverflow = thumbnailStripRect.left - targetRect.left;
+    if (leftOverflow > 0) {
+      thumbnailStrip.scrollTo({
+        left: Math.max(0, thumbnailStrip.scrollLeft - leftOverflow),
+      });
+    }
     return;
   }
 
-  const rightOverflow = thumbnailRect.right - thumbnailStripRect.right;
+  if (targetIsBoundary) {
+    const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+    if (thumbnailStrip.scrollLeft < maxScrollLeft) {
+      thumbnailStrip.scrollTo({
+        left: maxScrollLeft,
+      });
+    }
+    return;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const rightOverflow = targetRect.right - thumbnailStripRect.right;
   if (rightOverflow > 0) {
     thumbnailStrip.scrollTo({
       left: Math.max(0, thumbnailStrip.scrollLeft + rightOverflow),
     });
   }
+}
+
+function activeIllustrationThumbnailScrollDirection(
+  node: HTMLButtonElement,
+): IllustrationThumbnailScrollDirection | null {
+  const thumbnailStrip = node.closest<HTMLElement>(
+    "[data-illustration-variant-strip]",
+  );
+  if (thumbnailStrip === null) {
+    return null;
+  }
+
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const thumbnailRect = node.getBoundingClientRect();
+  const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
+
+  if (
+    thumbnailRect.right >=
+      thumbnailStripRect.right - ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.nextElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft < maxScrollLeft)
+  ) {
+    return 1;
+  }
+
+  if (
+    thumbnailRect.left <=
+      thumbnailStripRect.left + ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
+    (node.previousElementSibling instanceof HTMLElement ||
+      thumbnailStrip.scrollLeft > 0)
+  ) {
+    return -1;
+  }
+
+  return null;
 }
 
 function IllustrationTemplateCard({
@@ -4322,8 +4477,18 @@ function IllustrationTemplateCard({
                     item,
                     onVariantChange,
                   });
-                  if (!active) {
-                    scrollIllustrationThumbnailIntoView(event.currentTarget);
+                  const scrollDirection = active
+                    ? activeIllustrationThumbnailScrollDirection(
+                        event.currentTarget,
+                      )
+                    : index > safeIndex
+                      ? 1
+                      : -1;
+                  if (scrollDirection !== null) {
+                    scrollIllustrationThumbnailIntoView(
+                      event.currentTarget,
+                      scrollDirection,
+                    );
                   }
                 }}
               >
@@ -4791,6 +4956,9 @@ function TemplatePickerDialog({
         className={dialogContentClassName}
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
+        onKeyDownCapture={
+          isPreviewing ? handleTemplateDetailTabKeyDown : undefined
+        }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           if (!isPreviewing) {
@@ -4970,11 +5138,15 @@ function SelectedPresentationTemplateChipPreview({
   item: PresentationTemplateItem;
 }) {
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
+  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const selectedTheme = findPresentationTemplateTheme(
     colorSystemId?.replace("color-system:", "") ??
       themeIdBySlug[item.slug] ??
       defaultPresentationTemplateThemeId(item),
   );
+  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
+  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
   const fallbackImageUrl = presentationTemplateCardSlideImage(
     item,
     0,
@@ -4982,8 +5154,71 @@ function SelectedPresentationTemplateChipPreview({
     SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
   );
 
-  return (
+  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
+    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
+      return;
+    }
+
+    const cache = presentationTemplateHtmlPreviewCache();
+    const setChipPreview = (draft: PresentationEditDraft) => {
+      if (!node.isConnected) {
+        return;
+      }
+      const previewState = createPresentationTemplateHtmlPreviewState({
+        draft,
+        index: 0,
+        item,
+        previousFrameUrl: null,
+        theme: selectedTheme,
+      });
+      if (previewState !== null) {
+        setDefaultHtmlPreview(previewKey, previewState);
+      }
+    };
+
+    const cachedDraft = cache.drafts.get(item.embedUrl);
+    if (cachedDraft !== undefined) {
+      setChipPreview(cachedDraft);
+      return;
+    }
+
+    if (cache.failed.has(item.embedUrl)) {
+      return;
+    }
+
+    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
+    if (pendingLoad === undefined) {
+      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      cache.pendingLoads.set(item.embedUrl, pendingLoad);
+    }
+    detach(
+      (async () => {
+        const result = await settle(pendingLoad);
+        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+          cache.pendingLoads.delete(item.embedUrl);
+        }
+        if (!result.ok || result.value === null) {
+          cache.failed.add(item.embedUrl);
+          return;
+        }
+        cache.drafts.set(item.embedUrl, result.value);
+        setChipPreview(result.value);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return htmlPreview?.frameUrl ? (
+    <iframe
+      title={`${item.title} selected template preview`}
+      src={htmlPreview.frameUrl}
+      sandbox="allow-same-origin"
+      tabIndex={-1}
+      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
+    />
+  ) : (
     <img
+      ref={loadChipHtmlPreviewAfterMount}
       src={fallbackImageUrl}
       alt=""
       className="h-full w-full object-cover"

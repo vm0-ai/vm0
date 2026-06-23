@@ -140,6 +140,10 @@ function ArtifactSidebarWithThreadData({
   );
 }
 
+function noop() {
+  return undefined;
+}
+
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
@@ -171,11 +175,7 @@ function ArtifactSidebarContent({
       ? artifactSidebarSyncTarget({
           agentId,
           item,
-          onSyncSuccess:
-            onSyncSuccess ??
-            (() => {
-              return undefined;
-            }),
+          onSyncSuccess: onSyncSuccess ?? noop,
           threadId,
         })
       : undefined;
@@ -263,6 +263,7 @@ function ArtifactSidebarContent({
           url={display.url}
           kind={display.kind}
           filename={display.filename}
+          artifactKind={display.artifactKind}
           pageSignal={pageSignal}
         />
       </div>
@@ -581,11 +582,13 @@ function ArtifactBody({
   url,
   kind,
   filename,
+  artifactKind,
   pageSignal,
 }: {
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
   pageSignal: AbortSignal;
 }) {
   if (kind === "markdown") {
@@ -607,7 +610,14 @@ function ArtifactBody({
     return <ArtifactAudioBody url={url} filename={filename} />;
   }
   if (kind === "html" || kind === "pdf") {
-    return <ArtifactIframeBody url={url} kind={kind} filename={filename} />;
+    return (
+      <ArtifactIframeBody
+        url={url}
+        kind={kind}
+        filename={filename}
+        artifactKind={artifactKind}
+      />
+    );
   }
   return <ArtifactGenericBody filename={filename} />;
 }
@@ -980,10 +990,12 @@ function ArtifactIframeBody({
   url,
   kind,
   filename,
+  artifactKind,
 }: {
   url: string;
   kind: "html" | "pdf";
   filename: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }) {
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -992,6 +1004,8 @@ function ArtifactIframeBody({
   const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
   const fullscreen = useGet(artifactFullscreen$);
   const htmlRefreshVersion = useGet(presentationHtmlRefreshVersion$);
+  const isPresentationHtml =
+    kind === "html" && artifactKind === "presentation-html";
   if (kind === "html") {
     const versionedSrc = presentationHtmlPreviewUrl(
       publicUrl,
@@ -1000,10 +1014,11 @@ function ArtifactIframeBody({
     return (
       <AutoFocusedArtifactIframe
         focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
-        focusOnMount={fullscreen}
+        focusOnMount={fullscreen && !isPresentationHtml}
         src={versionedSrc}
         title={`${filename} preview`}
         sandbox="allow-same-origin allow-scripts"
+        tabIndex={isPresentationHtml ? -1 : undefined}
         className="h-full w-full border-0 bg-background"
         data-testid={`artifact-sidebar-body-${kind}`}
       />

@@ -223,6 +223,21 @@ export const setTemplateCardHtmlPreview$ = command(
   },
 );
 
+const internalTemplateCardDefaultHtmlPreviews$ = state<
+  Readonly<Record<string, TemplateCardHtmlPreviewState>>
+>({});
+export const templateCardDefaultHtmlPreviews$ = computed((get) => {
+  return get(internalTemplateCardDefaultHtmlPreviews$);
+});
+export const setTemplateCardDefaultHtmlPreview$ = command(
+  ({ get, set }, embedUrl: string, value: TemplateCardHtmlPreviewState) => {
+    set(internalTemplateCardDefaultHtmlPreviews$, {
+      ...get(internalTemplateCardDefaultHtmlPreviews$),
+      [embedUrl]: value,
+    });
+  },
+);
+
 const internalTemplateCardLoadedHtmlFrameUrls$ = state<
   Readonly<Record<string, string>>
 >({});
