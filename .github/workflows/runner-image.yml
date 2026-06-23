@@ -195,7 +195,7 @@ jobs:
           configured=false
           if printf '%s\n%s\n' "$AWS_METAL_RUNNER_HOSTS" "$X86_64_METAL_RUNNER_HOSTS" \
             | tr ',' '\n' \
-            | grep -q '[^[:space:]]'; then
+            | grep '[^[:space:]]' >/dev/null; then
             configured=true
           fi
           echo "configured=${configured}" >> "$GITHUB_OUTPUT"

@@ -171,7 +171,7 @@ needed() {
 
   local metal_hosts="${METAL_HOSTS:-}"
   local has_metal_hosts="false"
-  if [ "$runner_host_groups_configured" = "true" ] || printf '%s\n' "$metal_hosts" | tr ',' '\n' | grep -q '[^[:space:]]'; then
+  if [ "$runner_host_groups_configured" = "true" ] || printf '%s\n' "$metal_hosts" | tr ',' '\n' | grep '[^[:space:]]' >/dev/null; then
     has_metal_hosts="true"
   fi
 
