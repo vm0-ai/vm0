@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 
-import { buildPresentationRemixHref, type PresentationItem } from "../data";
+import {
+  PRESENTATION_ITEMS,
+  buildPresentationRemixHref,
+  type PresentationItem,
+} from "../data";
 
 const item: PresentationItem = {
   slug: "test-deck",
@@ -14,6 +19,21 @@ const item: PresentationItem = {
 };
 
 describe("presentation remix links", () => {
+  it("shows default picker templates with CDN slide images", () => {
+    expect(PRESENTATION_ITEMS).toBe(PRESENTATION_TEMPLATE_PICKER_ITEMS);
+
+    for (const item of PRESENTATION_ITEMS) {
+      expect(item.previewImages.length, item.slug).toBeGreaterThan(0);
+      expect(item.previewImage, item.slug).toBe(item.previewImages[0]);
+
+      for (const image of item.previewImages) {
+        expect(image, item.slug).toMatch(
+          /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.(png|jpg|jpeg)$/u,
+        );
+      }
+    }
+  });
+
   it("marks presentation try-it links with source attribution", () => {
     const href = buildPresentationRemixHref(item, "https://app.vm0.ai");
     const url = new URL(href);
