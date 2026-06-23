@@ -124,11 +124,25 @@ const SENTRY_TAG_OWNER_PREFERENCES = new Map<
   ["Crons", [preferFamily("alerts")]],
   ["Events", [preferFamily("event")]],
   ["Seer", [preferFamily("event")]],
-  ["Projects", [preferScope("project:releases"), preferFamily("project")]],
+  [
+    "Projects",
+    [
+      preferScope("org:ci"),
+      preferScope("project:releases"),
+      preferFamily("project"),
+    ],
+  ],
   ["Teams", [preferFamily("team")]],
   ["SCIM", [preferFamily("team"), preferFamily("member")]],
   ["Releases", [preferScope("project:releases"), preferFamily("project")]],
-  ["Snapshots", [preferScope("project:releases"), preferFamily("project")]],
+  [
+    "Snapshots",
+    [
+      preferScope("org:ci"),
+      preferScope("project:releases"),
+      preferFamily("project"),
+    ],
+  ],
 ]);
 
 function parseScope(scope: string): SentryStandardScopePolicy | null {

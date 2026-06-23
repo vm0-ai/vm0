@@ -124,6 +124,16 @@ JSON_PART = r"""{
           ]
         },
         {
+          "name": "org:ci",
+          "rules": [
+            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/latest-base/",
+            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/",
+            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/images/{image_identifier}/",
+            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/files/dsyms/",
+            "POST /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/preprodartifacts/snapshots/"
+          ]
+        },
+        {
           "name": "org:integrations",
           "rules": [
             "GET /api/0/organizations/{organization_id_or_slug}/integrations/",
@@ -246,10 +256,7 @@ JSON_PART = r"""{
         {
           "name": "project:releases",
           "rules": [
-            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/latest-base/",
-            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/",
             "DELETE /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/",
-            "GET /api/0/organizations/{organization_id_or_slug}/preprodartifacts/snapshots/{snapshot_id}/images/{image_identifier}/",
             "GET /api/0/organizations/{organization_id_or_slug}/release-threshold-statuses/",
             "GET /api/0/organizations/{organization_id_or_slug}/releases/",
             "POST /api/0/organizations/{organization_id_or_slug}/releases/",
@@ -265,8 +272,6 @@ JSON_PART = r"""{
             "GET /api/0/organizations/{organization_id_or_slug}/releases/{version}/files/{file_id}/",
             "PUT /api/0/organizations/{organization_id_or_slug}/releases/{version}/files/{file_id}/",
             "DELETE /api/0/organizations/{organization_id_or_slug}/releases/{version}/files/{file_id}/",
-            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/files/dsyms/",
-            "POST /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/preprodartifacts/snapshots/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/{version}/commits/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/{version}/files/",

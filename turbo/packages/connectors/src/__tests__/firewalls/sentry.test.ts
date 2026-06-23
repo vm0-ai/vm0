@@ -142,15 +142,18 @@ describe("sentry firewall", () => {
     );
   });
 
-  it("preserves Sentry's project:releases exception", () => {
+  it("preserves Sentry's release and CI custom scopes", () => {
     expect(sentryPermissionRules("project:releases")).toContain(
       "POST /api/0/organizations/{organization_id_or_slug}/releases/",
+    );
+    expect(sentryPermissionRules("org:ci")).toContain(
+      "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/files/dsyms/",
     );
     expectSentryMatches("POST", "/api/0/organizations/acme/releases/", [
       "project:releases",
     ]);
     expectSentryMatches("GET", "/api/0/projects/acme/web/files/dsyms/", [
-      "project:releases",
+      "org:ci",
     ]);
   });
 });
