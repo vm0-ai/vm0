@@ -198,7 +198,7 @@ async fn unresolved_firecracker_resolution_if_present(pid: u32) -> FirecrackerCa
     if should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
         FirecrackerCandidateResolution::UnidentifiedLive {
             pid,
-            ppid: read_ppid(pid).await,
+            ppid: Some(stat.ppid),
         }
     } else {
         FirecrackerCandidateResolution::NotPresent
@@ -207,7 +207,6 @@ async fn unresolved_firecracker_resolution_if_present(pid: u32) -> FirecrackerCa
 
 fn stable_firecracker_resolution(
     pid: u32,
-    ppid: Option<u32>,
     cwd_info: Option<(String, PathBuf)>,
     initial_stat: ProcessStat,
     process_stat: ProcessStat,
@@ -216,8 +215,10 @@ fn stable_firecracker_resolution(
         return FirecrackerCandidateResolution::NotPresent;
     }
     if !process_stat_identity_matches(&initial_stat, &process_stat) {
+        let ppid = Some(process_stat.ppid);
         return FirecrackerCandidateResolution::UnidentifiedLive { pid, ppid };
     }
+    let ppid = Some(process_stat.ppid);
     match cwd_info {
         Some((sandbox_id, base_dir)) => FirecrackerCandidateResolution::StableKnownWorkspace {
             pid,
@@ -241,11 +242,10 @@ async fn resolve_firecracker_candidate(pid: u32) -> FirecrackerCandidateResoluti
     let cwd_info = read_cwd(pid)
         .await
         .and_then(|cwd| parse_workspace_cwd(&cwd));
-    let ppid = read_ppid(pid).await;
     let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
         return unresolved_firecracker_resolution_if_present(pid).await;
     };
-    stable_firecracker_resolution(pid, ppid, cwd_info, initial_stat, process_stat)
+    stable_firecracker_resolution(pid, cwd_info, initial_stat, process_stat)
 }
 
 /// Scan `/proc` once for sandbox child process facts.
@@ -312,8 +312,13 @@ mod tests {
     }
 
     fn stat(state: char, pgid: u32, starttime: u64) -> ProcessStat {
+        stat_with_ppid(state, 7, pgid, starttime)
+    }
+
+    fn stat_with_ppid(state: char, ppid: u32, pgid: u32, starttime: u64) -> ProcessStat {
         ProcessStat {
             state,
+            ppid,
             pgid,
             starttime,
         }
@@ -460,28 +465,14 @@ mod tests {
 
     #[test]
     fn process_stat_identity_ignores_state_changes() {
-        let sleeping = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let running = ProcessStat {
-            state: 'R',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let different_group = ProcessStat {
-            state: 'S',
-            pgid: 2200,
-            starttime: 123456,
-        };
-        let different_start = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 654321,
-        };
+        let sleeping = stat('S', 1100, 123456);
+        let running = stat('R', 1100, 123456);
+        let different_group = stat('S', 2200, 123456);
+        let different_start = stat('S', 1100, 654321);
+        let different_parent = stat_with_ppid('S', 9, 1100, 123456);
 
         assert!(process_stat_identity_matches(&sleeping, &running));
+        assert!(process_stat_identity_matches(&sleeping, &different_parent));
         assert!(!process_stat_identity_matches(&sleeping, &different_group));
         assert!(!process_stat_identity_matches(&sleeping, &different_start));
     }
@@ -492,7 +483,6 @@ mod tests {
         let base_dir = PathBuf::from("/data/runner-01");
         let resolution = stable_firecracker_resolution(
             42,
-            Some(7),
             Some(("sandbox-a".to_string(), base_dir.clone())),
             stat('S', 1100, 123456),
             process_stat.clone(),
@@ -529,13 +519,8 @@ mod tests {
     #[test]
     fn firecracker_resolution_unknown_workspace_keeps_stable_process_identity() {
         let process_stat = stat('R', 1100, 123456);
-        let resolution = stable_firecracker_resolution(
-            42,
-            Some(7),
-            None,
-            stat('S', 1100, 123456),
-            process_stat.clone(),
-        );
+        let resolution =
+            stable_firecracker_resolution(42, None, stat('S', 1100, 123456), process_stat.clone());
 
         assert_eq!(
             resolution,
@@ -568,7 +553,6 @@ mod tests {
     fn firecracker_resolution_identity_drift_becomes_unidentified() {
         let resolution = stable_firecracker_resolution(
             42,
-            Some(7),
             Some(("sandbox-a".to_string(), PathBuf::from("/data/runner-01"))),
             stat('S', 1100, 123456),
             stat('R', 2200, 123456),
@@ -595,7 +579,6 @@ mod tests {
     fn firecracker_resolution_rejects_dead_process_states() {
         let resolution = stable_firecracker_resolution(
             42,
-            Some(7),
             Some(("sandbox-a".to_string(), PathBuf::from("/data/runner-01"))),
             stat('Z', 1100, 123456),
             stat('R', 1100, 123456),
@@ -607,16 +590,8 @@ mod tests {
 
     #[test]
     fn stable_live_firecracker_stat_accepts_live_stable_firecracker() {
-        let before = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let after = ProcessStat {
-            state: 'R',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let before = stat('S', 1100, 123456);
+        let after = stat('R', 1100, 123456);
 
         assert_eq!(
             stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after.clone()),
@@ -626,16 +601,8 @@ mod tests {
 
     #[test]
     fn stable_live_firecracker_stat_rejects_zombie_firecracker() {
-        let before = ProcessStat {
-            state: 'Z',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let after = ProcessStat {
-            state: 'Z',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let before = stat('Z', 1100, 123456);
+        let after = stat('Z', 1100, 123456);
 
         assert_eq!(
             stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
@@ -645,16 +612,8 @@ mod tests {
 
     #[test]
     fn stable_live_firecracker_stat_rejects_dead_firecracker() {
-        let before = ProcessStat {
-            state: 'X',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let after = ProcessStat {
-            state: 'x',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let before = stat('X', 1100, 123456);
+        let after = stat('x', 1100, 123456);
 
         assert_eq!(
             stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
@@ -664,16 +623,8 @@ mod tests {
 
     #[test]
     fn stable_live_firecracker_stat_rejects_exit_during_read() {
-        let before = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 123456,
-        };
-        let after = ProcessStat {
-            state: 'Z',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let before = stat('S', 1100, 123456);
+        let after = stat('Z', 1100, 123456);
 
         assert_eq!(
             stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
@@ -683,11 +634,7 @@ mod tests {
 
     #[test]
     fn unidentified_firecracker_candidate_keeps_uncertain_live_processes() {
-        let stat = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let stat = stat('S', 1100, 123456);
 
         assert!(should_keep_unidentified_firecracker_candidate(&stat, None));
         assert!(should_keep_unidentified_firecracker_candidate(
@@ -698,11 +645,7 @@ mod tests {
 
     #[test]
     fn unidentified_firecracker_candidate_rejects_known_non_firecracker() {
-        let stat = ProcessStat {
-            state: 'S',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let stat = stat('S', 1100, 123456);
 
         assert!(!should_keep_unidentified_firecracker_candidate(
             &stat,
@@ -712,11 +655,7 @@ mod tests {
 
     #[test]
     fn unidentified_firecracker_candidate_rejects_zombie_processes() {
-        let stat = ProcessStat {
-            state: 'Z',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let stat = stat('Z', 1100, 123456);
 
         assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
         assert!(!should_keep_unidentified_firecracker_candidate(
@@ -727,11 +666,7 @@ mod tests {
 
     #[test]
     fn unidentified_firecracker_candidate_rejects_dead_processes() {
-        let stat = ProcessStat {
-            state: 'X',
-            pgid: 1100,
-            starttime: 123456,
-        };
+        let stat = stat('X', 1100, 123456);
 
         assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
         assert!(!should_keep_unidentified_firecracker_candidate(

@@ -22,41 +22,49 @@ pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
     if argv.is_empty() { None } else { Some(argv) }
 }
 
-/// Read `/proc/{pid}/status` and extract the PPid field.
+/// Read `/proc/{pid}/stat` and extract the PPid field.
 pub(super) async fn read_ppid(pid: u32) -> Option<u32> {
-    let path = format!("/proc/{pid}/status");
+    let path = format!("/proc/{pid}/stat");
     let content = tokio::fs::read_to_string(&path).await.ok()?;
-    for line in content.lines() {
-        if let Some(val) = line.strip_prefix("PPid:\t") {
-            return val.trim().parse().ok();
-        }
-    }
-    None
+    parse_process_ppid(&content)
 }
 
-/// Parse stable process facts from `/proc/{pid}/stat` content.
+/// Parse process facts from `/proc/{pid}/stat` content.
 ///
 /// Format: `pid (comm) state ppid pgrp ...`
 /// The comm field may contain spaces and parentheses, so we find the
 /// last `)` to skip past it reliably.
-fn parse_process_stat(content: &str) -> Option<ProcessStat> {
+fn stat_fields_after_comm(content: &str) -> Option<std::str::SplitWhitespace<'_>> {
     let after_comm = content.rsplit_once(')')?.1;
-    let fields: Vec<&str> = after_comm.split_whitespace().collect();
+    Some(after_comm.split_whitespace())
+}
 
-    // After the comm field, index 0 is stat field 3 (`state`), index 2 is
-    // field 5 (`pgrp`), and index 19 is field 22 (`starttime`).
-    let state = fields.first()?.chars().next()?;
-    let pgid = fields.get(2)?.parse().ok()?;
-    let starttime = fields.get(19)?.parse().ok()?;
+fn parse_process_ppid(content: &str) -> Option<u32> {
+    let mut fields = stat_fields_after_comm(content)?;
+    let _state = fields.next()?;
+    fields.next()?.parse().ok()
+}
+
+fn parse_process_stat(content: &str) -> Option<ProcessStat> {
+    let mut fields = stat_fields_after_comm(content)?;
+
+    // After the comm field, index 0 is stat field 3 (`state`), index 1 is
+    // field 4 (`ppid`), index 2 is field 5 (`pgrp`), and index 19 is field
+    // 22 (`starttime`).
+    let state = fields.next()?.chars().next()?;
+    let ppid = fields.next()?.parse().ok()?;
+    let pgid = fields.next()?.parse().ok()?;
+    let starttime = fields.nth(16)?.parse().ok()?;
 
     Some(ProcessStat {
         state,
+        ppid,
         pgid,
         starttime,
     })
 }
 
-/// Read `/proc/{pid}/stat` and extract stable process facts.
+/// Read `/proc/{pid}/stat` and extract process facts.
 pub(crate) async fn read_process_stat(pid: u32) -> Option<ProcessStat> {
     let path = format!("/proc/{pid}/stat");
     let content = tokio::fs::read_to_string(&path).await.ok()?;
@@ -143,6 +151,7 @@ mod tests {
             parse_process_stat(&stat),
             Some(ProcessStat {
                 state: 'S',
+                ppid: 1200,
                 pgid: 1100,
                 starttime: 123456
             })
@@ -157,6 +166,7 @@ mod tests {
             parse_process_stat(&stat),
             Some(ProcessStat {
                 state: 'S',
+                ppid: 1200,
                 pgid: 200,
                 starttime: 999
             })
@@ -171,6 +181,7 @@ mod tests {
             parse_process_stat(&stat),
             Some(ProcessStat {
                 state: 'S',
+                ppid: 1200,
                 pgid: 600,
                 starttime: 888
             })
@@ -184,6 +195,7 @@ mod tests {
             parse_process_stat(&stat),
             Some(ProcessStat {
                 state: 'Z',
+                ppid: 1200,
                 pgid: 1100,
                 starttime: 123456
             })
@@ -202,6 +214,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_process_stat_rejects_invalid_ppid() {
+        let fields = [
+            "S",
+            "not-a-number",
+            "1100",
+            "1100",
+            "0",
+            "-1",
+            "4194560",
+            "2100",
+            "0",
+            "0",
+            "0",
+            "12",
+            "8",
+            "0",
+            "0",
+            "20",
+            "0",
+            "1",
+            "0",
+            "123456",
+        ];
+        let stat = format!("1234 (firecracker) {}", fields.join(" "));
+        assert!(parse_process_stat(&stat).is_none());
+    }
+
+    #[test]
     fn parse_process_stat_rejects_invalid_pgid() {
         let stat = stat_with_comm("firecracker", "S", "not-a-number", "123456");
         assert!(parse_process_stat(&stat).is_none());
@@ -211,5 +251,23 @@ mod tests {
     fn parse_process_stat_rejects_invalid_starttime() {
         let stat = stat_with_comm("firecracker", "S", "1100", "not-a-number");
         assert!(parse_process_stat(&stat).is_none());
+    }
+
+    #[test]
+    fn parse_process_ppid_does_not_require_starttime() {
+        let stat = stat_with_comm("firecracker", "S", "1100", "not-a-number");
+        assert_eq!(parse_process_ppid(&stat), Some(1200));
+    }
+
+    #[test]
+    fn parse_process_ppid_rejects_invalid_ppid() {
+        let stat = "1234 (firecracker) S not-a-number 1100";
+        assert!(parse_process_ppid(stat).is_none());
+    }
+
+    #[test]
+    fn parse_process_ppid_rejects_missing_ppid() {
+        let stat = "1234 (firecracker) S";
+        assert!(parse_process_ppid(stat).is_none());
     }
 }

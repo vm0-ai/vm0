@@ -1020,6 +1020,7 @@ mod tests {
     fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
         ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
         }
@@ -1391,6 +1392,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime + 1,
         };
@@ -1410,6 +1412,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid + 1,
             starttime: identity.starttime,
         };
@@ -1430,16 +1433,25 @@ mod tests {
         let matching = process_stat(identity);
         let changed_starttime = ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime + 1,
         };
         let changed_pgid = ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid + 1,
+            starttime: identity.starttime,
+        };
+        let changed_ppid = ProcessStat {
+            state: 'S',
+            ppid: 9,
+            pgid: identity.pgid,
             starttime: identity.starttime,
         };
 
         assert!(process_stat_matches_identity(identity, &matching));
+        assert!(process_stat_matches_identity(identity, &changed_ppid));
         assert!(!process_stat_matches_identity(identity, &changed_starttime));
         assert!(!process_stat_matches_identity(identity, &changed_pgid));
     }
@@ -1491,6 +1503,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let zombie = ProcessStat {
             state: 'Z',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
         };
@@ -1505,6 +1518,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let dead = ProcessStat {
             state: 'X',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
         };
@@ -1527,6 +1541,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'Z',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
         };
@@ -1540,6 +1555,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'x',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
         };
@@ -1553,6 +1569,7 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'S',
+            ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime + 1,
         };
