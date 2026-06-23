@@ -433,6 +433,11 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::ProviderOverloaded);
     }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_output_token_limit_error(&normalized)
+    {
+        return Some(FailureReason::OutputTokenLimit);
+    }
     if matches!(framework, AgentFramework::Codex)
         && (normalized.contains("invalid_api_key")
             || normalized.contains("incorrect api key provided"))
@@ -485,6 +490,16 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
             starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
         })
     })
+}
+
+fn is_claude_output_token_limit_error(normalized: &str) -> bool {
+    let response_exceeded =
+        normalized.contains("response exceeded") || normalized.contains("response has exceeded");
+    response_exceeded
+        && (normalized.contains("output token maximum")
+            || normalized.contains("maximum output tokens")
+            || normalized.contains("max output tokens")
+            || normalized.contains("claude_code_max_output_tokens"))
 }
 
 fn claude_529_error_detail(detail: &str) -> Option<&str> {
@@ -1459,6 +1474,75 @@ mod tests {
             diagnostic.failure_detail_source,
             Some(FailureDetailSource::ClaudeResult)
         );
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_output_token_limit() {
+        for message in [
+            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+            "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+            "API Error: Claude's response exceeded the maximum output tokens for this model.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+            assert_eq!(
+                reason,
+                Some(FailureReason::OutputTokenLimit),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_output_token_limit_diagnostic() {
+        let message = "API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::OutputTokenLimit)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_claude_output_token_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "API Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_unrelated_claude_output_token_limit_text() {
+        for message in [
+            "API Error: Claude's context window exceeded the available token budget.",
+            "API Error: Claude's response used 32000 tokens before the request completed.",
+            "Set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable to configure responses.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+            assert_eq!(reason, None, "message: {message}");
+        }
     }
 
     #[test]
