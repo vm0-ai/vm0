@@ -11,7 +11,7 @@ parameterized hosts are meaningful only for firewall config bases.
 import ipaddress
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
@@ -325,10 +325,10 @@ class _CompiledApiIndex(NamedTuple):
     static_buckets: Mapping[tuple[str, str, tuple[str, ...]], tuple[_CompiledApiCandidate, ...]]
 
 
-@dataclass(frozen=True, init=False, slots=True)
+@dataclass(frozen=True, init=False, slots=True, eq=False, repr=False)
 class CompiledFirewallSet:
     firewalls: tuple[_CompiledFirewall, ...]
-    _api_index: _CompiledApiIndex
+    _api_index: _CompiledApiIndex = field(compare=False, repr=False)
 
     def __init__(self, firewalls: tuple[_CompiledFirewall, ...]) -> None:
         object.__setattr__(self, "firewalls", firewalls)
