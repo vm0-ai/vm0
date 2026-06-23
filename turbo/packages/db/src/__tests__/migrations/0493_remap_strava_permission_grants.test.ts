@@ -124,7 +124,7 @@ function sortedUnique(values: readonly string[]): string[] {
 }
 
 describe("migration 0493 remap Strava permission grants", () => {
-  it("expands every old Strava tiered route owner grant to the new route-owning permissions", async () => {
+  it("expands every old Strava scope grant to the matching resource permissions", async () => {
     await runInRollbackTransaction(async (tx) => {
       const seededCases: Array<
         StravaPermissionRemapCase & { readonly orgId: string }
