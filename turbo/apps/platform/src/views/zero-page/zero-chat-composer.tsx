@@ -22,7 +22,6 @@ import {
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
-  IconEye,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -3294,19 +3293,99 @@ function TemplatePreview({
         className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={openPreview}
       />
-      <button
-        type="button"
-        aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={(event) => {
-          event.stopPropagation();
-          openPreview();
-        }}
-      >
-        <IconEye size={16} stroke={1.8} />
-      </button>
     </div>
   );
+}
+
+interface PresentationTemplateDetailPreviewState {
+  readonly embedUrl: string;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly index: number;
+  readonly loading: boolean;
+  readonly slideCount: number;
+  readonly slug: string;
+  readonly themeId: string;
+}
+
+type SetPresentationTemplateDetailPreview = (
+  value: PresentationTemplateDetailPreviewState | null,
+) => void;
+
+type SetPresentationTemplateDetailSlideIndex = (
+  slug: string,
+  index: number,
+) => void;
+
+function setLoadedPresentationTemplateDetailPreview({
+  draft,
+  index,
+  item,
+  previousFrameUrl,
+  selectedTheme,
+  setDetailPreview,
+}: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+}) {
+  const slide = draft.slides[Math.min(index, draft.slides.length - 1)];
+  if (slide === undefined) {
+    return;
+  }
+  revokePresentationTemplateHtmlPreviewUrl(previousFrameUrl);
+  const frameUrl = createThemedPresentationPreviewUrl({
+    activeSlideId: slide.id,
+    draft,
+    theme: selectedTheme,
+  });
+  setDetailPreview({
+    slug: item.slug,
+    embedUrl: item.embedUrl,
+    themeId: selectedTheme.id,
+    index,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: draft.slides.length,
+  });
+}
+
+function selectPresentationTemplateDetailSlide({
+  detailPreview,
+  detailSlideCount,
+  index,
+  item,
+  selectedTheme,
+  setDetailPreview,
+  setSlideIndex,
+}: {
+  readonly detailPreview: PresentationTemplateDetailPreviewState | null;
+  readonly detailSlideCount: number;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+  readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
+}) {
+  const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
+  setSlideIndex(item.slug, nextIndex);
+  const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+    item.embedUrl,
+  );
+  if (cachedDraft !== undefined) {
+    setLoadedPresentationTemplateDetailPreview({
+      draft: cachedDraft,
+      index: nextIndex,
+      item,
+      previousFrameUrl: detailPreview?.frameUrl ?? null,
+      selectedTheme,
+      setDetailPreview,
+    });
+  }
 }
 
 function TemplatePreviewPage({
@@ -3351,28 +3430,13 @@ function TemplatePreviewPage({
     readonly previousFrameUrl: string | null;
     readonly theme: PresentationTemplateThemeOption;
   }) => {
-    const slide =
-      params.draft.slides[
-        Math.min(params.index, params.draft.slides.length - 1)
-      ];
-    if (slide === undefined) {
-      return;
-    }
-    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
-    const frameUrl = createThemedPresentationPreviewUrl({
-      activeSlideId: slide.id,
+    setLoadedPresentationTemplateDetailPreview({
       draft: params.draft,
-      theme: params.theme,
-    });
-    setDetailPreview({
-      slug: item.slug,
-      embedUrl: item.embedUrl,
-      themeId: params.theme.id,
       index: params.index,
-      loading: false,
-      failed: false,
-      frameUrl,
-      slideCount: params.draft.slides.length,
+      item,
+      previousFrameUrl: params.previousFrameUrl,
+      selectedTheme: params.theme,
+      setDetailPreview,
     });
   };
 
@@ -3483,19 +3547,15 @@ function TemplatePreviewPage({
   };
 
   const selectDetailSlide = (index: number) => {
-    const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
-    setSlideIndex(item.slug, nextIndex);
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
-    if (cachedDraft !== undefined) {
-      setLoadedDetailPreview({
-        draft: cachedDraft,
-        index: nextIndex,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        theme: selectedTheme,
-      });
-    }
+    selectPresentationTemplateDetailSlide({
+      detailPreview,
+      detailSlideCount,
+      index,
+      item,
+      selectedTheme,
+      setDetailPreview,
+      setSlideIndex,
+    });
   };
 
   const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
@@ -3510,6 +3570,19 @@ function TemplatePreviewPage({
         previousFrameUrl: detailPreview?.frameUrl ?? null,
         theme,
       });
+    }
+  };
+  const handleDetailSlideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key === "ArrowLeft" && activeSlideIndex > 0) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex - 1);
+    }
+    if (event.key === "ArrowRight" && activeSlideIndex < detailSlideCount - 1) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex + 1);
     }
   };
   const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
@@ -3534,6 +3607,7 @@ function TemplatePreviewPage({
           >
             Template
           </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 flex-1 truncate leading-none">
             {item.title}
           </span>
@@ -3544,7 +3618,13 @@ function TemplatePreviewPage({
         className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
       >
         <div className="rounded-lg border border-border bg-background p-3">
-          <div className="relative overflow-hidden rounded-lg bg-muted">
+          <div
+            role="group"
+            aria-label={`${item.title} slide preview`}
+            tabIndex={0}
+            onKeyDown={handleDetailSlideKeyDown}
+            className="relative overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <iframe
               title={`${item.title} HTML preview`}
               data-testid={`${item.title} detail HTML preview`}
@@ -3556,24 +3636,22 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Preview previous slide"
               disabled={activeSlideIndex === 0}
+              tabIndex={-1}
               onClick={() => {
                 selectDetailSlide(activeSlideIndex - 1);
               }}
-              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus:outline-none disabled:cursor-default"
             />
             <button
               type="button"
               aria-label="Preview next slide"
               disabled={activeSlideIndex >= detailSlideCount - 1}
+              tabIndex={-1}
               onClick={() => {
                 selectDetailSlide(activeSlideIndex + 1);
               }}
-              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus:outline-none disabled:cursor-default"
             />
-            <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
-              {Math.min(activeSlideIndex + 1, detailSlideCount)} of{" "}
-              {detailSlideCount}
-            </div>
             {visibleDetailPreview?.loading ||
             !visibleDetailPreview?.frameUrl ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
@@ -3581,7 +3659,10 @@ function TemplatePreviewPage({
               </div>
             ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-8 gap-1.5">
+          <div
+            className="mt-3 grid grid-cols-8 gap-1.5"
+            onKeyDown={handleDetailSlideKeyDown}
+          >
             {Array.from(
               { length: Math.min(detailSlideCount, 15) },
               (_, index) => {
@@ -4464,7 +4545,11 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
@@ -4573,6 +4658,75 @@ function TemplatePickerDialog({
     setPreviewSlug(item.slug);
   };
 
+  const previewDetailNavigationState = () => {
+    if (previewItem === null) {
+      return null;
+    }
+    const selectedThemeId =
+      detailThemeIdBySlug[previewItem.slug] ??
+      defaultPresentationTemplateThemeId(previewItem);
+    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+    const visibleDetailPreview =
+      detailPreview?.slug === previewItem.slug &&
+      detailPreview.embedUrl === previewItem.embedUrl &&
+      detailPreview.themeId === selectedTheme.id
+        ? detailPreview
+        : null;
+    const detailSlideCount =
+      visibleDetailPreview?.slideCount ??
+      Math.max(presentationTemplateSlideImages(previewItem).length, 1);
+    return {
+      activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
+      detailSlideCount,
+      selectedTheme,
+      visibleDetailPreview,
+    };
+  };
+
+  const selectPreviewDetailSlide = (index: number) => {
+    if (previewItem === null) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    selectPresentationTemplateDetailSlide({
+      detailPreview: navigationState.visibleDetailPreview,
+      detailSlideCount: navigationState.detailSlideCount,
+      index,
+      item: previewItem,
+      selectedTheme: navigationState.selectedTheme,
+      setDetailPreview,
+      setSlideIndex: setDetailSlideIndex,
+    });
+  };
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isPreviewing || event.defaultPrevented) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      if (navigationState.activeSlideIndex > 0) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex - 1);
+      }
+    }
+    if (event.key === "ArrowRight") {
+      if (
+        navigationState.activeSlideIndex <
+        navigationState.detailSlideCount - 1
+      ) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex + 1);
+      }
+    }
+  };
+
   const handleCategoryChange = (nextCategory: string) => {
     setCategory(nextCategory);
     if (!isPreviewing) {
@@ -4603,6 +4757,7 @@ function TemplatePickerDialog({
       <DialogContent
         className={dialogContentClassName}
         aria-describedby={undefined}
+        onKeyDown={handleDialogKeyDown}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           if (!isPreviewing) {
@@ -6576,6 +6731,7 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
@@ -6586,7 +6742,6 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot

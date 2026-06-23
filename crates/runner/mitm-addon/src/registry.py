@@ -6,6 +6,7 @@ import os
 import re
 import stat
 import urllib.parse
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,7 @@ VmContext = tuple[
     matching.CompiledNetworkPolicies,
 ]
 _RegistryCacheKey = tuple[str, int, int, int, int]
+_BuiltinFirewallCoreCacheKey = tuple[str, int, tuple[tuple[str, str], ...], tuple[str, ...]]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 _BASE_URL_VAR_PATTERN = re.compile(r"\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
@@ -64,6 +66,18 @@ class _RegistrySnapshot:
 
 
 @dataclass(frozen=True)
+class _ResolvedBuiltinFirewallEntry:
+    firewall: dict
+    cache_key: _BuiltinFirewallCoreCacheKey
+
+
+@dataclass(frozen=True)
+class _ResolvedFirewallEntries:
+    firewalls: list[dict] | None
+    builtin_cache_keys: tuple[_BuiltinFirewallCoreCacheKey | None, ...] | None
+
+
+@dataclass(frozen=True)
 class RegistryUnavailable:
     """Current registry file cannot be trusted as an enforcement source."""
 
@@ -94,6 +108,10 @@ class _RegistryCacheState:
     # key only to avoid request-path log spam without poisoning the file state.
     stat_error_logged: bool = False
     read_error_key: _RegistryCacheKey | None = None
+    builtin_firewall_core_cache: dict[
+        _BuiltinFirewallCoreCacheKey,
+        matching.CompiledFirewallCore,
+    ] = field(default_factory=dict)
 
     def reset(self, registry_path: str | None = None) -> None:
         self.registry_path = registry_path
@@ -102,6 +120,7 @@ class _RegistryCacheState:
         self.failed_key = None
         self.stat_error_logged = False
         self.read_error_key = None
+        self.builtin_firewall_core_cache = {}
 
 
 _registry_state = _RegistryCacheState()
@@ -126,6 +145,11 @@ def _state_for_path(path_key: str) -> _RegistryCacheState:
 
 def _compile_registry(
     new_registry: dict,
+    builtin_cache_keys: dict[str, tuple[_BuiltinFirewallCoreCacheKey | None, ...]],
+    builtin_firewall_core_cache: dict[
+        _BuiltinFirewallCoreCacheKey,
+        matching.CompiledFirewallCore,
+    ],
 ) -> tuple[
     dict[str, matching.CompiledFirewallSet],
     dict[str, matching.CompiledNetworkPolicies],
@@ -134,12 +158,73 @@ def _compile_registry(
     compiled_policy_registry: dict[str, matching.CompiledNetworkPolicies] = {}
     for client_ip, vm in new_registry.items():
         firewalls = vm.get("firewalls")
-        compiled_firewalls = matching.compile_firewalls(firewalls)
+        compiled_firewalls = _compile_firewalls_with_builtin_cache(
+            firewalls,
+            builtin_cache_keys.get(client_ip),
+            builtin_firewall_core_cache,
+        )
         if compiled_firewalls is not None:
             compiled_firewall_registry[client_ip] = compiled_firewalls
         network_policies = vm.get("networkPolicies")
         compiled_policy_registry[client_ip] = matching.compile_network_policies(network_policies)
+    _prune_builtin_firewall_core_cache(builtin_firewall_core_cache, builtin_cache_keys.values())
     return compiled_firewall_registry, compiled_policy_registry
+
+
+def _prune_builtin_firewall_core_cache(
+    builtin_firewall_core_cache: dict[
+        _BuiltinFirewallCoreCacheKey,
+        matching.CompiledFirewallCore,
+    ],
+    active_key_groups: Iterable[tuple[_BuiltinFirewallCoreCacheKey | None, ...]],
+) -> None:
+    active_keys = {
+        cache_key
+        for cache_keys in active_key_groups
+        for cache_key in cache_keys
+        if cache_key is not None
+    }
+    stale_keys = set(builtin_firewall_core_cache) - active_keys
+    for cache_key in stale_keys:
+        del builtin_firewall_core_cache[cache_key]
+
+
+def _compile_firewalls_with_builtin_cache(
+    firewalls: object | None,
+    builtin_cache_keys: tuple[_BuiltinFirewallCoreCacheKey | None, ...] | None,
+    builtin_firewall_core_cache: dict[
+        _BuiltinFirewallCoreCacheKey,
+        matching.CompiledFirewallCore,
+    ],
+) -> matching.CompiledFirewallSet | None:
+    if not isinstance(firewalls, list) or not firewalls:
+        return None
+    if builtin_cache_keys is None or len(builtin_cache_keys) != len(firewalls):
+        return matching.compile_firewalls(firewalls)
+
+    compiled_firewalls = []
+    for firewall, cache_key in zip(firewalls, builtin_cache_keys, strict=False):
+        if not isinstance(firewall, dict):
+            continue
+        if cache_key is None:
+            inline_compiled = matching.compile_firewalls([firewall])
+            if inline_compiled is not None:
+                compiled_firewalls.extend(inline_compiled.firewalls)
+            continue
+
+        compiled_core = builtin_firewall_core_cache.get(cache_key)
+        if compiled_core is None:
+            compiled_core = matching.compile_firewall_core(firewall)
+            if compiled_core is None:
+                continue
+            builtin_firewall_core_cache[cache_key] = compiled_core
+        compiled_firewall = matching.bind_compiled_firewall_core(firewall, compiled_core)
+        if compiled_firewall is not None:
+            compiled_firewalls.append(compiled_firewall)
+
+    if not compiled_firewalls:
+        return None
+    return matching.CompiledFirewallSet(tuple(compiled_firewalls))
 
 
 def _string_record(value: object, field_name: str) -> dict[str, str]:
@@ -546,7 +631,7 @@ def _validate_credentialed_builtin_base(
         )
 
 
-def _resolve_builtin_firewall_entry(entry: dict) -> dict:
+def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntry:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
         raise _FirewallEntryResolutionError(
@@ -563,6 +648,7 @@ def _resolve_builtin_firewall_entry(entry: dict) -> dict:
         raise _FirewallEntryResolutionError(f'builtin firewall "{raw_name}" apis must be a list')
 
     vars_map = _base_url_vars_for_entry(entry)
+    resolved_bases: list[str] = []
     for api in raw_apis:
         if not isinstance(api, dict):
             raise _FirewallEntryResolutionError(
@@ -584,8 +670,17 @@ def _resolve_builtin_firewall_entry(entry: dict) -> dict:
             auth_config=api.get("auth"),
         )
         api["base"] = resolved_base
+        resolved_bases.append(resolved_base)
 
-    return firewall
+    return _ResolvedBuiltinFirewallEntry(
+        firewall=firewall,
+        cache_key=(
+            raw_name,
+            id(catalog_firewall),
+            tuple(sorted(vars_map.items())),
+            tuple(resolved_bases),
+        ),
+    )
 
 
 def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
@@ -603,21 +698,24 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
             index += 1
 
 
-def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
+def _resolve_firewall_entries(vm: dict) -> _ResolvedFirewallEntries:
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
-        return None
+        return _ResolvedFirewallEntries(None, None)
     if not isinstance(raw_firewalls, list):
         raise _FirewallEntryResolutionError("firewalls must be a list")
 
     resolved: list[dict] = []
+    builtin_cache_keys: list[_BuiltinFirewallCoreCacheKey | None] = []
     for entry in raw_firewalls:
         if not isinstance(entry, dict):
             raise _FirewallEntryResolutionError("firewall entries must be objects")
 
         kind = entry.get("kind")
         if kind == "builtin":
-            resolved.append(_resolve_builtin_firewall_entry(entry))
+            resolved_builtin = _resolve_builtin_firewall_entry(entry)
+            resolved.append(resolved_builtin.firewall)
+            builtin_cache_keys.append(resolved_builtin.cache_key)
             continue
         if kind == "inline":
             firewall = entry.get("firewall")
@@ -626,16 +724,27 @@ def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
                     "inline firewall entry firewall must be an object"
                 )
             resolved.append(copy.deepcopy(firewall))
+            builtin_cache_keys.append(None)
             continue
         raise _FirewallEntryResolutionError("firewall entries must use a supported kind")
 
     _assign_firewall_api_ids(resolved, vm["runId"])
-    return resolved
+    return _ResolvedFirewallEntries(resolved, tuple(builtin_cache_keys))
 
 
-def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidVmEntry]]:
+def _classify_registry_vms(
+    raw_registry: dict,
+) -> tuple[
+    dict,
+    dict[str, InvalidVmEntry],
+    dict[str, tuple[_BuiltinFirewallCoreCacheKey | None, ...]],
+]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
+    builtin_cache_keys_by_client_ip: dict[
+        str,
+        tuple[_BuiltinFirewallCoreCacheKey | None, ...],
+    ] = {}
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
             invalid_vms[client_ip] = InvalidVmEntry(
@@ -689,12 +798,14 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
             continue
 
         vm = dict(vm)
-        if resolved_firewalls is not None:
-            vm["firewalls"] = resolved_firewalls
+        if resolved_firewalls.firewalls is not None:
+            vm["firewalls"] = resolved_firewalls.firewalls
+            if resolved_firewalls.builtin_cache_keys is not None:
+                builtin_cache_keys_by_client_ip[client_ip] = resolved_firewalls.builtin_cache_keys
 
         new_registry[client_ip] = vm
 
-    return new_registry, invalid_vms
+    return new_registry, invalid_vms, builtin_cache_keys_by_client_ip
 
 
 def _open_registry_for_read(path: Path) -> tuple[int, os.stat_result]:
@@ -811,10 +922,14 @@ def load_registry_state(registry_path: str) -> RegistryState:
     finally:
         os.close(fd)
 
-    new_registry, invalid_vms = _classify_registry_vms(raw_registry)
+    new_registry, invalid_vms, builtin_cache_keys = _classify_registry_vms(raw_registry)
     if invalid_vms:
         ctx.log.warn(f"Rejected {len(invalid_vms)} invalid proxy registry VM entries")
-    new_compiled_registry, new_compiled_policy_registry = _compile_registry(new_registry)
+    new_compiled_registry, new_compiled_policy_registry = _compile_registry(
+        new_registry,
+        builtin_cache_keys,
+        state.builtin_firewall_core_cache,
+    )
 
     # Evict cache entries for runs no longer in the registry.
     active_run_ids = {vm["runId"] for vm in new_registry.values()}

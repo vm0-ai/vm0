@@ -298,6 +298,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowGmailEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Gmail new-message workflow event triggers. Creating/enabling requires a connected Gmail connector and Pub/Sub watch setup; matched inbound messages run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GoalWorkflows]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -851,6 +851,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                 FailureReason::InsufficientCredits
                     | FailureReason::InvalidApiKey
                     | FailureReason::InvalidCredentials
+                    | FailureReason::OutputTokenLimit
                     | FailureReason::ProviderOverloaded
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
@@ -1022,16 +1023,15 @@ mod tests {
             FailureReason::InsufficientCredits,
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
             let diagnostic = job_failure_diagnostic(Some(reason));
-            let failure = executor::ExecutionFailure::new(
-                1,
-                format!("classified failure: {}", reason.as_str()),
-                Some(diagnostic),
-            );
+            let failure_error = format!("classified failure: {}", reason.as_str());
+            let failure =
+                executor::ExecutionFailure::new(1, failure_error.clone(), Some(diagnostic));
 
             let event = capture_job_failure_log(&failure);
 
@@ -1040,6 +1040,7 @@ mod tests {
                 event.fields.get("message").map(String::as_str),
                 Some("job execution failed")
             );
+            assert_field_eq(&event, "error", &failure_error);
             assert_field_eq(&event, "failure_reason", reason.as_str());
             assert_field_eq(&event, "failure_class", "cli_nonzero");
             assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
@@ -1078,6 +1079,7 @@ mod tests {
         for reason in [
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,

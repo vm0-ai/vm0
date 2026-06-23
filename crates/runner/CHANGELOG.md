@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.129.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.0...runner-rs-v0.129.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* classify claude output token limits ([#18579](https://github.com/vm0-ai/vm0/issues/18579)) ([2b43740](https://github.com/vm0-ai/vm0/commit/2b437408b03be9c6413705dd1b633cbc33a2a62a))
+* select single cloudflare firewall permission ([#18554](https://github.com/vm0-ai/vm0/issues/18554)) ([bf31571](https://github.com/vm0-ai/vm0/commit/bf31571649ef8dee8018214a255af036ddd5d775))
+
 ## [0.129.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.128.0...runner-rs-v0.129.0) (2026-06-22)
 
 
