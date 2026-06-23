@@ -42,6 +42,12 @@ if [ "${#HOSTS[@]}" -lt 1 ]; then
   echo "METAL_HOSTS is empty" >&2
   exit 1
 fi
+duplicate_host=$(printf '%s\n' "${HOSTS[@]}" | LC_ALL=C sort | uniq -d)
+duplicate_host=${duplicate_host%%$'\n'*}
+if [ -n "$duplicate_host" ]; then
+  echo "duplicate METAL_HOSTS entry: ${duplicate_host}" >&2
+  exit 2
+fi
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 

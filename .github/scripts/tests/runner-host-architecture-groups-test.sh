@@ -77,6 +77,16 @@ assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","tar
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
 
+if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
+  fail "expected duplicate host in one group to fail"
+fi
+grep -q "duplicate runner host configured: arm-1" "${TMPDIR}/duplicate-group.err" || fail "expected duplicate host in one group message"
+
+if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" matrix >"${TMPDIR}/duplicate-cross.out" 2>"${TMPDIR}/duplicate-cross.err"; then
+  fail "expected duplicate host across groups to fail"
+fi
+grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross.err" || fail "expected duplicate host across groups message"
+
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'

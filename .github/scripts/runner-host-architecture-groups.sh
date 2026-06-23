@@ -66,11 +66,23 @@ append_group() {
     }]' <<<"$groups"
 }
 
+validate_unique_hosts() {
+  local groups=$1
+  local duplicate
+  duplicate=$(jq -r '.[].hosts | split(",")[]' <<<"$groups" | LC_ALL=C sort | uniq -d)
+  duplicate=${duplicate%%$'\n'*}
+  if [ -n "$duplicate" ]; then
+    echo "duplicate runner host configured: ${duplicate}" >&2
+    return 2
+  fi
+}
+
 emit_groups() {
   local groups
   groups=$(jq -n -c '[]')
   groups=$(append_group "$groups" "arm64" "ARM64" "${AWS_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "${X86_64_METAL_RUNNER_HOSTS:-}" "x86_64-unknown-linux-musl")
+  validate_unique_hosts "$groups"
   printf '%s\n' "$groups"
 }
 
