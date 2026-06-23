@@ -192,12 +192,9 @@ const READ_OPERATION_TOKENS = new Set([
 const WRITE_OPERATION_TOKENS = new Set([
   "add",
   "apply",
-  "bulk",
   "create",
   "delete",
-  "disable",
   "edit",
-  "enable",
   "patch",
   "purge",
   "refresh",
@@ -205,9 +202,7 @@ const WRITE_OPERATION_TOKENS = new Set([
   "replace",
   "revoke",
   "rotate",
-  "run",
   "send",
-  "set",
   "start",
   "stop",
   "update",
@@ -742,6 +737,19 @@ function contextSearchText(context: OperationContext): string {
   ].join(" ");
 }
 
+// Descriptions contain prose like "a set of vectors" or "run a query"; using
+// them for read/write token detection makes read-like POST routes look mutating.
+function contextActionText(context: OperationContext): string {
+  return [
+    context.apiPath,
+    context.method,
+    ...context.tags,
+    context.operationId ?? "",
+    context.summary ?? "",
+    ...context.cfPermissionsRequired,
+  ].join(" ");
+}
+
 function tokenMatchScore(
   candidateTokens: readonly string[],
   contextTokens: ReadonlySet<string>,
@@ -844,7 +852,7 @@ function actionScore(
 }
 
 function contextTokenSet(context: OperationContext): ReadonlySet<string> {
-  return new Set(tokens(contextSearchText(context)));
+  return new Set(tokens(contextActionText(context)));
 }
 
 function hasAnyToken(

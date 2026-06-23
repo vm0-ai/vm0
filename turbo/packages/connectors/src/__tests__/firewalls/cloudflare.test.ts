@@ -184,6 +184,42 @@ describe("cloudflare firewall", () => {
     ]);
   });
 
+  it("maps read-like POST endpoints to read permissions", () => {
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/logs/explorer/query/sql",
+      ["logs.read"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/zones/zone-id/logs/explorer/query/sql",
+      ["logs.read"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/vectorize/indexes/index-name/get-by-ids",
+      ["vectorize.read"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/vectorize/v2/indexes/index-name/get_by_ids",
+      ["vectorize.read"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/storage/kv/namespaces/namespace-id/bulk/get",
+      ["workers-kv-storage.read"],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/pay-per-crawl/zones_can_be_enabled/query",
+      ["account-settings.read"],
+    );
+    expectCloudflareMatches("POST", "/v4/zones/zone-id/ssl/analyze", [
+      "ssl-and-certificates.read",
+    ]);
+  });
+
   it("does not assign any route to more than one permission", () => {
     const firewall = getConnectorFirewall("cloudflare");
     const routePermissions = new Map<string, string[]>();
@@ -256,6 +292,14 @@ describe("cloudflare firewall", () => {
       "/v4/accounts/account-id/workers/scripts/script-name/tails",
       ["workers-scripts.write"],
     );
+    expectCloudflareMatches("POST", "/v4/accounts/account-id/ai/run/model", [
+      "ai.write",
+    ]);
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/realtime/kit/app-id/recordings",
+      ["realtime.admin"],
+    );
   });
 
   it("reports generated mapping coverage from the official OpenAPI schema", () => {
@@ -274,14 +318,14 @@ describe("cloudflare firewall", () => {
     expect(cloudflareGenerationStats.ambiguousOperations).toBe(0);
     expect(cloudflareGenerationStats.multiGroupOperations).toBe(1673);
     expect(cloudflareGenerationStats.operationsWithPrioritizedOwners).toBe(496);
-    expect(cloudflareGenerationStats.groupsDroppedByOwnerPriority).toBe(1230);
+    expect(cloudflareGenerationStats.groupsDroppedByOwnerPriority).toBe(1231);
     expect(cloudflareGenerationStats.operationsWithUnscoredOwnerSelection).toBe(
       0,
     );
     expect(cloudflareGenerationStats.operationsWithPrioritizedReadGroups).toBe(
-      147,
+      140,
     );
-    expect(cloudflareGenerationStats.readGroupsDroppedByPriority).toBe(167);
+    expect(cloudflareGenerationStats.readGroupsDroppedByPriority).toBe(145);
     expect(cloudflareGenerationStats.permissionCount).toBe(213);
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });

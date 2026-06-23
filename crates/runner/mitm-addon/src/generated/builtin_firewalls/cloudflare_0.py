@@ -398,6 +398,7 @@ JSON_PART = r"""{
             "GET /v4/accounts/{account_id}/organizations",
             "GET /v4/accounts/{account_id}/pay-per-crawl/crawler/stripe",
             "GET /v4/accounts/{account_id}/pay-per-crawl/publisher/stripe",
+            "POST /v4/accounts/{account_id}/pay-per-crawl/zones_can_be_enabled/query",
             "GET /v4/accounts/{account_id}/profile",
             "GET /v4/accounts/{account_id}/roles",
             "GET /v4/accounts/{account_id}/roles/{role_id}",
@@ -449,7 +450,6 @@ JSON_PART = r"""{
             "POST /v4/accounts/{account_id}/pay-per-crawl/publisher/stripe",
             "DELETE /v4/accounts/{account_id}/pay-per-crawl/publisher/stripe",
             "PATCH /v4/accounts/{account_id}/pay-per-crawl/zones_can_be_enabled",
-            "POST /v4/accounts/{account_id}/pay-per-crawl/zones_can_be_enabled/query",
             "PUT /v4/accounts/{account_id}/profile",
             "POST /v4/accounts/{account_id}/rum/site_info",
             "PUT /v4/accounts/{account_id}/rum/site_info/{site_id}",
@@ -1927,6 +1927,7 @@ JSON_PART = r"""{
             "GET /v4/accounts/{account_id}/logs/explorer/datasets",
             "GET /v4/accounts/{account_id}/logs/explorer/datasets/available",
             "GET /v4/accounts/{account_id}/logs/explorer/query/sql",
+            "POST /v4/accounts/{account_id}/logs/explorer/query/sql",
             "GET /v4/zones/{zone_id}/logpush/datasets/{dataset_id}/fields",
             "GET /v4/zones/{zone_id}/logpush/edge/jobs",
             "POST /v4/zones/{zone_id}/logpush/edge/jobs",
@@ -1934,6 +1935,7 @@ JSON_PART = r"""{
             "GET /v4/zones/{zone_id}/logs/explorer/datasets",
             "GET /v4/zones/{zone_id}/logs/explorer/datasets/available",
             "GET /v4/zones/{zone_id}/logs/explorer/query/sql",
+            "POST /v4/zones/{zone_id}/logs/explorer/query/sql",
             "GET /v4/zones/{zone_id}/logs/rayids/{ray_id}",
             "GET /v4/zones/{zone_id}/logs/received",
             "GET /v4/zones/{zone_id}/logs/received/fields"
@@ -1959,7 +1961,6 @@ JSON_PART = r"""{
             "POST /v4/accounts/{account_id}/logs/explorer/datasets",
             "GET /v4/accounts/{account_id}/logs/explorer/datasets/{dataset_id}",
             "PUT /v4/accounts/{account_id}/logs/explorer/datasets/{dataset_id}",
-            "POST /v4/accounts/{account_id}/logs/explorer/query/sql",
             "GET /v4/zones/{zone_id}/logpush/datasets/{dataset_id}/jobs",
             "GET /v4/zones/{zone_id}/logpush/jobs",
             "POST /v4/zones/{zone_id}/logpush/jobs",
@@ -1974,8 +1975,7 @@ JSON_PART = r"""{
             "POST /v4/zones/{zone_id}/logs/control/retention/flag",
             "POST /v4/zones/{zone_id}/logs/explorer/datasets",
             "GET /v4/zones/{zone_id}/logs/explorer/datasets/{dataset_id}",
-            "PUT /v4/zones/{zone_id}/logs/explorer/datasets/{dataset_id}",
-            "POST /v4/zones/{zone_id}/logs/explorer/query/sql"
+            "PUT /v4/zones/{zone_id}/logs/explorer/datasets/{dataset_id}"
           ]
         },
         {
@@ -2655,6 +2655,7 @@ JSON_PART = r"""{
             "GET /v4/zones/{zone_id}/origin_tls_client_auth/hostnames/{hostname}",
             "GET /v4/zones/{zone_id}/origin_tls_client_auth/settings",
             "GET /v4/zones/{zone_id}/origin_tls_client_auth/{certificate_id}",
+            "POST /v4/zones/{zone_id}/ssl/analyze",
             "GET /v4/zones/{zone_id}/ssl/certificate_packs",
             "GET /v4/zones/{zone_id}/ssl/certificate_packs/quota",
             "GET /v4/zones/{zone_id}/ssl/certificate_packs/{certificate_pack_id}",
@@ -2700,7 +2701,6 @@ JSON_PART = r"""{
             "DELETE /v4/zones/{zone_id}/origin_tls_client_auth/hostnames/certificates/{certificate_id}",
             "PUT /v4/zones/{zone_id}/origin_tls_client_auth/settings",
             "DELETE /v4/zones/{zone_id}/origin_tls_client_auth/{certificate_id}",
-            "POST /v4/zones/{zone_id}/ssl/analyze",
             "POST /v4/zones/{zone_id}/ssl/certificate_packs/order",
             "PATCH /v4/zones/{zone_id}/ssl/certificate_packs/{certificate_pack_id}",
             "DELETE /v4/zones/{zone_id}/ssl/certificate_packs/{certificate_pack_id}",
