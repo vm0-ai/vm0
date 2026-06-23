@@ -29,8 +29,6 @@ import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const AUTOMATION_TIME_PAST_MESSAGE = "The selected time must be in the future";
 
@@ -58,13 +56,6 @@ export function automationToTimeString(
   displayTimezone?: string,
 ): string {
   const tz = displayTimezone ?? s.timezone ?? "UTC";
-
-  if (s.triggerReadOnlyReason === "multiple_triggers") {
-    return `${s.triggerCount} triggers`;
-  }
-  if (s.triggerReadOnlyReason === "no_trigger") {
-    return "No trigger";
-  }
 
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
@@ -229,14 +220,6 @@ export interface OrgAutomationEntry {
   nextRunAt: string | null;
   lastRunAt: string | null;
   chatThreadId: string;
-  triggerCount: number;
-  triggerKinds: PlatformAutomationView["triggerKinds"];
-  triggerBadges: {
-    id: string;
-    kind: PlatformAutomationView["triggerKinds"][number];
-  }[];
-  triggerEditable: boolean;
-  triggerReadOnlyReason: PlatformAutomationView["triggerReadOnlyReason"];
   triggerSummary: string;
 }
 
@@ -273,13 +256,6 @@ export const allOrgAutomationEntries$ = computed(async (get) => {
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
         chatThreadId: s.chatThreadId,
-        triggerCount: s.triggerCount,
-        triggerKinds: s.triggerKinds,
-        triggerBadges: s.triggers.map((trigger) => {
-          return { id: trigger.id, kind: trigger.kind };
-        }),
-        triggerEditable: s.triggerEditable,
-        triggerReadOnlyReason: s.triggerReadOnlyReason,
         triggerSummary,
       };
     });
@@ -287,17 +263,9 @@ export const allOrgAutomationEntries$ = computed(async (get) => {
 
 export const fetchAllOrgAutomations$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const features = get(featureSwitch$);
-    const automations = await listAutomations(
-      get(zeroClient$),
-      {
-        signal,
-      },
-      {
-        includeUnsupported:
-          features[FeatureSwitchKey.AutomationMultiTrigger] ?? false,
-      },
-    ).finally(() => {
+    const automations = await listAutomations(get(zeroClient$), {
+      signal,
+    }).finally(() => {
       set(internalAllAutomationsLoaded$, true);
     });
     signal.throwIfAborted();
@@ -319,11 +287,6 @@ export const saveOrgAutomation$ = command(
         get(zeroClient$),
         body,
         params.editName !== undefined,
-        {
-          requireEditableTrigger:
-            get(featureSwitch$)[FeatureSwitchKey.AutomationMultiTrigger] ??
-            false,
-        },
       );
       signal.throwIfAborted();
       automationId = result.id;

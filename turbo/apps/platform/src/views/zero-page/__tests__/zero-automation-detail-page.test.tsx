@@ -4,12 +4,7 @@ import {
   logsListContract,
   type LogsListResponse,
 } from "@vm0/api-contracts/contracts/logs";
-import {
-  automationsMainContract,
-  type AutomationResponse,
-} from "@vm0/api-contracts/contracts/automations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,7 +13,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
-import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -157,44 +151,6 @@ function mockAutomationDetailStory(): void {
         agents: [agentId],
       },
     });
-  });
-}
-
-function createMultiTriggerAutomationResponse(): AutomationResponse {
-  const view = createMockAutomationView({
-    id: automationId,
-    agentId,
-    displayName: "Zero",
-    name: "weekday-morning-brief",
-    cronExpression: "30 14 * * 1-5",
-    timezone: "UTC",
-    prompt: "Send morning brief to the team channel",
-    description: "Morning brief",
-    enabled: true,
-    nextRunAt: "2026-03-11T14:30:00Z",
-  });
-  const base = toMockAutomationResponse(view);
-  const [cronTrigger] = base.triggers;
-  if (!cronTrigger) {
-    throw new Error("expected cron trigger");
-  }
-  return toMockAutomationResponse(view, {
-    triggers: [
-      cronTrigger,
-      {
-        id: "f0000001-0000-4000-a000-000000000301",
-        automationId,
-        enabled: true,
-        createdAt: "2026-03-01T00:00:00Z",
-        updatedAt: "2026-03-01T00:00:00Z",
-        kind: "loop",
-        intervalSeconds: 900,
-        timezone: "UTC",
-        nextRunAt: "2026-03-11T14:45:00Z",
-        lastRunAt: null,
-        consecutiveFailures: 0,
-      },
-    ],
   });
 }
 
@@ -388,16 +344,10 @@ describe("zero automation detail page", () => {
     });
   });
 
-  it("shows the trigger section when automation multi trigger is enabled", async () => {
+  it("shows the schedule settings section", async () => {
     mockAutomationDetailStory();
 
-    detachedSetupPage({
-      context,
-      path: `/automations/${automationId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.AutomationMultiTrigger]: true,
-      },
-    });
+    detachedSetupPage({ context, path: `/automations/${automationId}` });
 
     await waitFor(() => {
       expect(
@@ -405,40 +355,9 @@ describe("zero automation detail page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Trigger")).toBeInTheDocument();
-    expect(screen.queryByText("Runs at")).not.toBeInTheDocument();
+    expect(screen.getByText("Runs at")).toBeInTheDocument();
+    expect(screen.queryByText("Trigger")).not.toBeInTheDocument();
     expectTextPresent(/Every weekday/u);
-  });
-
-  it("shows multiple triggers as managed outside platform", async () => {
-    context.mocks.data.team([createZeroAgent()]);
-    const automation = createMultiTriggerAutomationResponse();
-    context.mocks.api(automationsMainContract.list, ({ respond }) => {
-      return respond(200, { automations: [automation], workflowTriggers: [] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/automations/${automationId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.AutomationMultiTrigger]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getAllByText("2 triggers").length).toBeGreaterThan(0);
-    expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.getByText("Loop")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "This automation has multiple triggers. Manage them from the CLI or API.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("filters automation run history", async () => {

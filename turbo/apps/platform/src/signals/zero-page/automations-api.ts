@@ -27,10 +27,6 @@ type TimeTrigger = Extract<
   { kind: "cron" | "once" | "loop" }
 >;
 
-export type AutomationTriggerReadOnlyReason =
-  | "multiple_triggers"
-  | "no_trigger";
-
 export type PlatformAutomationView = Omit<
   AutomationView,
   "triggerType" | "timezone" | "consecutiveFailures" | "nextRunAt" | "lastRunAt"
@@ -44,10 +40,6 @@ export type PlatformAutomationView = Omit<
   lastRunAt: string | null;
   consecutiveFailures: number | null;
   triggers: AutomationTriggerResponse[];
-  triggerCount: number;
-  triggerKinds: AutomationTriggerResponse["kind"][];
-  triggerEditable: boolean;
-  triggerReadOnlyReason: AutomationTriggerReadOnlyReason | null;
 };
 
 function isTimeTrigger(
@@ -64,26 +56,13 @@ function timeTriggerOf(automation: AutomationResponse): TimeTrigger | null {
   return automation.triggers.find(isTimeTrigger) ?? null;
 }
 
-function triggerReadOnlyReason(
-  automation: AutomationResponse,
-): AutomationTriggerReadOnlyReason | null {
-  if (automation.triggers.length === 0) {
-    return "no_trigger";
-  }
-  if (automation.triggers.length > 1) {
-    return "multiple_triggers";
-  }
-  return null;
-}
-
 // The platform-local projection of an automation. It keeps the legacy flat time
-// fields for existing list/calendar/detail code, while carrying the resource
-// triggers needed by the new Trigger section.
+// fields for existing list/calendar/detail code, while carrying the single
+// trigger resource used for in-place schedule updates.
 function toPlatformAutomationView(
   automation: AutomationResponse,
 ): PlatformAutomationView {
   const trigger = timeTriggerOf(automation);
-  const readOnlyReason = triggerReadOnlyReason(automation);
   return {
     id: automation.id,
     agentId: automation.agentId,
@@ -107,12 +86,6 @@ function toPlatformAutomationView(
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,
     triggers: automation.triggers,
-    triggerCount: automation.triggers.length,
-    triggerKinds: automation.triggers.map((t) => {
-      return t.kind;
-    }),
-    triggerEditable: readOnlyReason === null,
-    triggerReadOnlyReason: readOnlyReason,
   };
 }
 
@@ -189,12 +162,11 @@ async function findByNameAndAgent(
 export async function listAutomations(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-  options?: { includeUnsupported?: boolean },
 ): Promise<PlatformAutomationView[]> {
   const automations = await listAutomationResources(client, fetchOptions);
   const views: PlatformAutomationView[] = [];
   for (const automation of automations) {
-    if (options?.includeUnsupported || timeTriggerOf(automation)) {
+    if (timeTriggerOf(automation)) {
       views.push(toPlatformAutomationView(automation));
     }
   }
@@ -257,17 +229,8 @@ async function createAutomation(
 async function updateAutomation(
   client: ZeroClientFactory,
   body: AutomationFormBody,
-  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findByNameAndAgent(client, body.name, body.agentId);
-  if (
-    options?.requireEditableTrigger &&
-    triggerReadOnlyReason(existing) !== null
-  ) {
-    throw new Error(
-      "This automation has triggers managed outside platform. Edit the trigger from the CLI or API.",
-    );
-  }
 
   await accept(
     client(automationsByRefContract).update({
@@ -281,9 +244,7 @@ async function updateAutomation(
   );
 
   // Replace the time trigger's schedule in place when its config changed:
-  // one atomic PATCH that keeps the trigger's id and run history. A
-  // triggerless automation (not visible on these pages) gets a fresh
-  // trigger instead.
+  // one atomic PATCH that keeps the trigger's id and run history.
   const timeTriggers = existing.triggers.filter(isTimeTrigger);
   const kept = timeTriggers.find((trigger) => {
     return triggerMatches(trigger, body);
@@ -299,13 +260,7 @@ async function updateAutomation(
         [200],
       );
     } else {
-      await accept(
-        client(automationsByRefContract).addTrigger({
-          params: { ref: existing.id },
-          body: toTriggerRequest(body),
-        }),
-        [201],
-      );
+      throw new Error("This automation has no schedule trigger.");
     }
   }
 
@@ -320,10 +275,9 @@ export function deployAutomation(
   client: ZeroClientFactory,
   body: AutomationFormBody,
   isUpdate: boolean,
-  options?: { requireEditableTrigger?: boolean },
 ): Promise<{ id: string; created: boolean }> {
   return isUpdate
-    ? updateAutomation(client, body, options)
+    ? updateAutomation(client, body)
     : createAutomation(client, body);
 }
 
