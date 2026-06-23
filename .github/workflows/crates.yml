@@ -472,16 +472,14 @@ jobs:
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
           HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
-          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | grep -c . || true)
+          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
             exit 1
           fi
-          HASH=$(printf '%s-%s' "$JOB_REF" "$RUNNER_HOST_GROUP_ID" | md5sum | cut -c1-8)
-          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
-          HOST=$(printf '%s\n' "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$JOB_REF" "$HOSTS")
           echo "host=${HOST}" >> "$GITHUB_OUTPUT"
-          echo "Selected $RUNNER_HOST_GROUP_ID metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
+          echo "Selected $RUNNER_HOST_GROUP_ID metal host: ${HOST} (${NUM_HOSTS} host(s) in group)"
 
       - name: Run nbd-cow integration tests on metal
         env:
@@ -532,21 +530,19 @@ jobs:
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
           HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
-          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | grep -c . || true)
+          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
             exit 1
           fi
-          HASH=$(printf '%s-%s' "$JOB_REF" "$RUNNER_HOST_GROUP_ID" | md5sum | cut -c1-8)
-          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
-          HOST=$(printf '%s\n' "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$JOB_REF" "$HOSTS")
           {
             echo "host=${HOST}"
             echo "hosts<<HOSTS"
             echo "$HOSTS"
             echo "HOSTS"
           } >> "$GITHUB_OUTPUT"
-          echo "Selected representative metal host: ${HOST} (group ${RUNNER_HOST_GROUP_ID}, index ${HOST_INDEX}/${NUM_HOSTS})"
+          echo "Selected representative metal host: ${HOST} (group ${RUNNER_HOST_GROUP_ID}, ${NUM_HOSTS} host(s) in group)"
 
       - name: Wait for runner image manifest
         id: manifest
