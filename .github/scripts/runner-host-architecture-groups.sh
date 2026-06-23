@@ -82,24 +82,26 @@ emit_groups() {
   groups=$(jq -n -c '[]')
   groups=$(append_group "$groups" "arm64" "ARM64" "${AWS_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "${X86_64_METAL_RUNNER_HOSTS:-}" "x86_64-unknown-linux-musl")
-  validate_unique_hosts "$groups"
+  validate_unique_hosts "$groups" || return $?
   printf '%s\n' "$groups"
 }
 
 emit_matrix() {
-  emit_groups | jq -c 'map({
+  local groups
+  groups=$(emit_groups) || return $?
+  jq -c 'map({
     id,
     label,
     target,
     unameM,
     cacheSuffix,
     assetSuffix
-  })'
+  })' <<<"$groups"
 }
 
 emit_has_groups() {
   local groups
-  groups=$(emit_groups)
+  groups=$(emit_groups) || return $?
   if jq -e 'length > 0' >/dev/null <<<"$groups"; then
     printf 'true\n'
   else

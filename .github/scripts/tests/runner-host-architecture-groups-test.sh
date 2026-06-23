@@ -87,6 +87,11 @@ if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared
 fi
 grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-cross.err" || fail "expected duplicate host across groups message"
 
+if run_clean AWS_METAL_RUNNER_HOSTS='shared-1' X86_64_METAL_RUNNER_HOSTS='shared-1' "$HOST_GROUPS" has-groups >"${TMPDIR}/duplicate-has-groups.out" 2>"${TMPDIR}/duplicate-has-groups.err"; then
+  fail "expected duplicate host has-groups to fail"
+fi
+grep -q "duplicate runner host configured: shared-1" "${TMPDIR}/duplicate-has-groups.err" || fail "expected duplicate host has-groups message"
+
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'
