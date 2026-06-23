@@ -1,3 +1,31 @@
+//! Sandbox creation resource ownership.
+//!
+//! `SandboxCreateTransaction` owns resources acquired while
+//! `FirecrackerFactory::create` builds a sandbox. The normal create path
+//! acquires a prewarmed COW slot, renames that slot workspace to the sandbox
+//! workspace, optionally prepares the workspace drive image, creates the socket
+//! directory, acquires a network namespace, creates the NBD COW device, and
+//! then commits those stable resources into `SandboxCreateResources`.
+//!
+//! Until commit succeeds, every acquired resource remains transaction-owned.
+//! Rollback keeps the cleanup order tied to resource safety: destroy the COW
+//! device first, use that result to decide whether backing workspace files are
+//! safe to delete, release the network namespace next, and only start
+//! filesystem cleanup after the network lease has been released. If network
+//! release fails, the directories stay owned by the transaction so `Drop` can
+//! hand stable resources to `LeakCleaner` when possible.
+//!
+//! `Drop` is only a synchronous fallback for abandoned transactions. It can
+//! clean local slot, socket, and workspace state, but async-only resources such
+//! as COW devices and network leases need leak-cleaner handoff. That handoff
+//! requires a stable workspace path, socket directory, live leak channel, and at
+//! least one async-only resource; otherwise the transaction logs what remains
+//! and runner GC is the final backstop.
+//!
+//! Rollback filesystem cleanup starts its blocking task before returning a
+//! waiter. This keeps rollback task cancellation from moving blocking deletion
+//! back into transaction `Drop` on a Tokio worker thread.
+
 use std::{future::Future, path::PathBuf, pin::Pin};
 
 use async_trait::async_trait;
@@ -164,13 +192,20 @@ pub(super) struct SandboxCreateResourcesWithoutCow {
 
 #[derive(Default)]
 enum WorkspaceOwnership {
+    /// No workspace or prewarmed slot is currently owned.
     #[default]
     None,
+    /// A prewarmed COW slot is owned before its workspace is renamed.
     Slot(PrewarmedSlot),
+    /// The slot workspace rename has started.
+    ///
+    /// The target workspace path may or may not exist on disk, so rollback and
+    /// `Drop` must account for both the slot source and target path.
     RenameInProgress {
         slot: PrewarmedSlot,
         target_workspace: PathBuf,
     },
+    /// The rename finished and the stable sandbox workspace path is owned.
     Workspace(PathBuf),
 }
 

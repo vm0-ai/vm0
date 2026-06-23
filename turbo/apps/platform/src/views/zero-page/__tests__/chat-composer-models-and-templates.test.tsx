@@ -33,8 +33,7 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise, jsonParseOr } from "../../../signals/utils.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage,
@@ -48,9 +47,6 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const { get$: presentationTemplateThemeIdBySlugRaw$ } = localStorageSignals(
-  "presentationTemplateThemeIdBySlug",
-);
 
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
@@ -104,31 +100,6 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
     } else {
       delete (navigator as { userAgent?: string }).userAgent;
     }
-  };
-}
-
-function mockMatchMedia(matches: boolean): () => void {
-  const original = window.matchMedia;
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn((query: string): MediaQueryList => {
-      return {
-        addEventListener: vi.fn(),
-        addListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        matches,
-        media: query,
-        onchange: null,
-        removeEventListener: vi.fn(),
-        removeListener: vi.fn(),
-      };
-    }),
-  });
-  return () => {
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: original,
-    });
   };
 }
 
@@ -1472,6 +1443,38 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
+  it("places the template control immediately after attach", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+
+    await waitFor(() => {
+      const controls = Array.from(
+        composer.querySelectorAll(
+          [
+            'button[aria-label="Attach"]',
+            'button[aria-label="Template"]',
+            'button[aria-label="Connectors"]',
+          ].join(","),
+        ),
+      ).map((button) => {
+        return button.getAttribute("aria-label");
+      });
+
+      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+    });
+  });
+
   it("opens the template picker without focusing the tabs on small screens", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1717,114 +1720,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("uses the presentation card theme picker for template selection", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
-    });
-    if (template === undefined) {
-      throw new Error("Second presentation template not found");
-    }
-    let selectedColorSystemId: string | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate: (body) => {
-        if (body.generationTemplate?.type === "presentation") {
-          selectedColorSystemId =
-            body.generationTemplate.selection.colorSystemId;
-        }
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    await user.click(
-      await screen.findByLabelText(
-        `Select card theme Prism for ${template.title}`,
-      ),
-    );
-    expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      jsonParseOr<Record<string, string>>(
-        context.store.get(presentationTemplateThemeIdBySlugRaw$) ?? "{}",
-        {},
-      ),
-    ).toMatchObject({ [template.slug]: "prism" });
-
-    await user.click(
-      screen.getByLabelText(`Preview ${template.title} at current slide`),
-    );
-    const templateDialog = screen.getByRole("dialog");
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByRole("heading", {
-          name: `Template ${template.title}`,
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      within(templateDialog).getByLabelText("Select style Prism"),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    const templateButton = queryAllByRoleFast("button", templateDialog).find(
-      (candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-        );
-      },
-    );
-    if (!templateButton) {
-      throw new Error("Template button not found");
-    }
-    await user.click(templateButton);
-
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(
-      screen.getByLabelText(`Select template ${template.title}`),
-    );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-
-    await sendMessageInUI(
-      user,
-      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
-      "Create a launch deck",
-    );
-    await waitFor(() => {
-      expect(selectedColorSystemId).toBe("color-system:prism");
-    });
-  });
-
-  it("opens the presentation theme page from the card theme trigger on mobile", async () => {
-    const restoreMatchMedia = mockMatchMedia(true);
-    const user = userEvent.setup({ delay: null });
+  it("selects presentation templates without a card theme picker", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
     });
@@ -1847,23 +1743,60 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-
-    const templateDialog = screen.getByRole("dialog");
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByRole("heading", {
-          name: `Template ${template.title}`,
-        }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
     ).not.toBeInTheDocument();
 
-    restoreMatchMedia();
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+    const templateDialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template / ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+    const defaultThemeLabel = (
+      template.colorSystemId ?? "color-system:warm-sand"
+    )
+      .replace("color-system:", "")
+      .replace(/-/g, " ");
+    expect(
+      within(templateDialog).getByLabelText(
+        new RegExp(`^Select style ${defaultThemeLabel}$`, "i"),
+      ),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText(`Select template ${template.title}`));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens presentation template detail at the scrubbed card slide", async () => {
@@ -1904,9 +1837,12 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(`${String(lastSlideNumber)} of 15`),
-      ).toBeInTheDocument();
+        screen.getByLabelText(`Preview slide ${String(lastSlideNumber)}`),
+      ).toHaveAttribute("aria-pressed", "true");
     });
+    expect(
+      screen.queryByText(`${String(lastSlideNumber)} of 15`),
+    ).not.toBeInTheDocument();
   });
 
   it("resumes presentation template detail preview loading after reopening the same slide", async () => {
@@ -2096,23 +2032,34 @@ describe("chat composer templates", () => {
     const templateDialog = screen.getByRole("dialog");
     expect(
       within(templateDialog).getByRole("heading", {
-        name: `Template ${template.title}`,
+        name: `Template / ${template.title}`,
       }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview previous slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview previous slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
+    expect(screen.getByLabelText("Preview next slide")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+    expect(screen.getByLabelText("Preview next slide")).not.toHaveClass(
+      "focus-visible:ring-ring",
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(
+        within(templateDialog).getByLabelText("Preview slide 1"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
     const detailPreviewFrame = screen.getByTestId(
       `${template.title} detail HTML preview`,
     );
     expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
-    expect(
-      within(templateDialog).getByLabelText("Preview previous slide"),
-    ).toHaveAttribute("tabindex", "-1");
-    expect(
-      within(templateDialog).getByLabelText("Preview next slide"),
-    ).toHaveAttribute("tabindex", "-1");
+    expect(screen.queryByText("1 of 15")).not.toBeInTheDocument();
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
     const secondSlidePreviewButton =
@@ -2211,23 +2158,88 @@ describe("chat composer templates", () => {
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(
+        within(templateDialog).getByLabelText("Preview slide 1"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
     expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    fireEvent.click(screen.getByLabelText("Preview next slide"));
+    fireEvent.keyDown(
+      screen.getByLabelText(`${template.title} slide preview`),
+      {
+        key: "ArrowRight",
+      },
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("2 of 15")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
-    fireEvent.click(screen.getByLabelText("Preview previous slide"));
+    fireEvent.keyDown(
+      screen.getByLabelText(`${template.title} slide preview`),
+      {
+        key: "ArrowLeft",
+      },
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("1 of 15")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    const themeButton = screen.getByLabelText("Select style Carnival");
+    themeButton.focus();
+    expect(themeButton).toHaveFocus();
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(themeButton, {
+      key: "ArrowLeft",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 1"), {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 2")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Preview slide 2"), {
+      key: "ArrowLeft",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Preview slide 1")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
   });
 

@@ -33,59 +33,26 @@ JSON_PART = r"""{
         {
           "name": "accounting.attachments",
           "rules": [
-            "GET /Accounts/{AccountID}/Attachments",
-            "GET /Accounts/{AccountID}/Attachments/{AttachmentID}",
-            "GET /Accounts/{AccountID}/Attachments/{FileName}",
             "POST /Accounts/{AccountID}/Attachments/{FileName}",
             "PUT /Accounts/{AccountID}/Attachments/{FileName}",
-            "GET /BankTransactions/{BankTransactionID}/Attachments",
-            "GET /BankTransactions/{BankTransactionID}/Attachments/{AttachmentID}",
-            "GET /BankTransactions/{BankTransactionID}/Attachments/{FileName}",
             "POST /BankTransactions/{BankTransactionID}/Attachments/{FileName}",
             "PUT /BankTransactions/{BankTransactionID}/Attachments/{FileName}",
-            "GET /BankTransfers/{BankTransferID}/Attachments",
-            "GET /BankTransfers/{BankTransferID}/Attachments/{AttachmentID}",
-            "GET /BankTransfers/{BankTransferID}/Attachments/{FileName}",
             "POST /BankTransfers/{BankTransferID}/Attachments/{FileName}",
             "PUT /BankTransfers/{BankTransferID}/Attachments/{FileName}",
-            "GET /Contacts/{ContactID}/Attachments",
-            "GET /Contacts/{ContactID}/Attachments/{AttachmentID}",
-            "GET /Contacts/{ContactID}/Attachments/{FileName}",
             "POST /Contacts/{ContactID}/Attachments/{FileName}",
             "PUT /Contacts/{ContactID}/Attachments/{FileName}",
-            "GET /CreditNotes/{CreditNoteID}/Attachments",
-            "GET /CreditNotes/{CreditNoteID}/Attachments/{AttachmentID}",
-            "GET /CreditNotes/{CreditNoteID}/Attachments/{FileName}",
             "POST /CreditNotes/{CreditNoteID}/Attachments/{FileName}",
             "PUT /CreditNotes/{CreditNoteID}/Attachments/{FileName}",
-            "GET /Invoices/{InvoiceID}/Attachments",
-            "GET /Invoices/{InvoiceID}/Attachments/{AttachmentID}",
-            "GET /Invoices/{InvoiceID}/Attachments/{FileName}",
             "POST /Invoices/{InvoiceID}/Attachments/{FileName}",
             "PUT /Invoices/{InvoiceID}/Attachments/{FileName}",
-            "GET /ManualJournals/{ManualJournalID}/Attachments",
-            "GET /ManualJournals/{ManualJournalID}/Attachments/{AttachmentID}",
-            "GET /ManualJournals/{ManualJournalID}/Attachments/{FileName}",
             "POST /ManualJournals/{ManualJournalID}/Attachments/{FileName}",
             "PUT /ManualJournals/{ManualJournalID}/Attachments/{FileName}",
-            "GET /PurchaseOrders/{PurchaseOrderID}/Attachments",
-            "GET /PurchaseOrders/{PurchaseOrderID}/Attachments/{AttachmentID}",
-            "GET /PurchaseOrders/{PurchaseOrderID}/Attachments/{FileName}",
             "POST /PurchaseOrders/{PurchaseOrderID}/Attachments/{FileName}",
             "PUT /PurchaseOrders/{PurchaseOrderID}/Attachments/{FileName}",
-            "GET /Quotes/{QuoteID}/Attachments",
-            "GET /Quotes/{QuoteID}/Attachments/{AttachmentID}",
-            "GET /Quotes/{QuoteID}/Attachments/{FileName}",
             "POST /Quotes/{QuoteID}/Attachments/{FileName}",
             "PUT /Quotes/{QuoteID}/Attachments/{FileName}",
-            "GET /Receipts/{ReceiptID}/Attachments",
-            "GET /Receipts/{ReceiptID}/Attachments/{AttachmentID}",
-            "GET /Receipts/{ReceiptID}/Attachments/{FileName}",
             "POST /Receipts/{ReceiptID}/Attachments/{FileName}",
             "PUT /Receipts/{ReceiptID}/Attachments/{FileName}",
-            "GET /RepeatingInvoices/{RepeatingInvoiceID}/Attachments",
-            "GET /RepeatingInvoices/{RepeatingInvoiceID}/Attachments/{AttachmentID}",
-            "GET /RepeatingInvoices/{RepeatingInvoiceID}/Attachments/{FileName}",
             "POST /RepeatingInvoices/{RepeatingInvoiceID}/Attachments/{FileName}",
             "PUT /RepeatingInvoices/{RepeatingInvoiceID}/Attachments/{FileName}"
           ]
@@ -138,21 +105,15 @@ JSON_PART = r"""{
         {
           "name": "accounting.contacts",
           "rules": [
-            "GET /ContactGroups",
             "PUT /ContactGroups",
-            "GET /ContactGroups/{ContactGroupID}",
             "POST /ContactGroups/{ContactGroupID}",
             "PUT /ContactGroups/{ContactGroupID}/Contacts",
             "DELETE /ContactGroups/{ContactGroupID}/Contacts",
             "DELETE /ContactGroups/{ContactGroupID}/Contacts/{ContactID}",
-            "GET /Contacts",
             "POST /Contacts",
             "PUT /Contacts",
-            "GET /Contacts/{ContactID}",
             "POST /Contacts/{ContactID}",
-            "GET /Contacts/{ContactID}/History",
-            "PUT /Contacts/{ContactID}/History",
-            "GET /Contacts/{ContactNumber}"
+            "PUT /Contacts/{ContactID}/History"
           ]
         },
         {
@@ -185,7 +146,6 @@ JSON_PART = r"""{
             "GET /Reports/BudgetSummary",
             "GET /Reports/ExecutiveSummary",
             "GET /Reports/ProfitAndLoss",
-            "GET /Reports/TenNinetyNine",
             "GET /Reports/TrialBalance",
             "GET /Reports/{ReportID}"
           ]
@@ -199,47 +159,26 @@ JSON_PART = r"""{
         {
           "name": "accounting.settings",
           "rules": [
-            "GET /Accounts",
             "PUT /Accounts",
-            "GET /Accounts/{AccountID}",
             "POST /Accounts/{AccountID}",
             "DELETE /Accounts/{AccountID}",
-            "GET /BrandingThemes",
-            "GET /BrandingThemes/{BrandingThemeID}",
-            "GET /Contacts/{ContactID}/CISSettings",
-            "GET /Currencies",
             "PUT /Currencies",
-            "GET /Employees",
             "POST /Employees",
             "PUT /Employees",
-            "GET /Employees/{EmployeeID}",
-            "GET /InvoiceReminders/Settings",
-            "GET /Items",
             "POST /Items",
             "PUT /Items",
-            "GET /Items/{ItemID}",
             "POST /Items/{ItemID}",
             "DELETE /Items/{ItemID}",
-            "GET /Items/{ItemID}/History",
             "PUT /Items/{ItemID}/History",
-            "GET /Organisation",
-            "GET /Organisation/Actions",
-            "GET /Organisation/{OrganisationID}/CISSettings",
             "POST /Setup",
-            "GET /TaxRates",
             "POST /TaxRates",
             "PUT /TaxRates",
-            "GET /TaxRates/{TaxType}",
-            "GET /TrackingCategories",
             "PUT /TrackingCategories",
-            "GET /TrackingCategories/{TrackingCategoryID}",
             "POST /TrackingCategories/{TrackingCategoryID}",
             "DELETE /TrackingCategories/{TrackingCategoryID}",
             "PUT /TrackingCategories/{TrackingCategoryID}/Options",
             "POST /TrackingCategories/{TrackingCategoryID}/Options/{TrackingOptionID}",
-            "DELETE /TrackingCategories/{TrackingCategoryID}/Options/{TrackingOptionID}",
-            "GET /Users",
-            "GET /Users/{UserID}"
+            "DELETE /TrackingCategories/{TrackingCategoryID}/Options/{TrackingOptionID}"
           ]
         },
         {
@@ -271,111 +210,61 @@ JSON_PART = r"""{
         {
           "name": "accounting.transactions",
           "rules": [
-            "GET /BankTransactions",
             "POST /BankTransactions",
             "PUT /BankTransactions",
-            "GET /BankTransactions/{BankTransactionID}",
             "POST /BankTransactions/{BankTransactionID}",
-            "GET /BankTransactions/{BankTransactionID}/History",
             "PUT /BankTransactions/{BankTransactionID}/History",
-            "GET /BankTransfers",
             "PUT /BankTransfers",
-            "GET /BankTransfers/{BankTransferID}",
-            "GET /BankTransfers/{BankTransferID}/History",
             "PUT /BankTransfers/{BankTransferID}/History",
-            "GET /BatchPayments",
             "POST /BatchPayments",
             "PUT /BatchPayments",
-            "GET /BatchPayments/{BatchPaymentID}",
             "POST /BatchPayments/{BatchPaymentID}",
-            "GET /BatchPayments/{BatchPaymentID}/History",
             "PUT /BatchPayments/{BatchPaymentID}/History",
-            "GET /CreditNotes",
             "POST /CreditNotes",
             "PUT /CreditNotes",
-            "GET /CreditNotes/{CreditNoteID}",
             "POST /CreditNotes/{CreditNoteID}",
             "PUT /CreditNotes/{CreditNoteID}/Allocations",
             "DELETE /CreditNotes/{CreditNoteID}/Allocations/{AllocationID}",
-            "GET /CreditNotes/{CreditNoteID}/History",
             "PUT /CreditNotes/{CreditNoteID}/History",
-            "GET /CreditNotes/{CreditNoteID}/pdf",
-            "GET /ExpenseClaims",
             "PUT /ExpenseClaims",
-            "GET /ExpenseClaims/{ExpenseClaimID}",
             "POST /ExpenseClaims/{ExpenseClaimID}",
-            "GET /ExpenseClaims/{ExpenseClaimID}/History",
             "PUT /ExpenseClaims/{ExpenseClaimID}/History",
-            "GET /Invoices",
             "POST /Invoices",
             "PUT /Invoices",
-            "GET /Invoices/{InvoiceID}",
             "POST /Invoices/{InvoiceID}",
             "POST /Invoices/{InvoiceID}/Email",
-            "GET /Invoices/{InvoiceID}/History",
             "PUT /Invoices/{InvoiceID}/History",
-            "GET /Invoices/{InvoiceID}/OnlineInvoice",
-            "GET /Invoices/{InvoiceID}/pdf",
-            "GET /LinkedTransactions",
             "PUT /LinkedTransactions",
-            "GET /LinkedTransactions/{LinkedTransactionID}",
             "POST /LinkedTransactions/{LinkedTransactionID}",
             "DELETE /LinkedTransactions/{LinkedTransactionID}",
-            "GET /ManualJournals",
             "POST /ManualJournals",
             "PUT /ManualJournals",
-            "GET /ManualJournals/{ManualJournalID}",
             "POST /ManualJournals/{ManualJournalID}",
-            "GET /ManualJournals/{ManualJournalID}/History",
             "PUT /ManualJournals/{ManualJournalID}/History",
-            "GET /Overpayments",
-            "GET /Overpayments/{OverpaymentID}",
             "PUT /Overpayments/{OverpaymentID}/Allocations",
             "DELETE /Overpayments/{OverpaymentID}/Allocations/{AllocationID}",
-            "GET /Overpayments/{OverpaymentID}/History",
             "PUT /Overpayments/{OverpaymentID}/History",
-            "GET /Payments",
             "POST /Payments",
             "PUT /Payments",
-            "GET /Payments/{PaymentID}",
             "POST /Payments/{PaymentID}",
-            "GET /Payments/{PaymentID}/History",
             "PUT /Payments/{PaymentID}/History",
-            "GET /Prepayments",
-            "GET /Prepayments/{PrepaymentID}",
             "PUT /Prepayments/{PrepaymentID}/Allocations",
             "DELETE /Prepayments/{PrepaymentID}/Allocations/{AllocationID}",
-            "GET /Prepayments/{PrepaymentID}/History",
             "PUT /Prepayments/{PrepaymentID}/History",
-            "GET /PurchaseOrders",
             "POST /PurchaseOrders",
             "PUT /PurchaseOrders",
-            "GET /PurchaseOrders/{PurchaseOrderID}",
             "POST /PurchaseOrders/{PurchaseOrderID}",
-            "GET /PurchaseOrders/{PurchaseOrderID}/History",
             "PUT /PurchaseOrders/{PurchaseOrderID}/History",
-            "GET /PurchaseOrders/{PurchaseOrderID}/pdf",
-            "GET /PurchaseOrders/{PurchaseOrderNumber}",
-            "GET /Quotes",
             "POST /Quotes",
             "PUT /Quotes",
-            "GET /Quotes/{QuoteID}",
             "POST /Quotes/{QuoteID}",
-            "GET /Quotes/{QuoteID}/History",
             "PUT /Quotes/{QuoteID}/History",
-            "GET /Quotes/{QuoteID}/pdf",
-            "GET /Receipts",
             "PUT /Receipts",
-            "GET /Receipts/{ReceiptID}",
             "POST /Receipts/{ReceiptID}",
-            "GET /Receipts/{ReceiptID}/History",
             "PUT /Receipts/{ReceiptID}/History",
-            "GET /RepeatingInvoices",
             "POST /RepeatingInvoices",
             "PUT /RepeatingInvoices",
-            "GET /RepeatingInvoices/{RepeatingInvoiceID}",
             "POST /RepeatingInvoices/{RepeatingInvoiceID}",
-            "GET /RepeatingInvoices/{RepeatingInvoiceID}/History",
             "PUT /RepeatingInvoices/{RepeatingInvoiceID}/History"
           ]
         },
@@ -475,12 +364,8 @@ JSON_PART = r"""{
         {
           "name": "assets",
           "rules": [
-            "GET /AssetTypes",
             "POST /AssetTypes",
-            "GET /Assets",
-            "POST /Assets",
-            "GET /Assets/{id}",
-            "GET /Settings"
+            "POST /Assets"
           ]
         },
         {
@@ -527,24 +412,15 @@ JSON_PART = r"""{
         {
           "name": "files",
           "rules": [
-            "GET /Associations/Count",
-            "GET /Associations/{ObjectId}",
-            "GET /Files",
             "POST /Files",
-            "GET /Files/{FileId}",
             "PUT /Files/{FileId}",
             "DELETE /Files/{FileId}",
-            "GET /Files/{FileId}/Associations",
             "POST /Files/{FileId}/Associations",
             "DELETE /Files/{FileId}/Associations/{ObjectId}",
-            "GET /Files/{FileId}/Content",
             "POST /Files/{FolderId}",
-            "GET /Folders",
             "POST /Folders",
-            "GET /Folders/{FolderId}",
             "PUT /Folders/{FolderId}",
-            "DELETE /Folders/{FolderId}",
-            "GET /Inbox"
+            "DELETE /Folders/{FolderId}"
           ]
         },
         {
@@ -607,14 +483,9 @@ JSON_PART = r"""{
         {
           "name": "payroll.employees",
           "rules": [
-            "GET /Employees",
             "POST /Employees",
-            "GET /Employees/{EmployeeID}",
             "POST /Employees/{EmployeeID}",
-            "GET /LeaveApplications",
             "POST /LeaveApplications",
-            "GET /LeaveApplications/v2",
-            "GET /LeaveApplications/{LeaveApplicationID}",
             "POST /LeaveApplications/{LeaveApplicationID}",
             "POST /LeaveApplications/{LeaveApplicationID}/approve",
             "POST /LeaveApplications/{LeaveApplicationID}/reject"
@@ -633,9 +504,7 @@ JSON_PART = r"""{
         {
           "name": "payroll.payruns",
           "rules": [
-            "GET /PayRuns",
             "POST /PayRuns",
-            "GET /PayRuns/{PayRunID}",
             "POST /PayRuns/{PayRunID}"
           ]
         },
@@ -649,7 +518,6 @@ JSON_PART = r"""{
         {
           "name": "payroll.payslip",
           "rules": [
-            "GET /Payslip/{PayslipID}",
             "POST /Payslip/{PayslipID}"
           ]
         },
@@ -662,16 +530,9 @@ JSON_PART = r"""{
         {
           "name": "payroll.settings",
           "rules": [
-            "GET /PayItems",
             "POST /PayItems",
-            "GET /PayrollCalendars",
             "POST /PayrollCalendars",
-            "GET /PayrollCalendars/{PayrollCalendarID}",
-            "GET /Settings",
-            "GET /SuperfundProducts",
-            "GET /Superfunds",
             "POST /Superfunds",
-            "GET /Superfunds/{SuperFundID}",
             "POST /Superfunds/{SuperFundID}"
           ]
         },
@@ -690,9 +551,7 @@ JSON_PART = r"""{
         {
           "name": "payroll.timesheets",
           "rules": [
-            "GET /Timesheets",
             "POST /Timesheets",
-            "GET /Timesheets/{TimesheetID}",
             "POST /Timesheets/{TimesheetID}"
           ]
         },
@@ -716,47 +575,30 @@ JSON_PART = r"""{
         {
           "name": "payroll.employees",
           "rules": [
-            "GET /Employees",
             "POST /Employees",
-            "GET /Employees/{EmployeeID}",
             "PUT /Employees/{EmployeeID}",
             "POST /Employees/{EmployeeID}/Employment",
-            "GET /Employees/{EmployeeID}/Leave",
             "POST /Employees/{EmployeeID}/Leave",
-            "GET /Employees/{EmployeeID}/Leave/{LeaveID}",
             "PUT /Employees/{EmployeeID}/Leave/{LeaveID}",
             "DELETE /Employees/{EmployeeID}/Leave/{LeaveID}",
-            "GET /Employees/{EmployeeID}/LeaveBalances",
-            "GET /Employees/{EmployeeID}/LeavePeriods",
             "POST /Employees/{EmployeeID}/LeaveSetup",
-            "GET /Employees/{EmployeeID}/LeaveTypes",
             "POST /Employees/{EmployeeID}/LeaveTypes",
-            "GET /Employees/{EmployeeID}/OpeningBalances",
             "POST /Employees/{EmployeeID}/OpeningBalances",
             "POST /Employees/{EmployeeID}/PayTemplateEarnings",
-            "GET /Employees/{EmployeeID}/PayTemplates",
             "POST /Employees/{EmployeeID}/PayTemplates/Earnings",
             "PUT /Employees/{EmployeeID}/PayTemplates/Earnings/{PayTemplateEarningID}",
             "DELETE /Employees/{EmployeeID}/PayTemplates/Earnings/{PayTemplateEarningID}",
             "POST /Employees/{EmployeeID}/PayTemplates/earnings",
             "PUT /Employees/{EmployeeID}/PayTemplates/earnings/{PayTemplateEarningID}",
             "DELETE /Employees/{EmployeeID}/PayTemplates/earnings/{PayTemplateEarningID}",
-            "GET /Employees/{EmployeeID}/PaymentMethods",
             "POST /Employees/{EmployeeID}/PaymentMethods",
-            "GET /Employees/{EmployeeID}/SalaryAndWages",
             "POST /Employees/{EmployeeID}/SalaryAndWages",
-            "GET /Employees/{EmployeeID}/SalaryAndWages/{SalaryAndWagesID}",
             "PUT /Employees/{EmployeeID}/SalaryAndWages/{SalaryAndWagesID}",
             "DELETE /Employees/{EmployeeID}/SalaryAndWages/{SalaryAndWagesID}",
-            "GET /Employees/{EmployeeID}/StatutoryLeaveBalance",
-            "GET /Employees/{EmployeeID}/Tax",
             "POST /Employees/{EmployeeID}/Tax",
-            "GET /Employees/{EmployeeID}/Working-Patterns",
             "POST /Employees/{EmployeeID}/Working-Patterns",
-            "GET /Employees/{EmployeeID}/Working-Patterns/{EmployeeWorkingPatternID}",
             "DELETE /Employees/{EmployeeID}/Working-Patterns/{EmployeeWorkingPatternID}",
             "POST /Employees/{EmployeeID}/paytemplateearnings",
-            "GET /Employees/{EmployeeID}/ukopeningbalances",
             "POST /Employees/{EmployeeID}/ukopeningbalances",
             "PUT /Employees/{EmployeeID}/ukopeningbalances"
           ]
@@ -786,9 +628,7 @@ JSON_PART = r"""{
         {
           "name": "payroll.payruns",
           "rules": [
-            "GET /PayRuns",
-            "POST /PayRuns",
-            "GET /PayRuns/{PayRunID}"
+            "POST /PayRuns"
           ]
         },
         {
@@ -801,11 +641,7 @@ JSON_PART = r"""{
         {
           "name": "payroll.payslip",
           "rules": [
-            "GET /PaySlips",
-            "GET /PaySlips/{PaySlipID}",
-            "PUT /PaySlips/{PaySlipID}",
-            "GET /Payslips",
-            "GET /Payslips/{PayslipID}"
+            "PUT /PaySlips/{PaySlipID}"
           ]
         },
         {
@@ -820,38 +656,14 @@ JSON_PART = r"""{
         {
           "name": "payroll.settings",
           "rules": [
-            "GET /Benefits",
             "POST /Benefits",
-            "GET /Benefits/{id}",
-            "GET /Deductions",
             "POST /Deductions",
-            "GET /Deductions/{deductionId}",
-            "GET /EarningsOrders",
-            "GET /EarningsOrders/{id}",
-            "GET /EarningsRates",
             "POST /EarningsRates",
-            "GET /EarningsRates/{EarningsRateID}",
-            "GET /LeaveTypes",
             "POST /LeaveTypes",
-            "GET /LeaveTypes/{LeaveTypeID}",
-            "GET /PayRunCalendars",
             "POST /PayRunCalendars",
-            "GET /PayRunCalendars/{PayRunCalendarID}",
-            "GET /PayRunCalendars/{PayrollCalendarID}",
-            "GET /Reimbursements",
             "POST /Reimbursements",
-            "GET /Reimbursements/{ReimbursementID}",
-            "GET /Settings",
-            "GET /Settings/TrackingCategories",
-            "GET /Settings/trackingCategories",
-            "GET /StatutoryDeductions",
-            "GET /StatutoryDeductions/{id}",
             "POST /StatutoryLeaves/Sick",
-            "GET /StatutoryLeaves/Sick/{StatutorySickLeaveID}",
-            "GET /StatutoryLeaves/Summary/{EmployeeID}",
-            "GET /Superannuations",
-            "POST /Superannuations",
-            "GET /Superannuations/{SuperannuationID}"
+            "POST /Superannuations"
           ]
         },
         {
@@ -886,9 +698,7 @@ JSON_PART = r"""{
         {
           "name": "payroll.timesheets",
           "rules": [
-            "GET /Timesheets",
             "POST /Timesheets",
-            "GET /Timesheets/{TimesheetID}",
             "DELETE /Timesheets/{TimesheetID}",
             "POST /Timesheets/{TimesheetID}/Approve",
             "POST /Timesheets/{TimesheetID}/Lines",
@@ -917,22 +727,15 @@ JSON_PART = r"""{
         {
           "name": "projects",
           "rules": [
-            "GET /Projects",
             "POST /Projects",
-            "GET /Projects/{projectId}",
             "PUT /Projects/{projectId}",
             "PATCH /Projects/{projectId}",
-            "GET /Projects/{projectId}/Tasks",
             "POST /Projects/{projectId}/Tasks",
-            "GET /Projects/{projectId}/Tasks/{taskId}",
             "PUT /Projects/{projectId}/Tasks/{taskId}",
             "DELETE /Projects/{projectId}/Tasks/{taskId}",
-            "GET /Projects/{projectId}/Time",
             "POST /Projects/{projectId}/Time",
-            "GET /Projects/{projectId}/Time/{timeEntryId}",
             "PUT /Projects/{projectId}/Time/{timeEntryId}",
-            "DELETE /Projects/{projectId}/Time/{timeEntryId}",
-            "GET /ProjectsUsers"
+            "DELETE /Projects/{projectId}/Time/{timeEntryId}"
           ]
         },
         {

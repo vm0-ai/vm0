@@ -20,18 +20,18 @@ macro_rules! emit_success_summary_event {
             profile = ($timing).profile.as_str(),
             workspace_drive_present = ($timing).workspace_drive_present,
             workspace_seed_image_used = ($timing).workspace_seed_image_used,
-            cow_pool_acquire_ms = optional_duration_ms(($timing).durations.cow_pool_acquire),
+            cow_pool_acquire_ms = ($timing).stage_duration_ms(SandboxCreateStage::CowPoolAcquire),
             workspace_dir_rename_ms =
-                optional_duration_ms(($timing).durations.workspace_dir_rename),
+                ($timing).stage_duration_ms(SandboxCreateStage::WorkspaceDirRename),
             workspace_drive_prepare_ms =
-                optional_duration_ms(($timing).durations.workspace_drive_prepare),
+                ($timing).stage_duration_ms(SandboxCreateStage::WorkspaceDrivePrepare),
             workspace_seed_sparse_copy_ms =
-                optional_duration_ms(($timing).durations.workspace_seed_sparse_copy),
+                ($timing).stage_duration_ms(SandboxCreateStage::WorkspaceSeedSparseCopy),
             workspace_fresh_format_ms =
-                optional_duration_ms(($timing).durations.workspace_fresh_format),
-            sock_dir_prepare_ms = optional_duration_ms(($timing).durations.sock_dir_prepare),
-            netns_acquire_ms = optional_duration_ms(($timing).durations.netns_acquire),
-            nbd_cow_create_ms = optional_duration_ms(($timing).durations.nbd_cow_create),
+                ($timing).stage_duration_ms(SandboxCreateStage::WorkspaceFreshFormat),
+            sock_dir_prepare_ms = ($timing).stage_duration_ms(SandboxCreateStage::SockDirPrepare),
+            netns_acquire_ms = ($timing).stage_duration_ms(SandboxCreateStage::NetnsAcquire),
+            nbd_cow_create_ms = ($timing).stage_duration_ms(SandboxCreateStage::NbdCowCreate),
             $message
         );
     };
@@ -50,6 +50,19 @@ pub(crate) enum SandboxCreateStage {
 }
 
 impl SandboxCreateStage {
+    const ALL: [Self; 8] = [
+        Self::CowPoolAcquire,
+        Self::WorkspaceDirRename,
+        Self::WorkspaceDrivePrepare,
+        Self::WorkspaceSeedSparseCopy,
+        Self::WorkspaceFreshFormat,
+        Self::SockDirPrepare,
+        Self::NetnsAcquire,
+        Self::NbdCowCreate,
+    ];
+
+    const COUNT: usize = Self::ALL.len();
+
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::CowPoolAcquire => "cow_pool_acquire",
@@ -62,51 +75,86 @@ impl SandboxCreateStage {
             Self::NbdCowCreate => "nbd_cow_create",
         }
     }
+
+    #[cfg(test)]
+    fn summary_field_name(self) -> &'static str {
+        match self {
+            Self::CowPoolAcquire => "cow_pool_acquire_ms",
+            Self::WorkspaceDirRename => "workspace_dir_rename_ms",
+            Self::WorkspaceDrivePrepare => "workspace_drive_prepare_ms",
+            Self::WorkspaceSeedSparseCopy => "workspace_seed_sparse_copy_ms",
+            Self::WorkspaceFreshFormat => "workspace_fresh_format_ms",
+            Self::SockDirPrepare => "sock_dir_prepare_ms",
+            Self::NetnsAcquire => "netns_acquire_ms",
+            Self::NbdCowCreate => "nbd_cow_create_ms",
+        }
+    }
 }
 
-#[derive(Default)]
 struct SandboxCreateStageDurations {
-    cow_pool_acquire: Option<Duration>,
-    workspace_dir_rename: Option<Duration>,
-    workspace_drive_prepare: Option<Duration>,
-    workspace_seed_sparse_copy: Option<Duration>,
-    workspace_fresh_format: Option<Duration>,
-    sock_dir_prepare: Option<Duration>,
-    netns_acquire: Option<Duration>,
-    nbd_cow_create: Option<Duration>,
+    values: [Option<Duration>; SandboxCreateStage::COUNT],
+}
+
+impl Default for SandboxCreateStageDurations {
+    fn default() -> Self {
+        Self {
+            values: [None; SandboxCreateStage::COUNT],
+        }
+    }
 }
 
 impl SandboxCreateStageDurations {
     fn set(&mut self, stage: SandboxCreateStage, duration: Duration) {
+        *self.slot_mut(stage) = Some(duration);
+    }
+
+    fn get(&self, stage: SandboxCreateStage) -> Option<Duration> {
+        *self.slot(stage)
+    }
+
+    fn slot(&self, stage: SandboxCreateStage) -> &Option<Duration> {
+        let [
+            cow_pool_acquire,
+            workspace_dir_rename,
+            workspace_drive_prepare,
+            workspace_seed_sparse_copy,
+            workspace_fresh_format,
+            sock_dir_prepare,
+            netns_acquire,
+            nbd_cow_create,
+        ] = &self.values;
         match stage {
-            SandboxCreateStage::CowPoolAcquire => self.cow_pool_acquire = Some(duration),
-            SandboxCreateStage::WorkspaceDirRename => self.workspace_dir_rename = Some(duration),
-            SandboxCreateStage::WorkspaceDrivePrepare => {
-                self.workspace_drive_prepare = Some(duration);
-            }
-            SandboxCreateStage::WorkspaceSeedSparseCopy => {
-                self.workspace_seed_sparse_copy = Some(duration);
-            }
-            SandboxCreateStage::WorkspaceFreshFormat => {
-                self.workspace_fresh_format = Some(duration)
-            }
-            SandboxCreateStage::SockDirPrepare => self.sock_dir_prepare = Some(duration),
-            SandboxCreateStage::NetnsAcquire => self.netns_acquire = Some(duration),
-            SandboxCreateStage::NbdCowCreate => self.nbd_cow_create = Some(duration),
+            SandboxCreateStage::CowPoolAcquire => cow_pool_acquire,
+            SandboxCreateStage::WorkspaceDirRename => workspace_dir_rename,
+            SandboxCreateStage::WorkspaceDrivePrepare => workspace_drive_prepare,
+            SandboxCreateStage::WorkspaceSeedSparseCopy => workspace_seed_sparse_copy,
+            SandboxCreateStage::WorkspaceFreshFormat => workspace_fresh_format,
+            SandboxCreateStage::SockDirPrepare => sock_dir_prepare,
+            SandboxCreateStage::NetnsAcquire => netns_acquire,
+            SandboxCreateStage::NbdCowCreate => nbd_cow_create,
         }
     }
 
-    #[cfg(test)]
-    fn get(&self, stage: SandboxCreateStage) -> Option<Duration> {
+    fn slot_mut(&mut self, stage: SandboxCreateStage) -> &mut Option<Duration> {
+        let [
+            cow_pool_acquire,
+            workspace_dir_rename,
+            workspace_drive_prepare,
+            workspace_seed_sparse_copy,
+            workspace_fresh_format,
+            sock_dir_prepare,
+            netns_acquire,
+            nbd_cow_create,
+        ] = &mut self.values;
         match stage {
-            SandboxCreateStage::CowPoolAcquire => self.cow_pool_acquire,
-            SandboxCreateStage::WorkspaceDirRename => self.workspace_dir_rename,
-            SandboxCreateStage::WorkspaceDrivePrepare => self.workspace_drive_prepare,
-            SandboxCreateStage::WorkspaceSeedSparseCopy => self.workspace_seed_sparse_copy,
-            SandboxCreateStage::WorkspaceFreshFormat => self.workspace_fresh_format,
-            SandboxCreateStage::SockDirPrepare => self.sock_dir_prepare,
-            SandboxCreateStage::NetnsAcquire => self.netns_acquire,
-            SandboxCreateStage::NbdCowCreate => self.nbd_cow_create,
+            SandboxCreateStage::CowPoolAcquire => cow_pool_acquire,
+            SandboxCreateStage::WorkspaceDirRename => workspace_dir_rename,
+            SandboxCreateStage::WorkspaceDrivePrepare => workspace_drive_prepare,
+            SandboxCreateStage::WorkspaceSeedSparseCopy => workspace_seed_sparse_copy,
+            SandboxCreateStage::WorkspaceFreshFormat => workspace_fresh_format,
+            SandboxCreateStage::SockDirPrepare => sock_dir_prepare,
+            SandboxCreateStage::NetnsAcquire => netns_acquire,
+            SandboxCreateStage::NbdCowCreate => nbd_cow_create,
         }
     }
 }
@@ -174,6 +222,10 @@ impl SandboxCreateTiming {
 
     fn record_stage_duration(&mut self, stage: SandboxCreateStage, duration: Duration) {
         self.durations.set(stage, duration);
+    }
+
+    fn stage_duration_ms(&self, stage: SandboxCreateStage) -> u64 {
+        optional_duration_ms(self.durations.get(stage))
     }
 
     fn emit_stage_failure(&mut self, stage: SandboxCreateStage, elapsed: Duration, error: &str) {
@@ -309,6 +361,29 @@ mod tests {
         "workspace_seed_sparse_copy_ms",
     ];
 
+    const SUCCESS_SUMMARY_STAGE_FIELDS: &[(SandboxCreateStage, &str)] = &[
+        (SandboxCreateStage::CowPoolAcquire, "cow_pool_acquire_ms"),
+        (
+            SandboxCreateStage::WorkspaceDirRename,
+            "workspace_dir_rename_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceDrivePrepare,
+            "workspace_drive_prepare_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceSeedSparseCopy,
+            "workspace_seed_sparse_copy_ms",
+        ),
+        (
+            SandboxCreateStage::WorkspaceFreshFormat,
+            "workspace_fresh_format_ms",
+        ),
+        (SandboxCreateStage::SockDirPrepare, "sock_dir_prepare_ms"),
+        (SandboxCreateStage::NetnsAcquire, "netns_acquire_ms"),
+        (SandboxCreateStage::NbdCowCreate, "nbd_cow_create_ms"),
+    ];
+
     fn capture_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
@@ -366,6 +441,33 @@ mod tests {
     }
 
     #[test]
+    fn success_summary_contract_includes_every_stage_field() {
+        assert_eq!(
+            SUCCESS_SUMMARY_STAGE_FIELDS.len(),
+            SandboxCreateStage::COUNT
+        );
+        let stage_fields: BTreeSet<&str> = SUCCESS_SUMMARY_STAGE_FIELDS
+            .iter()
+            .map(|(_, field)| *field)
+            .collect();
+
+        assert_eq!(stage_fields.len(), SandboxCreateStage::COUNT);
+        for stage in SandboxCreateStage::ALL {
+            let Some((_, field)) = SUCCESS_SUMMARY_STAGE_FIELDS
+                .iter()
+                .find(|(candidate, _)| *candidate == stage)
+            else {
+                panic!("missing success summary field contract for {stage:?}");
+            };
+            assert_eq!(stage.summary_field_name(), *field);
+            assert!(
+                SUCCESS_SUMMARY_FIELD_NAMES.contains(field),
+                "missing success summary field for {stage:?}"
+            );
+        }
+    }
+
+    #[test]
     fn fast_success_emits_info_summary() {
         let timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
 
@@ -414,28 +516,10 @@ mod tests {
         let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
         timing.mark_workspace_drive_present();
         timing.mark_workspace_seed_image_used();
-        timing.record_stage_duration(
-            SandboxCreateStage::CowPoolAcquire,
-            Duration::from_millis(10),
-        );
-        timing.record_stage_duration(
-            SandboxCreateStage::WorkspaceDirRename,
-            Duration::from_millis(20),
-        );
-        timing.record_stage_duration(
-            SandboxCreateStage::WorkspaceDrivePrepare,
-            Duration::from_millis(30),
-        );
-        timing.record_stage_duration(
-            SandboxCreateStage::WorkspaceSeedSparseCopy,
-            Duration::from_millis(40),
-        );
-        timing.record_stage_duration(
-            SandboxCreateStage::SockDirPrepare,
-            Duration::from_millis(50),
-        );
-        timing.record_stage_duration(SandboxCreateStage::NetnsAcquire, Duration::from_millis(60));
-        timing.record_stage_duration(SandboxCreateStage::NbdCowCreate, Duration::from_millis(70));
+        for (index, (stage, _)) in SUCCESS_SUMMARY_STAGE_FIELDS.iter().copied().enumerate() {
+            let duration_ms = (index as u64 + 1) * 10;
+            timing.record_stage_duration(stage, Duration::from_millis(duration_ms));
+        }
 
         let event = capture_success_summary_event(&timing, SLOW_SANDBOX_CREATE_THRESHOLD);
 
@@ -451,14 +535,10 @@ mod tests {
         assert_field(&event, "threshold_ms", "3000");
         assert_field(&event, "workspace_drive_present", "true");
         assert_field(&event, "workspace_seed_image_used", "true");
-        assert_field(&event, "cow_pool_acquire_ms", "10");
-        assert_field(&event, "workspace_dir_rename_ms", "20");
-        assert_field(&event, "workspace_drive_prepare_ms", "30");
-        assert_field(&event, "workspace_seed_sparse_copy_ms", "40");
-        assert_field(&event, "workspace_fresh_format_ms", "0");
-        assert_field(&event, "sock_dir_prepare_ms", "50");
-        assert_field(&event, "netns_acquire_ms", "60");
-        assert_field(&event, "nbd_cow_create_ms", "70");
+        for (index, (_, field)) in SUCCESS_SUMMARY_STAGE_FIELDS.iter().copied().enumerate() {
+            let expected = ((index as u64 + 1) * 10).to_string();
+            assert_field(&event, field, &expected);
+        }
     }
 
     #[test]

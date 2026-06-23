@@ -18,7 +18,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
-  IconChevronDown,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
@@ -181,15 +180,8 @@ import {
   setTemplateCardDefaultHtmlPreview$,
   templateCardLoadedHtmlFrameUrls$,
   setTemplateCardLoadedHtmlFrameUrl$,
-  templateCardThemeIdBySlug$,
-  setTemplateCardThemeId$,
-  templateCardThemePopoverPlacementBySlug$,
-  setTemplateCardThemePopoverPlacement$,
-  templateCardThemePopoverOpenSlug$,
-  setTemplateCardThemePopoverOpenSlug$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
-  type TemplateCardThemePopoverPlacement,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
   setTemplateDetailHtmlPreview$,
@@ -3356,6 +3348,97 @@ function handleTemplateDetailTabKeyDown(
   candidates[nextIndex]?.focus();
 }
 
+interface PresentationTemplateDetailPreviewState {
+  readonly embedUrl: string;
+  readonly failed: boolean;
+  readonly frameUrl: string | null;
+  readonly index: number;
+  readonly loading: boolean;
+  readonly slideCount: number;
+  readonly slug: string;
+  readonly themeId: string;
+}
+
+type SetPresentationTemplateDetailPreview = (
+  value: PresentationTemplateDetailPreviewState | null,
+) => void;
+
+type SetPresentationTemplateDetailSlideIndex = (
+  slug: string,
+  index: number,
+) => void;
+
+function setLoadedPresentationTemplateDetailPreview({
+  draft,
+  index,
+  item,
+  previousFrameUrl,
+  selectedTheme,
+  setDetailPreview,
+}: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+}) {
+  const slide = draft.slides[Math.min(index, draft.slides.length - 1)];
+  if (slide === undefined) {
+    return;
+  }
+  revokePresentationTemplateHtmlPreviewUrl(previousFrameUrl);
+  const frameUrl = createThemedPresentationPreviewUrl({
+    activeSlideId: slide.id,
+    draft,
+    theme: selectedTheme,
+  });
+  setDetailPreview({
+    slug: item.slug,
+    embedUrl: item.embedUrl,
+    themeId: selectedTheme.id,
+    index,
+    loading: false,
+    failed: false,
+    frameUrl,
+    slideCount: draft.slides.length,
+  });
+}
+
+function selectPresentationTemplateDetailSlide({
+  detailPreview,
+  detailSlideCount,
+  index,
+  item,
+  selectedTheme,
+  setDetailPreview,
+  setSlideIndex,
+}: {
+  readonly detailPreview: PresentationTemplateDetailPreviewState | null;
+  readonly detailSlideCount: number;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly selectedTheme: PresentationTemplateThemeOption;
+  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+  readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
+}) {
+  const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
+  setSlideIndex(item.slug, nextIndex);
+  const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+    item.embedUrl,
+  );
+  if (cachedDraft !== undefined) {
+    setLoadedPresentationTemplateDetailPreview({
+      draft: cachedDraft,
+      index: nextIndex,
+      item,
+      previousFrameUrl: detailPreview?.frameUrl ?? null,
+      selectedTheme,
+      setDetailPreview,
+    });
+  }
+}
+
 function TemplatePreviewPage({
   item,
   onBack,
@@ -3398,28 +3481,13 @@ function TemplatePreviewPage({
     readonly previousFrameUrl: string | null;
     readonly theme: PresentationTemplateThemeOption;
   }) => {
-    const slide =
-      params.draft.slides[
-        Math.min(params.index, params.draft.slides.length - 1)
-      ];
-    if (slide === undefined) {
-      return;
-    }
-    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
-    const frameUrl = createThemedPresentationPreviewUrl({
-      activeSlideId: slide.id,
+    setLoadedPresentationTemplateDetailPreview({
       draft: params.draft,
-      theme: params.theme,
-    });
-    setDetailPreview({
-      slug: item.slug,
-      embedUrl: item.embedUrl,
-      themeId: params.theme.id,
       index: params.index,
-      loading: false,
-      failed: false,
-      frameUrl,
-      slideCount: params.draft.slides.length,
+      item,
+      previousFrameUrl: params.previousFrameUrl,
+      selectedTheme: params.theme,
+      setDetailPreview,
     });
   };
 
@@ -3530,19 +3598,15 @@ function TemplatePreviewPage({
   };
 
   const selectDetailSlide = (index: number) => {
-    const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
-    setSlideIndex(item.slug, nextIndex);
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
-    if (cachedDraft !== undefined) {
-      setLoadedDetailPreview({
-        draft: cachedDraft,
-        index: nextIndex,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        theme: selectedTheme,
-      });
-    }
+    selectPresentationTemplateDetailSlide({
+      detailPreview,
+      detailSlideCount,
+      index,
+      item,
+      selectedTheme,
+      setDetailPreview,
+      setSlideIndex,
+    });
   };
 
   const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
@@ -3557,6 +3621,19 @@ function TemplatePreviewPage({
         previousFrameUrl: detailPreview?.frameUrl ?? null,
         theme,
       });
+    }
+  };
+  const handleDetailSlideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key === "ArrowLeft" && activeSlideIndex > 0) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex - 1);
+    }
+    if (event.key === "ArrowRight" && activeSlideIndex < detailSlideCount - 1) {
+      event.preventDefault();
+      selectDetailSlide(activeSlideIndex + 1);
     }
   };
   const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
@@ -3581,6 +3658,7 @@ function TemplatePreviewPage({
           >
             Template
           </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 flex-1 truncate leading-none">
             {item.title}
           </span>
@@ -3591,7 +3669,13 @@ function TemplatePreviewPage({
         className="grid max-h-[72vh] gap-4 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
       >
         <div className="rounded-lg border border-border bg-background p-3">
-          <div className="relative overflow-hidden rounded-lg bg-muted">
+          <div
+            role="group"
+            aria-label={`${item.title} slide preview`}
+            tabIndex={0}
+            onKeyDown={handleDetailSlideKeyDown}
+            className="relative overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <iframe
               title={`${item.title} HTML preview`}
               data-testid={`${item.title} detail HTML preview`}
@@ -3608,7 +3692,7 @@ function TemplatePreviewPage({
               onClick={() => {
                 selectDetailSlide(activeSlideIndex - 1);
               }}
-              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+              className="absolute inset-y-0 left-0 w-1/2 cursor-w-resize bg-transparent focus:outline-none disabled:cursor-default"
             />
             <button
               type="button"
@@ -3618,12 +3702,8 @@ function TemplatePreviewPage({
               onClick={() => {
                 selectDetailSlide(activeSlideIndex + 1);
               }}
-              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+              className="absolute inset-y-0 right-0 w-1/2 cursor-e-resize bg-transparent focus:outline-none disabled:cursor-default"
             />
-            <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-border bg-background/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
-              {Math.min(activeSlideIndex + 1, detailSlideCount)} of{" "}
-              {detailSlideCount}
-            </div>
             {visibleDetailPreview?.loading ||
             !visibleDetailPreview?.frameUrl ? (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
@@ -3631,7 +3711,10 @@ function TemplatePreviewPage({
               </div>
             ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-8 gap-1.5">
+          <div
+            className="mt-3 grid grid-cols-8 gap-1.5"
+            onKeyDown={handleDetailSlideKeyDown}
+          >
             {Array.from(
               { length: Math.min(detailSlideCount, 15) },
               (_, index) => {
@@ -3793,306 +3876,8 @@ function TemplatePreviewPage({
   );
 }
 
-function presentationTemplateCardThemeSwatches(
-  item: PresentationTemplateItem,
-  theme: PresentationTemplateThemeOption,
-): readonly { readonly color: string; readonly id: string }[] {
-  if (theme.group === "single-accent") {
-    return presentationTemplateThemeAccentSwatches(item, theme);
-  }
-  return presentationTemplateThemePreviewSwatches(theme);
-}
-
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP = 4;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT = 228;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH = 232;
-const PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN = 12;
 const PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR =
   "[data-presentation-template-grid-scroll]";
-
-function presentationTemplateGridScrollElement(
-  slug: string,
-): HTMLElement | undefined {
-  if (typeof document === "undefined") {
-    return undefined;
-  }
-  for (const candidate of document.querySelectorAll(
-    "[data-template-theme-trigger-slug]",
-  )) {
-    if (
-      candidate instanceof HTMLButtonElement &&
-      candidate.dataset.templateThemeTriggerSlug === slug
-    ) {
-      const scrollContainer = candidate.closest(
-        PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-      return scrollContainer instanceof HTMLElement
-        ? scrollContainer
-        : undefined;
-    }
-  }
-  return undefined;
-}
-
-function resolvePresentationTemplateCardThemePopoverPlacement(
-  trigger: HTMLButtonElement,
-): TemplateCardThemePopoverPlacement {
-  const triggerRect = trigger.getBoundingClientRect();
-  const scrollContainer = trigger.closest(
-    PRESENTATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-  );
-  const boundaryRect =
-    scrollContainer instanceof HTMLElement
-      ? scrollContainer.getBoundingClientRect()
-      : null;
-  const boundaryBottom = boundaryRect?.bottom ?? window.innerHeight;
-  const boundaryLeft = boundaryRect?.left ?? 0;
-  const boundaryRight = boundaryRect?.right ?? window.innerWidth;
-  const availableBottomSpace = boundaryBottom - triggerRect.bottom;
-  if (
-    availableBottomSpace >=
-    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_HEIGHT +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
-  ) {
-    const startOverflowsRight =
-      triggerRect.left +
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN >
-      boundaryRight;
-    const endOverflowsLeft =
-      triggerRect.right -
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH -
-        PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN <
-      boundaryLeft;
-    return {
-      align: startOverflowsRight && !endOverflowsLeft ? "end" : "start",
-      alignOffset: 0,
-      side: "bottom",
-    };
-  }
-  const availableRightSpace = boundaryRight - triggerRect.right;
-  if (
-    availableRightSpace >=
-    PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_WIDTH +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP +
-      PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_MARGIN
-  ) {
-    return { align: "end", alignOffset: 0, side: "right" };
-  }
-  return {
-    align: "start",
-    alignOffset:
-      triggerRect.height + PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP,
-    side: "left",
-  };
-}
-
-function shouldOpenPresentationTemplateThemePage(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 639px)").matches
-  );
-}
-
-function PresentationTemplateCardThemePicker({
-  item,
-  onOpenThemePage,
-  selectedTheme,
-  triggerClassName,
-  onThemeChange,
-}: {
-  item: PresentationTemplateItem;
-  onOpenThemePage: () => void;
-  selectedTheme: PresentationTemplateThemeOption;
-  triggerClassName?: string;
-  onThemeChange: (theme: PresentationTemplateThemeOption) => void;
-}) {
-  const selectedSwatches = presentationTemplateCardThemeSwatches(
-    item,
-    selectedTheme,
-  );
-  const openSlug = useGet(templateCardThemePopoverOpenSlug$);
-  const setOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
-  const placementBySlug = useGet(templateCardThemePopoverPlacementBySlug$);
-  const setPlacement = useSet(setTemplateCardThemePopoverPlacement$);
-  const open = openSlug === item.slug;
-  const placement = placementBySlug[item.slug] ?? {
-    align: "start",
-    alignOffset: 0,
-    side: "bottom",
-  };
-  const multiAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
-    (theme) => {
-      return theme.group === "multi-accent";
-    },
-  );
-  const singleAccentThemes = PRESENTATION_TEMPLATE_THEME_OPTIONS.filter(
-    (theme) => {
-      return theme.group === "single-accent";
-    },
-  );
-
-  const updatePopoverPlacement = (trigger: HTMLButtonElement) => {
-    setPlacement(
-      item.slug,
-      resolvePresentationTemplateCardThemePopoverPlacement(trigger),
-    );
-  };
-  const openThemePageOnMobile = () => {
-    if (!shouldOpenPresentationTemplateThemePage()) {
-      return false;
-    }
-    setOpenSlug(null);
-    onOpenThemePage();
-    return true;
-  };
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpenSlug(nextOpen ? item.slug : null);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Change theme for ${item.title}`}
-          data-template-theme-trigger-slug={item.slug}
-          onPointerDown={(event) => {
-            if (openThemePageOnMobile()) {
-              event.preventDefault();
-              return;
-            }
-            updatePopoverPlacement(event.currentTarget);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              if (openThemePageOnMobile()) {
-                event.preventDefault();
-                return;
-              }
-              updatePopoverPlacement(event.currentTarget);
-            }
-          }}
-          className={cn(
-            "inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            triggerClassName,
-          )}
-        >
-          <IconPalette
-            size={13}
-            stroke={1.8}
-            className="shrink-0 text-muted-foreground"
-          />
-          <span className="flex shrink-0 items-center gap-0.5">
-            {selectedSwatches.map((swatch) => {
-              return (
-                <span
-                  key={`${selectedTheme.id}-${swatch.id}`}
-                  className="h-2.5 w-2.5 rounded-full border border-border"
-                  style={{ backgroundColor: swatch.color }}
-                />
-              );
-            })}
-          </span>
-          <IconChevronDown
-            size={12}
-            stroke={1.8}
-            className="shrink-0 text-muted-foreground"
-          />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align={placement.align}
-        alignOffset={placement.alignOffset}
-        avoidCollisions={false}
-        className="z-[90] w-[232px] p-2"
-        portalContainer={presentationTemplateGridScrollElement(item.slug)}
-        side={placement.side}
-        sideOffset={PRESENTATION_TEMPLATE_CARD_THEME_POPOVER_GAP}
-      >
-        <p className="px-1 text-[11px] font-medium text-muted-foreground">
-          Multi-accent
-        </p>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {multiAccentThemes.map((theme) => {
-            const active = theme.id === selectedTheme.id;
-            const swatches = presentationTemplateCardThemeSwatches(item, theme);
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-label={`Select card theme ${theme.name} for ${item.title}`}
-                aria-pressed={active}
-                onClick={() => {
-                  onThemeChange(theme);
-                }}
-                className={cn(
-                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "border-border hover:border-muted-foreground/60",
-                )}
-              >
-                <span className="flex h-full">
-                  {swatches.map((swatch) => {
-                    return (
-                      <span
-                        key={`${theme.id}-${swatch.id}`}
-                        className="flex-1"
-                        style={{ backgroundColor: swatch.color }}
-                      />
-                    );
-                  })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 px-1 text-[11px] font-medium text-muted-foreground">
-          Single-accent
-        </p>
-        <div className="mt-1 grid grid-cols-4 gap-1.5">
-          {singleAccentThemes.map((theme) => {
-            const active = theme.id === selectedTheme.id;
-            const swatches = presentationTemplateCardThemeSwatches(item, theme);
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                aria-label={`Select card theme ${theme.name} for ${item.title}`}
-                aria-pressed={active}
-                onClick={() => {
-                  onThemeChange(theme);
-                }}
-                className={cn(
-                  "relative h-7 w-12 overflow-hidden rounded-md border transition-colors hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "border-border hover:border-muted-foreground/60",
-                )}
-              >
-                <span className="flex h-full">
-                  {swatches.map((swatch) => {
-                    return (
-                      <span
-                        key={`${theme.id}-${swatch.id}`}
-                        className="flex-1"
-                        style={{ backgroundColor: swatch.color }}
-                      />
-                    );
-                  })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 function PptCard({
   item,
@@ -4106,43 +3891,9 @@ function PptCard({
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
 }) {
-  const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const setThemeId = useSet(setTemplateCardThemeId$);
-  const hover = useGet(templateCardHover$);
-  const htmlPreview = useGet(templateCardHtmlPreview$);
-  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const selectedTheme = findPresentationTemplateTheme(
-    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
+    defaultPresentationTemplateThemeId(item),
   );
-  const refreshCardHtmlPreviewTheme = (
-    theme: PresentationTemplateThemeOption,
-  ) => {
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
-    if (cachedDraft === undefined) {
-      return;
-    }
-    const index =
-      hover?.slug === item.slug
-        ? hover.index
-        : (presentationTemplateHtmlPreviewCache().activeIndexes.get(
-            item.embedUrl,
-          ) ?? 0);
-    setHtmlPreview(
-      createPresentationTemplateHtmlPreviewState({
-        draft: cachedDraft,
-        index,
-        item,
-        previousFrameUrl:
-          htmlPreview?.slug === item.slug &&
-          htmlPreview.embedUrl === item.embedUrl
-            ? htmlPreview.frameUrl
-            : null,
-        theme,
-      }),
-    );
-  };
 
   return (
     <div
@@ -4170,41 +3921,22 @@ function PptCard({
             </Tooltip>
           </TooltipProvider>
         </div>
-        <div className="inline-flex h-8 max-w-full shrink-0 overflow-hidden rounded-md border border-border bg-background text-foreground">
-          <button
-            type="button"
-            aria-label={`Select template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(
-                item,
-                presentationTemplateColorSystemId(selectedTheme.id),
-              );
-            }}
-            className={cn(
-              "h-full shrink-0 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              selected
-                ? "bg-primary/10 text-primary"
-                : "bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
-          <div className="min-w-0 border-l border-border">
-            <PresentationTemplateCardThemePicker
-              item={item}
-              onOpenThemePage={() => {
-                onPreview(item);
-              }}
-              selectedTheme={selectedTheme}
-              triggerClassName="rounded-none border-0 shadow-none focus-visible:ring-inset"
-              onThemeChange={(theme) => {
-                setThemeId(item.slug, theme.id);
-                refreshCardHtmlPreviewTheme(theme);
-              }}
-            />
-          </div>
-        </div>
+        <button
+          type="button"
+          aria-label={`Select template ${item.title}`}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "bg-primary/10 text-primary"
+              : "bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
       </div>
     </div>
   );
@@ -4865,9 +4597,12 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const detailPreview = useGet(templateDetailHtmlPreview$);
+  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
+  const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4970,12 +4705,78 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
-    setDetailThemeId(
-      item.slug,
-      cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
-    );
+    setDetailThemeId(item.slug, defaultPresentationTemplateThemeId(item));
     setDetailSlideIndex(item.slug, Math.max(0, Math.floor(slideIndex)));
     setPreviewSlug(item.slug);
+  };
+
+  const previewDetailNavigationState = () => {
+    if (previewItem === null) {
+      return null;
+    }
+    const selectedThemeId =
+      detailThemeIdBySlug[previewItem.slug] ??
+      defaultPresentationTemplateThemeId(previewItem);
+    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
+    const visibleDetailPreview =
+      detailPreview?.slug === previewItem.slug &&
+      detailPreview.embedUrl === previewItem.embedUrl &&
+      detailPreview.themeId === selectedTheme.id
+        ? detailPreview
+        : null;
+    const detailSlideCount =
+      visibleDetailPreview?.slideCount ??
+      Math.max(presentationTemplateSlideImages(previewItem).length, 1);
+    return {
+      activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
+      detailSlideCount,
+      selectedTheme,
+      visibleDetailPreview,
+    };
+  };
+
+  const selectPreviewDetailSlide = (index: number) => {
+    if (previewItem === null) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    selectPresentationTemplateDetailSlide({
+      detailPreview: navigationState.visibleDetailPreview,
+      detailSlideCount: navigationState.detailSlideCount,
+      index,
+      item: previewItem,
+      selectedTheme: navigationState.selectedTheme,
+      setDetailPreview,
+      setSlideIndex: setDetailSlideIndex,
+    });
+  };
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isPreviewing || event.defaultPrevented) {
+      return;
+    }
+    const navigationState = previewDetailNavigationState();
+    if (navigationState === null) {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      if (navigationState.activeSlideIndex > 0) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex - 1);
+      }
+    }
+    if (event.key === "ArrowRight") {
+      if (
+        navigationState.activeSlideIndex <
+        navigationState.detailSlideCount - 1
+      ) {
+        event.preventDefault();
+        selectPreviewDetailSlide(navigationState.activeSlideIndex + 1);
+      }
+    }
   };
 
   const handleCategoryChange = (nextCategory: string) => {
@@ -5008,6 +4809,7 @@ function TemplatePickerDialog({
       <DialogContent
         className={dialogContentClassName}
         aria-describedby={undefined}
+        onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
           isPreviewing ? handleTemplateDetailTabKeyDown : undefined
         }
@@ -6985,6 +6787,7 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ConnectorsPopoverButton
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
@@ -6995,7 +6798,6 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot
