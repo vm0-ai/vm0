@@ -1245,7 +1245,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventType: "error",
       eventData: {
         type: "error",
-        message: "unknown error",
+        message: "turn interrupted",
         error: {
           message: "Codex auth failed.",
           additional_details: "refresh token expired",

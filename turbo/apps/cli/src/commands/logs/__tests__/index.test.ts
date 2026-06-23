@@ -2054,7 +2054,7 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "error",
-                    message: "unknown error",
+                    message: "turn interrupted",
                     error: {
                       message: "API connection failed",
                       additional_details: "network unreachable",
@@ -2158,6 +2158,7 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:02Z",
                   eventData: {
                     type: "turn.failed",
+                    message: "unknown error",
                   },
                 },
               ],
@@ -2173,7 +2174,7 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
       expect(logCalls).toContain("API connection failed");
-      expect(logCalls).not.toContain("Turn failed");
+      expect(logCalls).not.toContain("unknown error");
     });
 
     it("should collapse paired Codex error and turn.failed when default tail order is descending", async () => {

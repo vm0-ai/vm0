@@ -528,6 +528,7 @@ function isGenericCodexFailureMessage(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized === "turn failed" ||
+    normalized === "turn interrupted" ||
     normalized === "unknown error" ||
     normalized === "codex error" ||
     normalized === "error"

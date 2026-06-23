@@ -115,7 +115,10 @@ pub(crate) fn masked_claude_failure_diagnostic(
 }
 
 pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
-    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+    matches!(
+        message.trim().to_ascii_lowercase().as_str(),
+        "error" | "turn failed" | "turn interrupted" | "unknown error" | "codex error"
+    )
 }
 
 pub fn is_codex_model_capacity_message(message: &str) -> bool {
@@ -946,7 +949,7 @@ mod tests {
     fn codex_turn_failed_uses_nested_turn_error_for_message_when_top_level_error_is_generic() {
         let event = serde_json::json!({
             "type": "turn.failed",
-            "error": "turn failed",
+            "error": "Turn failed",
             "turn": {
                 "error": {
                     "message": "nested turn failure",

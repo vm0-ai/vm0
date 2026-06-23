@@ -713,7 +713,10 @@ fn cli_failure_message(
 }
 
 fn is_generic_stdout_failure_diagnostic(message: &str) -> bool {
-    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+    matches!(
+        message.trim().to_ascii_lowercase().as_str(),
+        "error" | "turn failed" | "turn interrupted" | "unknown error" | "codex error"
+    )
 }
 
 fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
@@ -1188,7 +1191,7 @@ mod tests {
     #[test]
     fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
         let stderr_lines = vec!["specific stderr failure".to_string()];
-        let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
+        let diagnostic = cli_diagnostic("Unknown error", FailureDetailSource::CodexJsonl);
         let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
 
         assert_eq!(msg.source, FailureDetailSource::Stderr);

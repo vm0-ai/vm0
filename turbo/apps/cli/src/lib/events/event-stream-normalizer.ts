@@ -103,9 +103,12 @@ function getResultText(event: ParsedEvent | null): string | null {
 }
 
 function isGenericCodexFailureResult(result: string): boolean {
+  const normalized = result.toLowerCase();
   return (
-    result === "Turn failed" ||
-    result === "Unknown error" ||
-    result === "Codex error"
+    normalized === "error" ||
+    normalized === "turn failed" ||
+    normalized === "turn interrupted" ||
+    normalized === "unknown error" ||
+    normalized === "codex error"
   );
 }
