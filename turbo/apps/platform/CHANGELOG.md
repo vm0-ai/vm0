@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.482.1](https://github.com/vm0-ai/vm0/compare/app-v0.482.0...app-v0.482.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* use color swatch chat template icon ([#18541](https://github.com/vm0-ai/vm0/issues/18541)) ([19bcf16](https://github.com/vm0-ai/vm0/commit/19bcf16fccb76a9c866ad3c28e5eb1757566b01f))
+
 ## [0.482.0](https://github.com/vm0-ai/vm0/compare/app-v0.481.1...app-v0.482.0) (2026-06-22)
 
 
