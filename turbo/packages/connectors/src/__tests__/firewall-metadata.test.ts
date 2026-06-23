@@ -174,6 +174,19 @@ function staticImportSpecifiers(source: string): string[] {
   return specifiers;
 }
 
+function runtimeStaticImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*import(?!\s+type\b)[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["'];?/gm)) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
 function exportFromSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
@@ -300,6 +313,26 @@ describe("firewall metadata", () => {
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     for (const specifier of dynamicSpecifiers) {
       expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+    }
+  });
+
+  it("keeps generated permission detail modules runtime-free", () => {
+    const detailsDir = path.resolve(
+      import.meta.dirname,
+      "../firewall-metadata/details",
+    );
+    const files = listTsFiles(detailsDir);
+
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = fs.readFileSync(file, "utf-8");
+      const filename = path.basename(file);
+      expect(runtimeStaticImportSpecifiers(source), filename).toStrictEqual([]);
+      expect(dynamicImportSpecifiers(source), filename).toStrictEqual([]);
+      expect(exportFromSpecifiers(source), filename).toStrictEqual([]);
+      expect(staticImportSpecifiers(source), filename).toStrictEqual([
+        "../types",
+      ]);
     }
   });
 
