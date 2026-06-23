@@ -114,8 +114,12 @@ pub(crate) fn masked_claude_failure_diagnostic(
     })
 }
 
-pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
-    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+pub fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
+    let message = message.trim().to_ascii_lowercase();
+    matches!(
+        message.as_str(),
+        "error" | "turn failed" | "turn interrupted" | "unknown error" | "codex error"
+    )
 }
 
 pub fn is_codex_model_capacity_message(message: &str) -> bool {
@@ -138,19 +142,22 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         "turn.failed" => {
             let error = event.get("error");
+            let turn_error = codex_structured_turn_error(event);
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
-                message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
-                failure_reason: codex_event_failure_reason(event, error),
+                message: codex_turn_failed_message(error, turn_error),
+                failure_reason: codex_event_failure_reason_from_errors(event, [turn_error, error]),
             })
         }
         "turn.completed" => {
             let status = codex_turn_completed_failure_status(event)?;
-            let error = event.pointer("/turn/error").or_else(|| event.get("error"));
+            let turn_error = codex_structured_turn_error(event);
+            let error = event.get("error");
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
-                message: codex_error_message(error).unwrap_or_else(|| format!("turn {status}")),
-                failure_reason: codex_event_failure_reason(event, error),
+                message: codex_first_error_message([turn_error, error])
+                    .unwrap_or_else(|| format!("turn {status}")),
+                failure_reason: codex_event_failure_reason_from_errors(event, [turn_error, error]),
             })
         }
         _ => None,
@@ -191,6 +198,32 @@ fn codex_turn_completed_failure_status(event: &Value) -> Option<&'static str> {
     }
 }
 
+fn codex_structured_turn_error(event: &Value) -> Option<&Value> {
+    event
+        .pointer("/turn/error")
+        .filter(|error| !error.is_null())
+}
+
+fn codex_turn_failed_message(error: Option<&Value>, turn_error: Option<&Value>) -> String {
+    let top_level_message = codex_error_message(error);
+    let turn_error_message = codex_error_message(turn_error);
+
+    match (top_level_message, turn_error_message) {
+        (Some(message), Some(turn_error_message))
+            if is_generic_codex_failure_diagnostic(&message) =>
+        {
+            turn_error_message
+        }
+        (Some(message), _) => message,
+        (None, Some(turn_error_message)) => turn_error_message,
+        (None, None) => "turn failed".into(),
+    }
+}
+
+fn codex_first_error_message<const N: usize>(errors: [Option<&Value>; N]) -> Option<String> {
+    errors.into_iter().find_map(codex_error_message)
+}
+
 fn codex_error_message(error: Option<&Value>) -> Option<String> {
     let error = error?;
     if let Some(message) = raw_message_from_field(Some(error)) {
@@ -198,7 +231,10 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
     }
 
     let message = error.get("message").and_then(Value::as_str);
-    let details = error.get("additional_details").and_then(Value::as_str);
+    let details = error
+        .get("additional_details")
+        .or_else(|| error.get("additionalDetails"))
+        .and_then(Value::as_str);
     combined_message_and_details(message, details)
 }
 
@@ -213,6 +249,9 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     {
         return Some(FailureReason::ReconnectRequired);
     }
+    if let Some(failure_reason) = codex_error_info_failure_reason(error) {
+        return Some(failure_reason);
+    }
     if codex_error_message(Some(error))
         .as_deref()
         .is_some_and(is_codex_model_capacity_message)
@@ -223,7 +262,40 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
 }
 
 fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
-    codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
+    codex_event_failure_reason_from_errors(event, [error])
+}
+
+fn codex_event_failure_reason_from_errors<const N: usize>(
+    event: &Value,
+    errors: [Option<&Value>; N],
+) -> Option<FailureReason> {
+    for error in errors.into_iter().flatten() {
+        if let Some(failure_reason) = codex_error_failure_reason(Some(error)) {
+            return Some(failure_reason);
+        }
+    }
+
+    codex_error_failure_reason(Some(event))
+}
+
+fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
+    match codex_error_info_variant(error)? {
+        "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+        "usageLimitExceeded" => Some(FailureReason::UsageLimit),
+        _ => None,
+    }
+}
+
+fn codex_error_info_variant(error: &Value) -> Option<&str> {
+    let error_info = error
+        .get("codex_error_info")
+        .or_else(|| error.get("codexErrorInfo"))?;
+
+    match error_info {
+        Value::String(variant) => Some(variant.as_str()),
+        Value::Object(object) if object.len() == 1 => object.keys().next().map(String::as_str),
+        _ => None,
+    }
 }
 
 fn codex_refresh_error_code(value: &Value) -> Option<&str> {
@@ -855,6 +927,141 @@ mod tests {
     }
 
     #[test]
+    fn codex_generic_failure_diagnostic_matcher_is_case_insensitive() {
+        for message in [
+            "error",
+            "Turn failed",
+            " turn interrupted ",
+            "UNKNOWN ERROR",
+            "codex error",
+        ] {
+            assert!(
+                is_generic_codex_failure_diagnostic(message),
+                "message should be generic: {message}"
+            );
+        }
+
+        assert!(!is_generic_codex_failure_diagnostic(
+            "Selected model is at capacity. Please try a different model."
+        ));
+    }
+
+    #[test]
+    fn codex_turn_failed_uses_nested_turn_error_for_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "turn failed",
+            "turn": {
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "Incorrect API key provided"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Incorrect API key provided".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_keeps_specific_top_level_message_with_nested_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "request failed before shutdown",
+            "turn": {
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "Incorrect API key provided"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "request failed before shutdown".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_uses_nested_message_when_top_level_is_generic() {
+        for top_level_error in ["turn failed", "Unknown error", "codex error"] {
+            let event = serde_json::json!({
+                "type": "turn.failed",
+                "error": top_level_error,
+                "turn": {
+                    "error": {
+                        "message": "nested turn failure",
+                        "additionalDetails": "quota exhausted"
+                    }
+                }
+            });
+
+            assert_eq!(
+                masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+                Some(CodexFailureDiagnostic {
+                    event_type: "turn.failed",
+                    message: "nested turn failure (quota exhausted)".to_string(),
+                    failure_reason: None,
+                }),
+                "top-level error: {top_level_error}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_turn_failed_uses_nested_message_when_top_level_is_missing() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "turn": {
+                "error": {
+                    "message": "nested turn failure",
+                    "additionalDetails": "quota exhausted"
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "nested turn failure (quota exhausted)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_null_nested_turn_error_uses_top_level_error() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "code": "invalid_api_key",
+                "message": "Incorrect API key provided"
+            },
+            "turn": {"error": null}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Incorrect API key provided".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_model_capacity_yields_failure_reason() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -869,6 +1076,90 @@ mod tests {
                 event_type: "turn.failed",
                 message: "Selected model is at capacity. Please try a different model.".to_string(),
                 failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_server_overloaded_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codex_error_info": "serverOverloaded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_usage_limit_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codexErrorInfo": "usageLimitExceeded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::UsageLimit),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_object_variant_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codexErrorInfo": {
+                    "serverOverloaded": {
+                        "httpStatusCode": 529
+                    }
+                }
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_info_unknown_object_variant_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "codexErrorInfo": {"badRequest": {}}
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -951,6 +1242,26 @@ mod tests {
     }
 
     #[test]
+    fn codex_turn_failed_appends_camel_case_additional_details() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "message": "turn failed from server",
+                "additionalDetails": "rate limit exceeded"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "turn failed from server (rate limit exceeded)".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_legacy_string_error_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -962,6 +1273,23 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "legacy turn failure".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_error_string_invalid_api_key_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": "invalid_api_key"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "invalid_api_key".to_string(),
                 failure_reason: None,
             })
         );
@@ -1019,6 +1347,27 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
                 message: "failed TurnCompleted reason".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_failed_turn_completed_empty_nested_error_uses_top_level_error() {
+        let event = serde_json::json!({
+            "type": "turn.completed",
+            "error": {"message": "top-level completed failure"},
+            "turn": {
+                "status": "failed",
+                "error": {}
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "top-level completed failure".to_string(),
                 failure_reason: None,
             })
         );

@@ -6,6 +6,7 @@ use guest_agent::cli;
 use guest_agent::complete;
 use guest_agent::control;
 use guest_agent::env;
+use guest_agent::events;
 use guest_agent::heartbeat;
 use guest_agent::http::HttpClient;
 use guest_agent::masker;
@@ -754,7 +755,7 @@ fn cli_failure_message(
 }
 
 fn is_generic_stdout_failure_diagnostic(message: &str) -> bool {
-    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+    events::is_generic_codex_failure_diagnostic(message)
 }
 
 fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
@@ -1229,11 +1230,17 @@ mod tests {
     #[test]
     fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
         let stderr_lines = vec!["specific stderr failure".to_string()];
-        let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
-        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
+        for diagnostic_message in ["turn failed", "Unknown error", "codex error"] {
+            let diagnostic = cli_diagnostic(diagnostic_message, FailureDetailSource::CodexJsonl);
+            let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
 
-        assert_eq!(msg.source, FailureDetailSource::Stderr);
-        assert_eq!(msg.message, "specific stderr failure");
+            assert_eq!(
+                msg.source,
+                FailureDetailSource::Stderr,
+                "diagnostic message: {diagnostic_message}"
+            );
+            assert_eq!(msg.message, "specific stderr failure");
+        }
     }
 
     #[test]
