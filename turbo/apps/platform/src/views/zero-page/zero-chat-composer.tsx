@@ -23,7 +23,6 @@ import {
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
-  IconEye,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -2963,7 +2962,6 @@ function TemplatePreview({
   const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
-  const setThemePopoverOpenSlug = useSet(setTemplateCardThemePopoverOpenSlug$);
   const slideImages = presentationTemplateSlideImages(item);
   const fallbackSlideCount = Math.max(slideImages.length, 1);
   const hoverSlideIndex = Math.max(
@@ -3303,18 +3301,6 @@ function TemplatePreview({
         className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={openPreview}
       />
-      <button
-        type="button"
-        aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur transition-colors hover:bg-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={(event) => {
-          event.stopPropagation();
-          setThemePopoverOpenSlug(null);
-          openPreview();
-        }}
-      >
-        <IconEye size={16} stroke={1.8} />
-      </button>
     </div>
   );
 }
