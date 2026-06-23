@@ -59,11 +59,52 @@ describe("resolveFirewallSelections", () => {
     });
 
     expect(expanded).toHaveLength(2);
-    const names = expanded.map((s) => {
-      return s.name;
+    expect(
+      expanded.map((s) => {
+        return s.name;
+      }),
+    ).toEqual(["brex", "slack-webhook"]);
+  });
+
+  it("should drop configs with no selected api entries", async () => {
+    const expanded = await resolveFirewallSelections({
+      brex: { permissions: [] },
     });
-    expect(names).toContain("brex");
-    expect(names).toContain("slack-webhook");
+
+    expect(expanded).toEqual([]);
+  });
+
+  it("should reject blank firewall names after trimming", async () => {
+    await expect(
+      resolveFirewallSelections({
+        "   ": { permissions: "all" },
+      }),
+    ).rejects.toThrow(
+      'Unsupported firewall "   ": only built-in connector firewalls are supported',
+    );
+  });
+
+  it("should reject names that contain slashes after trimming", async () => {
+    await expect(
+      resolveFirewallSelections({
+        " brex/foo ": { permissions: "all" },
+      }),
+    ).rejects.toThrow(
+      'Unsupported firewall " brex/foo ": only built-in connector firewalls are supported',
+    );
+  });
+
+  it("should keep permission-filtered output in selection order", async () => {
+    const expanded = await resolveFirewallSelections({
+      "slack-webhook": { permissions: "all" },
+      brex: { permissions: ["read"] },
+    });
+
+    expect(
+      expanded.map((s) => {
+        return s.name;
+      }),
+    ).toEqual(["slack-webhook", "brex"]);
   });
 
   it("should return empty array for empty selections", async () => {
