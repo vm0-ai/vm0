@@ -135,6 +135,8 @@ describe("models page data", () => {
     expect(reasoningIds).toContain("kimi-k2.7-code");
     expect(reasoningIds).toContain("MiniMax-M3");
     expect(reasoningIds).toContain("glm-5.2");
+    expect(reasoningIds).toContain("mimo-v2.5");
+    expect(reasoningIds).toContain("hy3-preview");
     expect(reasoningIds).not.toContain("claude-fable-5");
     expect(reasoningIds).not.toContain("kimi-k2.6");
     expect(reasoningIds).not.toContain("kimi-k2.5");

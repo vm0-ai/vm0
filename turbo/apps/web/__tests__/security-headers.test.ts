@@ -1856,6 +1856,7 @@ describe("Model page redirects", () => {
       ["kimi-k2-5", "kimi-k2-7-code"],
       ["glm-5.2", "glm-5-2"],
       ["glm-5.1", "glm-5-1"],
+      ["mimo-v2.5", "mimo-v2-5"],
       ["claude-haiku-4-5", "claude-sonnet-4-6"],
       ["deepseek-v4-flash", "deepseek-v4-pro"],
       ["minimax-m2.7", "minimax-m3"],

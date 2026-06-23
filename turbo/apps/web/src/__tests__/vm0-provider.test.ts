@@ -32,6 +32,20 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("glm-5.1")).toBe("z-ai/glm-5.1");
     });
 
+    it("should resolve OpenRouter-only VM0 models with upstream ids", () => {
+      expect(getVm0ConcreteProviderType("mimo-v2.5")).toBe(
+        "openrouter-api-key",
+      );
+      expect(getVm0Vendor("mimo-v2.5")).toBe("openrouter");
+      expect(getVm0ApiModel("mimo-v2.5")).toBe("xiaomi/mimo-v2.5");
+
+      expect(getVm0ConcreteProviderType("hy3-preview")).toBe(
+        "openrouter-api-key",
+      );
+      expect(getVm0Vendor("hy3-preview")).toBe("openrouter");
+      expect(getVm0ApiModel("hy3-preview")).toBe("tencent/hy3-preview");
+    });
+
     it("should resolve kimi-k2.7-code to moonshot-api-key", () => {
       expect(getVm0ConcreteProviderType("kimi-k2.7-code")).toBe(
         "moonshot-api-key",
@@ -78,6 +92,8 @@ describe("VM0 managed model provider", () => {
         "claude-sonnet-4-6",
         "glm-5.2",
         "glm-5.1",
+        "mimo-v2.5",
+        "hy3-preview",
         "kimi-k2.7-code",
         "MiniMax-M3",
         "deepseek-v4-pro",

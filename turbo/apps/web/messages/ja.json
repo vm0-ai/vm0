@@ -5574,6 +5574,274 @@
         "routingNotes": "VM0 Managed では、GLM-5.1 は upstream id `z-ai/glm-5.1` で OpenRouter 経由にルーティングされます。Z.AI API キーを使う場合は、`api.z.ai` の Anthropic 互換エンドポイントに直接接続します。GLM-5.2 は現在 Z.AI プロバイダーのデフォルトモデルです。",
         "vm0Notes": "VM0 は Z.AI プロバイダーに 50 分の API タイムアウトを設定しているため、長い思考ステップが確実に完了しやすく、1M トークンのコンテキストを必要とする高ボリュームの文書エージェントにも適しています。"
       },
+      "mimo-v2-5": {
+        "name": "MiMo-V2.5",
+        "pageTitle": "VM0 の MiMo-V2.5。Xiaomi の長文コンテキスト対応オムニモーダルモデル",
+        "tagline": "OpenRouter でホストされる Xiaomi のオムニモーダルモデル。1M トークンのコンテキスト、テキスト/画像/音声/動画入力、VM0 Managed の x0.1 価格。",
+        "cardIntro": "Xiaomi の 1M コンテキスト対応オムニモーダルモデル。OpenRouter 経由で x0.1 VM0 Managed 価格。",
+        "metaTitle": "VM0 の MiMo-V2.5: 価格、コンテキスト、マルチモーダルエージェント用途",
+        "metaDescription": "VM0 の MiMo-V2.5。1M トークンのコンテキスト、マルチモーダル入力、x0.1 クレジット、OpenRouter BYOK に対応する Xiaomi の OpenRouter モデル。",
+        "summary": "MiMo-V2.5 は、Xiaomi の長文コンテキスト対応オムニモーダルモデルを OpenRouter 経由で VM0 に追加します。Built-in ラインアップの中で入力範囲が最も広い低コスト選択肢で、テキスト、画像、音声、動画を扱いながら 1M トークンのコンテキストを維持します。\n\nテキストやコードと一緒に混合メディアを確認する必要がある、コスト重視のエージェントに向いています。Moonshot のような専用コーディングルートでも、GLM のような Z.AI 直結ルートでもないため、ツールルーティング品質が主な制約になる場合は Sonnet や Kimi を残しておくのがよいです。",
+        "releaseDate": "2026年6月",
+        "familyPosition": "OpenRouter 経由で VM0 Managed に公開される Xiaomi の汎用オムニモーダルモデル。",
+        "background": [
+          "MiMo-V2.5 は OpenRouter 上の Xiaomi ネイティブなオムニモーダルモデルです。VM0 はこれを正規モデル `mimo-v2.5` として公開し、Built-in 実行を upstream id `xiaomi/mimo-v2.5` にルーティングします。",
+          "このモデルは 1M トークンのコンテキストウィンドウと、テキスト、画像、音声、動画入力のサポートを組み合わせています。通常のテキストと一緒にメディアの多い証拠を読む必要があるエージェントで実用的です。",
+          "VM0 Managed では x0.1 クレジットです。ベンダー直接課金を使いたいチームは、同じ upstream id で OpenRouter API キーを使えます。"
+        ],
+        "architecture": "MiMo-V2.5 は VM0 上で、upstream id `xiaomi/mimo-v2.5` を使う OpenRouter の Anthropic 互換ゲートウェイとして公開されます。",
+        "specs": [
+          {
+            "label": "ファミリー",
+            "value": "Xiaomi MiMo"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、画像、音声、動画、コード"
+          },
+          {
+            "label": "言語",
+            "value": "多言語"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "最大 1M トークン"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "キャッシュ読み取りをサポート"
+          },
+          {
+            "label": "VM0 で利用可能",
+            "value": "2026年6月"
+          }
+        ],
+        "benchmarksNote": "VM0 は MiMo-V2.5 を低コストのマルチモーダル選択肢として扱います。公開ランキングは変動しやすいため、このページではルーティング、モダリティ、コンテキスト、価格に焦点を当てます。",
+        "benchmarks": [
+          {
+            "name": "コンテキストウィンドウ",
+            "score": "1M トークン",
+            "note": "OpenRouter メタデータ"
+          },
+          {
+            "name": "コスト層",
+            "score": "x0.1 クレジット",
+            "note": "VM0 Managed"
+          }
+        ],
+        "performance": [
+          {
+            "title": "マルチモーダル対応",
+            "body": "MiMo-V2.5 は、テキスト、画像、音声、動画入力を 1 つのエージェントステップで組み合わせるための低コストルートです。"
+          },
+          {
+            "title": "大きなコンテキスト",
+            "body": "1M トークンのウィンドウにより、長い文書、文字起こし、関連ファイルを過度に分割せずに扱えます。"
+          },
+          {
+            "title": "ルーティング",
+            "body": "VM0 Managed は `xiaomi/mimo-v2.5` を使って OpenRouter 経由にルーティングします。OpenRouter BYOK ユーザーも同じ upstream モデルを直接選択できます。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "混合メディアのリサーチ",
+            "body": "構造化されたブリーフを書く前に、スクリーンショット、クリップ、文字起こし、メモをまとめて確認する必要がある場合に MiMo-V2.5 を使います。"
+          },
+          {
+            "title": "低コストのマルチモーダルトリアージ",
+            "body": "メディアの多いサポートケースや QA 成果物を x0.1 クレジットで一次分類し、難しいケースだけを上位モデルに回します。"
+          },
+          {
+            "title": "長文コンテキストの文書レビュー",
+            "body": "画像やメディア参照を含む長い資料を読み込み、すぐにプレミアムモデルへ移らずに横断的な発見を求めます。"
+          }
+        ],
+        "avoidFor": "最も強い Claude 風のツールルーティングが必要な場合、またはテキストのみのワークフローでより狭いモデルで十分な場合は MiMo-V2.5 を避けます。",
+        "comparisons": [
+          {
+            "vs": "GLM-5.2",
+            "body": "どちらも VM0 Managed で 1M コンテキストを提供します。GLM-5.2 は Z.AI の長文コンテキストルートで、MiMo-V2.5 は OpenRouter 経由で画像、音声、動画入力を追加します。"
+          },
+          {
+            "vs": "Kimi K2.7 Code",
+            "body": "Kimi はコーディングに強い Moonshot ルートです。広いマルチモーダル入力と 1M コンテキストが重要な場合は MiMo-V2.5 が向きます。"
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet はツールルーティングと難しい推論でより安全なプレミアムデフォルトです。MiMo-V2.5 は低コストのマルチモーダル探索ルートです。"
+          },
+          {
+            "vs": "Hy3 Preview",
+            "body": "Hy3 Preview は 256K コンテキストのテキスト専用モデルです。画像、音声、動画、または 1M ウィンドウが必要な場合は MiMo-V2.5 が適しています。"
+          }
+        ],
+        "verdict": "OpenRouter 経由で 1M コンテキストとマルチモーダル入力を低コストに使いたい場合は MiMo-V2.5 を選びます。",
+        "faqs": [
+          {
+            "q": "MiMo-V2.5 は VM0 Managed で利用できますか？",
+            "a": "はい。VM0 Managed は upstream id `xiaomi/mimo-v2.5` で MiMo-V2.5 を OpenRouter 経由にルーティングします。"
+          },
+          {
+            "q": "自分の OpenRouter キーを使えますか？",
+            "a": "はい。OpenRouter プロバイダーを選び、upstream model id `xiaomi/mimo-v2.5` を使います。"
+          },
+          {
+            "q": "MiMo-V2.5 は画像入力をサポートしますか？",
+            "a": "はい。OpenRouter は MiMo-V2.5 の入力モダリティとしてテキスト、画像、音声、動画を listed しています。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "hy3-preview",
+            "reason": "より安価なテキスト専用 OpenRouter ルート"
+          },
+          {
+            "slug": "glm-5-2",
+            "reason": "Z.AI の長文コンテキストルート"
+          },
+          {
+            "slug": "kimi-k2-7-code",
+            "reason": "コード重視のマルチモーダルルート"
+          }
+        ],
+        "routingNotes": "VM0 Managed では、MiMo-V2.5 は upstream id `xiaomi/mimo-v2.5` で OpenRouter 経由にルーティングされます。OpenRouter BYOK も同じ id を使います。",
+        "vm0Notes": "MiMo-V2.5 は VM0 Managed で x0.1 クレジットに設定され、Built-in reasoning ラインアップの中で最も広い入力範囲を持つ低コスト選択肢です。"
+      },
+      "hy3-preview": {
+        "name": "Hy3 Preview",
+        "pageTitle": "VM0 の Hy3 Preview。Tencent の低コスト reasoning preview",
+        "tagline": "Tencent のテキスト専用 OpenRouter preview モデル。256K コンテキスト、設定可能な reasoning、VM0 Managed の x0.1 価格。",
+        "cardIntro": "Tencent の低コスト OpenRouter preview モデル。256K コンテキストのテキスト/コードエージェントを x0.1 で利用。",
+        "metaTitle": "VM0 の Hy3 Preview: 価格、コンテキスト、最適なエージェント用途",
+        "metaDescription": "VM0 の Hy3 Preview。256K トークンコンテキスト、x0.1 クレジット、プロンプトキャッシュ読み取り、OpenRouter BYOK に対応する Tencent の OpenRouter モデル。",
+        "summary": "Hy3 Preview は、OpenRouter 経由で VM0 に公開される Tencent の効率的なテキストモデルです。256K トークンのコンテキストウィンドウと非常に低いプロバイダー価格を持ち、Sonnet レベルの reasoning が不要な高ボリュームのテキスト/コードワークフローに向いています。\n\n予算重視のルーティング、要約、抽出、一次コードレビューに使います。preview モデルかつテキスト専用であるため、vision タスクや高リスクの推論のデフォルトにはしない方が安全です。",
+        "releaseDate": "2026年6月",
+        "familyPosition": "OpenRouter 経由で VM0 Managed に公開される Tencent preview モデル。",
+        "background": [
+          "Hy3 Preview は OpenRouter 上の Tencent モデルです。VM0 はこれを正規モデル `hy3-preview` として公開し、Built-in 実行を `tencent/hy3-preview` にルーティングします。",
+          "このモデルは 256K トークンのコンテキストウィンドウを持つ効率的なテキスト reasoning に焦点を当てています。OpenRouter の reasoning コントロールとプロンプトキャッシュ読み取りをサポートします。",
+          "VM0 Managed では x0.1 クレジットです。チームは OpenRouter API キーを持ち込み、upstream id を直接選択することもできます。"
+        ],
+        "architecture": "Hy3 Preview は VM0 上で、upstream id `tencent/hy3-preview` を使う OpenRouter の Anthropic 互換ゲートウェイとして公開されます。",
+        "specs": [
+          {
+            "label": "ファミリー",
+            "value": "Tencent Hy3"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、コード"
+          },
+          {
+            "label": "言語",
+            "value": "多言語"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "最大 256K トークン"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "キャッシュ読み取りをサポート"
+          },
+          {
+            "label": "VM0 で利用可能",
+            "value": "2026年6月"
+          }
+        ],
+        "benchmarksNote": "Hy3 Preview は低コストのテキストルートとして位置づけています。preview モデルの挙動は変わる可能性があるため、このページでは固定のランキング主張ではなく運用上の適合に焦点を当てます。",
+        "benchmarks": [
+          {
+            "name": "コンテキストウィンドウ",
+            "score": "256K トークン",
+            "note": "OpenRouter メタデータ"
+          },
+          {
+            "name": "コスト層",
+            "score": "x0.1 クレジット",
+            "note": "VM0 Managed"
+          }
+        ],
+        "performance": [
+          {
+            "title": "テキスト処理量",
+            "body": "Hy3 Preview は、最大の reasoning 深度よりもコスト管理が重要な反復的なテキスト中心ステップに向いています。"
+          },
+          {
+            "title": "Preview の挙動",
+            "body": "実ワークフローで A/B テストするモデルとして扱います。重要な長時間エージェントは、タスク特性が検証されるまで、より実績のあるルートに置きます。"
+          },
+          {
+            "title": "ルーティング",
+            "body": "VM0 Managed は `tencent/hy3-preview` を使って OpenRouter 経由にルーティングします。OpenRouter BYOK ユーザーも同じ upstream モデルを直接選択できます。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "高ボリューム要約",
+            "body": "Hy3 Preview は、チケット digest や社内メモの圧縮など、x0.1 クレジットで量を経済的に処理したい反復要約に使います。"
+          },
+          {
+            "title": "抽出と分類",
+            "body": "曖昧なケースを Sonnet や Opus に上げる前に、テキストバッチに対して構造化抽出やトリアージを実行します。"
+          },
+          {
+            "title": "低予算コードレビュー",
+            "body": "広いカバレッジが目的で、発見事項を後段で確認できる場合の一次コードレビューや diff 説明に使います。"
+          }
+        ],
+        "avoidFor": "画像、音声、動画入力には Hy3 Preview を避けます。preview モデルのばらつきが許容できないワークフローにも向きません。",
+        "comparisons": [
+          {
+            "vs": "MiMo-V2.5",
+            "body": "MiMo-V2.5 は 1M コンテキストとマルチモーダル入力を持ちます。Hy3 Preview はより狭く、テキスト専用で、効率的なテキスト reasoning に向いています。"
+          },
+          {
+            "vs": "GLM-5.2",
+            "body": "GLM-5.2 はより大きい 1M ウィンドウと Z.AI ルートを持ちます。Hy3 Preview は標準的な長文テキスト向けの低コスト Tencent/OpenRouter 選択肢です。"
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "どちらもコスト削減型のテキスト/コードルートです。DeepSeek V4 Pro は VM0 でより実績のある cost-first モデルで、Hy3 Preview は Tencent/OpenRouter の A/B テストに向いています。"
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet は高信頼なツール利用と reasoning の強いデフォルトです。Hy3 Preview はリスクの低いテキスト作業向けの予算ルートです。"
+          }
+        ],
+        "verdict": "preview モデルの挙動を許容できる低コスト OpenRouter テキストワークロードには Hy3 Preview を選びます。",
+        "faqs": [
+          {
+            "q": "Hy3 Preview は VM0 Managed で利用できますか？",
+            "a": "はい。VM0 Managed は upstream id `tencent/hy3-preview` で Hy3 Preview を OpenRouter 経由にルーティングします。"
+          },
+          {
+            "q": "Hy3 Preview は画像入力をサポートしますか？",
+            "a": "いいえ。OpenRouter は Hy3 Preview をテキスト入力、テキスト出力として listed しています。"
+          },
+          {
+            "q": "自分の OpenRouter キーを使えますか？",
+            "a": "はい。OpenRouter プロバイダーを選び、upstream model id `tencent/hy3-preview` を使います。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "mimo-v2-5",
+            "reason": "1M コンテキストのマルチモーダル OpenRouter ルート"
+          },
+          {
+            "slug": "glm-5-2",
+            "reason": "より大きい Z.AI 長文コンテキストルート"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "実績のある cost-first テキスト/コードルート"
+          }
+        ],
+        "routingNotes": "VM0 Managed では、Hy3 Preview は upstream id `tencent/hy3-preview` で OpenRouter 経由にルーティングされます。OpenRouter BYOK も同じ id を使います。",
+        "vm0Notes": "Hy3 Preview は VM0 Managed で x0.1 クレジットに設定され、低リスクかつ高ボリュームのテキストワークフロー向けです。"
+      },
       "gpt-5-4-mini": {
         "name": "GPT-5.4 Mini",
         "pageTitle": "GPT-5.4 Mini on VM0. コスト削減型GPT-5",

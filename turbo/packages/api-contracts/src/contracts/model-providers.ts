@@ -93,6 +93,8 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "MiniMax-M3": "MiniMax M3",
   "glm-5.2": "GLM-5.2",
   "glm-5.1": "GLM-5.1",
+  "mimo-v2.5": "MiMo-V2.5",
+  "hy3-preview": "Hy3 Preview",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -177,6 +179,16 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "openrouter",
     apiModel: "z-ai/glm-5.1",
   },
+  "mimo-v2.5": {
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "xiaomi/mimo-v2.5",
+  },
+  "hy3-preview": {
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "tencent/hy3-preview",
+  },
   "kimi-k2.7-code": {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
@@ -210,6 +222,8 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
   "z-ai/glm-5.2": "glm-5.2",
   "z-ai/glm-5.1": "glm-5.1",
+  "xiaomi/mimo-v2.5": "mimo-v2.5",
+  "tencent/hy3-preview": "hy3-preview",
   "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
 
@@ -235,6 +249,8 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "anthropic/claude-sonnet-4.5",
   "kimi-k2.7-code",
   "MiniMax-M3",
+  "mimo-v2.5",
+  "xiaomi/mimo-v2.5",
 ]);
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
@@ -246,6 +262,8 @@ const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
   "z-ai/glm-5.2",
   "z-ai/glm-5.1",
   "zai/glm-5-turbo",
+  "hy3-preview",
+  "tencent/hy3-preview",
   "deepseek-v4-pro",
   "deepseek/deepseek-v4-pro",
   "MiniMax-M2.1",
@@ -365,6 +383,8 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-sonnet-4.5",
       "z-ai/glm-5.2",
       "z-ai/glm-5.1",
+      "xiaomi/mimo-v2.5",
+      "tencent/hy3-preview",
       "deepseek/deepseek-v4-pro",
     ] as string[],
     defaultModel: "",
@@ -783,6 +803,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "MiniMax-M3": ["vm0", "minimax-api-key"],
   "glm-5.2": ["vm0", "zai-api-key", "openrouter-api-key"],
   "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
+  "mimo-v2.5": ["vm0", "openrouter-api-key"],
+  "hy3-preview": ["vm0", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -796,6 +818,8 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "glm-5.2": "z-ai/glm-5.2",
     "glm-5.1": "z-ai/glm-5.1",
+    "mimo-v2.5": "xiaomi/mimo-v2.5",
+    "hy3-preview": "tencent/hy3-preview",
   },
   "vercel-ai-gateway": {
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
@@ -824,6 +848,8 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
     "z-ai/glm-5.2": "glm-5.2",
     "z-ai/glm-5.1": "glm-5.1",
+    "xiaomi/mimo-v2.5": "mimo-v2.5",
+    "tencent/hy3-preview": "hy3-preview",
   };
 
 export function normalizeRunModelId(model: string): string {

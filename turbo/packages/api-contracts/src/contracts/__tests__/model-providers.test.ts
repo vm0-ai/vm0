@@ -71,6 +71,8 @@ describe("model-first canonical catalog", () => {
       "MiniMax-M3",
       "glm-5.2",
       "glm-5.1",
+      "mimo-v2.5",
+      "hy3-preview",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
@@ -115,6 +117,8 @@ describe("model-first canonical catalog", () => {
       "Claude Opus 4.8",
     );
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
+    expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
+    expect(getCanonicalModelDisplayName("hy3-preview")).toBe("Hy3 Preview");
     expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
       "claude-fable-5",
     );
@@ -124,9 +128,13 @@ describe("model-first canonical catalog", () => {
   it("normalizes provider aliases without accepting unsupported models", () => {
     expect(normalizeRunModelId("z-ai/glm-5.2")).toBe("glm-5.2");
     expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
+    expect(normalizeRunModelId("xiaomi/mimo-v2.5")).toBe("mimo-v2.5");
+    expect(normalizeRunModelId("tencent/hy3-preview")).toBe("hy3-preview");
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
     expect(isSupportedRunModel("glm-5.2")).toBe(true);
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
+    expect(isSupportedRunModel("mimo-v2.5")).toBe(true);
+    expect(isSupportedRunModel("hy3-preview")).toBe(true);
     expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
       "deepseek/deepseek-v4-flash",
     );
@@ -177,6 +185,22 @@ describe("model-first canonical catalog", () => {
       "zai-api-key",
       "openrouter-api-key",
     ]);
+    expect(getProvidersForModel("mimo-v2.5")).toEqual([
+      "vm0",
+      "openrouter-api-key",
+    ]);
+    expect(getProvidersForModel("xiaomi/mimo-v2.5")).toEqual([
+      "vm0",
+      "openrouter-api-key",
+    ]);
+    expect(getProvidersForModel("hy3-preview")).toEqual([
+      "vm0",
+      "openrouter-api-key",
+    ]);
+    expect(getProvidersForModel("tencent/hy3-preview")).toEqual([
+      "vm0",
+      "openrouter-api-key",
+    ]);
     expect(getProvidersForModel("anthropic/claude-haiku-4.5")).toEqual([]);
     expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([]);
     expect(getProvidersForModel("MiniMax-M3")).toEqual([
@@ -207,6 +231,13 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("glm-5.2", "anthropic-api-key")).toBe(
       false,
     );
+    expect(isModelSupportedByProvider("mimo-v2.5", "openrouter-api-key")).toBe(
+      true,
+    );
+    expect(isModelSupportedByProvider("mimo-v2.5", "zai-api-key")).toBe(false);
+    expect(
+      isModelSupportedByProvider("hy3-preview", "openrouter-api-key"),
+    ).toBe(true);
   });
 
   it("maps canonical models to provider runtime model ids", () => {
@@ -215,6 +246,12 @@ describe("model-first canonical catalog", () => {
     );
     expect(getProviderRuntimeModel("openrouter-api-key", "glm-5.1")).toBe(
       "z-ai/glm-5.1",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "mimo-v2.5")).toBe(
+      "xiaomi/mimo-v2.5",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "hy3-preview")).toBe(
+      "tencent/hy3-preview",
     );
     expect(getProviderRuntimeModel("moonshot-api-key", "kimi-k2.7-code")).toBe(
       "kimi-k2.7-code",
@@ -236,6 +273,12 @@ describe("model-first canonical catalog", () => {
     );
     expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("z-ai/glm-5.2");
     expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
+    expect(getProviderRuntimeModel("vm0", "mimo-v2.5")).toBe(
+      "xiaomi/mimo-v2.5",
+    );
+    expect(getProviderRuntimeModel("vm0", "hy3-preview")).toBe(
+      "tencent/hy3-preview",
+    );
     expect(getProviderRuntimeModel("zai-api-key", "glm-5.2")).toBe("glm-5.2");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
@@ -275,6 +318,8 @@ describe("model-first canonical catalog", () => {
         "deepseek-v4-pro": 0.1,
         "kimi-k2.7-code": 0.3,
         "glm-5.2": 0.4,
+        "mimo-v2.5": 0.1,
+        "hy3-preview": 0.1,
       }),
     );
     expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
@@ -283,6 +328,8 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
     expect(getVm0ModelMultiplier("kimi-k2.7-code")).toBe(0.3);
     expect(getVm0ModelMultiplier("glm-5.2")).toBe(0.4);
+    expect(getVm0ModelMultiplier("mimo-v2.5")).toBe(0.1);
+    expect(getVm0ModelMultiplier("hy3-preview")).toBe(0.1);
     expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
   });
 });
@@ -416,7 +463,7 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("model selection for Claude-compatible gateway providers", () => {
-  it("openrouter-api-key exposes GLM 5.2 before GLM 5.1", () => {
+  it("openrouter-api-key exposes OpenRouter-managed VM0 models after GLM", () => {
     expect(getModels("openrouter-api-key")).toEqual([
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
@@ -426,6 +473,8 @@ describe("model selection for Claude-compatible gateway providers", () => {
       "anthropic/claude-sonnet-4.5",
       "z-ai/glm-5.2",
       "z-ai/glm-5.1",
+      "xiaomi/mimo-v2.5",
+      "tencent/hy3-preview",
       "deepseek/deepseek-v4-pro",
     ]);
   });
@@ -453,6 +502,8 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("MiniMax-M3");
     expect(models).toContain("glm-5.2");
     expect(models).toContain("glm-5.1");
+    expect(models).toContain("mimo-v2.5");
+    expect(models).toContain("hy3-preview");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("gpt-5.4-mini");
@@ -471,6 +522,8 @@ describe("normalizeVm0ModelId", () => {
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.2", "glm-5.2"],
     ["z-ai/glm-5.1", "glm-5.1"],
+    ["xiaomi/mimo-v2.5", "mimo-v2.5"],
+    ["tencent/hy3-preview", "hy3-preview"],
   ])("normalizes %s to %s", (model, expected) => {
     expect(normalizeVm0ModelId(model)).toBe(expected);
   });
@@ -490,6 +543,8 @@ describe("model image input support", () => {
     "claude-opus-4-7",
     "kimi-k2.7-code",
     "MiniMax-M3",
+    "mimo-v2.5",
+    "xiaomi/mimo-v2.5",
   ])("marks %s as image-input capable", (model) => {
     expect(modelSupportsImageInput(model)).toBe(true);
     expect(getModelImageInputSupport(model)).toBe("supported");
@@ -500,6 +555,8 @@ describe("model image input support", () => {
     "z-ai/glm-5.2",
     "glm-5.1",
     "z-ai/glm-5.1",
+    "hy3-preview",
+    "tencent/hy3-preview",
     "deepseek-v4-pro",
     "deepseek/deepseek-v4-pro",
     "MiniMax-M2.1",
