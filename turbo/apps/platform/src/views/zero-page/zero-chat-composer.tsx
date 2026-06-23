@@ -384,16 +384,20 @@ const ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT = 24;
 const TEMPLATE_IDLE_PREWARM_TIMEOUT_MS = 350;
 const TEMPLATE_IDLE_PREWARM_STAGGER_MS = 500;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
-  width: 512,
-  height: 512,
+  width: 1024,
   quality: 72,
 } as const;
 const ILLUSTRATION_VARIANT_THUMB_SIZE = {
   width: 96,
   height: 96,
+  fit: "cover",
   quality: 65,
 } as const;
-const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = { width: 40, height: 40 } as const;
+const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = {
+  width: 40,
+  height: 40,
+  fit: "cover",
+} as const;
 type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 
 // ---------------------------------------------------------------------------
@@ -1442,10 +1446,7 @@ function illustrationPreviewImageUrlsForItems({
       0,
       Math.min(variantIndexBySlug[item.slug] ?? 0, images.length - 1),
     );
-    return illustrationHeroImageUrlForItem(
-      item,
-      images[activeIndex] ?? item.previewImage,
-    );
+    return illustrationHeroImageUrl(images[activeIndex] ?? item.previewImage);
   });
 }
 
@@ -3632,14 +3633,14 @@ function IllustrationTemplateHero({
   source: string;
   onVariantChange: (slug: string, index: number) => void;
 }) {
-  const heroImage = illustrationHeroImageUrlForItem(item, source);
+  const heroImage = illustrationHeroImageUrl(source);
   const navigable = images.length > 1;
   const variantAt = (direction: -1 | 1): number => {
     return (activeIndex + direction + images.length) % images.length;
   };
   const preloadNeighbors = (): void => {
-    preloadIllustrationVariant(item, images, variantAt(1));
-    preloadIllustrationVariant(item, images, variantAt(-1));
+    preloadIllustrationVariant(images, variantAt(1));
+    preloadIllustrationVariant(images, variantAt(-1));
   };
 
   return (
@@ -3728,19 +3729,6 @@ function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
 
 function illustrationHeroImageUrl(source: string): string {
   return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
-}
-
-function illustrationHeroImageUrlForItem(
-  item: IllustrationTemplateItem,
-  source: string,
-): string {
-  if (
-    item.cardPreviewImage !== undefined &&
-    source === (item.previewImages[0] ?? item.previewImage)
-  ) {
-    return illustrationHeroImageUrl(item.cardPreviewImage);
-  }
-  return illustrationHeroImageUrl(source);
 }
 
 function preloadIllustrationPreviewImage(
@@ -3870,7 +3858,7 @@ function selectIllustrationVariant({
     return;
   }
 
-  const imageUrl = illustrationHeroImageUrlForItem(item, image);
+  const imageUrl = illustrationHeroImageUrl(image);
   // Swap immediately only when the target hero is already decoded; otherwise
   // decode it off-screen first so the hero never flashes a blank/loading frame.
   if (card === null || illustrationPreviewImageDecoded(imageUrl)) {
@@ -3892,7 +3880,6 @@ function selectIllustrationVariant({
 }
 
 function preloadIllustrationVariant(
-  item: IllustrationTemplateItem,
   images: readonly string[],
   index: number,
 ): void {
@@ -3902,9 +3889,7 @@ function preloadIllustrationVariant(
   }
 
   detach(
-    decodeIllustrationPreviewImage(
-      illustrationHeroImageUrlForItem(item, image),
-    ),
+    decodeIllustrationPreviewImage(illustrationHeroImageUrl(image)),
     Reason.DomCallback,
   );
 }
@@ -4105,12 +4090,12 @@ function IllustrationTemplateCard({
                 )}
                 onFocus={() => {
                   preloadIllustrationPreviewImage(
-                    illustrationHeroImageUrlForItem(item, image),
+                    illustrationHeroImageUrl(image),
                   );
                 }}
                 onMouseEnter={() => {
                   preloadIllustrationPreviewImage(
-                    illustrationHeroImageUrlForItem(item, image),
+                    illustrationHeroImageUrl(image),
                   );
                 }}
                 onClick={(event) => {

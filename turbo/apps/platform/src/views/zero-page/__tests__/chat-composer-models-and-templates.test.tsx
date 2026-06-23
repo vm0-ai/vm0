@@ -2563,16 +2563,8 @@ describe("chat composer templates", () => {
 
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
-      if (index === 0 && illustrationTemplate.cardPreviewImage) {
-        return r2ImageTransformUrl(illustrationTemplate.cardPreviewImage, {
-          width: 512,
-          height: 512,
-          quality: 72,
-        });
-      }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 512,
-        height: 512,
+        width: 1024,
         quality: 72,
       });
     };
@@ -2750,16 +2742,8 @@ describe("chat composer templates", () => {
 
     const heroAlt = `${illustrationTemplate.title} illustration preview`;
     const heroSrc = (index: number) => {
-      if (index === 0 && illustrationTemplate.cardPreviewImage) {
-        return r2ImageTransformUrl(illustrationTemplate.cardPreviewImage, {
-          width: 512,
-          height: 512,
-          quality: 72,
-        });
-      }
       return r2ImageTransformUrl(illustrationTemplate.previewImages[index]!, {
-        width: 512,
-        height: 512,
+        width: 1024,
         quality: 72,
       });
     };
