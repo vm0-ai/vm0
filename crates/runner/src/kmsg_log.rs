@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::child_cleanup::kill_and_reap_child_on_drop;
 use crate::network_log_drain::{
     NetworkLogDrainProducer, NetworkLogDrainRequest, run_drainable_line_reader,
 };
@@ -35,9 +36,14 @@ impl KmsgHandle {
     /// Stop the kmsg monitor and wait for cleanup.
     pub async fn stop(mut self) {
         self.cancel.cancel();
-        if let Some(ref mut child) = self.child {
+        let child_reaped = if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
-            let _ = child.wait().await;
+            child.wait().await.is_ok()
+        } else {
+            false
+        };
+        if child_reaped {
+            self.child = None;
         }
         let _ = (&mut self.task).await;
         info!("kmsg monitor stopped");
@@ -81,13 +87,11 @@ impl KmsgHandle {
 impl Drop for KmsgHandle {
     /// Kill dmesg and abort the log task if `stop()` was never called.
     ///
-    /// Prevents a leaked `dmesg -w` process when `run()` returns early
-    /// (e.g., factory creation failure). Harmless if `stop()` already ran —
-    /// `start_kill` on an exited child is a no-op.
+    /// Prevents a leaked `dmesg -w` process when shutdown misses the explicit
+    /// async `stop()` path. The cleanup helper also reaps children that already
+    /// exited before drop.
     fn drop(&mut self) {
-        if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-        }
+        kill_and_reap_child_on_drop("dmesg", &mut self.child);
         self.cancel.cancel();
         self.task.abort();
     }

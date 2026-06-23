@@ -1195,10 +1195,7 @@ impl MitmProxy {
 impl Drop for MitmProxy {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Release);
-        // Best-effort kill if still running.
-        if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-        }
+        crate::child_cleanup::kill_and_reap_child_on_drop("mitmdump", &mut self.child);
     }
 }
 

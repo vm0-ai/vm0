@@ -6,6 +6,7 @@ use tracing::{info, warn};
 
 use super::log::tail_stderr;
 use super::port::DnsPortReservation;
+use crate::child_cleanup::kill_and_reap_child_on_drop;
 use crate::network_log_drain::NetworkLogDrainProducer;
 use crate::network_log_manager::NetworkLogManager;
 
@@ -22,9 +23,14 @@ impl DnsProxy {
     /// Stop the DNS proxy and wait for cleanup.
     pub async fn stop(mut self) {
         self.cancel.cancel();
-        if let Some(ref mut child) = self.child {
+        let child_reaped = if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
-            let _ = child.wait().await;
+            child.wait().await.is_ok()
+        } else {
+            false
+        };
+        if child_reaped {
+            self.child = None;
         }
         let _ = (&mut self.task).await;
         info!("dns proxy stopped");
@@ -74,13 +80,11 @@ impl DnsProxy {
 impl Drop for DnsProxy {
     /// Kill dnsmasq and abort the log task if `stop()` was never called.
     ///
-    /// Prevents orphaned dnsmasq processes when `run_start()` fails after
-    /// `start_on_reserved_port()` (e.g., live-runner publish error). Harmless
-    /// if `stop()` already ran — `start_kill` on an exited child is a no-op.
+    /// Prevents orphaned dnsmasq processes when shutdown misses the explicit
+    /// async `stop()` path. The cleanup helper also reaps children that already
+    /// exited before drop.
     fn drop(&mut self) {
-        if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-        }
+        kill_and_reap_child_on_drop("dnsmasq", &mut self.child);
         self.cancel.cancel();
         self.task.abort();
     }
