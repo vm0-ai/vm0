@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.129.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.3...runner-rs-v0.129.4) (2026-06-23)
+
+
+### Bug Fixes
+
+* deduplicate deel firewall route owners ([#18631](https://github.com/vm0-ai/vm0/issues/18631)) ([0a219eb](https://github.com/vm0-ai/vm0/commit/0a219ebba2ce16707cedfb37fa3bb7aad75d74fe))
+* deduplicate figma firewall route owners ([#18639](https://github.com/vm0-ai/vm0/issues/18639)) ([4389f72](https://github.com/vm0-ai/vm0/commit/4389f72b67f082698c3852b7e0ad9e88902277ce))
+* drain runner telemetry auto flushes ([#18636](https://github.com/vm0-ai/vm0/issues/18636)) ([7ceec80](https://github.com/vm0-ai/vm0/commit/7ceec80ef299ed0fe0425abb9f27b9ea5baae5d8))
+
 ## [0.129.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.2...runner-rs-v0.129.3) (2026-06-23)
 
 
