@@ -103,6 +103,11 @@ interface CodexFileChange {
   path?: string;
 }
 
+interface CodexPlanStep {
+  step?: string;
+  status?: string;
+}
+
 interface CodexItem {
   id?: string;
   type?: string;
@@ -124,6 +129,9 @@ interface CodexItem {
 interface CodexEventData {
   type?: string;
   thread_id?: string;
+  turn_id?: string;
+  explanation?: string;
+  plan?: CodexPlanStep[];
   usage?: CodexUsage;
   item?: CodexItem;
   error?: string;
@@ -176,6 +184,19 @@ function parseCodexChanges(value: unknown): CodexFileChange[] | undefined {
   });
 }
 
+function parseCodexPlanSteps(value: unknown): CodexPlanStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter(isRecord).map((step) => {
+    return {
+      step: getStringField(step, "step"),
+      status: getStringField(step, "status"),
+    };
+  });
+}
+
 function parseCodexItem(value: unknown): CodexItem | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -208,6 +229,9 @@ function parseCodexEventData(value: unknown): CodexEventData | undefined {
   return {
     type: getStringField(value, "type"),
     thread_id: getStringField(value, "thread_id"),
+    turn_id: getStringField(value, "turn_id"),
+    explanation: getStringField(value, "explanation"),
+    plan: parseCodexPlanSteps(value.plan),
     usage: parseCodexUsage(value.usage),
     item: parseCodexItem(value.item),
     error: getStringField(value, "error"),
@@ -221,6 +245,7 @@ function isCodexEventType(eventType: string): boolean {
     eventType === "turn.started" ||
     eventType === "turn.completed" ||
     eventType === "turn.failed" ||
+    eventType === "turn.plan.updated" ||
     eventType === "error" ||
     eventType.startsWith("item.")
   );
@@ -352,6 +377,43 @@ function formatCodexFileChanges(changes: CodexFileChange[]): string {
   return ["[files] Files changed:", ...lines].join("\n");
 }
 
+function formatCodexPlanUpdate(
+  plan: CodexPlanStep[] | undefined,
+  explanation: string | undefined,
+): string | null {
+  const header = explanation?.trim()
+    ? `[plan] ${explanation.trim()}`
+    : "[plan]";
+  const steps = Array.isArray(plan)
+    ? plan.flatMap((step) => {
+        const text = step.step?.trim();
+        if (!text) {
+          return [];
+        }
+        return [`- [${formatCodexPlanStatus(step.status)}] ${text}`];
+      })
+    : [];
+
+  if (steps.length === 0 && !explanation?.trim()) {
+    return null;
+  }
+
+  return [header, ...steps].join("\n");
+}
+
+function formatCodexPlanStatus(status: string | undefined): string {
+  switch (status) {
+    case "completed":
+    case "pending":
+      return status;
+    case "inProgress":
+    case "in_progress":
+      return "in progress";
+    default:
+      return status?.trim() || "unknown";
+  }
+}
+
 function formatGenericCodexItem(
   eventType: string,
   item: CodexItem | undefined,
@@ -412,6 +474,13 @@ function normalizeCodexRunEvent(
         result: codexEvent?.error ?? "Turn failed",
         usage: codexEvent?.usage,
       });
+    }
+    case "turn.plan.updated": {
+      const text = formatCodexPlanUpdate(
+        codexEvent?.plan,
+        codexEvent?.explanation,
+      );
+      return text ? makeCodexAssistantTextEvent(event, text) : null;
     }
     case "error": {
       return makeCodexResultEvent({

@@ -871,6 +871,44 @@ describe("logs command", () => {
       expect(logCalls).toContain("2. Patch retry");
     });
 
+    it("should render turn plan updates as text", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "turn.plan.updated",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "turn.plan.updated",
+                    explanation: "Current plan",
+                    plan: [
+                      { step: "Inspect logs", status: "completed" },
+                      { step: "Patch retry", status: "in_progress" },
+                      { step: "Run tests", status: "pending" },
+                    ],
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[plan] Current plan");
+      expect(logCalls).toContain("- [completed] Inspect logs");
+      expect(logCalls).toContain("- [in progress] Patch retry");
+      expect(logCalls).toContain("- [pending] Run tests");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(

@@ -61,6 +61,23 @@ impl ItemStatus {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlanStepStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+impl PlanStepStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+        }
+    }
+}
+
 /// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CodexAppServerEventError {
@@ -83,6 +100,7 @@ pub fn notification_to_codex_event(
         "thread/started" => map_thread_started(notification).map(Some),
         "turn/started" => map_turn(notification, "turn.started").map(Some),
         "turn/completed" => map_turn_completed(notification).map(Some),
+        "turn/plan/updated" => map_turn_plan_updated(notification).map(Some),
         "item/started" => map_item(notification, "item.started", "started_at_ms", "startedAtMs"),
         "item/completed" => map_item(
             notification,
@@ -173,6 +191,48 @@ fn map_turn_completed(
         "thread_id": thread_id,
         "turn": normalized_turn,
     }))
+}
+
+fn map_turn_plan_updated(
+    notification: &ServerNotification,
+) -> Result<Value, CodexAppServerEventError> {
+    let params = required_params(notification)?;
+    let params_object = params
+        .as_object()
+        .ok_or_else(|| invalid_field(notification, "params"))?;
+    let thread_id = required_string_field(params_object, &notification.method, "threadId")?;
+    let turn_id = required_string_field(params_object, &notification.method, "turnId")?;
+    let explanation =
+        optional_nullable_string_field(params_object, &notification.method, "explanation")?;
+    let plan = params_object
+        .get("plan")
+        .ok_or_else(|| missing_field(&notification.method, "plan"))?
+        .as_array()
+        .ok_or_else(|| invalid_field_for_method(&notification.method, "plan"))?;
+    let plan = plan
+        .iter()
+        .map(|step| normalize_turn_plan_step(step, &notification.method))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut event = Map::new();
+    event.insert(
+        "type".to_string(),
+        Value::String("turn.plan.updated".to_string()),
+    );
+    event.insert(
+        "thread_id".to_string(),
+        Value::String(thread_id.to_string()),
+    );
+    event.insert("turn_id".to_string(), Value::String(turn_id.to_string()));
+    event.insert("plan".to_string(), Value::Array(plan));
+    if let Some(explanation) = explanation {
+        event.insert(
+            "explanation".to_string(),
+            Value::String(explanation.to_string()),
+        );
+    }
+
+    Ok(Value::Object(event))
 }
 
 fn map_item(
@@ -287,6 +347,19 @@ fn normalize_item(
         "fileChange" => normalize_file_change_item(item, method).map(Some),
         _ => Ok(None),
     }
+}
+
+fn normalize_turn_plan_step(step: &Value, method: &str) -> Result<Value, CodexAppServerEventError> {
+    let step = step
+        .as_object()
+        .ok_or_else(|| invalid_field_for_method(method, "plan[]"))?;
+    let text = required_string_field(step, method, "plan[].step")?;
+    let status = required_plan_step_status_field(step, method, "plan[].status")?;
+
+    Ok(json!({
+        "step": text,
+        "status": status.normalized(),
+    }))
 }
 
 fn normalize_agent_message(
@@ -620,6 +693,20 @@ fn required_turn_status_field(
     }
 }
 
+fn required_plan_step_status_field(
+    object: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<PlanStepStatus, CodexAppServerEventError> {
+    let status = required_string_field(object, method, field)?;
+    match status {
+        "pending" => Ok(PlanStepStatus::Pending),
+        "inProgress" => Ok(PlanStepStatus::InProgress),
+        "completed" => Ok(PlanStepStatus::Completed),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
 fn required_lifecycle_item_status_field(
     object: &Map<String, Value>,
     method: &str,
@@ -854,6 +941,65 @@ mod tests {
                     "text": "1. Inspect logs\n2. Patch retry"
                 }
             })
+        );
+    }
+
+    #[test]
+    fn turn_plan_updated_maps_to_visible_plan_event() {
+        let event = mapped_event(
+            "turn/plan/updated",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "explanation": "Current plan",
+                "plan": [
+                    {"step": "Inspect logs", "status": "completed"},
+                    {"step": "Patch retry", "status": "inProgress"},
+                    {"step": "Run tests", "status": "pending"}
+                ]
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "turn.plan.updated",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "explanation": "Current plan",
+                "plan": [
+                    {"step": "Inspect logs", "status": "completed"},
+                    {"step": "Patch retry", "status": "in_progress"},
+                    {"step": "Run tests", "status": "pending"}
+                ]
+            })
+        );
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
+    }
+
+    #[test]
+    fn turn_plan_updated_unknown_step_status_returns_error() {
+        let error = notification_to_codex_event(&notification(
+            "turn/plan/updated",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "plan": [
+                    {"step": "Inspect logs", "status": "cancelled"}
+                ]
+            }),
+        ))
+        .expect_err("unknown plan step status should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "turn/plan/updated".to_string(),
+                field: "plan[].status"
+            }
         );
     }
 

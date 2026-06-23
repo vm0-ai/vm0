@@ -910,6 +910,20 @@ function codexActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 13,
+      eventType: "turn.plan.updated",
+      eventData: {
+        type: "turn.plan.updated",
+        explanation: "Current plan",
+        plan: [
+          { step: "Inspect logs", status: "completed" },
+          { step: "Patch retry", status: "in_progress" },
+          { step: "Run tests", status: "pending" },
+        ],
+      },
+      createdAt: "2026-03-10T15:00:14Z",
+    },
+    {
+      sequenceNumber: 14,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -920,7 +934,7 @@ function codexActivityEvents(): AgentEvent[] {
           reasoning_output_tokens: 4,
         },
       },
-      createdAt: "2026-03-10T15:00:14Z",
+      createdAt: "2026-03-10T15:00:15Z",
     },
   ];
 }
@@ -1859,6 +1873,10 @@ describe("activity detail polling", () => {
         );
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("[plan] Current plan")).toBeInTheDocument();
+    expect(screen.getByText("[completed] Inspect logs")).toBeInTheDocument();
+    expect(screen.getByText("[in progress] Patch retry")).toBeInTheDocument();
+    expect(screen.getByText("[pending] Run tests")).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
       screen.getAllByText("pnpm test --filter billing-worker"),
