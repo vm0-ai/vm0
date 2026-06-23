@@ -294,6 +294,7 @@ jobs:
 
       - name: Resolve metal hosts for architecture
         id: matrix-hosts
+        shell: bash
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
