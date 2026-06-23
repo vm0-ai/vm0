@@ -33,8 +33,8 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise, jsonParseOr } from "../../../signals/utils.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
+import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
   detachedSetupPage,
@@ -48,10 +48,6 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const { get$: presentationTemplateThemeIdBySlugRaw$ } = localStorageSignals(
-  "presentationTemplateThemeIdBySlug",
-);
-
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
 const THREAD_ID = "thread-model-template-1";
@@ -1724,7 +1720,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("uses the presentation card theme picker for template selection", async () => {
+  it("uses the presentation detail theme for template selection", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
@@ -1757,35 +1753,9 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    await user.click(
-      await screen.findByLabelText(
-        `Select card theme Prism for ${template.title}`,
-      ),
-    );
     expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
-    if (!prismCardPreview) {
-      throw new Error("Prism card preview not found");
-    }
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`${template.title} card image preview`),
-      ).toHaveAttribute(
-        "src",
-        r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
-      );
-    });
-    expect(
-      jsonParseOr<Record<string, string>>(
-        context.store.get(presentationTemplateThemeIdBySlugRaw$) ?? "{}",
-        {},
-      ),
-    ).toMatchObject({ [template.slug]: "prism" });
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
 
     await user.click(
       screen.getByLabelText(`Preview ${template.title} at current slide`),
@@ -1798,9 +1768,20 @@ describe("chat composer templates", () => {
         }),
       ).toBeInTheDocument();
     });
+    await user.click(
+      within(templateDialog).getByLabelText("Select style Prism"),
+    );
     expect(
       within(templateDialog).getByLabelText("Select style Prism"),
     ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      context.store.get(templateCardThemeIdBySlug$)[template.slug],
+    ).toBeUndefined();
+
+    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
+    if (!prismCardPreview) {
+      throw new Error("Prism card preview not found");
+    }
     expect(
       within(templateDialog).getByTestId(
         `${template.title} detail image preview`,
@@ -1810,33 +1791,38 @@ describe("chat composer templates", () => {
       r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
     );
 
-    const templateButton = queryAllByRoleFast("button", templateDialog).find(
-      (candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-        );
-      },
-    );
-    if (!templateButton) {
-      throw new Error("Template button not found");
-    }
-    await user.click(templateButton);
-
     await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-    expect(
-      screen.getByLabelText(`Select card theme Prism for ${template.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(
-      screen.getByLabelText(`Select template ${template.title}`),
+      within(templateDialog).getByLabelText(
+        `Select template ${template.title}`,
+      ),
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
+    });
+    expect(context.store.get(templateCardThemeIdBySlug$)).toMatchObject({
+      [template.slug]: "prism",
+    });
+
+    await user.click(
+      screen.getByLabelText(`Preview template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} card image preview`),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
+      );
+    });
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     await sendMessageInUI(
@@ -1847,50 +1833,6 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(selectedColorSystemId).toBe("color-system:prism");
     });
-  });
-
-  it("opens the presentation theme page from the card theme trigger on mobile", async () => {
-    context.mocks.browser.matchMedia((query) => {
-      return query === "(max-width: 639px)";
-    });
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
-    });
-    if (template === undefined) {
-      throw new Error("Second presentation template not found");
-    }
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await fill(screen.getByLabelText("Search templates"), template.title);
-    await user.click(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    );
-
-    const templateDialog = screen.getByRole("dialog");
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByRole("heading", {
-          name: `Template / ${template.title}`,
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
-    ).not.toBeInTheDocument();
   });
 
   it("selects presentation templates with the default card theme", async () => {
@@ -1917,10 +1859,7 @@ describe("chat composer templates", () => {
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
+      screen.queryByLabelText(`Change theme for ${template.title}`),
     ).not.toBeInTheDocument();
 
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
@@ -1956,8 +1895,8 @@ describe("chat composer templates", () => {
     click(templateButton);
 
     expect(
-      screen.getByLabelText(`Change theme for ${template.title}`),
-    ).toBeInTheDocument();
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
 
     click(screen.getByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
