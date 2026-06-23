@@ -141,7 +141,7 @@ describe("auto-scroll prepend compensation", () => {
     resizeObserver.triggerAll();
 
     expect(scrollContainer.scrollTop).toBe(820);
-    expect(ctx.store.get(scroll.awayFromBottom$)).toBe(true);
+    expect(ctx.store.get(scroll.awayFromBottom$)).toBeTruthy();
 
     resizeObserver.triggerAll();
     expect(scrollContainer.scrollTop).toBe(820);
@@ -173,7 +173,7 @@ describe("auto-scroll prepend compensation", () => {
     resizeObserver.triggerAll();
 
     expect(scrollContainer.scrollTop).toBe(80);
-    expect(ctx.store.get(scroll.awayFromBottom$)).toBe(true);
+    expect(ctx.store.get(scroll.awayFromBottom$)).toBeTruthy();
   });
 
   it("does not let a no-op prepend clear another pending compensation", () => {

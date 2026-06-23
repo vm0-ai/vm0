@@ -326,7 +326,7 @@ function createClearScrollHeightForPrependCommand(restoreState: RestoreState) {
           return record.token === token;
         },
       );
-      if (index >= 0) {
+      if (index !== -1) {
         restoreState.pendingPrependScrollRecords.splice(index, 1);
       }
     },
