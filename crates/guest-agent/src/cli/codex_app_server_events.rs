@@ -533,7 +533,7 @@ fn base_item(
     item_type: &'static str,
 ) -> Result<Map<String, Value>, CodexAppServerEventError> {
     let mut normalized = Map::new();
-    let id = required_string_field(item, method, "item.id")?;
+    let id = required_non_empty_string_field(item, method, "item.id")?;
     normalized.insert("id".to_string(), Value::String(id.to_string()));
     normalized.insert("type".to_string(), Value::String(item_type.to_string()));
     Ok(normalized)
@@ -633,6 +633,18 @@ fn required_string_field<'a>(
         .ok_or_else(|| missing_field(method, field))?
         .as_str()
         .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_non_empty_string_field<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<&'a str, CodexAppServerEventError> {
+    let value = required_string_field(object, method, field)?.trim();
+    if value.is_empty() {
+        return Err(invalid_field_for_method(method, field));
+    }
+    Ok(value)
 }
 
 fn optional_nullable_string_field<'a>(
@@ -1764,6 +1776,40 @@ mod tests {
             CodexAppServerEventError::MissingField {
                 method: "item/completed".to_string(),
                 field: "completedAtMs"
+            }
+        );
+    }
+
+    #[test]
+    fn item_notification_empty_item_id_returns_error() {
+        let error = notification_to_codex_event(&ServerNotification {
+            method: "item/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "startedAtMs": 42,
+                "item": {
+                    "type": "commandExecution",
+                    "id": " ",
+                    "command": "echo hi",
+                    "cwd": "/workspaces/vm0",
+                    "processId": null,
+                    "source": "exec",
+                    "status": "inProgress",
+                    "commandActions": [],
+                    "aggregatedOutput": null,
+                    "exitCode": null,
+                    "durationMs": null
+                }
+            })),
+        })
+        .expect_err("empty item id should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "item/started".to_string(),
+                field: "item.id"
             }
         );
     }

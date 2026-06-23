@@ -251,6 +251,10 @@ export class CodexEventParser {
 
   private static parseCommandExecution(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
+    const toolUseId = getCodexItemId(item);
+    if (!toolUseId) {
+      return null;
+    }
 
     if (event.type === "item.started" && item.command) {
       return {
@@ -258,7 +262,7 @@ export class CodexEventParser {
         timestamp: new Date(),
         data: {
           tool: "Bash",
-          toolUseId: item.id,
+          toolUseId,
           input: { command: item.command },
         },
       };
@@ -270,7 +274,7 @@ export class CodexEventParser {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
+          toolUseId,
           result: output,
           isError: isCommandExecutionError(item),
         },
@@ -282,6 +286,10 @@ export class CodexEventParser {
 
   private static parseFileEditOrWrite(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
+    const toolUseId = getCodexItemId(item);
+    if (!toolUseId) {
+      return null;
+    }
 
     if (event.type === "item.started" && item.path) {
       return {
@@ -289,7 +297,7 @@ export class CodexEventParser {
         timestamp: new Date(),
         data: {
           tool: item.type === "file_edit" ? "Edit" : "Write",
-          toolUseId: item.id,
+          toolUseId,
           input: { file_path: item.path },
         },
       };
@@ -300,7 +308,7 @@ export class CodexEventParser {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
+          toolUseId,
           result: item.diff || "File operation completed",
           isError: false,
         },
@@ -312,6 +320,10 @@ export class CodexEventParser {
 
   private static parseFileRead(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
+    const toolUseId = getCodexItemId(item);
+    if (!toolUseId) {
+      return null;
+    }
 
     if (event.type === "item.started" && item.path) {
       return {
@@ -319,7 +331,7 @@ export class CodexEventParser {
         timestamp: new Date(),
         data: {
           tool: "Read",
-          toolUseId: item.id,
+          toolUseId,
           input: { file_path: item.path },
         },
       };
@@ -330,7 +342,7 @@ export class CodexEventParser {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
+          toolUseId,
           result: "File read completed",
           isError: false,
         },
@@ -412,6 +424,14 @@ function isCommandExecutionError(item: CodexItem): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getCodexItemId(item: CodexItem): string | null {
+  if (typeof item.id !== "string") {
+    return null;
+  }
+  const id = item.id.trim();
+  return id || null;
 }
 
 function getStringField(

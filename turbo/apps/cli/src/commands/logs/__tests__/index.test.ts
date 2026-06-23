@@ -1045,6 +1045,94 @@ describe("logs command", () => {
       expect(logCalls).toContain("[warning] later event still renders");
     });
 
+    it("should skip codex tool events without valid item ids", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      type: "command_execution",
+                      command: "echo missing-id",
+                      status: "in_progress",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      type: "command_execution",
+                      output: "missing id output",
+                      exit_code: 0,
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: 123,
+                      type: "command_execution",
+                      command: "echo numeric-id",
+                      status: "in_progress",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: 123,
+                      type: "command_execution",
+                      output: "numeric id output",
+                      exit_code: 0,
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 5,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:04Z",
+                  eventData: {
+                    type: "warning",
+                    message: "later event still renders",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("missing-id");
+      expect(logCalls).not.toContain("missing id output");
+      expect(logCalls).not.toContain("numeric-id");
+      expect(logCalls).not.toContain("numeric id output");
+      expect(logCalls).toContain("[warning] later event still renders");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(
