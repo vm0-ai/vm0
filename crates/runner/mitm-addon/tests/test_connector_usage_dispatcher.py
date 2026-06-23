@@ -50,10 +50,9 @@ class TestConnectorUsageDispatcher:
         flow = self._make_x_flow(real_flow, tmp_path, body=body)
 
         assert flow.metadata[metadata_keys.STREAM_BUFFER] == bytearray(body)
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE] == {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        stream_state = flow.metadata[metadata_keys.STREAM_BUFFER_STATE]
+        assert stream_state["truncated"] is False
+        assert stream_state["total_bytes"] == len(body)
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model-provider flows go through report_model_provider_usage instead.

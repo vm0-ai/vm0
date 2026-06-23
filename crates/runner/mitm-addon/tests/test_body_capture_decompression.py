@@ -18,7 +18,13 @@ class TestDecompression:
     """Integration tests for decompression through add_capture_fields."""
 
     def _make_flow_with_compressed_buffer(
-        self, real_flow, data: bytes, encoding: str, content_type: str = "application/json"
+        self,
+        real_flow,
+        data: bytes,
+        encoding: str,
+        content_type: str = "application/json",
+        *,
+        truncated: bool = False,
     ) -> http.HTTPFlow:
         flow = real_flow(
             method="POST",
@@ -27,7 +33,7 @@ class TestDecompression:
             response_content_type=content_type,
             response_encoding=encoding or None,
         )
-        set_response_stream_buffer(flow, data)
+        set_response_stream_buffer(flow, data, truncated=truncated)
         return flow
 
     def test_no_encoding_captures_plain_text(self, real_flow):
@@ -180,8 +186,9 @@ class TestDecompression:
         original = b"x" * 100_000
         compressed = gzip.compress(original)
         truncated = compressed[: len(compressed) // 2]
-        flow = self._make_flow_with_compressed_buffer(real_flow, truncated, "gzip", "text/plain")
-        flow.metadata["stream_buffer_state"]["truncated"] = True
+        flow = self._make_flow_with_compressed_buffer(
+            real_flow, truncated, "gzip", "text/plain", truncated=True
+        )
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" in entry
@@ -208,8 +215,9 @@ class TestDecompression:
         original = b"hello world " * 1000
         compressed = brotli.compress(original)
         truncated = compressed[: len(compressed) // 2]
-        flow = self._make_flow_with_compressed_buffer(real_flow, truncated, "br", "text/plain")
-        flow.metadata["stream_buffer_state"]["truncated"] = True
+        flow = self._make_flow_with_compressed_buffer(
+            real_flow, truncated, "br", "text/plain", truncated=True
+        )
         entry = {}
         add_capture_fields(flow, entry)
         # Should not crash; body is either partial decompressed or original
@@ -220,8 +228,9 @@ class TestDecompression:
         original = b"hello world " * 1000
         compressed = zstandard.ZstdCompressor().compress(original)
         truncated = compressed[: len(compressed) // 2]
-        flow = self._make_flow_with_compressed_buffer(real_flow, truncated, "zstd", "text/plain")
-        flow.metadata["stream_buffer_state"]["truncated"] = True
+        flow = self._make_flow_with_compressed_buffer(
+            real_flow, truncated, "zstd", "text/plain", truncated=True
+        )
         entry = {}
         add_capture_fields(flow, entry)
         assert entry.get("response_body_truncated") is True or "response_body" not in entry
