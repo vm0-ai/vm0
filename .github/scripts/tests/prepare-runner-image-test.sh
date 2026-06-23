@@ -33,6 +33,17 @@ grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
+  METAL_HOSTS=' ,  ' \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/empty-hosts.out" 2>"${TMPDIR}/empty-hosts.err"; then
+  fail "expected empty metal hosts to fail"
+fi
+grep -q "METAL_HOSTS is empty" "${TMPDIR}/empty-hosts.err" || fail "expected empty metal hosts message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \

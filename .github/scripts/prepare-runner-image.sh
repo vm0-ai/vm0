@@ -37,6 +37,12 @@ if [ "$EXPECTED_REMOTE_ARCH" != "$DERIVED_EXPECTED_REMOTE_ARCH" ]; then
   exit 2
 fi
 
+mapfile -t HOSTS < <(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep .)
+if [ "${#HOSTS[@]}" -lt 1 ]; then
+  echo "METAL_HOSTS is empty" >&2
+  exit 1
+fi
+
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
 echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
@@ -81,12 +87,6 @@ guest_sha_json=$(jq -n \
     "guest-reseed": $guest_reseed,
     "guest-write-file": $guest_write_file
   }')
-
-mapfile -t HOSTS < <(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep .)
-if [ "${#HOSTS[@]}" -lt 1 ]; then
-  echo "METAL_HOSTS is empty" >&2
-  exit 1
-fi
 
 prepare_host() {
   local host=$1
