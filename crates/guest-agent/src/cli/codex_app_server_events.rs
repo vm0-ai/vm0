@@ -236,7 +236,7 @@ fn map_warning(notification: &ServerNotification) -> Result<Value, CodexAppServe
         .ok_or_else(|| invalid_field(notification, "params"))?;
     let message = required_string_field(params_object, &notification.method, "message")?;
     let thread_id =
-        required_nullable_string_field(params_object, &notification.method, "threadId")?;
+        optional_nullable_string_field(params_object, &notification.method, "threadId")?;
 
     let mut event = Map::new();
     event.insert("type".to_string(), Value::String("warning".to_string()));
@@ -303,8 +303,13 @@ fn normalize_reasoning(
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = base_item(item, method, "reasoning")?;
-    let mut text_parts = string_array_field(item, method, "summary", "item.summary")?;
-    text_parts.extend(string_array_field(item, method, "content", "item.content")?);
+    let mut text_parts = optional_string_array_field(item, method, "summary", "item.summary")?;
+    text_parts.extend(optional_string_array_field(
+        item,
+        method,
+        "content",
+        "item.content",
+    )?);
     if !text_parts.is_empty() {
         normalized.insert("text".to_string(), Value::String(text_parts.join("\n")));
     }
@@ -539,15 +544,15 @@ fn required_string_field<'a>(
         .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
-fn required_nullable_string_field<'a>(
+fn optional_nullable_string_field<'a>(
     object: &'a Map<String, Value>,
     method: &str,
     field: &'static str,
 ) -> Result<Option<&'a str>, CodexAppServerEventError> {
     let key = field.rsplit('.').next().unwrap_or(field);
-    let value = object
-        .get(key)
-        .ok_or_else(|| missing_field(method, field))?;
+    let Some(value) = object.get(key) else {
+        return Ok(None);
+    };
     if value.is_null() {
         return Ok(None);
     }
@@ -623,15 +628,16 @@ fn required_lifecycle_item_status_field(
     }
 }
 
-fn string_array_field(
+fn optional_string_array_field(
     object: &Map<String, Value>,
     method: &str,
     key: &'static str,
     field: &'static str,
 ) -> Result<Vec<String>, CodexAppServerEventError> {
-    let values = object
-        .get(key)
-        .ok_or_else(|| missing_field(method, field))?
+    let Some(values) = object.get(key) else {
+        return Ok(Vec::new());
+    };
+    let values = values
         .as_array()
         .ok_or_else(|| invalid_field_for_method(method, field))?;
 
@@ -963,6 +969,28 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_omits_text_when_summary_and_content_default_empty() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "reasoning",
+                    "id": "reason-1"
+                }
+            }),
+        );
+
+        assert_eq!(
+            event.pointer("/item/type").and_then(Value::as_str),
+            Some("reasoning")
+        );
+        assert_eq!(event.pointer("/item/text"), None);
+    }
+
+    #[test]
     fn completed_turn_preserves_completed_event_shape() {
         let event = mapped_event(
             "turn/completed",
@@ -1236,6 +1264,24 @@ mod tests {
             "warning",
             json!({
                 "threadId": null,
+                "message": "global warning"
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "warning",
+                "message": "global warning"
+            })
+        );
+    }
+
+    #[test]
+    fn warning_without_thread_id_omits_thread_id() {
+        let event = mapped_event(
+            "warning",
+            json!({
                 "message": "global warning"
             }),
         );
