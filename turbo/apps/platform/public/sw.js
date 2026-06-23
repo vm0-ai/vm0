@@ -8,6 +8,13 @@ function isStaticAsset(url) {
   return url.origin === self.location.origin && STATIC_RE.test(url.pathname);
 }
 
+function isRevalidatedStaticAsset(url) {
+  return (
+    url.origin === self.location.origin &&
+    url.pathname.startsWith("/firewall-metadata/")
+  );
+}
+
 function isApiRequest(url) {
   return (
     url.origin === self.location.origin && url.pathname.startsWith("/api/")
@@ -49,6 +56,13 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(event.request.url);
+
+  if (isRevalidatedStaticAsset(url)) {
+    // Stable generated metadata URLs must revalidate instead of being served
+    // from Cache Storage like content-hashed Vite assets.
+    event.respondWith(fetch(event.request, { cache: "no-cache" }));
+    return;
+  }
 
   if (isStaticAsset(url)) {
     // Cache-First: Vite content-hashed filenames are immutable.
