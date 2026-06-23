@@ -66,6 +66,24 @@ append_group() {
     }]' <<<"$groups"
 }
 
+validate_host_entry() {
+  local host=$1
+  case "$host" in
+    *[[:space:]/]*)
+      echo "invalid runner host entry: ${host}" >&2
+      return 2
+      ;;
+  esac
+}
+
+validate_host_entries() {
+  local groups=$1
+  local host
+  while IFS= read -r host; do
+    validate_host_entry "$host" || return $?
+  done < <(jq -r '.[].hosts | split(",")[]' <<<"$groups")
+}
+
 validate_unique_hosts() {
   local groups=$1
   local duplicate
@@ -82,6 +100,7 @@ emit_groups() {
   groups=$(jq -n -c '[]')
   groups=$(append_group "$groups" "arm64" "ARM64" "${AWS_METAL_RUNNER_HOSTS:-}" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "${X86_64_METAL_RUNNER_HOSTS:-}" "x86_64-unknown-linux-musl")
+  validate_host_entries "$groups" || return $?
   validate_unique_hosts "$groups" || return $?
   printf '%s\n' "$groups"
 }

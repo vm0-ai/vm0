@@ -44,6 +44,17 @@ grep -q "METAL_HOSTS is empty" "${TMPDIR}/empty-hosts.err" || fail "expected emp
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
+  METAL_HOSTS='bad/host' \
+  METAL_USER=ci \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/invalid-hosts.out" 2>"${TMPDIR}/invalid-hosts.err"; then
+  fail "expected invalid metal hosts to fail"
+fi
+grep -q "invalid METAL_HOSTS entry: bad/host" "${TMPDIR}/invalid-hosts.err" || fail "expected invalid metal hosts message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
   METAL_HOSTS='dev-1, dev-1' \
   METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \

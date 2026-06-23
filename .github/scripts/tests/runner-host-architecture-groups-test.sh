@@ -77,6 +77,16 @@ assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","tar
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' X86_64_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
 
+if run_clean AWS_METAL_RUNNER_HOSTS='bad host' "$HOST_GROUPS" >"${TMPDIR}/invalid-space.out" 2>"${TMPDIR}/invalid-space.err"; then
+  fail "expected host with whitespace to fail"
+fi
+grep -q "invalid runner host entry: bad host" "${TMPDIR}/invalid-space.err" || fail "expected host whitespace message"
+
+if run_clean AWS_METAL_RUNNER_HOSTS='bad/host' "$HOST_GROUPS" matrix >"${TMPDIR}/invalid-slash.out" 2>"${TMPDIR}/invalid-slash.err"; then
+  fail "expected host with slash to fail"
+fi
+grep -q "invalid runner host entry: bad/host" "${TMPDIR}/invalid-slash.err" || fail "expected host slash message"
+
 if run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-1' "$HOST_GROUPS" >"${TMPDIR}/duplicate-group.out" 2>"${TMPDIR}/duplicate-group.err"; then
   fail "expected duplicate host in one group to fail"
 fi

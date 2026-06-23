@@ -42,6 +42,14 @@ if [ "${#HOSTS[@]}" -lt 1 ]; then
   echo "METAL_HOSTS is empty" >&2
   exit 1
 fi
+for host in "${HOSTS[@]}"; do
+  case "$host" in
+    *[[:space:]/]*)
+      echo "invalid METAL_HOSTS entry: ${host}" >&2
+      exit 2
+      ;;
+  esac
+done
 duplicate_host=$(printf '%s\n' "${HOSTS[@]}" | LC_ALL=C sort | uniq -d)
 duplicate_host=${duplicate_host%%$'\n'*}
 if [ -n "$duplicate_host" ]; then
