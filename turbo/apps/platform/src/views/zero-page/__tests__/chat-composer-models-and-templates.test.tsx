@@ -107,31 +107,6 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
   };
 }
 
-function mockMatchMedia(matches: boolean): () => void {
-  const original = window.matchMedia;
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn((query: string): MediaQueryList => {
-      return {
-        addEventListener: vi.fn(),
-        addListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        matches,
-        media: query,
-        onchange: null,
-        removeEventListener: vi.fn(),
-        removeListener: vi.fn(),
-      };
-    }),
-  });
-  return () => {
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: original,
-    });
-  };
-}
-
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -1915,6 +1890,85 @@ describe("chat composer templates", () => {
     ).not.toBeInTheDocument();
 
     restoreMatchMedia();
+  });
+
+  it("selects presentation templates without a card theme picker", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
+    });
+    if (template === undefined) {
+      throw new Error("Second presentation template not found");
+    }
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await fill(screen.getByLabelText("Search templates"), template.title);
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Select card theme Prism for ${template.title}`),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+    const templateDialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template / ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+    const defaultThemeLabel = (
+      template.colorSystemId ?? "color-system:warm-sand"
+    )
+      .replace("color-system:", "")
+      .replace(/-/g, " ");
+    expect(
+      within(templateDialog).getByLabelText(
+        new RegExp(`^Select style ${defaultThemeLabel}$`, "i"),
+      ),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+
+    expect(
+      screen.queryByLabelText(`Change theme for ${template.title}`),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText(`Select template ${template.title}`));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens presentation template detail at the scrubbed card slide", async () => {
