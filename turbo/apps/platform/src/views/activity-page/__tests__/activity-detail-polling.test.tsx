@@ -173,6 +173,67 @@ function detailedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 7,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: {
+            type: "text",
+            text: "malformed assistant text should be ignored",
+          },
+        },
+      },
+      createdAt: "2026-03-10T14:56:07.100Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            null,
+            "invalid content block",
+            {
+              type: "tool_use",
+              id: "malformed-tool-without-name",
+              input: { command: "should not render missing name" },
+            },
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "should not render missing id" },
+            },
+            {
+              type: "tool_use",
+              id: "tool-string-input",
+              name: "Bash",
+              input: "not an object",
+            },
+            {
+              type: "text",
+              text: "Malformed content did not break grouping.",
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T14:56:07.200Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: {
+            type: "tool_result",
+            tool_use_id: "tool-string-input",
+            content: "bad non-array result should be ignored",
+            is_error: false,
+          },
+        },
+      },
+      createdAt: "2026-03-10T14:56:07.300Z",
+    },
+    {
+      sequenceNumber: 10,
       eventType: "result",
       eventData: {
         type: "result",
@@ -1367,6 +1428,18 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("I will inspect the checkout failure."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Malformed content did not break grouping."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("malformed assistant text should be ignored"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("should not render missing name"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("bad non-array result should be ignored"),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(
       screen.getAllByText("pnpm test -- --filter checkout"),

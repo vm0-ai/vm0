@@ -8,7 +8,7 @@ interface TextContent {
 
 interface ToolUseContent {
   type: "tool_use";
-  id?: string;
+  id: string;
   name: string;
   input: Record<string, unknown>;
 }
@@ -81,7 +81,7 @@ interface GroupingEventData {
   subtype?: string;
   parent_tool_use_id?: string;
   message?: {
-    content: MessageContent[] | null;
+    content?: unknown;
   };
   tool_use_result?: ToolResultMeta;
   tools?: string[];
@@ -89,6 +89,51 @@ interface GroupingEventData {
   slash_commands?: string[];
   result?: string | null;
   is_error?: boolean;
+}
+
+function getMessageContents(eventData: GroupingEventData): MessageContent[] {
+  const contents = eventData.message?.content;
+  if (!Array.isArray(contents)) {
+    return [];
+  }
+  return contents.filter(isRecord).flatMap((content): MessageContent[] => {
+    const type = getStringField(content, "type");
+    if (type === "text") {
+      return [
+        {
+          type,
+          text: getStringField(content, "text") ?? "",
+        } satisfies TextContent,
+      ];
+    }
+    if (type === "tool_use") {
+      const id = getStringField(content, "id");
+      const name = getStringField(content, "name");
+      if (!id || !name) {
+        return [];
+      }
+      const input = isRecord(content.input) ? content.input : {};
+      return [
+        {
+          type,
+          id,
+          name,
+          input,
+        } satisfies ToolUseContent,
+      ];
+    }
+    if (type === "tool_result") {
+      return [
+        {
+          type,
+          tool_use_id: getStringField(content, "tool_use_id"),
+          content: content.content,
+          is_error: content.is_error === true,
+        } satisfies ToolResultContent,
+      ];
+    }
+    return [];
+  });
 }
 
 interface CodexUsage {
@@ -836,9 +881,8 @@ function parseAssistantContent(contents: MessageContent[]): {
     } else if (content.type === "tool_use") {
       foundToolUse = true;
       const toolContent = content as ToolUseContent;
-      const toolUseId = toolContent.id ?? `unknown-${Math.random()}`;
       toolOperations.push({
-        toolUseId,
+        toolUseId: toolContent.id,
         toolName: toolContent.name,
         keyParam: extractKeyParam(toolContent.name, toolContent.input),
         input: toolContent.input,
@@ -1106,7 +1150,7 @@ function processChildAssistantEvent(
   parentTask: GroupedMessage,
   ctx: GroupingContext,
 ): void {
-  const contents = eventData.message?.content ?? [];
+  const contents = getMessageContents(eventData);
   const { textParts, toolOperations } = parseAssistantContent(contents);
   const hasText = textParts.length > 0;
   const hasTools = toolOperations.length > 0;
@@ -1150,7 +1194,7 @@ function processAssistantEvent(
     return;
   }
 
-  const contents = eventData.message?.content ?? [];
+  const contents = getMessageContents(eventData);
   const { textParts, toolOperations } = parseAssistantContent(contents);
   const hasText = textParts.length > 0;
 
@@ -1220,7 +1264,7 @@ function processUserEvent(
   const parentTask = findParentTask(eventData, ctx);
   const target = parentTask?.childMessages ?? ctx.grouped;
 
-  const contents = eventData.message?.content ?? [];
+  const contents = getMessageContents(eventData);
   const toolMeta = eventData.tool_use_result;
 
   for (const content of contents) {
