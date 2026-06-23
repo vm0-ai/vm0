@@ -1,3 +1,15 @@
+//! Integration coverage for the guest-download slot scheduler.
+//!
+//! The scheduler may run up to four downloads at once, but archives whose
+//! mount paths are equal or have an ancestor/descendant relationship must not
+//! extract concurrently. These tests also cover slot refill behavior: when an
+//! active download blocks a conflicting queued task, a later independent task
+//! should still be able to fill an available slot.
+//!
+//! The harness uses request-start events and explicit release gates to create
+//! deterministic scheduler pressure. Bounded waits are assertion deadlines and
+//! failure detectors; they are not sleeps used to make scheduling happen.
+
 use crate::support::{create_tar_gz, run_guest_download, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
@@ -31,6 +43,8 @@ fn path_to_string(path: &Path) -> std::io::Result<String> {
     })
 }
 
+// Records the peak number of active mock archive responders so tests can
+// assert the scheduler's global concurrency cap from observed HTTP behavior.
 #[derive(Clone)]
 struct ActiveRequestCounter {
     active: Arc<AtomicUsize>,
@@ -80,6 +94,8 @@ impl ActiveRequestCounter {
     }
 }
 
+// These helpers use recv_timeout as bounded assertions: timeouts fail the test
+// with context instead of driving scheduler progress.
 fn wait_for_event(
     receiver: &mpsc::Receiver<String>,
     seen: &mut Vec<String>,
@@ -146,6 +162,8 @@ fn wait_for_events(
     Ok(events)
 }
 
+// ReleaseGate lets tests hold selected mock HTTP responders open after their
+// start event, creating deterministic scheduler pressure without sleeps.
 struct ReleaseGate {
     inner: Arc<ReleaseStateMonitor>,
 }
