@@ -91,16 +91,8 @@ pub(super) async fn run_rootfs_script(
         .spawn()
         .map_err(|e| RunnerError::Internal(format!("spawn {label}: {e}")))?;
     let pgid = child.id().map(|pid| nix::unistd::Pid::from_raw(pid as i32));
-    let mut process = RootfsScriptProcess {
-        child: Some(child),
-        pgid,
-    };
-
-    let Some(child) = process.child.as_mut() else {
-        return Err(RunnerError::Internal(
-            "rootfs script child was missing".into(),
-        ));
-    };
+    let mut process = RootfsScriptProcess { child: None, pgid };
+    let child = process.child.insert(child);
     let status = child
         .wait()
         .await

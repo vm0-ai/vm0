@@ -71,17 +71,18 @@ pub(crate) fn kill_and_reap_child_on_drop(
 #[cfg(target_os = "linux")]
 mod tests {
     use super::*;
-    use std::path::Path;
     use std::time::Duration;
 
-    fn process_exists(pid: u32) -> bool {
-        Path::new(&format!("/proc/{pid}")).exists()
+    fn process_state(pid: u32) -> Option<char> {
+        let content = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let after_comm = content.rsplit_once(')')?.1;
+        after_comm.split_whitespace().next()?.chars().next()
     }
 
     async fn wait_for_process_exit(pid: u32) {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
-                if !process_exists(pid) {
+                if process_state(pid).is_none() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -89,6 +90,21 @@ mod tests {
         })
         .await
         .unwrap_or_else(|_| panic!("timed out waiting for pid {pid} to be reaped"));
+    }
+
+    async fn wait_for_process_state(pid: u32, expected_state: char) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if process_state(pid) == Some(expected_state) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| {
+            panic!("timed out waiting for pid {pid} to enter state {expected_state}")
+        });
     }
 
     #[tokio::test]
@@ -112,7 +128,7 @@ mod tests {
         let pid = child.id().unwrap();
         let mut child = Some(child);
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_process_state(pid, 'Z').await;
         kill_and_reap_child_on_drop("test-exited-child", &mut child);
 
         assert!(child.is_none());

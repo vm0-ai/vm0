@@ -82,9 +82,9 @@ impl KmsgHandle {
 impl Drop for KmsgHandle {
     /// Kill dmesg and abort the log task if `stop()` was never called.
     ///
-    /// Prevents a leaked `dmesg -w` process when `run()` returns early
-    /// (e.g., factory creation failure). Harmless if `stop()` already ran —
-    /// `start_kill` on an exited child is a no-op.
+    /// Prevents a leaked `dmesg -w` process when shutdown misses the explicit
+    /// async `stop()` path. The cleanup helper also reaps children that already
+    /// exited before drop.
     fn drop(&mut self) {
         kill_and_reap_child_on_drop("dmesg", &mut self.child);
         self.cancel.cancel();
