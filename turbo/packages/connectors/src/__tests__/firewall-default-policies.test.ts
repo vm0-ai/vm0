@@ -22,7 +22,7 @@ describe("getDefaultFirewallPolicies", () => {
 
   it("should mark default-allowed permissions as allow", () => {
     const policy = getDefaultFirewallPolicies("slack");
-    expect(policy.policies["channels:read"]).toBe("allow");
+    expect(policy.policies["conversations:read"]).toBe("allow");
   });
 
   it("should mark non-default permissions as deny", () => {
@@ -229,17 +229,17 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved).not.toBeNull();
     const slack = resolved!["slack"]!;
     expect(slack).toBeDefined();
-    expect(slack.policies["channels:read"]).toBe("allow");
+    expect(slack.policies["conversations:read"]).toBe("allow");
     expect(slack.policies["admin"]).toBe("deny");
   });
 
   it("should merge defaults with stored policies (stored overrides)", () => {
     const stored = {
-      slack: { policies: { "channels:read": "deny" as const } },
+      slack: { policies: { "conversations:read": "deny" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
-    expect(slack.policies["channels:read"]).toBe("deny");
+    expect(slack.policies["conversations:read"]).toBe("deny");
     expect(slack.policies["admin"]).toBe("deny");
     expect(slack.policies["users:read"]).toBe("allow");
   });
@@ -251,8 +251,8 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
     expect(slack.policies["files:read"]).toBe("allow");
-    expect(slack.policies["channels:read"]).toBe("allow");
-    expect(slack.policies["channels:history"]).toBe("allow");
+    expect(slack.policies["conversations:read"]).toBe("allow");
+    expect(slack.policies["conversations:history"]).toBe("allow");
     expect(slack.policies["users:read"]).toBe("allow");
     expect(slack.policies["admin"]).toBe("deny");
   });
@@ -268,7 +268,7 @@ describe("resolveFirewallPolicies", () => {
 
   it("should default unknownPolicy to allow when not stored", () => {
     const stored = {
-      slack: { policies: { "channels:read": "allow" as const } },
+      slack: { policies: { "conversations:read": "allow" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     expect(resolved!["slack"]!.unknownPolicy).toBe("allow");
@@ -329,7 +329,7 @@ describe("resolveFirewallPolicies", () => {
     ]);
     expect(resolved!["github"]!.policies["repo-read"]).toBe("allow");
     expect(resolved!["slack"]).toBeDefined();
-    expect(resolved!["slack"]!.policies["channels:read"]).toBe("allow");
+    expect(resolved!["slack"]!.policies["conversations:read"]).toBe("allow");
     expect(resolved).not.toHaveProperty("cloudinary");
   });
 
@@ -380,7 +380,7 @@ describe("permissionGrantsToFirewallPolicies", () => {
       ["slack"],
     );
 
-    expect(resolved!["slack"]!.policies["channels:read"]).toBe("allow");
+    expect(resolved!["slack"]!.policies["conversations:read"]).toBe("allow");
     expect(resolved!["slack"]!.policies["admin"]).toBe("deny");
     expect(resolved!["slack"]!.policies["chat:write"]).toBe("allow");
   });

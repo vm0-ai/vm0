@@ -554,15 +554,17 @@ describe("firewall metadata", () => {
     expect(concurrentFirst).toBe(concurrentSecond);
     expect(first!.type).toBe("slack");
     expect(first!.label).toBe("Slack");
-    expect(first!.hasPermission("channels:read")).toBe(true);
-    expect(first!.permissionNames.has("channels:read")).toBe(true);
-    expect(first!.permissionDescription("channels:read")).toBe(
-      "View basic information about public channels in a workspace",
+    expect(first!.hasPermission("conversations:read")).toBe(true);
+    expect(first!.permissionNames.has("conversations:read")).toBe(true);
+    expect(first!.permissionDescription("conversations:read")).toBe(
+      "View basic information across Slack conversation types",
     );
     expect(first!.hasPermission(UNKNOWN_PERMISSION_GRANT)).toBe(false);
     expect(first!.permissionNames.has(UNKNOWN_PERMISSION_GRANT)).toBe(false);
     expect(first!.unknownPolicy).toBe("allow");
-    expect(first!.policyResolver.permission("channels:read")).toBe("allow");
+    expect(first!.policyResolver.permission("conversations:read")).toBe(
+      "allow",
+    );
     expect(first!.policyResolver.permission("chat:write")).toBe("deny");
     expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
   });
@@ -765,7 +767,7 @@ describe("firewall metadata", () => {
       permissionGrantsToFirewallPolicies([
         {
           connectorRef: "slack",
-          permission: "channels:read",
+          permission: "conversations:read",
           action: "allow",
         },
         {
@@ -776,7 +778,7 @@ describe("firewall metadata", () => {
       ]),
     ).toStrictEqual({
       slack: {
-        policies: { "channels:read": "allow" },
+        policies: { "conversations:read": "allow" },
         unknownPolicy: "deny",
       },
     });

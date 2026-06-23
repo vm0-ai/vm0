@@ -284,6 +284,13 @@ JSON_PART = r"""{
           ]
         },
         {
+          "description": "Search assistant context across Slack content",
+          "name": "assistant.search:read",
+          "rules": [
+            "POST /assistant.search.context"
+          ]
+        },
+        {
           "description": "Act as an AI Assistant app",
           "name": "assistant:write",
           "rules": [
@@ -349,80 +356,10 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View messages and other content in public channels that the app has been added to",
-          "name": "channels:history",
-          "rules": [
-            "GET /conversations.history",
-            "GET /conversations.replies"
-          ]
-        },
-        {
           "description": "Join public channels in a workspace",
           "name": "channels:join",
           "rules": [
             "POST /conversations.join"
-          ]
-        },
-        {
-          "description": "Manage public channels that the app has been added to and create new ones",
-          "name": "channels:manage",
-          "rules": [
-            "POST /conversations.archive",
-            "POST /conversations.close",
-            "POST /conversations.create",
-            "POST /conversations.invite",
-            "POST /conversations.kick",
-            "POST /conversations.leave",
-            "POST /conversations.mark",
-            "POST /conversations.open",
-            "POST /conversations.rename",
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic",
-            "POST /conversations.unarchive"
-          ]
-        },
-        {
-          "description": "View basic information about public channels in a workspace",
-          "name": "channels:read",
-          "rules": [
-            "GET /conversations.info",
-            "GET /conversations.list",
-            "GET /conversations.members",
-            "GET /users.conversations"
-          ]
-        },
-        {
-          "description": "Manage a user's public channels and create new ones on a user's behalf",
-          "name": "channels:write",
-          "rules": [
-            "POST /conversations.archive",
-            "POST /conversations.close",
-            "POST /conversations.create",
-            "POST /conversations.invite",
-            "POST /conversations.join",
-            "POST /conversations.kick",
-            "POST /conversations.leave",
-            "POST /conversations.mark",
-            "POST /conversations.open",
-            "POST /conversations.rename",
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic",
-            "POST /conversations.unarchive"
-          ]
-        },
-        {
-          "description": "Invite members to public channels",
-          "name": "channels:write.invites",
-          "rules": [
-            "POST /conversations.invite"
-          ]
-        },
-        {
-          "description": "Set the topic and purpose of public channels",
-          "name": "channels:write.topic",
-          "rules": [
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic"
           ]
         },
         {
@@ -461,7 +398,13 @@ JSON_PART = r"""{
             "POST /conversations.requestSharedInvite.approve",
             "POST /conversations.requestSharedInvite.deny",
             "POST /conversations.requestSharedInvite.list",
-            "POST /team.externalTeams.disconnect",
+            "POST /team.externalTeams.disconnect"
+          ]
+        },
+        {
+          "description": "View Slack Connect external teams and discoverable contacts",
+          "name": "conversations.connect:read",
+          "rules": [
             "GET /team.externalTeams.list",
             "POST /users.discoverableContacts.lookup"
           ]
@@ -472,6 +415,54 @@ JSON_PART = r"""{
           "rules": [
             "POST /conversations.acceptSharedInvite",
             "POST /conversations.inviteShared"
+          ]
+        },
+        {
+          "description": "View messages and replies across Slack conversation types",
+          "name": "conversations:history",
+          "rules": [
+            "GET /conversations.history",
+            "GET /conversations.replies"
+          ]
+        },
+        {
+          "description": "View basic information across Slack conversation types",
+          "name": "conversations:read",
+          "rules": [
+            "GET /conversations.info",
+            "GET /conversations.list",
+            "GET /conversations.members",
+            "GET /users.conversations"
+          ]
+        },
+        {
+          "description": "Manage Slack conversations across conversation types",
+          "name": "conversations:write",
+          "rules": [
+            "POST /conversations.archive",
+            "POST /conversations.close",
+            "POST /conversations.create",
+            "POST /conversations.kick",
+            "POST /conversations.leave",
+            "POST /conversations.mark",
+            "POST /conversations.open",
+            "POST /conversations.rename",
+            "POST /conversations.unarchive"
+          ]
+        },
+        {
+          "description": "Invite members across Slack conversation types",
+          "name": "conversations:write.invites",
+          "rules": [
+            "POST /conversations.invite"
+          ]
+        },
+        {
+          "description": "Set topics and purposes across Slack conversation types",
+          "name": "conversations:write.topic",
+          "rules": [
+            "POST /conversations.setPurpose",
+            "POST /conversations.setTopic"
           ]
         },
         {
@@ -541,57 +532,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View messages and other content in private channels that the app has been added to",
-          "name": "groups:history",
-          "rules": [
-            "GET /conversations.history",
-            "GET /conversations.replies"
-          ]
-        },
-        {
-          "description": "View basic information about private channels that the app has been added to",
-          "name": "groups:read",
-          "rules": [
-            "GET /conversations.info",
-            "GET /conversations.list",
-            "GET /conversations.members",
-            "GET /users.conversations"
-          ]
-        },
-        {
-          "description": "Manage private channels that the user is a member of and create new ones",
-          "name": "groups:write",
-          "rules": [
-            "POST /conversations.archive",
-            "POST /conversations.close",
-            "POST /conversations.create",
-            "POST /conversations.invite",
-            "POST /conversations.kick",
-            "POST /conversations.leave",
-            "POST /conversations.mark",
-            "POST /conversations.open",
-            "POST /conversations.rename",
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic",
-            "POST /conversations.unarchive"
-          ]
-        },
-        {
-          "description": "Invite members to private channels",
-          "name": "groups:write.invites",
-          "rules": [
-            "POST /conversations.invite"
-          ]
-        },
-        {
-          "description": "Set the topic and purpose of private channels",
-          "name": "groups:write.topic",
-          "rules": [
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic"
-          ]
-        },
-        {
           "description": "Read hosting environment information",
           "name": "hosting:read",
           "rules": [
@@ -603,49 +543,6 @@ JSON_PART = r"""{
           "name": "identity:read",
           "rules": [
             "GET /users.identity"
-          ]
-        },
-        {
-          "description": "View messages and other content in direct messages that the app has been added to",
-          "name": "im:history",
-          "rules": [
-            "GET /conversations.history",
-            "GET /conversations.replies"
-          ]
-        },
-        {
-          "description": "View basic information about direct messages that the app has access to",
-          "name": "im:read",
-          "rules": [
-            "GET /conversations.info",
-            "GET /conversations.list",
-            "GET /conversations.members",
-            "GET /users.conversations"
-          ]
-        },
-        {
-          "description": "Start direct messages with people",
-          "name": "im:write",
-          "rules": [
-            "POST /conversations.archive",
-            "POST /conversations.close",
-            "POST /conversations.create",
-            "POST /conversations.invite",
-            "POST /conversations.leave",
-            "POST /conversations.mark",
-            "POST /conversations.open",
-            "POST /conversations.rename",
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic",
-            "POST /conversations.unarchive"
-          ]
-        },
-        {
-          "description": "Set the topic of direct messages",
-          "name": "im:write.topic",
-          "rules": [
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic"
           ]
         },
         {
@@ -677,49 +574,6 @@ JSON_PART = r"""{
             "POST /slackLists.items.deleteMultiple",
             "POST /slackLists.items.update",
             "POST /slackLists.update"
-          ]
-        },
-        {
-          "description": "View messages and other content in group direct messages that the app has been added to",
-          "name": "mpim:history",
-          "rules": [
-            "GET /conversations.history",
-            "GET /conversations.replies"
-          ]
-        },
-        {
-          "description": "View basic information about group direct messages that the app has been added to",
-          "name": "mpim:read",
-          "rules": [
-            "GET /conversations.info",
-            "GET /conversations.list",
-            "GET /conversations.members",
-            "GET /users.conversations"
-          ]
-        },
-        {
-          "description": "Start group direct messages with people",
-          "name": "mpim:write",
-          "rules": [
-            "POST /conversations.archive",
-            "POST /conversations.close",
-            "POST /conversations.create",
-            "POST /conversations.invite",
-            "POST /conversations.leave",
-            "POST /conversations.mark",
-            "POST /conversations.open",
-            "POST /conversations.rename",
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic",
-            "POST /conversations.unarchive"
-          ]
-        },
-        {
-          "description": "Set the topic and purpose of group direct messages",
-          "name": "mpim:write.topic",
-          "rules": [
-            "POST /conversations.setPurpose",
-            "POST /conversations.setTopic"
           ]
         },
         {
@@ -811,46 +665,10 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Search for files in a workspace",
-          "name": "search:read.files",
-          "rules": [
-            "POST /assistant.search.context"
-          ]
-        },
-        {
-          "description": "Search direct messages",
-          "name": "search:read.im",
-          "rules": [
-            "POST /assistant.search.context"
-          ]
-        },
-        {
-          "description": "Search group direct messages",
-          "name": "search:read.mpim",
-          "rules": [
-            "POST /assistant.search.context"
-          ]
-        },
-        {
-          "description": "Search private channels",
-          "name": "search:read.private",
-          "rules": [
-            "POST /assistant.search.context"
-          ]
-        },
-        {
           "description": "Search public channels",
           "name": "search:read.public",
           "rules": [
-            "POST /assistant.search.context",
             "POST /assistant.search.info"
-          ]
-        },
-        {
-          "description": "Search for users in a workspace",
-          "name": "search:read.users",
-          "rules": [
-            "POST /assistant.search.context"
           ]
         },
         {
@@ -886,9 +704,7 @@ JSON_PART = r"""{
           "description": "View the name, email domain, and icon for workspaces the app is connected to",
           "name": "team:read",
           "rules": [
-            "GET /team.externalTeams.list",
-            "GET /team.info",
-            "POST /users.discoverableContacts.lookup"
+            "GET /team.info"
           ]
         },
         {
