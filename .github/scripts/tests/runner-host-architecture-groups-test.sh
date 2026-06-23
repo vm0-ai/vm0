@@ -81,6 +81,12 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" hosts arm64)
 [ "$out" = "arm-1,arm-2" ] || fail "expected ARM64 hosts, got: ${out}"
 
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" select-host arm64 pr-123-test)
+case "$out" in
+  arm-1|arm-2) ;;
+  *) fail "expected selected ARM64 host to be one host from the group, got: ${out}" ;;
+esac
+
 HOST_ARCHES='x86-1=x86_64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS")
@@ -111,6 +117,19 @@ assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" hosts x86_64)
 [ "$out" = "x86-1,x86-2" ] || fail "expected mixed x86_64 hosts, got: ${out}"
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" select-host x86_64 pr-123-test)
+case "$out" in
+  x86-1|x86-2) ;;
+  *) fail "expected selected x86_64 host to be one host from the group, got: ${out}" ;;
+esac
+
+HOST_ARCHES=''
+out=$(run_clean "$HOST_GROUPS" select-host x86_64 pr-123-test 'x86-1,x86-2')
+case "$out" in
+  x86-1|x86-2) ;;
+  *) fail "expected selected x86_64 host from explicit hosts to be one host, got: ${out}" ;;
+esac
 
 HOST_ARCHES='arm-1=aarch64 arm-2=aarch64'
 
@@ -173,6 +192,11 @@ if run_clean AWS_METAL_RUNNER_HOSTS='arm-1' "$HOST_GROUPS" hosts powerpc >"${TMP
   fail "expected unsupported hosts group id to fail"
 fi
 grep -q "unsupported runner host group id: powerpc" "${TMPDIR}/unsupported-host-group.err" || fail "expected unsupported hosts group id message"
+
+if run_clean AWS_METAL_RUNNER_HOSTS='arm-1' "$HOST_GROUPS" select-host arm64 >"${TMPDIR}/missing-selection-key.out" 2>"${TMPDIR}/missing-selection-key.err"; then
+  fail "expected missing selection key to fail"
+fi
+grep -q "missing runner host selection key" "${TMPDIR}/missing-selection-key.err" || fail "expected missing selection key message"
 
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"
