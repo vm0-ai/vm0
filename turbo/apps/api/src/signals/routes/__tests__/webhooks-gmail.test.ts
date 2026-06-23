@@ -147,7 +147,7 @@ function configureGmailMessageMocks(): void {
 
 function gmailPushBody(args: {
   readonly emailAddress: string;
-  readonly historyId: string;
+  readonly historyId: string | number;
   readonly messageId: string;
 }): string {
   return JSON.stringify({
@@ -320,7 +320,7 @@ describe("POST /api/webhooks/gmail", () => {
 
     const body = gmailPushBody({
       emailAddress: GMAIL_EMAIL,
-      historyId: "101",
+      historyId: 101,
       messageId: "pubsub-1",
     });
     const first = await postGmailWebhook(body);

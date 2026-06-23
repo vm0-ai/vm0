@@ -139,7 +139,9 @@ const pubSubPushSchema = z.object({
 
 const gmailPubSubDataSchema = z.object({
   emailAddress: z.string(),
-  historyId: z.string(),
+  historyId: z
+    .union([z.string(), z.number().int().nonnegative()])
+    .transform(String),
 });
 
 interface GmailAccess {
