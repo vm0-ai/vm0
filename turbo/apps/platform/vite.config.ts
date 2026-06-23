@@ -51,7 +51,7 @@ function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
   if (!match) {
     return null;
   }
-  return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
+  return `firewall-metadata/details/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
 }
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
