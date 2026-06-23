@@ -381,8 +381,6 @@ const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
 const ILLUSTRATION_SCROLL_PREWARM_IMAGE_COUNT = 24;
-const TEMPLATE_IDLE_PREWARM_TIMEOUT_MS = 350;
-const TEMPLATE_IDLE_PREWARM_STAGGER_MS = 500;
 const ILLUSTRATION_CARD_PREVIEW_SIZE = {
   width: 512,
   height: 512,
@@ -1295,125 +1293,6 @@ function prewarmTemplatePreviewImages(
   const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
   for (const imageUrl of uniqueUrls.slice(0, count)) {
     prewarmTemplatePreviewImage(imageUrl);
-  }
-}
-
-interface TemplatePreviewIdlePrewarmParams {
-  readonly category: string;
-  readonly hasIllustrationTab: boolean;
-  readonly hasPptTab: boolean;
-  readonly hasVideoTab: boolean;
-  readonly presentationThemeIdBySlug?: Readonly<Record<string, string>>;
-}
-
-function templatePreviewIdlePrewarmKeys(): Set<string> {
-  const cacheKey = "vm0TemplatePreviewIdlePrewarmKeys";
-  const existing = Reflect.get(globalThis, cacheKey) as Set<string> | undefined;
-  if (existing !== undefined) {
-    return existing;
-  }
-  const keys = new Set<string>();
-  Reflect.set(globalThis, cacheKey, keys);
-  return keys;
-}
-
-function templatePreviewIdlePrewarmKey({
-  category,
-  hasIllustrationTab,
-  hasPptTab,
-  hasVideoTab,
-}: TemplatePreviewIdlePrewarmParams): string {
-  return [
-    category,
-    hasPptTab ? "ppt" : "",
-    hasIllustrationTab ? "illustration" : "",
-    hasVideoTab ? "video" : "",
-  ].join(":");
-}
-
-function templatePreviewIdlePrewarmCategories({
-  category,
-  hasIllustrationTab,
-  hasPptTab,
-  hasVideoTab,
-}: TemplatePreviewIdlePrewarmParams): string[] {
-  const categories: string[] = [];
-  if (hasPptTab) {
-    categories.push("slides");
-  }
-  if (hasIllustrationTab) {
-    categories.push("illustration");
-  }
-  if (hasVideoTab) {
-    categories.push("video");
-  }
-  const selectedCategory = categories.includes(category)
-    ? category
-    : categories[0];
-  return [
-    ...(selectedCategory !== undefined ? [selectedCategory] : []),
-    ...categories.filter((candidate) => {
-      return candidate !== selectedCategory;
-    }),
-  ];
-}
-
-function scheduleIdleTemplatePreviewPrewarmCategory(
-  node: HTMLElement | null,
-  params: TemplatePreviewIdlePrewarmParams,
-  delayMs: number,
-): void {
-  if (node === null || typeof window === "undefined") {
-    return;
-  }
-
-  const keys = templatePreviewIdlePrewarmKeys();
-  const key = templatePreviewIdlePrewarmKey(params);
-  if (keys.has(key)) {
-    return;
-  }
-  keys.add(key);
-
-  const prewarm = () => {
-    if (!node.isConnected) {
-      keys.delete(key);
-      return;
-    }
-    prewarmTemplatePreviewImages(
-      initialTemplatePreviewImageUrlsForCategory(params),
-      templatePreviewPrewarmImageCountForCategory(params.category),
-    );
-  };
-
-  const requestPrewarm = () => {
-    if (window.requestIdleCallback !== undefined) {
-      window.requestIdleCallback(prewarm, {
-        timeout: TEMPLATE_IDLE_PREWARM_TIMEOUT_MS,
-      });
-      return;
-    }
-
-    window.setTimeout(prewarm, 0);
-  };
-
-  if (delayMs > 0) {
-    window.setTimeout(requestPrewarm, delayMs);
-  } else {
-    requestPrewarm();
-  }
-}
-
-function scheduleIdleTemplatePreviewPrewarm(
-  node: HTMLElement | null,
-  params: TemplatePreviewIdlePrewarmParams,
-): void {
-  const categories = templatePreviewIdlePrewarmCategories(params);
-  for (const [index, category] of categories.entries()) {
-    scheduleIdleTemplatePreviewPrewarmCategory(
-      node,
-      { ...params, category },
-      index * TEMPLATE_IDLE_PREWARM_STAGGER_MS,
-    );
   }
 }
 
@@ -5105,15 +4984,6 @@ function TemplatePickerButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              ref={(node) => {
-                scheduleIdleTemplatePreviewPrewarm(node, {
-                  category: selectedCategory,
-                  hasIllustrationTab,
-                  hasPptTab,
-                  hasVideoTab,
-                  presentationThemeIdBySlug: cardThemeIdBySlug,
-                });
-              }}
               type="button"
               className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
