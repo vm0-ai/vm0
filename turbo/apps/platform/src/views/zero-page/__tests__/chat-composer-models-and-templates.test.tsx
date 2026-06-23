@@ -2323,6 +2323,40 @@ describe("chat composer templates", () => {
         },
       };
     };
+    const mockElementRect = (
+      element: Element,
+      bounds: { left: number; right: number },
+    ) => {
+      Object.defineProperty(element, "getBoundingClientRect", {
+        configurable: true,
+        value: () => {
+          return rect(bounds);
+        },
+      });
+    };
+    const mockScrollLeft = (element: Element, value: number) => {
+      Object.defineProperty(element, "scrollLeft", {
+        configurable: true,
+        value,
+        writable: true,
+      });
+    };
+    const mockScrollSize = (
+      element: Element,
+      {
+        scrollWidth,
+        clientWidth,
+      }: { scrollWidth: number; clientWidth: number },
+    ) => {
+      Object.defineProperty(element, "scrollWidth", {
+        configurable: true,
+        value: scrollWidth,
+      });
+      Object.defineProperty(element, "clientWidth", {
+        configurable: true,
+        value: clientWidth,
+      });
+    };
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -2406,43 +2440,12 @@ describe("chat composer templates", () => {
     if (!thumbnailStrip) {
       throw new Error("Illustration thumbnail strip not found");
     }
-    Object.defineProperty(thumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 0,
-      writable: true,
-    });
-    Object.defineProperty(thumbnailStrip, "scrollWidth", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(thumbnailStrip, "clientWidth", {
-      configurable: true,
-      value: 96,
-    });
-    Object.defineProperty(thumbnailStrip, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 0, right: 96 });
-      },
-    });
-    Object.defineProperty(variant2Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 48, right: 96 });
-      },
-    });
-    Object.defineProperty(variant3Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 104, right: 152 });
-      },
-    });
-    Object.defineProperty(variant4Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 160, right: 208 });
-      },
-    });
+    mockScrollLeft(thumbnailStrip, 0);
+    mockScrollSize(thumbnailStrip, { scrollWidth: 240, clientWidth: 96 });
+    mockElementRect(thumbnailStrip, { left: 0, right: 96 });
+    mockElementRect(variant2Thumbnail, { left: 48, right: 96 });
+    mockElementRect(variant3Thumbnail, { left: 104, right: 152 });
+    mockElementRect(variant4Thumbnail, { left: 160, right: 208 });
     click(variant2Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(1));
@@ -2472,23 +2475,9 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));
     });
     expect(scrollTo).not.toHaveBeenCalled();
-    Object.defineProperty(thumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 112,
-      writable: true,
-    });
-    Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: -96, right: -48 });
-      },
-    });
-    Object.defineProperty(variant3Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 0, right: 48 });
-      },
-    });
+    mockScrollLeft(thumbnailStrip, 112);
+    mockElementRect(variant1Thumbnail, { left: -96, right: -48 });
+    mockElementRect(variant3Thumbnail, { left: 0, right: 48 });
     click(variant3Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(2));
@@ -2508,17 +2497,8 @@ describe("chat composer templates", () => {
 
     // Clicking near the left boundary scrolls all the way to the start.
     scrollTo.mockClear();
-    Object.defineProperty(thumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 64,
-      writable: true,
-    });
-    Object.defineProperty(variant1Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: -16, right: 32 });
-      },
-    });
+    mockScrollLeft(thumbnailStrip, 64);
+    mockElementRect(variant1Thumbnail, { left: -16, right: 32 });
     click(variant1Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
@@ -2571,31 +2551,13 @@ describe("chat composer templates", () => {
       throw new Error("Remounted illustration thumbnail strip not found");
     }
     scrollTo.mockClear();
-    Object.defineProperty(remountedThumbnailStrip, "scrollLeft", {
-      configurable: true,
-      value: 120,
-      writable: true,
+    mockScrollLeft(remountedThumbnailStrip, 120);
+    mockScrollSize(remountedThumbnailStrip, {
+      scrollWidth: 240,
+      clientWidth: 96,
     });
-    Object.defineProperty(remountedThumbnailStrip, "scrollWidth", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(remountedThumbnailStrip, "clientWidth", {
-      configurable: true,
-      value: 96,
-    });
-    Object.defineProperty(remountedThumbnailStrip, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 0, right: 96 });
-      },
-    });
-    Object.defineProperty(remountedVariant4Thumbnail, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return rect({ left: 48, right: 96 });
-      },
-    });
+    mockElementRect(remountedThumbnailStrip, { left: 0, right: 96 });
+    mockElementRect(remountedVariant4Thumbnail, { left: 48, right: 96 });
     click(remountedVariant4Thumbnail);
     await waitFor(() => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(3));

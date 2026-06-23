@@ -4464,9 +4464,12 @@ function preloadIllustrationVariant(
 
 type IllustrationThumbnailScrollDirection = -1 | 1;
 
+const ILLUSTRATION_THUMBNAIL_REVEAL_COUNT = 2;
+const ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX = 1;
+
 type IllustrationThumbnailScrollTarget = {
   element: HTMLElement;
-  reachedBoundary: boolean;
+  targetIsBoundary: boolean;
 };
 
 function illustrationThumbnailScrollTarget(
@@ -4474,13 +4477,13 @@ function illustrationThumbnailScrollTarget(
   direction: IllustrationThumbnailScrollDirection,
 ): IllustrationThumbnailScrollTarget {
   let target = node;
-  for (let i = 0; i < 2; i += 1) {
+  for (let i = 0; i < ILLUSTRATION_THUMBNAIL_REVEAL_COUNT; i += 1) {
     const sibling =
       direction > 0 ? target.nextElementSibling : target.previousElementSibling;
     if (!(sibling instanceof HTMLElement)) {
       return {
         element: target,
-        reachedBoundary: true,
+        targetIsBoundary: true,
       };
     }
     target = sibling;
@@ -4489,8 +4492,14 @@ function illustrationThumbnailScrollTarget(
     direction > 0 ? target.nextElementSibling : target.previousElementSibling;
   return {
     element: target,
-    reachedBoundary: !(boundarySibling instanceof HTMLElement),
+    targetIsBoundary: !(boundarySibling instanceof HTMLElement),
   };
+}
+
+function maxIllustrationThumbnailScrollLeft(
+  thumbnailStrip: HTMLElement,
+): number {
+  return Math.max(0, thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth);
 }
 
 function scrollIllustrationThumbnailIntoView(
@@ -4508,13 +4517,11 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
-  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
-  const { element: target, reachedBoundary } =
+  const { element: target, targetIsBoundary } =
     illustrationThumbnailScrollTarget(node, direction);
-  const targetRect = target.getBoundingClientRect();
 
   if (direction < 0) {
-    if (reachedBoundary) {
+    if (targetIsBoundary) {
       if (thumbnailStrip.scrollLeft > 0) {
         thumbnailStrip.scrollTo({
           left: 0,
@@ -4523,6 +4530,8 @@ function scrollIllustrationThumbnailIntoView(
       return;
     }
 
+    const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
     const leftOverflow = thumbnailStripRect.left - targetRect.left;
     if (leftOverflow > 0) {
       thumbnailStrip.scrollTo({
@@ -4532,11 +4541,8 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
-  if (reachedBoundary) {
-    const maxScrollLeft = Math.max(
-      0,
-      thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth,
-    );
+  if (targetIsBoundary) {
+    const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
     if (thumbnailStrip.scrollLeft < maxScrollLeft) {
       thumbnailStrip.scrollTo({
         left: maxScrollLeft,
@@ -4545,6 +4551,8 @@ function scrollIllustrationThumbnailIntoView(
     return;
   }
 
+  const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
   const rightOverflow = targetRect.right - thumbnailStripRect.right;
   if (rightOverflow > 0) {
     thumbnailStrip.scrollTo({
@@ -4565,14 +4573,11 @@ function activeIllustrationThumbnailScrollDirection(
 
   const thumbnailStripRect = thumbnailStrip.getBoundingClientRect();
   const thumbnailRect = node.getBoundingClientRect();
-  const edgeTolerance = 1;
-  const maxScrollLeft = Math.max(
-    0,
-    thumbnailStrip.scrollWidth - thumbnailStrip.clientWidth,
-  );
+  const maxScrollLeft = maxIllustrationThumbnailScrollLeft(thumbnailStrip);
 
   if (
-    thumbnailRect.right >= thumbnailStripRect.right - edgeTolerance &&
+    thumbnailRect.right >=
+      thumbnailStripRect.right - ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
     (node.nextElementSibling instanceof HTMLElement ||
       thumbnailStrip.scrollLeft < maxScrollLeft)
   ) {
@@ -4580,7 +4585,8 @@ function activeIllustrationThumbnailScrollDirection(
   }
 
   if (
-    thumbnailRect.left <= thumbnailStripRect.left + edgeTolerance &&
+    thumbnailRect.left <=
+      thumbnailStripRect.left + ILLUSTRATION_THUMBNAIL_EDGE_TOLERANCE_PX &&
     (node.previousElementSibling instanceof HTMLElement ||
       thumbnailStrip.scrollLeft > 0)
   ) {
