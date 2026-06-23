@@ -7,7 +7,7 @@ async fn execute_inner_happy_path() {
     let factory = MockSandboxFactory::new();
 
     let (exit_code, error_msg) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
     assert_eq!(exit_code, 0);
@@ -210,7 +210,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
     ]));
 
-    let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+    let (exit_code, error_msg) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
 
@@ -284,9 +284,10 @@ async fn execute_inner_passes_device_rate_limits_to_sandbox_create() {
         ..default_params()
     };
 
-    let (exit_code, error_msg) = run_execute_inner(&factory, &minimal_context(), &config, &params)
-        .await
-        .unwrap();
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &params)
+            .await
+            .unwrap();
 
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
@@ -310,7 +311,7 @@ async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides.clone());
 
     let (exit_code, error_msg) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
     assert_eq!(exit_code, 0);
@@ -332,7 +333,7 @@ async fn execute_inner_with_snapshot_runs_clock_fix_and_reseed() {
         restore_guest_state: true,
         ..default_params()
     };
-    let (exit_code, _) = run_execute_inner(&factory, &minimal_context(), &config, &params)
+    let (exit_code, _) = run_new_sandbox_status(&factory, &minimal_context(), &config, &params)
         .await
         .unwrap();
     assert_eq!(exit_code, 0);
@@ -354,7 +355,7 @@ async fn execute_inner_with_storage_manifest() {
         )],
         artifacts: vec![],
     });
-    let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())
+    let (exit_code, _) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
     assert_eq!(exit_code, 0);
@@ -371,7 +372,7 @@ async fn execute_inner_with_resume_session() {
         cli_agent_session_id: "sess-abc-123".into(),
         session_history: r#"{"type":"init"}"#.into(),
     });
-    let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())
+    let (exit_code, _) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
     assert_eq!(exit_code, 0);
@@ -384,7 +385,7 @@ async fn execute_inner_create_failure_returns_error() {
     let factory = MockSandboxFactory::new();
     factory.push_create_result(Err(sandbox_create_error("no free devices")));
 
-    let err = run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+    let err = run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("no free devices"), "got: {err}");

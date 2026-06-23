@@ -16,8 +16,8 @@ pub(super) use self::env::{
     build_env_for_test, build_env_for_test_result, build_env_for_test_with_host_env,
 };
 pub(super) use self::execution::{
-    RUN_IN_SANDBOX_TEST_TIMEOUT, run_execute_inner, spawn_run_in_sandbox_test,
-    spawn_run_in_sandbox_test_with_timeouts,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, run_new_sandbox_outcome, run_new_sandbox_status,
+    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
 };
 pub(super) use self::manifest::{api_artifact, api_storage};
 pub(super) use self::sandbox::{

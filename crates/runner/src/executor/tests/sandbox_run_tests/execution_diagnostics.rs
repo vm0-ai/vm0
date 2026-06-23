@@ -12,7 +12,7 @@ async fn execute_inner_appends_stream_overflow_marker() {
     let ctx = minimal_context();
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-    let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+    let (exit_code, error_msg) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
 
@@ -35,7 +35,7 @@ async fn execute_inner_appends_stream_limit_marker() {
     let ctx = minimal_context();
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-    let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+    let (exit_code, error_msg) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
 
@@ -67,21 +67,9 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let ctx = minimal_context();
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-    let mut telemetry = test_telemetry(&config, &ctx);
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected OOM failure");
     assert_eq!(outcome.exit_code(), 1);
@@ -118,22 +106,9 @@ async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
     );
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
@@ -348,22 +323,9 @@ async fn execute_inner_aborts_drain_task_on_wait_process_error() {
     ));
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     assert_eq!(outcome.exit_code(), 124);
     let failure = outcome.failure.as_ref().expect("expected failure");
@@ -437,7 +399,7 @@ async fn execute_inner_nonzero_without_guest_error_returns_failure_message() {
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
 
     let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
 
@@ -455,22 +417,9 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(outcome.exit_code(), 1);
@@ -497,22 +446,9 @@ async fn execute_inner_non_exited_diagnostic_is_user_visible() {
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(outcome.exit_code(), 1);
@@ -537,22 +473,9 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected timeout failure");
     assert_eq!(failure.exit_code, 124);
@@ -581,22 +504,9 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let start_calls = overrides.start_process_calls();
     assert_eq!(start_calls.len(), 1);
@@ -646,22 +556,9 @@ async fn execute_inner_timeout_without_stderr_uses_timeout_message() {
     overrides.push_wait_process_exit(exit);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected timeout failure");
     assert_eq!(outcome.exit_code(), 124);
@@ -694,22 +591,9 @@ async fn execute_inner_ordinary_124_timeout_text_is_generic_failure() {
     overrides.push_wait_process_exit(ProcessExit::new(1, 124, Vec::new(), b"Timeout".to_vec()));
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(failure.exit_code, 124);
@@ -731,22 +615,9 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
     });
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(failure.exit_code, 126);
@@ -824,22 +695,9 @@ async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
     );
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(failure.exit_code, 126);
@@ -855,7 +713,7 @@ async fn execute_inner_success_skips_abnormal_exit_diagnostics() {
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
     let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
 
@@ -878,7 +736,7 @@ async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
     let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
 
@@ -903,7 +761,7 @@ async fn execute_inner_nonzero_with_process_diagnostic_skips_abnormal_exit_diagn
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
     let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
 
@@ -933,7 +791,7 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
     let (exit_code, error) =
-        run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
             .await
             .unwrap();
 
