@@ -6,6 +6,7 @@ import os
 import re
 import stat
 import urllib.parse
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -166,7 +167,26 @@ def _compile_registry(
             compiled_firewall_registry[client_ip] = compiled_firewalls
         network_policies = vm.get("networkPolicies")
         compiled_policy_registry[client_ip] = matching.compile_network_policies(network_policies)
+    _prune_builtin_firewall_core_cache(builtin_firewall_core_cache, builtin_cache_keys.values())
     return compiled_firewall_registry, compiled_policy_registry
+
+
+def _prune_builtin_firewall_core_cache(
+    builtin_firewall_core_cache: dict[
+        _BuiltinFirewallCoreCacheKey,
+        matching.CompiledFirewallCore,
+    ],
+    active_key_groups: Iterable[tuple[_BuiltinFirewallCoreCacheKey | None, ...]],
+) -> None:
+    active_keys = {
+        cache_key
+        for cache_keys in active_key_groups
+        for cache_key in cache_keys
+        if cache_key is not None
+    }
+    stale_keys = set(builtin_firewall_core_cache) - active_keys
+    for cache_key in stale_keys:
+        del builtin_firewall_core_cache[cache_key]
 
 
 def _compile_firewalls_with_builtin_cache(

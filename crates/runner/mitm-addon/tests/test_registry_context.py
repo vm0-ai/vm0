@@ -1,6 +1,7 @@
 """Tests for registry VM lookup and compiled context behavior."""
 
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -372,6 +373,55 @@ class TestGetVmContext:
             compiled_policies,
         )
         assert isinstance(result, matching.FirewallAllow)
+
+    def test_builtin_core_cache_prunes_inactive_keys_on_registry_reload(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            registry,
+            "BUILTIN_FIREWALLS",
+            {
+                "cache-a": {
+                    "name": "cache-a",
+                    "apis": [
+                        {
+                            "base": "https://api-a.example.com",
+                            "auth": {"headers": {"Authorization": "Bearer token"}},
+                            "permissions": [],
+                        }
+                    ],
+                },
+                "cache-b": {
+                    "name": "cache-b",
+                    "apis": [
+                        {
+                            "base": "https://api-b.example.com",
+                            "auth": {"headers": {"Authorization": "Bearer token"}},
+                            "permissions": [],
+                        }
+                    ],
+                },
+            },
+        )
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(path, {"10.200.0.1": _builtin_vm("run-cache-a", "cache-a")})
+        os.utime(path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert first_context is not None
+        assert len(registry._registry_state.builtin_firewall_core_cache) == 1
+        first_cache_key = next(iter(registry._registry_state.builtin_firewall_core_cache))
+        assert first_cache_key[0] == "cache-a"
+
+        _write_multi_vm_registry(path, {"10.200.0.1": _builtin_vm("run-cache-b", "cache-b")})
+        os.utime(path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
+        second_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert second_context is not None
+        assert len(registry._registry_state.builtin_firewall_core_cache) == 1
+        second_cache_key = next(iter(registry._registry_state.builtin_firewall_core_cache))
+        assert second_cache_key[0] == "cache-b"
 
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"
