@@ -1037,7 +1037,9 @@ function renderLoaderFile(types: readonly FirewallConnectorType[]): string {
     })
     .join("\n");
 
-  return `${generatedHeader()}import type { FirewallPermissionDetailMetadata } from "./types";
+  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-metadata/v1/.
+// Bump that URL version before shipping an incompatible metadata module shape or import contract change.
+import type { FirewallPermissionDetailMetadata } from "./types";
 
 const FIREWALL_PERMISSION_METADATA_LOADERS: Readonly<
   Record<string, () => Promise<FirewallPermissionDetailMetadata>>

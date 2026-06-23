@@ -591,6 +591,10 @@ describe("zero attachment chips", () => {
       expect(screen.getByLabelText("Open in split view")).toBeInTheDocument();
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
 
     click(screen.getByLabelText("Enter fullscreen"));
 
@@ -612,6 +616,10 @@ describe("zero attachment chips", () => {
         screen.getByTestId("artifact-sidebar-body-html"),
       ).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
 
     click(screen.getByLabelText("Close artifact"));
 

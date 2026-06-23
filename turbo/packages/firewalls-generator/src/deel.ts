@@ -36,7 +36,53 @@ interface DeelSpec {
 
 interface DeelOperation {
   description?: string;
+  operationId?: string;
+  tags?: string[];
 }
+
+interface DeelOwnerContext {
+  readonly rule: string;
+  readonly method: string;
+  readonly tags: readonly string[];
+  readonly operationId: string | null;
+}
+
+interface DeelScope {
+  readonly scope: string;
+  readonly family: string;
+  readonly action: string;
+}
+
+const RUNTIME_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+const DEEL_TAG_OWNER_PREFERENCES = new Map<string, readonly string[]>([
+  ["subpackage_contracts", ["contracts", "worker", "benefits"]],
+  ["subpackage_contractorAmendments", ["contracts"]],
+  ["subpackage_contractorHiring", ["contracts", "worker"]],
+  ["subpackage_eorOffboarding", ["contracts", "worker"]],
+  ["subpackage_eorProjectAssignment", ["contracts"]],
+  ["subpackage_eorTerminations", ["contracts"]],
+  ["subpackage_groups", ["groups"]],
+  ["subpackage_hrxDocuments", ["contracts", "worker"]],
+  ["subpackage_invoiceAdjustments", ["invoice-adjustments", "worker"]],
+  ["subpackage_legalEntities", ["legal-entity", "organizations", "accounting"]],
+  ["subpackage_offboarding", ["people", "contracts"]],
+  ["subpackage_onboarding", ["people", "contracts"]],
+  ["subpackage_payouts", ["worker"]],
+  ["subpackage_people", ["people", "worker"]],
+  ["subpackage_screenings", ["screenings", "worker"]],
+  ["subpackage_timeOff", ["time-off", "worker"]],
+]);
 
 // ── Scope extraction ─────────────────────────────────────────────────────
 
@@ -58,6 +104,165 @@ function extractScopes(description: string): string[] {
     if (scope) scopes.push(scope);
   }
   return scopes;
+}
+
+function parseScope(scope: string): DeelScope {
+  const separatorIndex = scope.lastIndexOf(":");
+  if (separatorIndex === -1) {
+    throw new Error(`Invalid Deel scope "${scope}"`);
+  }
+  return {
+    scope,
+    family: scope.slice(0, separatorIndex),
+    action: scope.slice(separatorIndex + 1),
+  };
+}
+
+function uniqueValues(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function scopeActionRank(method: string, scope: DeelScope): number {
+  if (READ_METHODS.has(method)) {
+    if (scope.action === "read") return 0;
+    if (scope.action === "write") return 1;
+    return 2;
+  }
+  if (scope.action === "write") return 0;
+  if (scope.action === "read") return 1;
+  return 2;
+}
+
+function pickPreferredScopeInSet(
+  scopes: readonly string[],
+  context: DeelOwnerContext,
+): string {
+  const ranked = uniqueValues(scopes)
+    .map((scope) => {
+      return parseScope(scope);
+    })
+    .sort((left, right) => {
+      const actionDifference =
+        scopeActionRank(context.method, left) -
+        scopeActionRank(context.method, right);
+      if (actionDifference !== 0) return actionDifference;
+      return left.scope.localeCompare(right.scope);
+    });
+
+  const first = ranked[0];
+  if (!first) {
+    throw new Error(`No Deel scopes available for ${context.rule}`);
+  }
+
+  return first.scope;
+}
+
+function pickPrimaryDeelScope(
+  scopes: readonly string[],
+  context: DeelOwnerContext,
+): string | null {
+  const candidates = uniqueValues(scopes);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0]!;
+
+  for (const tag of context.tags) {
+    const preferredFamilies = DEEL_TAG_OWNER_PREFERENCES.get(tag);
+    if (!preferredFamilies) continue;
+    for (const family of preferredFamilies) {
+      const matchingScopes = candidates.filter((scope) => {
+        return parseScope(scope).family === family;
+      });
+      if (matchingScopes.length > 0) {
+        return pickPreferredScopeInSet(matchingScopes, context);
+      }
+    }
+  }
+
+  const families = uniqueValues(
+    candidates.map((scope) => {
+      return parseScope(scope).family;
+    }),
+  );
+  if (families.length === 1) {
+    return pickPreferredScopeInSet(candidates, context);
+  }
+
+  const ranked = candidates
+    .map((scope) => {
+      return parseScope(scope);
+    })
+    .sort((left, right) => {
+      const actionDifference =
+        scopeActionRank(context.method, left) -
+        scopeActionRank(context.method, right);
+      if (actionDifference !== 0) return actionDifference;
+      return left.scope.localeCompare(right.scope);
+    });
+  const first = ranked[0];
+  const second = ranked[1];
+  if (
+    first &&
+    second &&
+    scopeActionRank(context.method, first) !==
+      scopeActionRank(context.method, second)
+  ) {
+    return first.scope;
+  }
+
+  throw new Error(
+    [
+      `Ambiguous Deel scope owner for ${context.rule}`,
+      context.operationId ? `operation: ${context.operationId}` : null,
+      context.tags.length > 0 ? `tags: ${context.tags.join(", ")}` : null,
+      `scopes: ${candidates.join(", ")}`,
+    ]
+      .filter((part) => {
+        return part !== null;
+      })
+      .join("; "),
+  );
+}
+
+function expandRuntimeRule(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+function assertUniqueDeelRules(permissions: readonly PermissionGroup[]): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      for (const runtimeRule of expandRuntimeRule(rule)) {
+        const existing = owners.get(runtimeRule);
+        if (existing) {
+          duplicates.push(`${runtimeRule}: ${existing}, ${permission.name}`);
+          continue;
+        }
+        owners.set(runtimeRule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Deel generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
 }
 
 // ── Scope overrides ──────────────────────────────────────────────────────
@@ -137,6 +342,13 @@ function buildGroups(spec: DeelSpec): {
       // Apply manual overrides for endpoints missing scopes in spec
       const override = SCOPE_OVERRIDES[rule];
       if (override) {
+        if (scopes.length > 0) {
+          throw new Error(
+            `Stale Deel scope override for ${rule}: official scopes are ${scopes.join(
+              ", ",
+            )}`,
+          );
+        }
         scopes.push(override);
       }
 
@@ -147,14 +359,23 @@ function buildGroups(spec: DeelSpec): {
         continue;
       }
 
-      for (const scope of scopes) {
-        let ruleSet = groups.get(scope);
-        if (!ruleSet) {
-          ruleSet = new Set();
-          groups.set(scope, ruleSet);
-        }
-        ruleSet.add(rule);
+      const primaryScope = pickPrimaryDeelScope(scopes, {
+        rule,
+        method: httpMethod,
+        tags: op.tags ?? [],
+        operationId: op.operationId ?? null,
+      });
+
+      if (!primaryScope) {
+        continue;
       }
+
+      let ruleSet = groups.get(primaryScope);
+      if (!ruleSet) {
+        ruleSet = new Set();
+        groups.set(primaryScope, ruleSet);
+      }
+      ruleSet.add(rule);
     }
   }
 
@@ -166,6 +387,7 @@ function buildGroups(spec: DeelSpec): {
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
 
+  assertUniqueDeelRules(permissions);
   return { permissions, scopeless: unknownScopeless };
 }
 

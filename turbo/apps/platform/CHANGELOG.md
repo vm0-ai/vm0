@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.483.2](https://github.com/vm0-ai/vm0/compare/app-v0.483.1...app-v0.483.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* remove template card theme toggle ([#18596](https://github.com/vm0-ai/vm0/issues/18596)) ([826bdb3](https://github.com/vm0-ai/vm0/commit/826bdb333f18af9b1466b4455f1d119aac6e6b52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.109.2
+    * @vm0/connectors bumped to 1.104.2
+    * @vm0/core bumped to 8.364.2
+
 ## [0.483.1](https://github.com/vm0-ai/vm0/compare/app-v0.483.0...app-v0.483.1) (2026-06-23)
 
 
