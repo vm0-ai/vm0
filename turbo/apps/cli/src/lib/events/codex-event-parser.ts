@@ -34,15 +34,10 @@ interface TurnFailedEvent {
   error?: string;
 }
 
-interface CodexPlanStep {
-  step?: string;
-  status?: string;
-}
-
 interface TurnPlanUpdatedEvent {
   type: "turn.plan.updated";
-  explanation?: string | null;
-  plan?: CodexPlanStep[];
+  explanation?: unknown;
+  plan?: unknown;
 }
 
 interface FileChange {
@@ -378,16 +373,31 @@ function isCommandExecutionError(item: CodexItem): boolean {
   return typeof item.exit_code === "number" ? item.exit_code !== 0 : false;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 function formatCodexPlanUpdate(
-  plan: CodexPlanStep[] | undefined,
-  explanation: string | null | undefined,
+  plan: unknown,
+  explanation: unknown,
 ): string | null {
-  const header = explanation?.trim()
-    ? `[plan] ${explanation.trim()}`
-    : "[plan]";
+  const explanationText =
+    typeof explanation === "string" ? explanation.trim() : "";
+  const header = explanationText ? `[plan] ${explanationText}` : "[plan]";
   const steps = Array.isArray(plan)
     ? plan.flatMap((step) => {
-        const text = step.step?.trim();
+        if (!isRecord(step)) {
+          return [];
+        }
+        const text = getStringField(step, "step")?.trim();
         if (!text) {
           return [];
         }
@@ -395,14 +405,14 @@ function formatCodexPlanUpdate(
       })
     : [];
 
-  if (steps.length === 0 && !explanation?.trim()) {
+  if (steps.length === 0 && !explanationText) {
     return null;
   }
 
   return [header, ...steps].join("\n");
 }
 
-function formatCodexPlanStatus(status: string | undefined): string {
+function formatCodexPlanStatus(status: unknown): string {
   switch (status) {
     case "completed":
     case "pending":
@@ -411,6 +421,8 @@ function formatCodexPlanStatus(status: string | undefined): string {
     case "in_progress":
       return "in progress";
     default:
-      return status?.trim() || "unknown";
+      return typeof status === "string"
+        ? status.trim() || "unknown"
+        : "unknown";
   }
 }

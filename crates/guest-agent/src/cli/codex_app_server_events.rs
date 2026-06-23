@@ -278,9 +278,10 @@ fn map_error(notification: &ServerNotification) -> Result<Value, CodexAppServerE
     let error = required_object_field(params, &notification.method, "error")?;
     let message = required_string_field(error, &notification.method, "error.message")?;
     let normalized_error = normalize_error(error);
+    let event_type = if will_retry { "warning" } else { "error" };
 
     Ok(json!({
-        "type": "error",
+        "type": event_type,
         "thread_id": thread_id,
         "turn_id": turn_id,
         "will_retry": will_retry,
@@ -1425,6 +1426,43 @@ mod tests {
         );
         assert_eq!(diagnostic.event_type, "error");
         assert_eq!(diagnostic.message, "server rejected request");
+    }
+
+    #[test]
+    fn retryable_error_maps_to_non_failure_warning() {
+        let event = mapped_event(
+            "error",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "willRetry": true,
+                "error": {
+                    "message": "temporary stream disconnect",
+                    "codexErrorInfo": "serverOverloaded",
+                    "additionalDetails": "retrying"
+                }
+            }),
+        );
+
+        assert_eq!(
+            event,
+            json!({
+                "type": "warning",
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "will_retry": true,
+                "message": "temporary stream disconnect",
+                "error": {
+                    "message": "temporary stream disconnect",
+                    "codex_error_info": "serverOverloaded",
+                    "additional_details": "retrying"
+                }
+            })
+        );
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
     }
 
     #[test]

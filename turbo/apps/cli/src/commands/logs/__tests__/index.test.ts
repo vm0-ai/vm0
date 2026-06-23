@@ -909,6 +909,43 @@ describe("logs command", () => {
       expect(logCalls).toContain("- [pending] Run tests");
     });
 
+    it("should tolerate malformed turn plan update fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "turn.plan.updated",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "turn.plan.updated",
+                    explanation: 123,
+                    plan: [
+                      null,
+                      { step: "", status: "completed" },
+                      { step: "Run tests", status: "pending" },
+                    ],
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[plan]");
+      expect(logCalls).toContain("- [pending] Run tests");
+      expect(logCalls).not.toContain("[plan] 123");
+    });
+
     it("should mark command_execution with non-zero exit_code as error", async () => {
       server.use(
         http.get(
