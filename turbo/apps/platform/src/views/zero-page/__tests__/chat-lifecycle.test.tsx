@@ -2954,6 +2954,17 @@ describe("chat lifecycle", () => {
     expect(scrollContainer.scrollTop).toBe(480);
     resizeObserver.triggerAll();
     expect(scrollContainer.scrollTop).toBe(480);
+
+    scrollContainer.scrollTop = 80;
+    fireEvent.scroll(scrollContainer);
+    await Promise.resolve();
+    await Promise.resolve();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1900,
+      clientHeight: 300,
+    });
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(80);
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {

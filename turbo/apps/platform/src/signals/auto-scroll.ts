@@ -298,6 +298,12 @@ function createRecordScrollHeightForPrependCommand(
   });
 }
 
+function createClearScrollHeightForPrependCommand(restoreState: RestoreState) {
+  return command(() => {
+    restoreState.pendingPrependScrollHeight = null;
+  });
+}
+
 interface ScrollToTopCommandDeps {
   internalScrollContainer$: State<HTMLElement | null>;
   autoScrollDisabled$: State<boolean>;
@@ -487,6 +493,8 @@ export function createScrollSignals(id?: string) {
       restoreState,
       lastKnownScrollTop,
     });
+  const clearScrollHeightForPrepend$ =
+    createClearScrollHeightForPrependCommand(restoreState);
 
   const scrollToTop$ = createScrollToTopCommand({
     internalScrollContainer$,
@@ -503,6 +511,7 @@ export function createScrollSignals(id?: string) {
     scrollBy$,
     prepareKeyboardScroll$,
     recordScrollHeightForPrepend$,
+    clearScrollHeightForPrepend$,
     awayFromBottom$,
   };
 }
