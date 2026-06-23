@@ -940,7 +940,7 @@ describe("zero doctor check-connector command", () => {
       );
       expect(output).toContain("Relative path:    /Accounts");
       expect(output).toContain(
-        "Matched permissions: [accounting.settings, accounting.settings.read]",
+        "Matched permissions: [accounting.settings.read]",
       );
       expect(output).not.toContain("Matched permissions: [connections");
     });
