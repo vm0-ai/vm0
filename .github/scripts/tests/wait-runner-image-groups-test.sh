@@ -175,6 +175,7 @@ run_wait_groups() {
     PROFILE="debug" \
     REPO="vm0-ai/vm0" \
     MANIFEST_DIR="$MANIFEST_DIR" \
+    OUTPUT_DIR="$TEST_DIR/output-dir" \
     GITHUB_OUTPUT="$output_file" \
     "$SCRIPT_DIR/wait-runner-image-groups.sh"
 }
