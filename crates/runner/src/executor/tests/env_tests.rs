@@ -810,23 +810,32 @@ fn build_env_json_empty_artifacts_emits_no_env_var() {
 #[test]
 fn build_env_json_with_secrets() {
     let mut ctx = minimal_context();
-    ctx.secret_values = Some(vec!["secret1".into(), "secret2".into()]);
+    // Raw delimiters in secret values must survive base64 transport.
+    ctx.secret_values = Some(vec!["secret1".into(), "secret,with\nnewline".into()]);
 
     let env = build_env_for_test(&ctx, "http://localhost");
     let val = env.get("VM0_SECRET_VALUES").unwrap();
 
     use base64::Engine as _;
     let parts: Vec<&str> = val.split(',').collect();
-    // sandbox_token ("tok") + secret1 + secret2
     assert_eq!(parts.len(), 3);
-    let decoded0 = base64::engine::general_purpose::STANDARD
-        .decode(parts[0])
-        .unwrap();
-    assert_eq!(decoded0, b"tok");
-    let decoded1 = base64::engine::general_purpose::STANDARD
-        .decode(parts[1])
-        .unwrap();
-    assert_eq!(decoded1, b"secret1");
+    let decoded: Vec<String> = parts
+        .iter()
+        .map(|part| {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(part)
+                .unwrap();
+            String::from_utf8(bytes).unwrap()
+        })
+        .collect();
+    assert_eq!(
+        decoded,
+        vec![
+            "tok".to_string(),
+            "secret1".to_string(),
+            "secret,with\nnewline".to_string(),
+        ]
+    );
 }
 
 #[test]
