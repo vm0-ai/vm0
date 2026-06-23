@@ -217,7 +217,24 @@ function formatCodexEventMessage(
   message: unknown,
   error: unknown,
 ): string | undefined {
-  return formatCodexString(message) ?? formatCodexErrorMessage(error);
+  const messageText = formatCodexString(message);
+  const errorText = formatCodexErrorMessage(error);
+
+  if (!messageText) {
+    return errorText;
+  }
+  if (!errorText) {
+    return messageText;
+  }
+  if (
+    errorText === messageText ||
+    errorText.startsWith(`${messageText} (`) ||
+    isGenericCodexFailureMessage(messageText)
+  ) {
+    return errorText;
+  }
+
+  return messageText;
 }
 
 function formatCodexString(value: unknown): string | undefined {
@@ -245,6 +262,16 @@ function formatCodexErrorMessage(error: unknown): string | undefined {
   }
 
   return message || details || undefined;
+}
+
+function isGenericCodexFailureMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized === "turn failed" ||
+    normalized === "unknown error" ||
+    normalized === "codex error" ||
+    normalized === "error"
+  );
 }
 
 function parseCodexUsage(value: unknown): CodexUsage | undefined {
@@ -625,7 +652,9 @@ function normalizeCodexErrorEvent(
   return makeCodexResultEvent({
     event,
     success: false,
-    result: codexEvent?.message ?? codexEvent?.error ?? "Codex error",
+    result:
+      formatCodexEventMessage(codexEvent?.message, codexEvent?.error) ??
+      "Codex error",
     usage: codexEvent?.usage,
   });
 }

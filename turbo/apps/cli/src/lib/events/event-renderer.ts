@@ -90,6 +90,7 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
+        this.flush();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
@@ -203,6 +204,10 @@ export class EventRenderer {
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
     if (this.options.buffered !== false) {
+      const pending = this.pendingToolUse.get(toolUseId);
+      if (pending) {
+        this.renderToolUseOnly(pending.toolUse, pending.prefix);
+      }
       this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
     } else {
       // Non-buffered: render tool_use header immediately

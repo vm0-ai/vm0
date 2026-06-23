@@ -1232,12 +1232,26 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       eventType: "error",
       eventData: {
         type: "error",
+        message: "Codex stream disconnected.",
         error: {
           message: "Codex stream disconnected.",
           additional_details: "stdio closed",
         },
       },
       createdAt: "2026-03-10T15:30:13Z",
+    },
+    {
+      sequenceNumber: 13,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        message: "unknown error",
+        error: {
+          message: "Codex auth failed.",
+          additional_details: "refresh token expired",
+        },
+      },
+      createdAt: "2026-03-10T15:30:14Z",
     },
   ];
 }
@@ -2426,6 +2440,9 @@ describe("activity detail polling", () => {
     ).toBeInTheDocument();
     expect(
       screen.getAllByText("Codex stream disconnected. (stdio closed)"),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getAllByText("Codex auth failed. (refresh token expired)"),
     ).not.toHaveLength(0);
   });
 

@@ -720,6 +720,176 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("Tool result");
     });
 
+    it("should not pair tool results across session init events", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "system",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "system",
+                    subtype: "init",
+                    session_id: "session-1",
+                    model: "claude-sonnet-4-5",
+                    tools: ["Read"],
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Read",
+                          id: "tool-123",
+                          input: { file_path: "/first/session.ts" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "system",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "system",
+                    subtype: "init",
+                    session_id: "session-2",
+                    model: "claude-sonnet-4-5",
+                    tools: ["Read"],
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "tool-123",
+                          content: "second session result",
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("/first/session.ts");
+      expect(logCalls).toContain("Tool result");
+      expect(logCalls).toContain("second session result");
+    });
+
+    it("should not drop pending tool uses when a duplicate id is received", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "system",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "system",
+                    subtype: "init",
+                    session_id: "session-1",
+                    model: "claude-sonnet-4-5",
+                    tools: ["Read"],
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Read",
+                          id: "tool-123",
+                          input: { file_path: "/first/path.ts" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Read",
+                          id: "tool-123",
+                          input: { file_path: "/second/path.ts" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "tool-123",
+                          content: "second result",
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("/first/path.ts");
+      expect(logCalls).toContain("/second/path.ts");
+      expect(logCalls).toContain("second result");
+    });
+
     it("should render malformed tool_use events without ids without overwriting them", async () => {
       server.use(
         http.get(
@@ -1884,6 +2054,7 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "error",
+                    message: "unknown error",
                     error: {
                       message: "API connection failed",
                       additional_details: "network unreachable",

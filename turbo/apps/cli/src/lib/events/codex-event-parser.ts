@@ -477,7 +477,24 @@ function formatCodexEventMessage(
   message: unknown,
   error: unknown,
 ): string | null {
-  return formatCodexString(message) ?? formatCodexErrorMessage(error);
+  const messageText = formatCodexString(message);
+  const errorText = formatCodexErrorMessage(error);
+
+  if (!messageText) {
+    return errorText;
+  }
+  if (!errorText) {
+    return messageText;
+  }
+  if (
+    errorText === messageText ||
+    errorText.startsWith(`${messageText} (`) ||
+    isGenericCodexFailureMessage(messageText)
+  ) {
+    return errorText;
+  }
+
+  return messageText;
 }
 
 function formatCodexString(value: unknown): string | null {
@@ -505,6 +522,16 @@ function formatCodexErrorMessage(error: unknown): string | null {
   }
 
   return message || details || null;
+}
+
+function isGenericCodexFailureMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized === "turn failed" ||
+    normalized === "unknown error" ||
+    normalized === "codex error" ||
+    normalized === "error"
+  );
 }
 
 function formatCodexPlanUpdate(
