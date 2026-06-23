@@ -945,6 +945,7 @@ fn process_group_exists(pgid: i32) -> Result<bool, String> {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, String> {
     let stat_path = format!("/proc/{pid}/stat");
     let stat = match std::fs::read_to_string(&stat_path) {
@@ -958,10 +959,22 @@ fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, Stri
         .map_err(|error| format!("parse {stat_path}: {error}"))
 }
 
-fn linux_procfs_available() -> bool {
-    std::path::Path::new("/proc").is_dir()
+#[cfg(not(target_os = "linux"))]
+fn linux_process_identity(_pid: u32) -> Result<Option<LinuxProcessIdentity>, String> {
+    Ok(None)
 }
 
+#[cfg(target_os = "linux")]
+fn linux_procfs_available() -> bool {
+    std::path::Path::new("/proc/self/stat").is_file()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_procfs_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
 fn parse_linux_process_identity(stat: &str) -> Result<LinuxProcessIdentity, String> {
     let (_comm, fields_text) = stat
         .rsplit_once(") ")
