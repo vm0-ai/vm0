@@ -515,6 +515,14 @@ describe("zero attachment chips", () => {
         screen.getByTestId("artifact-dialog-document-frame"),
       ).toBeInTheDocument();
     });
+    const documentFrame = screen.getByTestId("artifact-dialog-document-frame");
+    const iframe = screen.getByTitle("launch-plan.pdf preview");
+    expect(screen.getByTestId("artifact-dialog-stage")).toHaveClass(
+      "overflow-hidden",
+    );
+    expect(documentFrame).toHaveClass("h-full", "min-h-0");
+    expect(iframe).toHaveAttribute("src", `${pdfUrl}#navpanes=0`);
+    expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
     click(screen.getByLabelText("Close"));
 

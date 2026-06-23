@@ -1633,10 +1633,17 @@ ${openFencedHostedSiteUrl}`,
     await backToArtifactInbox();
 
     await openArtifactFromInbox("rollout-plan.pdf");
-    expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
-      "title",
-      "rollout-plan.pdf preview",
+    const pdfFrame = screen.getByTestId("artifact-sidebar-body-pdf");
+    const pdfFrameWrapper = pdfFrame.parentElement;
+    if (!pdfFrameWrapper) {
+      throw new Error("PDF frame wrapper not found");
+    }
+    expect(screen.getByTestId("artifact-sidebar-stage")).toHaveClass(
+      "overflow-hidden",
     );
+    expect(pdfFrame).toHaveAttribute("title", "rollout-plan.pdf preview");
+    expect(pdfFrame).toHaveClass("h-full", "min-h-0", "border-0");
+    expect(pdfFrameWrapper).toHaveClass("h-full", "min-h-0");
     await backToArtifactInbox();
 
     click(getArtifactTab(screen.getByTestId("artifact-inbox"), "All"));

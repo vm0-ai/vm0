@@ -1026,12 +1026,12 @@ function ArtifactIframeBody({
   }
 
   return (
-    <ArtifactStageShell>
-      <div className="flex min-h-[420px] w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+    <ArtifactStageShell scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <iframe
           src={src}
           title={`${filename} preview`}
-          className="h-full w-full bg-background"
+          className="h-full min-h-0 w-full border-0 bg-background"
           data-testid={`artifact-sidebar-body-${kind}`}
         />
       </div>
