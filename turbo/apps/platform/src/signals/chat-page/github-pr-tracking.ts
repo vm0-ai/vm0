@@ -201,7 +201,6 @@ function createChatThreadGithubPrsFactory(): (
         const result = await accept(
           client.list({
             params: { threadId },
-            fetchOptions: { cache: "no-store" },
           }),
           [200],
           { toast: false },

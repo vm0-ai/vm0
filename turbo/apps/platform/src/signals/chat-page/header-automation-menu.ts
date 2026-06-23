@@ -41,9 +41,7 @@ export const headerAutomationMenu$ = computed(
     const prefs = await get(userPreferences$);
     const displayTz =
       prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const automations = await listAutomations(get(zeroClient$), {
-      cache: "no-store",
-    });
+    const automations = await listAutomations(get(zeroClient$));
     return automations.map((automation) => {
       return {
         id: automation.id,
@@ -112,11 +110,9 @@ function createHeaderWorkflowTriggersFactory(): (
     const triggers$ = computed(
       async (get): Promise<readonly HeaderWorkflowTriggerEntry[]> => {
         get(headerAutomationMenuReload$);
-        const triggers = await listThreadWorkflowTriggers(
-          get(zeroClient$),
-          { threadId },
-          { cache: "no-store" },
-        );
+        const triggers = await listThreadWorkflowTriggers(get(zeroClient$), {
+          threadId,
+        });
         return triggers.map((trigger) => {
           return {
             id: trigger.id,
