@@ -11,12 +11,25 @@
 //! be checked against TS `computeContentHashFromHashes`.
 
 use sha2::{Digest, Sha256};
-use std::cmp::Ordering;
 
 #[derive(Clone, Copy)]
 struct ContentHashEntry<'a> {
     path: &'a str,
     hash: &'a str,
+}
+
+struct SortableContentHashEntry<'a> {
+    entry: ContentHashEntry<'a>,
+    sort_key: Vec<u16>,
+}
+
+impl<'a> SortableContentHashEntry<'a> {
+    fn new(entry: ContentHashEntry<'a>) -> Self {
+        Self {
+            entry,
+            sort_key: formatted_entry_sort_key(entry),
+        }
+    }
 }
 
 /// Compute the content hash for a storage version.
@@ -32,54 +45,52 @@ pub(crate) fn compute_content_hash<'a, I>(storage_id: &str, files: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
-    let mut entries: Vec<ContentHashEntry<'a>> = files
-        .into_iter()
-        .map(|(path, hash)| ContentHashEntry { path, hash })
-        .collect();
-
     let mut hasher = Sha256::new();
     hasher.update(b"storage:");
     hasher.update(storage_id.as_bytes());
     hasher.update(b"\n");
 
-    if !entries.is_empty() {
-        entries.sort_by(|left, right| compare_formatted_entries(*left, *right));
-        for (index, entry) in entries.iter().enumerate() {
-            if index > 0 {
-                hasher.update(b"\n");
-            }
-            hasher.update(entry.path.as_bytes());
-            hasher.update(b":");
-            hasher.update(entry.hash.as_bytes());
-        }
+    let mut entries = files
+        .into_iter()
+        .map(|(path, hash)| ContentHashEntry { path, hash });
+    let Some(first_entry) = entries.next() else {
+        return hex::encode(hasher.finalize());
+    };
+    let Some(second_entry) = entries.next() else {
+        update_hash_for_entry(&mut hasher, 0, first_entry);
+        return hex::encode(hasher.finalize());
+    };
+
+    let (remaining_lower_bound, _) = entries.size_hint();
+    let mut sortable_entries = Vec::with_capacity(remaining_lower_bound.saturating_add(2));
+    sortable_entries.push(SortableContentHashEntry::new(first_entry));
+    sortable_entries.push(SortableContentHashEntry::new(second_entry));
+    sortable_entries.extend(entries.map(SortableContentHashEntry::new));
+    // Equal sort keys are identical formatted `path:hash` lines, so stability
+    // cannot affect the final hash byte stream.
+    sortable_entries.sort_unstable_by(|left, right| left.sort_key.cmp(&right.sort_key));
+    for (index, entry) in sortable_entries.iter().enumerate() {
+        update_hash_for_entry(&mut hasher, index, entry.entry);
     }
 
     hex::encode(hasher.finalize())
 }
 
-fn compare_formatted_entries(left: ContentHashEntry<'_>, right: ContentHashEntry<'_>) -> Ordering {
-    let mut left_code_units = formatted_entry_code_units(left);
-    let mut right_code_units = formatted_entry_code_units(right);
-
-    loop {
-        match (left_code_units.next(), right_code_units.next()) {
-            (Some(left), Some(right)) => match left.cmp(&right) {
-                Ordering::Equal => {}
-                ordering => return ordering,
-            },
-            (Some(_), None) => return Ordering::Greater,
-            (None, Some(_)) => return Ordering::Less,
-            (None, None) => return Ordering::Equal,
-        }
+fn update_hash_for_entry(hasher: &mut Sha256, index: usize, entry: ContentHashEntry<'_>) {
+    if index > 0 {
+        hasher.update(b"\n");
     }
+    hasher.update(entry.path.as_bytes());
+    hasher.update(b":");
+    hasher.update(entry.hash.as_bytes());
 }
 
-fn formatted_entry_code_units<'a>(entry: ContentHashEntry<'a>) -> impl Iterator<Item = u16> + 'a {
-    entry
-        .path
-        .encode_utf16()
-        .chain(std::iter::once(u16::from(b':')))
-        .chain(entry.hash.encode_utf16())
+fn formatted_entry_sort_key(entry: ContentHashEntry<'_>) -> Vec<u16> {
+    let mut sort_key = Vec::with_capacity(entry.path.len() + 1 + entry.hash.len());
+    sort_key.extend(entry.path.encode_utf16());
+    sort_key.push(u16::from(b':'));
+    sort_key.extend(entry.hash.encode_utf16());
+    sort_key
 }
 
 #[cfg(test)]
@@ -157,6 +168,24 @@ mod tests {
         assert_ne!(
             got,
             sha256_hex(&format!("storage:{STORAGE_A}\na:b:1\na:b:0"))
+        );
+    }
+
+    #[test]
+    fn path_prefix_with_colon_sorts_like_formatted_entries() {
+        let got = compute_content_hash(STORAGE_A, [("a", "z"), ("a:", "0")]);
+
+        assert_eq!(got, sha256_hex(&format!("storage:{STORAGE_A}\na::0\na:z")));
+        assert_ne!(got, sha256_hex(&format!("storage:{STORAGE_A}\na:z\na::0")));
+    }
+
+    #[test]
+    fn equal_formatted_entries_do_not_depend_on_stable_sorting() {
+        let got = compute_content_hash(STORAGE_A, [("a", "b:c"), ("a:b", "c")]);
+
+        assert_eq!(
+            got,
+            sha256_hex(&format!("storage:{STORAGE_A}\na:b:c\na:b:c"))
         );
     }
 
