@@ -4162,6 +4162,44 @@ async fn promote_skips_when_capacity_lock_is_busy() {
 }
 
 #[tokio::test]
+async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths);
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert!(
+        lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                cli_agent_session_id_override: None,
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-05-01T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+            })
+            .is_none(),
+        "workspace image promotion must wait until a CLI agent session id is available"
+    );
+}
+
+#[tokio::test]
 async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
