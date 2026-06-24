@@ -3494,6 +3494,13 @@
       "when": 1782280304785,
       "tag": "0498_thread_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1782293870738,
+      "tag": "0499_zippy_agent_brand",
+      "breakpoints": true
     }
   ]
 }

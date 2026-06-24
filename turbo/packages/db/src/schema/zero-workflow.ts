@@ -12,6 +12,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { UnattendedTriggerPermissionPolicy } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
 
@@ -153,6 +154,13 @@ export const zeroWorkflowTriggers = pgTable(
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    // Isolated unattended permission policy for trigger-fired runs (allow/deny
+    // only). NULL falls back to connector metadata defaults; agent/user grants
+    // are never inherited. Set only via a session/PAT-gated route, never by the
+    // in-run agent. See issue #18789.
+    unattendedPermissionPolicy: jsonb(
+      "unattended_permission_policy",
+    ).$type<UnattendedTriggerPermissionPolicy>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

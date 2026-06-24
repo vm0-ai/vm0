@@ -167,6 +167,34 @@ export const zeroWorkflowScheduleSchema = z.discriminatedUnion("type", [
 export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
 
 /**
+ * Unattended permission policy for a workflow trigger.
+ *
+ * A trigger fires its workflow unattended, so it carries its own permission
+ * allowlist instead of inheriting interactive agent/user grants. Only `allow` /
+ * `deny` are expressible: there is no human to answer an `ask`, and the runtime
+ * enforces `ask` as `deny` anyway. The unknown-endpoint policy is not stored
+ * here — trigger runs always fall back to the connector metadata default
+ * (`deny` for every connector).
+ */
+export const unattendedTriggerPermissionActionSchema = z.enum([
+  "allow",
+  "deny",
+]);
+export type UnattendedTriggerPermissionAction = z.infer<
+  typeof unattendedTriggerPermissionActionSchema
+>;
+
+export const unattendedTriggerPermissionPolicySchema = z.record(
+  z.string(),
+  z.object({
+    policies: z.record(z.string(), unattendedTriggerPermissionActionSchema),
+  }),
+);
+export type UnattendedTriggerPermissionPolicy = z.infer<
+  typeof unattendedTriggerPermissionPolicySchema
+>;
+
+/**
  * Trigger summary. Under 1:N the agent is derived from the workflow, so triggers
  * no longer carry an agentId. Detail responses only ever list the caller's own
  * triggers.
@@ -178,6 +206,7 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
+  unattendedPermissionPolicy: unattendedTriggerPermissionPolicySchema.nullable(),
 });
 
 export const zeroWorkflowScheduleTriggerSummarySchema =
