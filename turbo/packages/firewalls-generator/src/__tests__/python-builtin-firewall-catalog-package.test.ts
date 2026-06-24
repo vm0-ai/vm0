@@ -112,7 +112,12 @@ describe("Python builtin firewall catalog package generation", () => {
       "utf-8",
     );
 
-    expect(source).toContain("@vm0/api-contracts/contracts/model-providers");
+    expect(source).toContain(
+      "@vm0/api-contracts/contracts/model-provider-firewalls",
+    );
+    expect(source).not.toContain(
+      "@vm0/api-contracts/contracts/model-providers",
+    );
     expect(source).not.toContain('from "@vm0/api-contracts"');
     expect(source).not.toContain("@vm0/connectors/firewalls/all");
   });

@@ -271,9 +271,11 @@
     "generate:openweather": "tsx src/index.ts openweather",
     "generate:reducto": "tsx src/index.ts reducto"
   },
+  "dependencies": {
+    "@vm0/api-contracts": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "@vm0/api-contracts": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "tsx": "^4.19.4",
     "typescript": "6.0.3",

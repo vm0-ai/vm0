@@ -1047,13 +1047,14 @@ importers:
         version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
 
   packages/firewalls-generator:
+    dependencies:
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
     devDependencies:
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0
-      '@vm0/api-contracts':
-        specifier: workspace:*
-        version: link:../api-contracts
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
