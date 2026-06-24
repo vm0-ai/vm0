@@ -489,4 +489,24 @@ describe("Python builtin firewall catalog renderer", () => {
       ]);
     }).toThrow("duplicate built-in firewall catalog name: duplicate");
   });
+
+  it("rejects unsupported JSON catalog values instead of silently rewriting them", () => {
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          ...testFirewall("nan"),
+          observedAt: Number.NaN,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog number: NaN");
+
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          ...testFirewall("date"),
+          observedAt: new Date("2026-06-24T00:00:00.000Z"),
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog object: Date");
+  });
 });

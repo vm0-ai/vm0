@@ -104,6 +104,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isPlainJsonObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function extractDiagnosticReferenceNames(value: unknown): readonly string[] {
   const result: string[] = [];
   const seen = new Set<string>();
@@ -275,9 +280,14 @@ function sortJson(value: unknown): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
-    typeof value === "number" ||
     typeof value === "boolean"
   ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`unsupported JSON catalog number: ${value}`);
+    }
     return value;
   }
   if (Array.isArray(value)) {
@@ -286,10 +296,14 @@ function sortJson(value: unknown): JsonValue {
   if (typeof value !== "object") {
     throw new Error(`unsupported JSON catalog value: ${typeof value}`);
   }
+  if (!isPlainJsonObject(value)) {
+    const constructorName = value.constructor?.name ?? "unknown";
+    throw new Error(`unsupported JSON catalog object: ${constructorName}`);
+  }
 
   const sorted: Record<string, JsonValue> = {};
   for (const key of Object.keys(value).sort()) {
-    const nested = (value as Record<string, unknown>)[key];
+    const nested = value[key];
     if (nested !== undefined) {
       sorted[key] = sortJson(nested);
     }
