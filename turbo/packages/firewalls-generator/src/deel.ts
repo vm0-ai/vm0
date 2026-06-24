@@ -53,6 +53,11 @@ interface DeelScope {
   readonly action: string;
 }
 
+interface DeelDocumentedScopeRemap {
+  readonly expectedScopes: readonly string[];
+  readonly targetScope: string;
+}
+
 const RUNTIME_METHODS = [
   "GET",
   "POST",
@@ -120,6 +125,24 @@ function parseScope(scope: string): DeelScope {
 
 function uniqueValues(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function sortedUniqueValues(values: readonly string[]): string[] {
+  return uniqueValues(values).sort((left, right) => {
+    return left.localeCompare(right);
+  });
+}
+
+function scopeSetsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  const sortedLeft = sortedUniqueValues(left);
+  const sortedRight = sortedUniqueValues(right);
+  if (sortedLeft.length !== sortedRight.length) return false;
+  return sortedLeft.every((scope, index) => {
+    return scope === sortedRight[index];
+  });
 }
 
 function scopeActionRank(method: string, scope: DeelScope): number {
@@ -298,6 +321,15 @@ const SCOPE_OVERRIDES: Record<string, string> = {
   "GET /rest/v2/hris/positions/profile/{hrisProfileId}": "profile:read",
 };
 
+// Documented-scope remaps preserve vm0 permission semantics when Deel's
+// official token scope label is too broad for an agent-facing permission.
+const DOCUMENTED_SCOPE_REMAPS: Record<string, DeelDocumentedScopeRemap> = {
+  "POST /rest/v2/magic-link": {
+    expectedScopes: ["worker:read"],
+    targetScope: "auth:write",
+  },
+};
+
 // ── Scopeless endpoints ──────────────────────────────────────────────────
 // Endpoints that are intentionally denied (different auth or sensitive).
 // Unknown scopeless endpoints cause a build error.
@@ -329,6 +361,7 @@ function buildGroups(spec: DeelSpec): {
 } {
   const groups = new Map<string, Set<string>>();
   const unknownScopeless: string[] = [];
+  const seenDocumentedScopeRemaps = new Set<string>();
 
   for (const [path, methods] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(methods)) {
@@ -337,7 +370,27 @@ function buildGroups(spec: DeelSpec): {
       const httpMethod = method.toUpperCase();
       const rule = `${httpMethod} /rest/v2${path}`;
       const description = op.description ?? "";
-      const scopes = extractScopes(description);
+      let scopes = extractScopes(description);
+
+      const documentedScopeRemap = DOCUMENTED_SCOPE_REMAPS[rule];
+      if (documentedScopeRemap) {
+        seenDocumentedScopeRemaps.add(rule);
+        if (scopes.length === 0) {
+          throw new Error(
+            `Stale Deel documented scope remap for ${rule}: endpoint no longer has official scopes`,
+          );
+        }
+        if (!scopeSetsEqual(scopes, documentedScopeRemap.expectedScopes)) {
+          throw new Error(
+            `Stale Deel documented scope remap for ${rule}: official scopes are ${sortedUniqueValues(
+              scopes,
+            ).join(", ")}, expected ${sortedUniqueValues(
+              documentedScopeRemap.expectedScopes,
+            ).join(", ")}`,
+          );
+        }
+        scopes = [documentedScopeRemap.targetScope];
+      }
 
       // Apply manual overrides for endpoints missing scopes in spec
       const override = SCOPE_OVERRIDES[rule];
@@ -376,6 +429,14 @@ function buildGroups(spec: DeelSpec): {
         groups.set(primaryScope, ruleSet);
       }
       ruleSet.add(rule);
+    }
+  }
+
+  for (const rule of Object.keys(DOCUMENTED_SCOPE_REMAPS).sort()) {
+    if (!seenDocumentedScopeRemaps.has(rule)) {
+      throw new Error(
+        `Stale Deel documented scope remap for ${rule}: endpoint was not found in cached specs`,
+      );
     }
   }
 

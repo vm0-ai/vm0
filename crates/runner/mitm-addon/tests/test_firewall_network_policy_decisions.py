@@ -44,6 +44,25 @@ class TestFirewallNetworkPolicyDecisions:
             }
         }
 
+    def _deel_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["deel"]]
+
+    def _deel_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["deel"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "deel": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
     def test_allowed_permission_passes(self):
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
@@ -116,6 +135,34 @@ class TestFirewallNetworkPolicyDecisions:
         assert upload_result.permission == "files.write"
         assert isinstance(resumable_result, matching.FirewallAllow)
         assert resumable_result.permission == "files.write"
+
+    def test_deel_worker_read_does_not_allow_magic_link_creation(self):
+        policies = self._deel_policy_allowing("worker:read")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/magic-link",
+            "POST",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("auth:write",)
+        assert result.reason == "permission_denied"
+
+    def test_deel_auth_write_allows_magic_link_creation(self):
+        policies = self._deel_policy_allowing("auth:write")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/magic-link",
+            "POST",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "auth:write"
+        assert result.rule == "POST /rest/v2/magic-link"
 
     def test_denied_permission_blocked(self):
         policies = {
