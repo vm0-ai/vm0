@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { firewallPolicyValueSchema } from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
@@ -175,19 +176,30 @@ export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
  * enforces `ask` as `deny` anyway. The unknown-endpoint policy is not stored
  * here — trigger runs always fall back to the connector metadata default
  * (`deny` for every connector).
+ *
+ * The action enum is derived from the runtime `firewallPolicyValueSchema`
+ * (minus `ask`) so it stays a provable subset of the policy the firewall
+ * actually enforces — the eventual resolution path maps this onto a
+ * `FirewallPolicies` value, and deriving here prevents the two from drifting.
+ * The record keys reuse the same connectorRef/permission bounds as the sibling
+ * user-permission-grants contract.
  */
-export const unattendedTriggerPermissionActionSchema = z.enum([
-  "allow",
-  "deny",
-]);
+export const unattendedTriggerPermissionActionSchema =
+  firewallPolicyValueSchema.exclude(["ask"]);
 export type UnattendedTriggerPermissionAction = z.infer<
   typeof unattendedTriggerPermissionActionSchema
 >;
 
+const unattendedTriggerConnectorRefSchema = z.string().min(1).max(64);
+const unattendedTriggerPermissionKeySchema = z.string().min(1).max(128);
+
 export const unattendedTriggerPermissionPolicySchema = z.record(
-  z.string(),
+  unattendedTriggerConnectorRefSchema,
   z.object({
-    policies: z.record(z.string(), unattendedTriggerPermissionActionSchema),
+    policies: z.record(
+      unattendedTriggerPermissionKeySchema,
+      unattendedTriggerPermissionActionSchema,
+    ),
   }),
 );
 export type UnattendedTriggerPermissionPolicy = z.infer<
@@ -206,7 +218,8 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  unattendedPermissionPolicy: unattendedTriggerPermissionPolicySchema.nullable(),
+  unattendedPermissionPolicy:
+    unattendedTriggerPermissionPolicySchema.nullable(),
 });
 
 export const zeroWorkflowScheduleTriggerSummarySchema =
