@@ -494,6 +494,7 @@ class TestErrorHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",

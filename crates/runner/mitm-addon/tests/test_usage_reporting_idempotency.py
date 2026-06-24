@@ -113,6 +113,7 @@ class TestUsageReportingIdempotency:
             firewall_name="model-provider:anthropic-api-key",
             run_id="run-fallback",
             network_log_path=log_path,
+            model_usage_provider="claude-sonnet-4-6",
         )
         flow.id = "flow-uuid-xyz-123"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
@@ -162,6 +163,7 @@ class TestUsageReportingIdempotency:
             firewall_name="model-provider:anthropic-api-key",
             run_id="run-preserved",
             network_log_path=log_path,
+            model_usage_provider="claude-sonnet-4-6",
         )
         flow.id = "flow-should-not-win"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {

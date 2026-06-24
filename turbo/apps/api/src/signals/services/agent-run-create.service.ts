@@ -430,6 +430,11 @@ interface PermissionManifest {
   readonly billableFirewalls: readonly string[];
 }
 
+interface ModelUsageContext {
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
+}
+
 interface StoredExecutionSecrets {
   // Runtime secret namespace encrypted into executionContext.encryptedSecrets.
   // Keys are the `NAME` in `${{ secrets.NAME }}`; connector/model-provider
@@ -3305,6 +3310,21 @@ function validateCompose(
   return { framework };
 }
 
+function validateRunFramework(
+  content: AgentComposeContent,
+  body: CreateRunBody,
+): { readonly framework: SupportedFramework } | CreateRunErrorResult {
+  return validateCompose(content, body.vars, body.secrets, {
+    validateEnvironmentReferences: false,
+  });
+}
+
+function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
+  return args.includeZeroTokenSecret
+    ? withPendingZeroTokenSecret(args.body)
+    : args.body;
+}
+
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): Pick<
@@ -3550,6 +3570,8 @@ async function buildStoredExecutionContext(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
   readonly apiStartTime: number;
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
@@ -3613,11 +3635,8 @@ async function buildStoredExecutionContext(args: {
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
-      billableFirewalls: billableFirewallsForPermissions({
-        modelProvider: args.modelProvider,
-        permissions,
-      }),
-      modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
+      billableFirewalls: [...args.billableFirewalls],
+      modelUsageProvider: args.modelUsageProvider,
     },
     secretNames,
     secretValues,
@@ -3777,13 +3796,52 @@ function billableFirewallsForPermissions(args: {
   });
   const modelFirewalls =
     args.modelProvider?.type === "vm0"
-      ? firewallNames.filter((name) => {
-          return name.startsWith("model-provider:");
-        })
+      ? firewallNames.filter(isModelProviderFirewallName)
       : [];
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
+}
+
+function isModelProviderFirewallName(name: string): boolean {
+  return name.startsWith("model-provider:");
+}
+
+function validateModelUsageProviderInvariant(args: {
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
+}): CreateRunErrorResult | null {
+  if (args.modelProvider?.type !== "vm0") {
+    return null;
+  }
+  if (!args.billableFirewalls.some(isModelProviderFirewallName)) {
+    return null;
+  }
+  if (args.modelUsageProvider) {
+    return null;
+  }
+  return providerUnavailable(
+    "Built-in model provider did not resolve a supported model for usage reporting",
+  );
+}
+
+function prepareModelUsageContext(args: {
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly permissionManifest: PermissionManifest | undefined;
+}): ModelUsageContext | CreateRunErrorResult {
+  const billableFirewalls = billableFirewallsForPermissions({
+    modelProvider: args.modelProvider,
+    permissions: args.permissionManifest,
+  });
+  const modelUsageProvider = modelUsageProviderForContext(args.modelProvider);
+  const validation = validateModelUsageProviderInvariant({
+    modelProvider: args.modelProvider,
+    billableFirewalls,
+    modelUsageProvider,
+  });
+
+  return validation ?? { billableFirewalls, modelUsageProvider };
 }
 
 function modelUsageProviderForContext(
@@ -3853,6 +3911,8 @@ function buildRunnerJobPayload(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -3988,6 +4048,8 @@ function dispatchRun(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -4097,6 +4159,8 @@ function enqueueRunForConcurrency(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -4203,6 +4267,8 @@ interface PreparedRunContext {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
@@ -4441,9 +4507,7 @@ function prepareRunContext(
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
-      const initialBody = args.includeZeroTokenSecret
-        ? withPendingZeroTokenSecret(args.body)
-        : args.body;
+      const initialBody = initialRunBody(args);
 
       const captureGate = await enforceCaptureNetworkBodiesGate(
         db,
@@ -4489,12 +4553,7 @@ function prepareRunContext(
         signal,
       });
 
-      const frameworkValidation = validateCompose(
-        resolved.content,
-        body.vars,
-        body.secrets,
-        { validateEnvironmentReferences: false },
-      );
+      const frameworkValidation = validateRunFramework(resolved.content, body);
       if (isRouteError(frameworkValidation)) {
         return frameworkValidation;
       }
@@ -4531,6 +4590,14 @@ function prepareRunContext(
       });
       signal.throwIfAborted();
 
+      const modelUsageContext = prepareModelUsageContext({
+        modelProvider,
+        permissionManifest,
+      });
+      if (isRouteError(modelUsageContext)) {
+        return modelUsageContext;
+      }
+
       const validation = validateRunEnvironmentReferences({
         resolved,
         body,
@@ -4547,11 +4614,6 @@ function prepareRunContext(
       const userTimezone = await loadUserTimezone(db, args);
       signal.throwIfAborted();
 
-      const runArtifacts = artifactsForRun({
-        resolved,
-        framework,
-        bodyArtifacts: body.artifacts,
-      });
       const additionalVolumes = preparedRunAdditionalVolumes({
         createArgs: args,
         framework,
@@ -4568,7 +4630,13 @@ function prepareRunContext(
         connectorContext,
         customConnectorContext,
         permissionManifest,
-        artifacts: runArtifacts.artifacts,
+        billableFirewalls: modelUsageContext.billableFirewalls,
+        modelUsageProvider: modelUsageContext.modelUsageProvider,
+        artifacts: artifactsForRun({
+          resolved,
+          framework,
+          bodyArtifacts: body.artifacts,
+        }).artifacts,
         additionalVolumes,
         userTimezone,
         featureSwitchContext,
@@ -4665,6 +4733,8 @@ function completeQueuedRun(input: {
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
             permissionManifest: input.context.permissionManifest,
+            billableFirewalls: input.context.billableFirewalls,
+            modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
@@ -4719,6 +4789,8 @@ function completePendingRun(input: {
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
             permissionManifest: input.context.permissionManifest,
+            billableFirewalls: input.context.billableFirewalls,
+            modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,

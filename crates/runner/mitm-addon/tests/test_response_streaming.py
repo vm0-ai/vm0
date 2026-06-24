@@ -544,6 +544,7 @@ class TestResponseHeadersModelJsonParser:
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
 
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
@@ -567,6 +568,7 @@ class TestResponseHeadersSseParser:
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
@@ -594,6 +596,7 @@ class TestResponseHeadersSseParser:
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
@@ -616,6 +619,7 @@ class TestResponseHeadersSseParser:
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
@@ -641,6 +645,7 @@ class TestResponseHeadersSseParser:
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
@@ -665,6 +670,7 @@ class TestResponseHeadersSseParser:
         flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
@@ -691,6 +697,7 @@ class TestResponseHeadersSseParser:
         if cli_agent_type is not None:
             flow.metadata["cli_agent_type"] = cli_agent_type
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
@@ -718,6 +725,7 @@ class TestResponseHeadersSseParser:
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
@@ -759,13 +767,13 @@ class TestResponseHeadersSseParser:
 
         assert "model_provider_usage" not in flow.metadata
 
-    def test_no_sse_parser_for_non_billable_model_provider(self, real_flow, headers):
+    def test_no_sse_parser_without_model_usage_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = False
+        flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
@@ -850,6 +858,7 @@ class TestReleaseResponseStreamState:
                 {
                     "firewall_name": "model-provider:anthropic-api-key",
                     "firewall_billable": True,
+                    "model_usage_provider": "claude-sonnet-4-6",
                 },
                 "model_json_usage_finish",
                 id="model-json",
@@ -862,6 +871,7 @@ class TestReleaseResponseStreamState:
                     "firewall_name": "model-provider:openai-api-key",
                     "cli_agent_type": "codex",
                     "firewall_billable": True,
+                    "model_usage_provider": "gpt-5.5",
                 },
                 "model_sse_usage_finish",
                 id="model-sse",
@@ -952,6 +962,7 @@ class TestReleaseResponseStreamState:
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )

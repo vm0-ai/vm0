@@ -344,6 +344,7 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
+        observable: bool = True,
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
@@ -356,6 +357,8 @@ class TestModelProviderResponseUsage:
         )
         flow.metadata[metadata_keys.ORIGINAL_URL] = provider_case.original_url
         flow.metadata[metadata_keys.FIREWALL_NAME] = provider_case.firewall_name
+        if observable:
+            flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = provider_case.model
         if provider_case.cli_agent_type is not None:
             flow.metadata[metadata_keys.CLI_AGENT_TYPE] = provider_case.cli_agent_type
 
@@ -366,6 +369,7 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
+        observable: bool = True,
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ):
@@ -375,6 +379,7 @@ class TestModelProviderResponseUsage:
             tmp_path,
             provider_case,
             billable=billable,
+            observable=observable,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
@@ -870,7 +875,9 @@ class TestModelProviderResponseUsage:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
 
-    def test_non_billable_openai_json_does_not_report_usage(self, tmp_path, real_flow):
+    def test_non_billable_openai_json_reports_observation_without_billing(
+        self, tmp_path, real_flow
+    ):
         flow = self._model_provider_flow(
             real_flow,
             tmp_path,
@@ -886,10 +893,13 @@ class TestModelProviderResponseUsage:
 
         webhook = self._run_response(flow)
 
-        assert webhook.request_count == 0
-        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert webhook.usage_events() == []
+        observations = webhook.model_usage_observation_events()
+        by_category = {event["category"]: event["quantity"] for event in observations}
+        assert by_category == _expected_event_quantities(OPENAI_RESPONSES_CASE)
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
 
-    def test_non_billable_json_response_does_not_register_incremental_parser(
+    def test_non_observable_json_response_does_not_register_incremental_parser(
         self,
         tmp_path,
         real_flow,
@@ -899,6 +909,7 @@ class TestModelProviderResponseUsage:
             tmp_path,
             ANTHROPIC_JSON_CASE,
             billable=False,
+            observable=False,
         )
         flow.response = tutils.tresp(
             status_code=200,
@@ -914,14 +925,15 @@ class TestModelProviderResponseUsage:
         assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-    def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
-        """Non-billable model-provider fallback must not emit usage warnings."""
+    def test_non_observable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
+        """Model-provider fallback without MODEL_USAGE_PROVIDER must not emit warnings."""
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow = self._model_provider_flow(
             real_flow,
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
+            observable=False,
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
@@ -1318,6 +1330,7 @@ class TestModelProviderResponseUsageWebhookDelivery:
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "tokens.input": 100,

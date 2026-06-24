@@ -226,6 +226,27 @@ class TestReportModelProviderUsage:
             != observation_body["events"][0]["idempotencyKey"]
         )
 
+    def test_billable_model_provider_without_model_usage_provider_skips_observation(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "model": "claude-sonnet-4-6",
+            "message_id": "msg-built-in-usage-1",
+            "tokens.input": 100,
+        }
+
+        with usage_webhook_api() as webhook:
+            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert observed is False
+        assert webhook.request_count == 0
+
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
@@ -394,6 +415,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_ws_1": {
                 "model": "gpt-5.5",
@@ -448,7 +470,7 @@ class TestReportModelProviderUsage:
         uuid.UUID(usage_body["events"][0]["idempotencyKey"])
         uuid.UUID(observation_body["events"][0]["idempotencyKey"])
 
-    def test_source_dedupe_separates_model_provider_usage_sources_by_model(
+    def test_source_dedupe_separates_billing_sources_by_response_model_without_context_model(
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -471,25 +493,15 @@ class TestReportModelProviderUsage:
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-websocket")
-            usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        requests_by_path = {request.path: request for request in webhook.requests}
-        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
+        usage_body = webhook.requests[0].json_body()
         assert {
             (event["provider"], event["category"]): event["quantity"]
             for event in usage_body["events"]
-        } == {
-            ("gpt-5.5", "tokens.input"): 10,
-            ("gpt-5.4", "tokens.input"): 3,
-        }
-        assert {
-            (event["model"], event["category"]): event["quantity"]
-            for event in observation_body["events"]
         } == {
             ("gpt-5.5", "tokens.input"): 10,
             ("gpt-5.4", "tokens.input"): 3,

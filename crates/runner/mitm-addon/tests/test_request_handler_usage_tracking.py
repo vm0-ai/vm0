@@ -580,6 +580,37 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     )
 
 
+async def test_non_billable_model_provider_with_invalid_model_usage_provider_is_not_tracked(
+    tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    """Only non-empty string modelUsageProvider values make model providers observable."""
+    reg_path = _write_model_provider_tracking_registry(
+        tmp_path,
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
+        vm_fields={"modelUsageProvider": 123},
+    )
+    flow = _model_provider_tracking_flow(real_flow)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
+    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == 123
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
 async def test_non_billable_observable_model_provider_is_tracked_before_responseheaders(
     tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
