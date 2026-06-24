@@ -398,6 +398,32 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
   });
 
+  it("renders Python string keys that load for escaped firewall names", () => {
+    const names = [
+      'quote"name',
+      "backslash\\name",
+      "line\nname",
+      "tab\tname",
+      "unicode-\u{1f600}",
+      "separator-\u2028-name",
+    ];
+    const files = renderEntries(
+      names.map((name, index) => {
+        return connectorEntry({
+          name,
+          apis: [
+            {
+              base: `https://escaped-name-${index}.example.com`,
+              auth: {},
+            },
+          ],
+        });
+      }),
+    );
+
+    assertPythonCatalogLoadsNames(files, names);
+  });
+
   it("renders manifest entries in sorted firewall-name order", () => {
     const files = renderEntries([
       connectorEntry(testFirewall("zeta")),
