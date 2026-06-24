@@ -16,6 +16,7 @@ const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
 const MAX_FORMATTED_TEXT_LENGTH = 240;
+const MAX_ERROR_SIGNAL_DEPTH = 8;
 
 function asRecord(value: unknown): JsonRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -109,6 +110,10 @@ function hasSignalValue(value: unknown, depth = 0): boolean {
 
   if (typeof value === "boolean") {
     return true;
+  }
+
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
+    return false;
   }
 
   if (Array.isArray(value)) {
@@ -222,8 +227,8 @@ function formatDetailSuffix(details: readonly string[]): string {
   return details.length > 0 ? ` (${details.join("; ")})` : "";
 }
 
-function extractErrorMessage(value: unknown): string | undefined {
-  if (!hasSignalValue(value)) {
+function extractErrorMessage(value: unknown, depth = 0): string | undefined {
+  if (!hasSignalValue(value, depth)) {
     return undefined;
   }
 
@@ -255,7 +260,11 @@ function extractErrorMessage(value: unknown): string | undefined {
     return `${message}${formatDetailSuffix(uniqueDetails)}`;
   }
 
-  const nested = extractErrorMessage(record.error);
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
+    return formatUnknownValue(record);
+  }
+
+  const nested = extractErrorMessage(record.error, depth + 1);
   if (nested) {
     return nested;
   }

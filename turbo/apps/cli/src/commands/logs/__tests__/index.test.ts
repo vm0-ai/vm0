@@ -48,6 +48,14 @@ function makeWideNestedObject(fieldCount: number): Record<string, unknown> {
   return value;
 }
 
+function makeNestedErrorObject(depth: number): Record<string, unknown> {
+  let value: Record<string, unknown> = { message: "deep failure" };
+  for (let index = 0; index < depth; index += 1) {
+    value = { error: value };
+  }
+  return value;
+}
+
 describe("logs command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -2014,6 +2022,51 @@ describe("logs command", () => {
       expect(logCalls).toContain("Codex Completed");
       expect(logCalls).not.toContain("Codex Failed");
       expect(logCalls).not.toContain("message=null");
+    });
+
+    it("should bound deeply nested object turn errors when rendering successful turn.completed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "completed",
+                      error: makeNestedErrorObject(20),
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Completed");
+      expect(logCalls).not.toContain("Codex Failed");
+      expect(logCalls).not.toContain("deep failure");
     });
 
     it("should collapse same-turn Codex error and failed turn.completed while preserving details", async () => {
