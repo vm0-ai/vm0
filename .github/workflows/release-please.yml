@@ -2086,9 +2086,11 @@ jobs:
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
           runner_image_validate_target "$TARGET_TRIPLE"
+          cache_suffix=$(runner_image_cache_suffix "$TARGET_TRIPLE")
+          asset_suffix=$(runner_image_asset_suffix "$TARGET_TRIPLE")
           {
-            echo "cache_suffix=$(runner_image_cache_suffix "$TARGET_TRIPLE")"
-            echo "asset_suffix=$(runner_image_asset_suffix "$TARGET_TRIPLE")"
+            echo "cache_suffix=$cache_suffix"
+            echo "asset_suffix=$asset_suffix"
           } >> "$GITHUB_OUTPUT"
 
       - uses: Swatinem/rust-cache@v2
@@ -2190,6 +2192,7 @@ jobs:
               -H "Authorization: token ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100&page=${page}")
+            jq -e 'type == "array"' <<<"$assets_page" >/dev/null
             matching_ids=$(jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id' <<<"$assets_page")
             while IFS= read -r aid; do
               if [ -n "$aid" ]; then
