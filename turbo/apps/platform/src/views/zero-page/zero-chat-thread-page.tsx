@@ -3246,7 +3246,7 @@ function isGoalUserMessage(
 ): message is EnrichedChatMessage & { role: "user" } {
   return (
     message.role === "user" &&
-    message.runGroupId !== undefined &&
+    message.isGoalRun === true &&
     !hasAutomationMessageMetadata(message) &&
     (message.content?.trim().length ?? 0) > 0
   );

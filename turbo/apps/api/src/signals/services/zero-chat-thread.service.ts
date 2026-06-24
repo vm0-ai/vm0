@@ -70,6 +70,7 @@ type ChatMessageRow = {
   readonly content: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
+  readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
   readonly goalEvent: ChatMessageGoalEvent | null;
@@ -135,6 +136,12 @@ const messageColumns = {
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
+  isGoalRun: sql<boolean>`EXISTS (
+    SELECT 1
+    FROM ${zeroRuns}
+    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+      AND ${zeroRuns.goalId} IS NOT NULL
+  )`,
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
@@ -411,6 +418,7 @@ function toPagedMessage(
       content: row.content,
       runId: row.runId ?? undefined,
       runGroupId: row.runGroupId ?? undefined,
+      isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
       goalEvent: row.goalEvent ?? undefined,
