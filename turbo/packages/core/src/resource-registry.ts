@@ -139,7 +139,7 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
   businessData:
     "229516a65ebd66d48c789bb626da24f96a8658d313c72229c0d2cabe262248f1",
   presentationDeckTools:
-    "a0674e9238ce0819281fa01f39dd650ccda215b6498578decaaf2042ab8c4531",
+    "8494f73396a76d81b8b252afe0e3cbaf2c6004346b2c9430365cdb0b6ae76d89",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
@@ -180,6 +180,46 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
   templateNeoBrutalism:
     "cec2dde23a09f38c8a538e5cddcce9853e726cef1ee7bcfde46cd405f7dcd465",
+  designSystemBloomPitch:
+    "5b7b8f959cef7a3f5ea4eb86e95152845013425365683e4d7efe6c7c5ecc2b48",
+  templateBloomPitch:
+    "0176ccac0f36b5921ebfcdc998e2273f57a3d79644213eb01000dc4e0e23dcd5",
+  designSystemBlueprintAcademy:
+    "9a5fdb160ae3691513567279401e9a8766c892e0bb80caae6eef3c08a54c0416",
+  templateBlueprintAcademy:
+    "00b01b07095965f68971e4593cf563562a32b75f49ff4be186be5c81eb6e8330",
+  designSystemMeridian:
+    "6a00cba7ddd2fcb74e8c89c0063d33bba5fe2e190c15b4634d4a56b2334f527e",
+  templateMeridian:
+    "571bc5d0a35fe3db2ddb2ddc2b0aa3b11bb52532da3fc2eb76d84af885710302",
+  designSystemPixelGlitch:
+    "18ce63a66658c7002d3ebea135dc7274b2dac4033c0e98c6e508c7a249fe93a2",
+  templatePixelGlitch:
+    "d16f2913aed0dba0384795db45aa67e6a697d1ae1c31c6a43ff16b8a975dfc18",
+  designSystemProspectus:
+    "01e9e6b1f0ea17e3a65c2af7c76cff317b095005c4020ce20eba22e5d63430b6",
+  templateProspectus:
+    "99430b2bd063eb1c922ef22ca95fbe783ab0646b7bdfbb6b7a8b5c839cad5ba0",
+  designSystemSchoolhouse:
+    "a4a7be65e2adca9eb5572f92b3f49075e768da305b833d74b703da5f2dd3d271",
+  templateSchoolhouse:
+    "4824967cf53a03098aca8c6ca3ea34938d848ff372a556f47ac66a608f81f5db",
+  designSystemStickerScrapbook:
+    "d50129981c3dc3b51b4c63b2ac36b9b5fe6783953bbea3546e372903c8596cad",
+  templateStickerScrapbook:
+    "e289743180d623e6a0966ab85d0737686914445c1b749901cfbbf061958cc334",
+  designSystemStrata:
+    "91a45f8c3b70d7c43505ca7fe51f55ab36a08312e28867383ef885a7a7e63c28",
+  templateStrata:
+    "ff9c81d11d866f98bbe9cf5e8584adcb3cb28095b734ca02dd1e750ace6f9e49",
+  designSystemTapedConsulting:
+    "9fb58db77455a3bc7ccdd106b18c99a3d62bc53981f494577804b496a78a858e",
+  templateTapedConsulting:
+    "df64d3f8d5a63e892eeaf5b7723d7274e4147359eda558e1b34aab27e30c439d",
+  designSystemVantage:
+    "8338e31f3aa18538d36ae363d3ac2aa0ec56669c33494fdf2a12286d9b0523a8",
+  templateVantage:
+    "0d4c276d8dc7710a484d4d7c9bfb05f0a68b378d50e73aea6a6eb92698daa6fe",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
@@ -1160,6 +1200,126 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-template/neo-brutalism",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNeoBrutalism,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-bloom-pitch",
+    kind: "template",
+    name: "Bloom Pitch Presentation",
+    description:
+      "15-slot playful investor-pitch presentation structure with oversized headlines, colour-field dividers, organic visuals, stat stacks, quote cards, and pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/bloom-pitch",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateBloomPitch,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-blueprint-academy",
+    kind: "template",
+    name: "Blueprint Academy Presentation",
+    description:
+      "15-slot academic education presentation structure with blueprint grids, wire diagrams, matted photos, goal cards, process spines, stats, testimonials, and contact slides.",
+    source: privateR2ArchiveSource(
+      "presentation-template/blueprint-academy",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateBlueprintAcademy,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-meridian",
+    kind: "template",
+    name: "Meridian Presentation",
+    description:
+      "15-slot professional data-agency presentation structure with flat nav chrome, sharp blocks, index numbers, stat matrices, bar charts, service blocks, and executive close.",
+    source: privateR2ArchiveSource(
+      "presentation-template/meridian",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateMeridian,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-pixel-glitch",
+    kind: "template",
+    name: "Pixel Glitch Presentation",
+    description:
+      "15-slot Y2K creative-studio presentation structure with pixel trails, glitch titles, sharp dividers, image blocks, ring charts, process spines, and bold proof pages.",
+    source: privateR2ArchiveSource(
+      "presentation-template/pixel-glitch",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePixelGlitch,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-prospectus",
+    kind: "template",
+    name: "Prospectus Presentation",
+    description:
+      "15-slot corporate landing-page business-plan structure with persistent nav, colour-field stages, diagonal arrows, CTA clusters, flat charts, gantt timelines, and pricing tiers.",
+    source: privateR2ArchiveSource(
+      "presentation-template/prospectus",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateProspectus,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-schoolhouse",
+    kind: "template",
+    name: "Schoolhouse Presentation",
+    description:
+      "15-slot retro school-poster presentation structure with paper stages, stamp badges, index cards, ruled rows, stat bands, quote cards, and membership tiers.",
+    source: privateR2ArchiveSource(
+      "presentation-template/schoolhouse",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateSchoolhouse,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-sticker-scrapbook",
+    kind: "template",
+    name: "Sticker Scrapbook Presentation",
+    description:
+      "15-slot vibrant scrapbook presentation structure with sticker seals, spiral pads, agenda cards, doodle dividers, photo grids, stat stickers, quote cards, and pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/sticker-scrapbook",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateStickerScrapbook,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-strata",
+    kind: "template",
+    name: "Strata Presentation",
+    description:
+      "15-slot Swiss-minimal agency presentation structure with giant caps, asterisk dividers, tile ramps, mono photo grids, frameless stats, quote cards, and pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/strata",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateStrata,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-taped-consulting",
+    kind: "template",
+    name: "Taped Consulting Presentation",
+    description:
+      "15-slot consulting presentation structure with taped photo clusters, inset frames, feature rows, process spines, big-number proof, quote cards, and pricing cards.",
+    source: privateR2ArchiveSource(
+      "presentation-template/taped-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateTapedConsulting,
+    ),
+    targets: ["presentation"],
+  },
+  {
+    id: "template:html-ppt-vantage",
+    kind: "template",
+    name: "Vantage Presentation",
+    description:
+      "15-slot business-proposal presentation structure with two-tone headings, corner indexes, square-pair motifs, split panels, frameless numbers, donut charts, and milestone lines.",
+    source: privateR2ArchiveSource(
+      "presentation-template/vantage",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateVantage,
     ),
     targets: ["presentation"],
   },
@@ -3035,6 +3195,116 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: privateR2ArchiveSource(
       "presentation-design-system/neo-brutalism",
       PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNeoBrutalism,
+    ),
+  },
+  {
+    id: "design-system:bloom-pitch",
+    kind: "design-system",
+    name: "Bloom Pitch",
+    description:
+      "Playful visual language with carnival colour, Fredoka and Quicksand type, soft geometry, organic blobs, and asterisk bursts.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/bloom-pitch",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBloomPitch,
+    ),
+  },
+  {
+    id: "design-system:blueprint-academy",
+    kind: "design-system",
+    name: "Blueprint Academy",
+    description:
+      "Academic visual language with forest-editorial colour, Fraunces and Work Sans type, blueprint texture, wire diagrams, sparkle marks, and matted photo treatment.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/blueprint-academy",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBlueprintAcademy,
+    ),
+  },
+  {
+    id: "design-system:meridian",
+    kind: "design-system",
+    name: "Meridian",
+    description:
+      "Professional data-agency visual language with slate-corporate colour, Sora and Inter type, sharp geometry, hairline rules, square tickers, and two-tone data marks.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/meridian",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemMeridian,
+    ),
+  },
+  {
+    id: "design-system:pixel-glitch",
+    kind: "design-system",
+    name: "Pixel Glitch",
+    description:
+      "Y2K digital visual language with Bauhaus-primary colour, Space Grotesk and Lexend type, sharp pixel geometry, glitch titles, cursor marks, and pixel trails.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/pixel-glitch",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPixelGlitch,
+    ),
+  },
+  {
+    id: "design-system:prospectus",
+    kind: "design-system",
+    name: "Prospectus",
+    description:
+      "Corporate landing-page visual language with slate-corporate colour, Archivo and Manrope type, oversized thin titles, diagonal arrows, underline-ring labels, and CTA styling.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/prospectus",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemProspectus,
+    ),
+  },
+  {
+    id: "design-system:schoolhouse",
+    kind: "design-system",
+    name: "Schoolhouse",
+    description:
+      "Retro school-poster visual language with Bauhaus-primary colour, Archivo and Manrope type, kraft-paper texture, thick outlines, stamp marks, halftone, and hard shadows.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/schoolhouse",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemSchoolhouse,
+    ),
+  },
+  {
+    id: "design-system:sticker-scrapbook",
+    kind: "design-system",
+    name: "Sticker Scrapbook",
+    description:
+      "Vibrant scrapbook visual language with prism colour, Poppins and Figtree type, pill geometry, sticker seals, spiral pads, doodles, sun rays, and sparkles.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/sticker-scrapbook",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemStickerScrapbook,
+    ),
+  },
+  {
+    id: "design-system:strata",
+    kind: "design-system",
+    name: "Strata",
+    description:
+      "Swiss-minimal agency visual language with mono-ink colour, Archivo and Manrope type, giant caps, asterisk sparks, tile ramps, mono imagery, and red signal accents.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/strata",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemStrata,
+    ),
+  },
+  {
+    id: "design-system:taped-consulting",
+    kind: "design-system",
+    name: "Taped Consulting",
+    description:
+      "Elegant consulting visual language with slate-corporate colour, Montserrat and Lora type, taped-photo treatment, two-tone titles, inset frames, lifted shadows, and text links.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/taped-consulting",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemTapedConsulting,
+    ),
+  },
+  {
+    id: "design-system:vantage",
+    kind: "design-system",
+    name: "Vantage",
+    description:
+      "Business-proposal visual language with slate-corporate colour, Archivo and Manrope type, sharp geometry, two-tone headings, corner indexes, square-pair marks, and hashtag chrome.",
+    source: privateR2ArchiveSource(
+      "presentation-design-system/vantage",
+      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemVantage,
     ),
   },
   {

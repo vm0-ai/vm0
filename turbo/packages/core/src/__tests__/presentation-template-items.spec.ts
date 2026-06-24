@@ -95,7 +95,11 @@ function expectCdnPreviewHtmls(
   }
 }
 
-function expectR2ArchiveSource(id: string, sourcePath: string): void {
+function expectR2ArchiveSource(
+  id: string,
+  sourcePath: string,
+  archiveSha256?: string,
+): void {
   const entry = id.startsWith("template:")
     ? findTemplate(id)
     : findDesignSystem(id);
@@ -109,7 +113,11 @@ function expectR2ArchiveSource(id: string, sourcePath: string): void {
   expect(entry.source.repo).toBeUndefined();
   expect(entry.source.ref).toBeUndefined();
   expect(entry.source.archive?.type).toBe("tar.gz");
-  expect(entry.source.archive?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  if (archiveSha256) {
+    expect(entry.source.archive?.sha256).toBe(archiveSha256);
+  } else {
+    expect(entry.source.archive?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  }
   expect(entry.source.archive).not.toHaveProperty("url");
 }
 
@@ -516,13 +524,123 @@ describe("presentation template items", () => {
         designSourcePath: "presentation-design-system/neo-brutalism",
         templateSourcePath: "presentation-template/neo-brutalism",
       },
+      {
+        designSystemId: "design-system:bloom-pitch",
+        templateId: "template:html-ppt-bloom-pitch",
+        designSourcePath: "presentation-design-system/bloom-pitch",
+        templateSourcePath: "presentation-template/bloom-pitch",
+        designArchiveSha256:
+          "5b7b8f959cef7a3f5ea4eb86e95152845013425365683e4d7efe6c7c5ecc2b48",
+        templateArchiveSha256:
+          "0176ccac0f36b5921ebfcdc998e2273f57a3d79644213eb01000dc4e0e23dcd5",
+      },
+      {
+        designSystemId: "design-system:blueprint-academy",
+        templateId: "template:html-ppt-blueprint-academy",
+        designSourcePath: "presentation-design-system/blueprint-academy",
+        templateSourcePath: "presentation-template/blueprint-academy",
+        designArchiveSha256:
+          "9a5fdb160ae3691513567279401e9a8766c892e0bb80caae6eef3c08a54c0416",
+        templateArchiveSha256:
+          "00b01b07095965f68971e4593cf563562a32b75f49ff4be186be5c81eb6e8330",
+      },
+      {
+        designSystemId: "design-system:meridian",
+        templateId: "template:html-ppt-meridian",
+        designSourcePath: "presentation-design-system/meridian",
+        templateSourcePath: "presentation-template/meridian",
+        designArchiveSha256:
+          "6a00cba7ddd2fcb74e8c89c0063d33bba5fe2e190c15b4634d4a56b2334f527e",
+        templateArchiveSha256:
+          "571bc5d0a35fe3db2ddb2ddc2b0aa3b11bb52532da3fc2eb76d84af885710302",
+      },
+      {
+        designSystemId: "design-system:pixel-glitch",
+        templateId: "template:html-ppt-pixel-glitch",
+        designSourcePath: "presentation-design-system/pixel-glitch",
+        templateSourcePath: "presentation-template/pixel-glitch",
+        designArchiveSha256:
+          "18ce63a66658c7002d3ebea135dc7274b2dac4033c0e98c6e508c7a249fe93a2",
+        templateArchiveSha256:
+          "d16f2913aed0dba0384795db45aa67e6a697d1ae1c31c6a43ff16b8a975dfc18",
+      },
+      {
+        designSystemId: "design-system:prospectus",
+        templateId: "template:html-ppt-prospectus",
+        designSourcePath: "presentation-design-system/prospectus",
+        templateSourcePath: "presentation-template/prospectus",
+        designArchiveSha256:
+          "01e9e6b1f0ea17e3a65c2af7c76cff317b095005c4020ce20eba22e5d63430b6",
+        templateArchiveSha256:
+          "99430b2bd063eb1c922ef22ca95fbe783ab0646b7bdfbb6b7a8b5c839cad5ba0",
+      },
+      {
+        designSystemId: "design-system:schoolhouse",
+        templateId: "template:html-ppt-schoolhouse",
+        designSourcePath: "presentation-design-system/schoolhouse",
+        templateSourcePath: "presentation-template/schoolhouse",
+        designArchiveSha256:
+          "a4a7be65e2adca9eb5572f92b3f49075e768da305b833d74b703da5f2dd3d271",
+        templateArchiveSha256:
+          "4824967cf53a03098aca8c6ca3ea34938d848ff372a556f47ac66a608f81f5db",
+      },
+      {
+        designSystemId: "design-system:sticker-scrapbook",
+        templateId: "template:html-ppt-sticker-scrapbook",
+        designSourcePath: "presentation-design-system/sticker-scrapbook",
+        templateSourcePath: "presentation-template/sticker-scrapbook",
+        designArchiveSha256:
+          "d50129981c3dc3b51b4c63b2ac36b9b5fe6783953bbea3546e372903c8596cad",
+        templateArchiveSha256:
+          "e289743180d623e6a0966ab85d0737686914445c1b749901cfbbf061958cc334",
+      },
+      {
+        designSystemId: "design-system:strata",
+        templateId: "template:html-ppt-strata",
+        designSourcePath: "presentation-design-system/strata",
+        templateSourcePath: "presentation-template/strata",
+        designArchiveSha256:
+          "91a45f8c3b70d7c43505ca7fe51f55ab36a08312e28867383ef885a7a7e63c28",
+        templateArchiveSha256:
+          "ff9c81d11d866f98bbe9cf5e8584adcb3cb28095b734ca02dd1e750ace6f9e49",
+      },
+      {
+        designSystemId: "design-system:taped-consulting",
+        templateId: "template:html-ppt-taped-consulting",
+        designSourcePath: "presentation-design-system/taped-consulting",
+        templateSourcePath: "presentation-template/taped-consulting",
+        designArchiveSha256:
+          "9fb58db77455a3bc7ccdd106b18c99a3d62bc53981f494577804b496a78a858e",
+        templateArchiveSha256:
+          "df64d3f8d5a63e892eeaf5b7723d7274e4147359eda558e1b34aab27e30c439d",
+      },
+      {
+        designSystemId: "design-system:vantage",
+        templateId: "template:html-ppt-vantage",
+        designSourcePath: "presentation-design-system/vantage",
+        templateSourcePath: "presentation-template/vantage",
+        designArchiveSha256:
+          "8338e31f3aa18538d36ae363d3ac2aa0ec56669c33494fdf2a12286d9b0523a8",
+        templateArchiveSha256:
+          "0d4c276d8dc7710a484d4d7c9bfb05f0a68b378d50e73aea6a6eb92698daa6fe",
+      },
     ] as const;
 
     for (const entry of entries) {
       expect(findDesignSystem(entry.designSystemId)).toBeDefined();
       expect(findTemplate(entry.templateId)?.targets).toContain("presentation");
-      expectR2ArchiveSource(entry.designSystemId, entry.designSourcePath);
-      expectR2ArchiveSource(entry.templateId, entry.templateSourcePath);
+      expectR2ArchiveSource(
+        entry.designSystemId,
+        entry.designSourcePath,
+        "designArchiveSha256" in entry ? entry.designArchiveSha256 : undefined,
+      );
+      expectR2ArchiveSource(
+        entry.templateId,
+        entry.templateSourcePath,
+        "templateArchiveSha256" in entry
+          ? entry.templateArchiveSha256
+          : undefined,
+      );
     }
   });
 

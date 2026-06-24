@@ -155,6 +155,106 @@ const PRIVATE_ARCHIVE_FIXTURES = [
       "8d3ff7b69bbc1ec197f60688d92ffddf5fd5d3c3186aa69cce35d49ce057514c",
   },
   {
+    id: "design-system:bloom-pitch",
+    versionId:
+      "951db59508b46f5f483f0b8dc4c1488d12b9977cd182644904ebfb7d53f4a795",
+  },
+  {
+    id: "design-system:blueprint-academy",
+    versionId:
+      "519cb8a9866664072e27b380800b4749bd2c2b2bcd2a87c1b6b45771dd4b803c",
+  },
+  {
+    id: "design-system:meridian",
+    versionId:
+      "e4b07b5b5d837481ca3025e4e47d04fc1565cf5cd86dc55471eff387e86c70c1",
+  },
+  {
+    id: "design-system:pixel-glitch",
+    versionId:
+      "9906a37702544ac949dece9b83eb40139a94bceda4fc18eea73828e9a8cc561b",
+  },
+  {
+    id: "design-system:prospectus",
+    versionId:
+      "319f03a0df3a07039c1ef10fbc6663173c3eefcfa3f90b25f8ff08d7dde39870",
+  },
+  {
+    id: "design-system:schoolhouse",
+    versionId:
+      "66ceb17d376190beeb523d406eb645c5e12fd268e005e4d49c7f2b0293a9f2b7",
+  },
+  {
+    id: "design-system:sticker-scrapbook",
+    versionId:
+      "0d0af81dec7322f7826c65734077e2fa5acfc63caf78055b202579bc6f309184",
+  },
+  {
+    id: "design-system:strata",
+    versionId:
+      "4c5fd8631f88b0f5fb68983d6897f7f9a87ee58a5c292e5b09a08dc13a58fb6f",
+  },
+  {
+    id: "design-system:taped-consulting",
+    versionId:
+      "c33b3421a9108798a4626b7aeb9f3a8e48593b7b268ffa300df41f49c41cd9a3",
+  },
+  {
+    id: "design-system:vantage",
+    versionId:
+      "0c153dc7f1106422bac7a217fef107b16f69e8672a51819a8f3d1173b5c22a33",
+  },
+  {
+    id: "template:html-ppt-bloom-pitch",
+    versionId:
+      "381d52c641588675a939612b71a7e4b37dcc2ac2bfa55f7d73c5b3a635a53175",
+  },
+  {
+    id: "template:html-ppt-blueprint-academy",
+    versionId:
+      "551ccd097862ab360d3d9125f2113cf68e1aa91fd1e4748eb64617638433d03c",
+  },
+  {
+    id: "template:html-ppt-meridian",
+    versionId:
+      "f07842290d44056fe0781a21de47528fe67ae32aaf62b5a53a2c590432343a83",
+  },
+  {
+    id: "template:html-ppt-pixel-glitch",
+    versionId:
+      "1c576e8851cdc4b57c4ed1c84415b52137efcd965c981f194c4ee910f7d42ccb",
+  },
+  {
+    id: "template:html-ppt-prospectus",
+    versionId:
+      "e628f268e2c2983e84e21154e4afe0747552cc0457069ff2913e1c360ef7d47a",
+  },
+  {
+    id: "template:html-ppt-schoolhouse",
+    versionId:
+      "6151e85d2e94d26dce77c987765db5a67038c9a1d30dc3ce9e7c74847605eb31",
+  },
+  {
+    id: "template:html-ppt-sticker-scrapbook",
+    versionId:
+      "30c2a72e7f058f3c4fe2e63fa60b8bdc6124565461fbbb11ff6c113a406faf66",
+  },
+  {
+    id: "template:html-ppt-strata",
+    versionId:
+      "ca499dce027b3f063da0980154137ebd6a3ee4aeb9c4ae6eeeb7140303a7c05f",
+  },
+  {
+    id: "template:html-ppt-taped-consulting",
+    versionId:
+      "8323a7a66d1a63c50f8ff81b9b3ce5505225afbc1cafd3d2786642a9dce2b426",
+  },
+  {
+    id: "template:html-ppt-vantage",
+    versionId:
+      "443945f5416488feea43cf0cb8f005046a289fbceb8a2c214ba72bd93f31de32",
+  },
+  {
     id: "color-system:bauhaus-primary",
     versionId:
       "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
