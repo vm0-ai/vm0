@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::Sandbox;
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{
-    DEFAULT_EXEC_TIMEOUT, GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError,
-    RunnerResult, guest_runtime_dir, guest_runtime_path,
+    GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError, RunnerResult, guest_runtime_dir,
+    guest_runtime_path,
 };
-use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
@@ -238,122 +237,11 @@ pub(super) fn build_user_env_json(context: &ExecutionContext) -> HashMap<String,
     env
 }
 
-pub(super) fn guest_user_env_dir_path(run_id: RunId) -> RunnerResult<String> {
-    guest_runtime_path(run_id, |dir| dir.join(GUEST_USER_ENV_DIR_NAME))
-}
-
 pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
     guest_runtime_path(run_id, |dir| {
         dir.join(GUEST_USER_ENV_DIR_NAME)
             .join(GUEST_USER_ENV_FILENAME)
     })
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn user_env_dir_command(runtime_dir: &str, dir_path: &str) -> String {
-    let runtime_dir = shell_quote(runtime_dir);
-    let dir_path = shell_quote(dir_path);
-    format!("mkdir -p -m 700 -- {runtime_dir} {dir_path} && chmod 700 -- {runtime_dir} {dir_path}")
-}
-
-fn user_env_write_command(runtime_dir: &str, dir_path: &str, file_path: &str) -> String {
-    let runtime_dir = shell_quote(runtime_dir);
-    let dir_path = shell_quote(dir_path);
-    let file_path = shell_quote(file_path);
-    format!(
-        "umask 077 && \
-         mkdir -p -m 700 -- {runtime_dir} {dir_path} && \
-         chmod 700 -- {runtime_dir} {dir_path} && \
-         cat > {file_path} && \
-         chmod 600 -- {file_path}"
-    )
-}
-
-async fn write_user_env_file_fast_path(
-    sandbox: &dyn Sandbox,
-    runtime_dir: &str,
-    dir_path: &str,
-    file_path: &str,
-    payload: &[u8],
-) -> RunnerResult<()> {
-    let write_cmd = user_env_write_command(runtime_dir, dir_path, file_path);
-    let write_result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &write_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-                stdin_bytes: Some(payload),
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "user-env-write",
-        )
-        .await?;
-    if !helper_exec_succeeded(&write_result) {
-        return Err(RunnerError::Internal(format_helper_exec_failure(
-            "user env file write",
-            &write_result,
-        )));
-    }
-
-    Ok(())
-}
-
-async fn write_user_env_file_fallback(
-    sandbox: &dyn Sandbox,
-    runtime_dir: &str,
-    dir_path: &str,
-    file_path: &str,
-    payload: &[u8],
-) -> RunnerResult<()> {
-    let mkdir_cmd = user_env_dir_command(runtime_dir, dir_path);
-    let mkdir_result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &mkdir_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-                stdin_bytes: None,
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "user-env-dir",
-        )
-        .await?;
-    if !helper_exec_succeeded(&mkdir_result) {
-        return Err(RunnerError::Internal(format_helper_exec_failure(
-            "user env directory creation",
-            &mkdir_result,
-        )));
-    }
-
-    sandbox.write_file(file_path, payload).await?;
-    let chmod_cmd = format!("chmod 600 -- {}", shell_quote(file_path));
-    let chmod_result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &chmod_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: false,
-                stdin_bytes: None,
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "user-env-chmod",
-        )
-        .await?;
-    if !helper_exec_succeeded(&chmod_result) {
-        return Err(RunnerError::Internal(format_helper_exec_failure(
-            "user env file permission update",
-            &chmod_result,
-        )));
-    }
-
-    Ok(())
 }
 
 pub(super) async fn write_user_env_file(
@@ -365,19 +253,10 @@ pub(super) async fn write_user_env_file(
         return Ok(None);
     }
 
-    let runtime_dir = guest_runtime_dir(run_id)?;
-    let dir_path = guest_user_env_dir_path(run_id)?;
     let file_path = guest_user_env_file_path(run_id)?;
     let payload = serde_json::to_vec(user_env)
         .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-
-    if payload.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES {
-        write_user_env_file_fast_path(sandbox, &runtime_dir, &dir_path, &file_path, &payload)
-            .await?;
-    } else {
-        write_user_env_file_fallback(sandbox, &runtime_dir, &dir_path, &file_path, &payload)
-            .await?;
-    }
+    sandbox.write_private_file(&file_path, &payload).await?;
 
     Ok(Some(file_path))
 }

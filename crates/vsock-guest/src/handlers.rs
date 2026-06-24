@@ -38,22 +38,30 @@ pub(crate) struct DecodedWriteFileMessage<'a> {
     content: &'a [u8],
     use_sudo: bool,
     append: bool,
+    private: bool,
 }
 
 /// Handle write_file message
-fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -> (bool, String) {
+fn handle_write_file(
+    path: &str,
+    content: &[u8],
+    use_sudo: bool,
+    append: bool,
+    private: bool,
+) -> (bool, String) {
     log(
         "INFO",
         &format!(
-            "write_file: path={} size={} sudo={} append={}",
+            "write_file: path={} size={} sudo={} append={} private={}",
             path,
             content.len(),
             use_sudo,
             append,
+            private,
         ),
     );
 
-    let child = match spawn_write_file_command(path, use_sudo, append) {
+    let child = match spawn_write_file_command(path, use_sudo, append, private) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
@@ -181,12 +189,39 @@ where
     })
 }
 
-fn spawn_write_file_command(path: &str, use_sudo: bool, append: bool) -> io::Result<Child> {
-    let mut command = Command::new(guest_write_file_path());
+fn write_file_command_args(
+    use_sudo: bool,
+    append: bool,
+    private: bool,
+) -> io::Result<Vec<&'static str>> {
+    if private && use_sudo {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "private write_file cannot use sudo",
+        ));
+    }
+
+    let mut args = Vec::new();
+    if private {
+        args.push("--private");
+    }
     if append {
-        command.arg("--append");
-    } else if !use_sudo {
-        command.arg("--create-parents");
+        args.push("--append");
+    } else if !use_sudo && !private {
+        args.push("--create-parents");
+    }
+    Ok(args)
+}
+
+fn spawn_write_file_command(
+    path: &str,
+    use_sudo: bool,
+    append: bool,
+    private: bool,
+) -> io::Result<Child> {
+    let mut command = Command::new(guest_write_file_path());
+    for arg in write_file_command_args(use_sudo, append, private)? {
+        command.arg(arg);
     }
     command
         .arg("--")
@@ -224,12 +259,13 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) {
 pub(crate) fn decode_write_file_message(
     msg: &RawMessage,
 ) -> Result<DecodedWriteFileMessage<'_>, vsock_proto::ProtocolError> {
-    let (path, content, use_sudo, append) = vsock_proto::decode_write_file(&msg.payload)?;
+    let (path, content, use_sudo, append, private) = vsock_proto::decode_write_file(&msg.payload)?;
     Ok(DecodedWriteFileMessage {
         path,
         content,
         use_sudo,
         append,
+        private,
     })
 }
 
@@ -242,6 +278,7 @@ pub(crate) fn handle_decoded_write_file_message(
         decoded.content,
         decoded.use_sudo,
         decoded.append,
+        decoded.private,
     );
     let payload = vsock_proto::encode_write_file_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
@@ -339,6 +376,27 @@ mod tests {
         assert!(!success);
         assert!(error.contains("stderr drain thread"));
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn write_file_command_args_use_private_mode_without_create_parents() {
+        let args = write_file_command_args(false, false, true).unwrap();
+
+        assert_eq!(args, vec!["--private"]);
+    }
+
+    #[test]
+    fn write_file_command_args_use_private_append_mode() {
+        let args = write_file_command_args(false, true, true).unwrap();
+
+        assert_eq!(args, vec!["--private", "--append"]);
+    }
+
+    #[test]
+    fn write_file_command_args_reject_private_sudo() {
+        let error = write_file_command_args(true, false, true).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]

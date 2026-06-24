@@ -35,7 +35,7 @@
 //! | 0x06 | G→H       | operations_quiesced    | (empty) |
 //! | 0x07 | H→G       | resume_operations | (empty) |
 //! | 0x08 | G→H       | operations_resumed | (empty) |
-//! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
+//! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`, `PRIVATE=0x04`; `PRIVATE` and `SUDO` are mutually exclusive) |
 //! | 0x0A | G→H       | write_file_result | `[1B success][2B error_len][error]` |
 //! | 0x0B | H→G       | exec_start     | see payload schema below |
 //! | 0x0C | G→H       | exec_started | `[4B pid]` |
@@ -170,7 +170,8 @@ pub use payloads::exec_operation::{
     encode_exec_start_with_expected_exit_codes, encode_exec_started,
 };
 pub use payloads::write_file::{
-    decode_write_file, decode_write_file_result, encode_write_file, encode_write_file_result,
+    decode_write_file, decode_write_file_result, encode_private_write_file, encode_write_file,
+    encode_write_file_result,
 };
 pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
@@ -178,5 +179,6 @@ pub use wire::{
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
+    MSG_WRITE_FILE_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
+    WRITE_FILE_FLAG_SUDO,
 };

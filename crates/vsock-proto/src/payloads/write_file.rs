@@ -4,7 +4,7 @@ use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
-use crate::wire::{WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO};
+use crate::wire::{WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO};
 
 /// Encode write_file payload: `[2B path_len][path][1B flags][4B content_len][content]`.
 ///
@@ -15,6 +15,25 @@ pub fn encode_write_file(
     content: &[u8],
     sudo: bool,
     append: bool,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_write_file_flags(path, content, sudo, append, false)
+}
+
+/// Encode a private write_file payload.
+pub fn encode_private_write_file(
+    path: &str,
+    content: &[u8],
+    append: bool,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_write_file_flags(path, content, false, append, true)
+}
+
+fn encode_write_file_flags(
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+    append: bool,
+    private: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
     let path_bytes = path.as_bytes();
     let path_len = ensure_u16_len("path", path_bytes.len())?;
@@ -30,6 +49,9 @@ pub fn encode_write_file(
     }
     if append {
         flags |= WRITE_FILE_FLAG_APPEND;
+    }
+    if private {
+        flags |= WRITE_FILE_FLAG_PRIVATE;
     }
     let mut p = Vec::with_capacity(payload_len);
     p.extend_from_slice(&path_len.to_be_bytes());
@@ -53,8 +75,8 @@ pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
     p
 }
 
-/// Decode write_file payload. Returns `(path, content, sudo, append)`.
-pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), ProtocolError> {
+/// Decode write_file payload. Returns `(path, content, sudo, append, private)`.
+pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool, bool), ProtocolError> {
     let mut offset = 0;
     let path_len = read_u16(payload, &mut offset, "write_file too short")? as usize;
     let path = read_str(
@@ -65,9 +87,14 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
         "invalid UTF-8 in path",
     )?;
     let flags = read_u8(payload, &mut offset, "write_file too short")?;
-    let known_flags = WRITE_FILE_FLAG_SUDO | WRITE_FILE_FLAG_APPEND;
+    let known_flags = WRITE_FILE_FLAG_SUDO | WRITE_FILE_FLAG_APPEND | WRITE_FILE_FLAG_PRIVATE;
     if flags & !known_flags != 0 {
         return Err(ProtocolError::InvalidPayload("write_file unknown flags"));
+    }
+    if flags & WRITE_FILE_FLAG_PRIVATE != 0 && flags & WRITE_FILE_FLAG_SUDO != 0 {
+        return Err(ProtocolError::InvalidPayload(
+            "write_file private flag cannot be combined with sudo",
+        ));
     }
     let content_len = read_u32(payload, &mut offset, "write_file too short")? as usize;
     let content = read_slice(
@@ -83,6 +110,7 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
         content,
         (flags & WRITE_FILE_FLAG_SUDO) != 0,
         (flags & WRITE_FILE_FLAG_APPEND) != 0,
+        (flags & WRITE_FILE_FLAG_PRIVATE) != 0,
     ))
 }
 
@@ -123,39 +151,54 @@ mod tests {
     #[test]
     fn write_file_payload_roundtrip() {
         let payload = encode_write_file("/tmp/test.txt", b"content", false, false).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
+        let (path, content, sudo, append, private) = decode_write_file(&payload).unwrap();
         assert_eq!(path, "/tmp/test.txt");
         assert_eq!(content, b"content");
         assert!(!sudo);
         assert!(!append);
+        assert!(!private);
     }
 
     #[test]
     fn write_file_with_sudo() {
         let payload = encode_write_file("/etc/hosts", b"127.0.0.1", true, false).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
+        let (path, content, sudo, append, private) = decode_write_file(&payload).unwrap();
         assert_eq!(path, "/etc/hosts");
         assert_eq!(content, b"127.0.0.1");
         assert!(sudo);
         assert!(!append);
+        assert!(!private);
     }
 
     #[test]
     fn write_file_with_append() {
         let payload = encode_write_file("/tmp/out.log", b"more data", false, true).unwrap();
-        let (path, content, sudo, append) = decode_write_file(&payload).unwrap();
+        let (path, content, sudo, append, private) = decode_write_file(&payload).unwrap();
         assert_eq!(path, "/tmp/out.log");
         assert_eq!(content, b"more data");
         assert!(!sudo);
         assert!(append);
+        assert!(!private);
     }
 
     #[test]
     fn write_file_with_sudo_and_append() {
         let payload = encode_write_file("/etc/conf", b"line", true, true).unwrap();
-        let (_, _, sudo, append) = decode_write_file(&payload).unwrap();
+        let (_, _, sudo, append, private) = decode_write_file(&payload).unwrap();
         assert!(sudo);
         assert!(append);
+        assert!(!private);
+    }
+
+    #[test]
+    fn write_file_with_private() {
+        let payload = encode_private_write_file("/tmp/private", b"secret", true).unwrap();
+        let (path, content, sudo, append, private) = decode_write_file(&payload).unwrap();
+        assert_eq!(path, "/tmp/private");
+        assert_eq!(content, b"secret");
+        assert!(!sudo);
+        assert!(append);
+        assert!(private);
     }
 
     #[test]
@@ -184,11 +227,13 @@ mod tests {
         let payload = encode_write_file(path, &content, false, false).unwrap();
 
         assert_eq!(payload.len(), MAX_PAYLOAD_SIZE);
-        let (decoded_path, decoded_content, sudo, append) = decode_write_file(&payload).unwrap();
+        let (decoded_path, decoded_content, sudo, append, private) =
+            decode_write_file(&payload).unwrap();
         assert_eq!(decoded_path, path);
         assert_eq!(decoded_content, content.as_slice());
         assert!(!sudo);
         assert!(!append);
+        assert!(!private);
     }
 
     #[test]
@@ -257,6 +302,23 @@ mod tests {
         let err = decode_write_file(&payload).unwrap_err();
 
         assert_invalid_payload(err, "write_file unknown flags");
+    }
+
+    #[test]
+    fn decode_write_file_rejects_private_with_sudo() {
+        let payload = [
+            0,
+            0,
+            WRITE_FILE_FLAG_PRIVATE | WRITE_FILE_FLAG_SUDO,
+            0,
+            0,
+            0,
+            0,
+        ];
+
+        let err = decode_write_file(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "write_file private flag cannot be combined with sudo");
     }
 
     #[test]

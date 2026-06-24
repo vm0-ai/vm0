@@ -95,6 +95,10 @@ impl Sandbox for PanicExecSandbox {
         Ok(())
     }
 
+    async fn write_private_file(&self, _path: &str, _content: &[u8]) -> sandbox::Result<()> {
+        panic!("unused write_private_file");
+    }
+
     async fn start_process(
         &self,
         _request: &StartProcessRequest<'_>,
