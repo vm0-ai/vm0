@@ -2164,6 +2164,15 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        let operation = SandboxOperation::WriteFile;
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_private_file(path, content).await
+        })
+        .await
+    }
+
     async fn start_process(
         &self,
         request: &StartProcessRequest<'_>,

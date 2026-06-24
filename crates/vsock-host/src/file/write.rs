@@ -32,6 +32,36 @@ enum WriteFileChunkTracking<'a> {
     Composite(&'a mut CompositeNormalOperation),
 }
 
+struct WriteFileChunkRequest<'a> {
+    path: &'a str,
+    content: &'a [u8],
+    sudo: bool,
+    append: bool,
+    private: bool,
+}
+
+impl<'a> WriteFileChunkRequest<'a> {
+    fn standard(path: &'a str, content: &'a [u8], sudo: bool, append: bool) -> Self {
+        Self {
+            path,
+            content,
+            sudo,
+            append,
+            private: false,
+        }
+    }
+
+    fn private(path: &'a str, content: &'a [u8], append: bool) -> Self {
+        Self {
+            path,
+            content,
+            sudo: false,
+            append,
+            private: true,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct WriteFileGuestError(String);
 
@@ -355,6 +385,60 @@ impl VsockHost {
             .await
     }
 
+    /// Write a private runtime file on the guest.
+    ///
+    /// Content larger than 15 MB is split into multiple messages. The first
+    /// chunk creates or truncates the final file through private runtime-file
+    /// semantics; later chunks append to the same file. A failed chunk leaves
+    /// the run failed and may leave a partial private runtime file behind.
+    pub async fn write_private_file(&self, path: &str, content: &[u8]) -> io::Result<()> {
+        self.write_private_file_with_write_observer(path, content, FrameWriteObserver::default())
+            .await
+    }
+
+    /// Write a private runtime file on the guest and report before each
+    /// helper frame is written to the guest.
+    pub async fn write_private_file_with_write_observer(
+        &self,
+        path: &str,
+        content: &[u8],
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        validate_guest_file_path(path)?;
+        if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+            return self
+                .write_file_chunk(
+                    WriteFileChunkRequest::private(path, content, false),
+                    WriteFileChunkTracking::Tracked,
+                    write_observer,
+                )
+                .await;
+        }
+
+        let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
+        let result = async {
+            for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+                self.write_file_chunk(
+                    WriteFileChunkRequest::private(path, chunk, i > 0),
+                    WriteFileChunkTracking::Composite(&mut normal_operation),
+                    write_observer.clone(),
+                )
+                .await?;
+            }
+            io::Result::Ok(())
+        }
+        .await;
+
+        if let Err(error) = result {
+            if error_is_write_file_guest_error(&error) {
+                normal_operation.complete()?;
+            }
+            return Err(error);
+        }
+
+        normal_operation.complete()
+    }
+
     /// Write a file on the guest and report before each helper frame is
     /// written to the guest.
     pub async fn write_file_with_write_observer(
@@ -368,10 +452,7 @@ impl VsockHost {
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
             return self
                 .write_file_chunk(
-                    path,
-                    content,
-                    sudo,
-                    false,
+                    WriteFileChunkRequest::standard(path, content, sudo, false),
                     WriteFileChunkTracking::Tracked,
                     write_observer,
                 )
@@ -400,10 +481,7 @@ impl VsockHost {
         let result = async {
             for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
                 self.write_file_chunk(
-                    &tmp,
-                    chunk,
-                    sudo,
-                    i > 0,
+                    WriteFileChunkRequest::standard(&tmp, chunk, sudo, i > 0),
                     WriteFileChunkTracking::Composite(&mut normal_operation),
                     write_observer.clone(),
                 )
@@ -467,15 +545,21 @@ impl VsockHost {
     /// Send a single write_file message and validate the response.
     async fn write_file_chunk(
         &self,
-        path: &str,
-        content: &[u8],
-        sudo: bool,
-        append: bool,
+        request: WriteFileChunkRequest<'_>,
         tracking: WriteFileChunkTracking<'_>,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
-        let payload = vsock_proto::encode_write_file(path, content, sudo, append)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        let payload = if request.private {
+            vsock_proto::encode_private_write_file(request.path, request.content, request.append)
+        } else {
+            vsock_proto::encode_write_file(
+                request.path,
+                request.content,
+                request.sudo,
+                request.append,
+            )
+        }
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {

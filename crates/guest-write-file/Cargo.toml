@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Write guest files from stdin without shell startup overhead"
 
 [dependencies]
+guest-contracts.workspace = true
 libc.workspace = true
 
 [dev-dependencies]

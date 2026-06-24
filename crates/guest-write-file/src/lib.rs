@@ -11,8 +11,11 @@ use std::path::{Path, PathBuf};
 struct Args {
     append: bool,
     create_parents: bool,
+    private: bool,
     path: PathBuf,
 }
+
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path>";
 
 fn parse_args<I>(args: I) -> Result<Args, String>
 where
@@ -20,6 +23,7 @@ where
 {
     let mut append = false;
     let mut create_parents = false;
+    let mut private = false;
     let mut path = None;
     let mut positional_only = false;
 
@@ -32,6 +36,10 @@ where
                 }
                 "--create-parents" => {
                     create_parents = true;
+                    continue;
+                }
+                "--private" => {
+                    private = true;
                     continue;
                 }
                 "--" => {
@@ -54,26 +62,41 @@ where
     if append && create_parents {
         return Err("--append and --create-parents cannot be used together".to_string());
     }
+    if private && create_parents {
+        return Err("--private and --create-parents cannot be used together".to_string());
+    }
 
     Ok(Args {
         append,
         create_parents,
+        private,
         path,
     })
 }
 
 fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
-    if args.create_parents
-        && let Some(parent) = args.path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)?;
-    }
-
-    let mut file = open_output_file(&args.path, args.append)?;
+    let mut file = if args.private {
+        open_private_output_file(&args.path, args.append)?
+    } else {
+        if args.create_parents
+            && let Some(parent) = args.path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)?;
+        }
+        open_output_file(&args.path, args.append)?
+    };
 
     io::copy(&mut stdin, &mut file)?;
     file.flush()
+}
+
+fn open_private_output_file(path: &Path, append: bool) -> io::Result<File> {
+    if append {
+        guest_contracts::runtime_paths::open_private_append(path)
+    } else {
+        guest_contracts::runtime_paths::create_private(path)
+    }
 }
 
 fn open_output_file(path: &Path, append: bool) -> io::Result<File> {
@@ -152,7 +175,7 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// matching `std::env::args().skip(1)`. The accepted syntax is:
 ///
 /// ```text
-/// guest-write-file [--append | --create-parents] [--] <path>
+/// guest-write-file [--private] [--append | --create-parents] [--] <path>
 /// ```
 ///
 /// Use `--` before `<path>` when the literal path begins with `-`. `stdin`
@@ -161,7 +184,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// By default, the target file is created or truncated before writing.
 /// `--append` appends to the target file and creates it only when the parent
 /// directory already exists. `--create-parents` creates missing parent
-/// directories before writing.
+/// directories before writing. `--private` writes through the guest runtime
+/// private file helpers, creating private parents and rejecting symlinked
+/// parent components.
 ///
 /// Returns process-style exit codes: `0` for success, `1` for runtime or write
 /// failures, and `2` for usage or argument errors.
@@ -173,10 +198,7 @@ where
         Ok(args) => args,
         Err(e) => {
             let _ = writeln!(stderr, "guest-write-file: {e}");
-            let _ = writeln!(
-                stderr,
-                "usage: guest-write-file [--append | --create-parents] [--] <path>"
-            );
+            let _ = writeln!(stderr, "{USAGE}");
             return 2;
         }
     };
@@ -203,6 +225,7 @@ mod tests {
             Args {
                 append: false,
                 create_parents: true,
+                private: false,
                 path: PathBuf::from("/tmp/out.txt"),
             }
         );
@@ -222,6 +245,7 @@ mod tests {
             Args {
                 append: true,
                 create_parents: false,
+                private: false,
                 path: PathBuf::from("-literal"),
             }
         );
@@ -245,6 +269,38 @@ mod tests {
     fn rejects_append_with_create_parents() {
         let err = parse_args([
             "--append".to_string(),
+            "--create-parents".to_string(),
+            "/tmp/a".to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(err.contains("cannot be used together"));
+    }
+
+    #[test]
+    fn parse_private_append() {
+        let args = parse_args([
+            "--private".to_string(),
+            "--append".to_string(),
+            "/tmp/out.txt".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            args,
+            Args {
+                append: true,
+                create_parents: false,
+                private: true,
+                path: PathBuf::from("/tmp/out.txt"),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_private_with_create_parents() {
+        let err = parse_args([
+            "--private".to_string(),
             "--create-parents".to_string(),
             "/tmp/a".to_string(),
         ])

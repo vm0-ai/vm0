@@ -90,6 +90,9 @@ pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
 /// Write-file payload flag requesting append instead of overwrite.
 pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
+/// Write-file payload flag requesting private runtime-file semantics.
+pub const WRITE_FILE_FLAG_PRIVATE: u8 = 0x04;
+
 pub(crate) const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
 
 #[cfg(test)]

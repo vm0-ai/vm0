@@ -7,6 +7,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path>";
 
 fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
     run_helper_with_current_dir(args, stdin, None)
@@ -164,7 +165,22 @@ fn append_mode_rejects_create_parents() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("cannot be used together"));
-    assert!(stderr.contains("usage: guest-write-file [--append | --create-parents] [--] <path>"));
+    assert!(stderr.contains(USAGE));
+    assert!(!path.exists());
+}
+
+#[test]
+fn private_mode_rejects_create_parents() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing/out.txt");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", "--create-parents", path_str], b"hello");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used together"));
+    assert!(stderr.contains(USAGE));
     assert!(!path.exists());
 }
 
@@ -228,6 +244,90 @@ fn create_mode_rejects_directory_target() {
 
 #[cfg(unix)]
 #[test]
+fn private_mode_creates_private_parent_dirs_and_writes_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/user-env/env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/user-env")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_append_mode_appends_with_private_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let first = run_helper(&["--private", path_str], b"first");
+    assert!(first.status.success(), "stderr={:?}", first.stderr);
+    let second = run_helper(&["--private", "--append", path_str], b"second");
+
+    assert!(second.status.success(), "stderr={:?}", second.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"firstsecond");
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_symlink_parent_without_touching_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    let link = dir.path().join("link");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let path = link.join("env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(!target.join("env.json").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_directory_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("target");
+    std::fs::create_dir(&path).unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(path.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_fifo_with_reader() {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fifo");
+    mkfifo(&path);
+    let _reader = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&path)
+        .unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not a regular"));
+}
+
+#[cfg(unix)]
+#[test]
 fn create_mode_rejects_character_device_target() {
     let output = run_helper(&["/dev/null"], b"hello");
 
@@ -283,4 +383,11 @@ fn mkfifo(path: &std::path::Path) {
         "mkfifo failed: {}",
         std::io::Error::last_os_error()
     );
+}
+
+#[cfg(unix)]
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }

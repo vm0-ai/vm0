@@ -1359,6 +1359,7 @@ dependencies = [
 name = "guest-write-file"
 version = "0.1.2"
 dependencies = [
+ "guest-contracts",
  "libc",
  "tempfile",
 ]

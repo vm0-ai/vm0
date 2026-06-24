@@ -246,6 +246,15 @@ pub trait Sandbox: Send + Sync + Any {
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
+
+    /// Write `content` to a private runtime file inside the guest.
+    ///
+    /// Implementations should use guest runtime-private semantics: create
+    /// private parent directories, reject symlinked parent components, and
+    /// write the file with private permissions. Generic workspace file writes
+    /// should continue to use [`write_file`](Self::write_file).
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()>;
+
     /// Start `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_process`](Self::wait_process).
     ///

@@ -17,7 +17,7 @@ use super::super::support::{
 };
 use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
-    send_write_file_failure, send_write_file_success, spawn_write_file,
+    send_write_file_failure, send_write_file_success, spawn_write_file, spawn_write_private_file,
 };
 use crate::{FrameWriteObserver, VsockHost, operation_tracker::NormalOperationReadiness};
 use crate::{exec_operation, file as file_impl};
@@ -66,6 +66,7 @@ impl ChunkedWriteFixture {
     async fn expect_chunk(&mut self) -> WriteFileFrame {
         let frame = expect_write_file(&mut self.guest).await;
         assert_eq!(frame.sudo, self.sudo);
+        assert!(!frame.private);
         if let Some(temp_path) = &self.temp_path {
             assert_eq!(frame.path.as_str(), temp_path);
             assert!(frame.append);
@@ -343,6 +344,55 @@ async fn test_write_file_chunked() {
 }
 
 #[tokio::test]
+async fn write_private_file_single_chunk_sets_private_flag() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task =
+        spawn_write_private_file(Arc::clone(&host), "/tmp/private.env", b"secret".to_vec());
+
+    let frame = expect_write_file(&mut guest).await;
+    assert_eq!(frame.path, "/tmp/private.env");
+    assert_eq!(frame.content, b"secret");
+    assert!(!frame.sudo);
+    assert!(!frame.append);
+    assert!(frame.private);
+    send_write_file_success(&mut guest, frame.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_writes_final_path_without_rename() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content = vec![0xCD; chunk_limit + 100];
+    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-big.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-big.env");
+    assert_eq!(first.content.len(), chunk_limit);
+    assert!(!first.sudo);
+    assert!(!first.append);
+    assert!(first.private);
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-big.env");
+    assert_eq!(second.content.len(), 100);
+    assert!(!second.sudo);
+    assert!(second.append);
+    assert!(second.private);
+    send_write_file_success(&mut guest, second.seq()).await;
+
+    tokio::time::timeout(Duration::from_secs(1), write_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
 async fn write_file_chunked_quotes_target_path_with_single_quote() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big'quote.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
@@ -411,9 +461,10 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
         let msg = read_guest_message(&mut guest).await;
         match msg.msg_type {
             MSG_WRITE_FILE => {
-                let (path, content, sudo, append) =
+                let (path, content, sudo, append, private) =
                     vsock_proto::decode_write_file(&msg.payload).unwrap();
                 assert!(!sudo);
+                assert!(!private);
                 assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
                 let marker = *content.first().expect("chunk content");
                 assert!(matches!(marker, 0xAA | 0xBB));
@@ -502,8 +553,10 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     while first_chunks.len() < 2 {
         let msg = read_guest_message(&mut guest).await;
         assert_eq!(msg.msg_type, MSG_WRITE_FILE);
-        let (path, content, sudo, append) = vsock_proto::decode_write_file(&msg.payload).unwrap();
+        let (path, content, sudo, append, private) =
+            vsock_proto::decode_write_file(&msg.payload).unwrap();
         assert!(!sudo);
+        assert!(!private);
         assert!(!append);
         assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
         assert_eq!(content.len(), chunk_limit);
@@ -522,8 +575,10 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     while second_chunks.len() < 2 {
         let msg = read_guest_message(&mut guest).await;
         assert_eq!(msg.msg_type, MSG_WRITE_FILE);
-        let (path, content, sudo, append) = vsock_proto::decode_write_file(&msg.payload).unwrap();
+        let (path, content, sudo, append, private) =
+            vsock_proto::decode_write_file(&msg.payload).unwrap();
         assert!(!sudo);
+        assert!(!private);
         assert!(append);
         assert_eq!(content.len(), 1);
         let marker = *content.first().expect("chunk content");
@@ -1275,9 +1330,10 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
             let msg = guest.read_message().await;
             match msg.msg_type {
                 MSG_WRITE_FILE => {
-                    let (path, _chunk, sudo, append) =
+                    let (path, _chunk, sudo, append, private) =
                         vsock_proto::decode_write_file(&msg.payload).unwrap();
                     assert!(!sudo);
+                    assert!(!private);
                     if let Some(temp_path) = &temp_path {
                         assert_eq!(path, temp_path);
                         assert!(append);
