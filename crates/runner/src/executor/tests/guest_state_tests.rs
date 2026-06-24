@@ -3,69 +3,62 @@ use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
 
-use super::super::guest_state::{fix_guest_clock, reseed_guest_entropy, sync_guest_timezone};
+use super::super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_exec_error};
 use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 #[tokio::test]
-async fn fix_guest_clock_calls_date_command() {
+async fn restore_guest_state_combines_clock_sync_and_reseed() {
     let sandbox = MockSandbox::new("test");
-    // Default mock returns exit 0 — clock fix should succeed.
-    fix_guest_clock(&sandbox).await.unwrap();
+
+    restore_guest_state(&sandbox).await.unwrap();
+
+    let calls = sandbox.exec_calls();
+    assert_eq!(calls.len(), 1);
+    let clock_sync_index = calls[0]
+        .cmd
+        .find("date -s \"@")
+        .expect("guest state restore should sync the clock first");
+    let reseed_index = calls[0]
+        .cmd
+        .find("guest-reseed")
+        .expect("guest state restore should reseed entropy");
+    assert!(clock_sync_index < reseed_index);
+    assert!(calls[0].cmd.contains("guest clock sync failed"));
+    assert!(calls[0].cmd.contains("guest-reseed failed"));
+    assert!(calls[0].sudo);
+    let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
+    assert_eq!(stdin_bytes.len(), 256);
 }
 
 #[tokio::test]
-async fn fix_guest_clock_propagates_exec_error() {
+async fn restore_guest_state_propagates_exec_error() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Err(sandbox_exec_error("timeout")));
-    let result = fix_guest_clock(&sandbox).await;
-    assert!(result.is_err());
+    sandbox.push_exec_result(Err(sandbox_exec_error("restore failed")));
+
+    let result = restore_guest_state(&sandbox);
+
+    assert!(result.await.is_err());
 }
 
 #[tokio::test]
-async fn fix_guest_clock_fails_on_nonzero_exit() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(
-        2,
-        b"date stdout".to_vec(),
-        b"date stderr".to_vec(),
-    )));
-
-    let result = fix_guest_clock(&sandbox).await;
-
-    let message = result.unwrap_err().to_string();
-    assert!(
-        message.contains("guest clock sync failed (exit code 2)"),
-        "got: {message}"
-    );
-    assert!(
-        message.contains("stderr (captured): date stderr"),
-        "got: {message}"
-    );
-    assert!(
-        message.contains("stdout (captured): date stdout"),
-        "got: {message}"
-    );
-}
-
-#[tokio::test]
-async fn fix_guest_clock_fails_on_non_exited_result() {
+async fn restore_guest_state_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::WaitFailed,
-        stdout: b"date stdout".to_vec(),
+        stdout: b"restore stdout".to_vec(),
         stderr: b"wait failed".to_vec(),
         diagnostic: String::new(),
         stdout_truncated: false,
         stderr_truncated: false,
     }));
 
-    let result = fix_guest_clock(&sandbox).await;
+    let result = restore_guest_state(&sandbox).await;
 
     let message = result.unwrap_err().to_string();
     assert!(
-        message.contains("guest clock sync failed (wait failed)"),
+        message.contains("guest state restore failed (wait failed)"),
         "got: {message}"
     );
     assert!(
@@ -73,46 +66,50 @@ async fn fix_guest_clock_fails_on_non_exited_result() {
         "got: {message}"
     );
     assert!(
-        message.contains("stdout (captured): date stdout"),
+        message.contains("stdout (captured): restore stdout"),
         "got: {message}"
     );
 }
 
 #[tokio::test]
-async fn reseed_guest_entropy_succeeds() {
+async fn restore_guest_state_reports_clock_failure_marker() {
     let sandbox = MockSandbox::new("test");
-    reseed_guest_entropy(&sandbox).await.unwrap();
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        2,
+        b"date stdout".to_vec(),
+        b"guest clock sync failed\ndate stderr".to_vec(),
+    )));
 
-    let calls = sandbox.exec_calls();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].cmd, "guest-reseed");
-    assert!(calls[0].sudo);
-    let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
-    assert_eq!(stdin_bytes.len(), 256);
+    let result = restore_guest_state(&sandbox).await;
+
+    let message = result.unwrap_err().to_string();
+    assert!(
+        message.contains("guest state restore failed (exit code 2)"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("guest clock sync failed"),
+        "got: {message}"
+    );
 }
 
 #[tokio::test]
-async fn reseed_guest_entropy_propagates_exec_error() {
+async fn restore_guest_state_reports_reseed_failure_marker() {
     let sandbox = MockSandbox::new("test");
-    // Sandbox-level failure (vsock connection issue).
-    sandbox.push_exec_result(Err(sandbox_exec_error("reseed failed")));
-    let result = reseed_guest_entropy(&sandbox).await;
-    assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn reseed_guest_entropy_fails_on_nonzero_exit() {
-    let sandbox = MockSandbox::new("test");
-    // guest-reseed exits with code 1 (e.g., ioctl failed).
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
-        b"RNDRESEEDCRNG failed: Operation not permitted".to_vec(),
+        b"guest-reseed failed\nRNDRESEEDCRNG failed".to_vec(),
     )));
-    let result = reseed_guest_entropy(&sandbox).await;
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("guest-reseed failed"), "got: {msg}");
+
+    let result = restore_guest_state(&sandbox).await;
+
+    let message = result.unwrap_err().to_string();
+    assert!(
+        message.contains("guest state restore failed (exit code 1)"),
+        "got: {message}"
+    );
+    assert!(message.contains("guest-reseed failed"), "got: {message}");
 }
 
 #[tokio::test]

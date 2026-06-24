@@ -35,7 +35,7 @@ mod session_restore;
 mod storage;
 mod telemetry;
 
-pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
+pub(crate) use guest_state::restore_guest_state;
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};

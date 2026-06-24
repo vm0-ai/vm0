@@ -222,11 +222,11 @@ async fn execute_job_reuse_with_session_context() {
 }
 
 #[tokio::test]
-async fn execute_job_reuse_clock_fix_failure_returns_sandbox() {
+async fn execute_job_reuse_guest_state_restore_exec_failure_returns_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
 
-    // First exec mounts the workspace drive, second exec fixes the clock.
+    // First exec mounts the workspace drive, second exec restores guest state.
     let sandbox = MockSandbox::new("reuse-clock-fail");
     sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
@@ -248,7 +248,7 @@ async fn execute_job_reuse_clock_fix_failure_returns_sandbox() {
     // Critical: sandbox must be returned so caller can stop + destroy it
     assert!(
         outcome.sandbox.is_some(),
-        "sandbox must be returned on clock fix failure"
+        "sandbox must be returned on guest state restore failure"
     );
     assert!(
         outcome.network_log_session.is_some(),
@@ -262,11 +262,15 @@ async fn execute_job_reuse_reseed_failure_returns_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
 
-    // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
+    // Workspace mount succeeds, then the combined guest state restore reports a
+    // guest-reseed failure.
     let sandbox = MockSandbox::new("reuse-reseed-fail");
     sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        Vec::new(),
+        b"guest-reseed failed\nreseed timeout".to_vec(),
+    )));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (idle_sandbox, _lease) =
@@ -281,7 +285,7 @@ async fn execute_job_reuse_reseed_failure_returns_sandbox() {
     .await;
 
     assert_eq!(outcome.exit_code(), 1);
-    assert!(outcome.error().unwrap().contains("reseed timeout"));
+    assert!(outcome.error().unwrap().contains("guest-reseed failed"));
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned on reseed failure"
