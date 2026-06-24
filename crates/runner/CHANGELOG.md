@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.129.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.8...runner-rs-v0.129.9) (2026-06-24)
+
+
+### Bug Fixes
+
+* deduplicate clerk firewall route permissions ([#18731](https://github.com/vm0-ai/vm0/issues/18731)) ([d90b4dc](https://github.com/vm0-ai/vm0/commit/d90b4dc8a9da04f0cb1d374ea490d64025c6c6ec))
+* deduplicate vercel firewall route permissions ([#18741](https://github.com/vm0-ai/vm0/issues/18741)) ([ac07b31](https://github.com/vm0-ai/vm0/commit/ac07b31e83a31860e3a00a5a84872a3d5cde74d1))
+
+
+### Performance Improvements
+
+* reduce guest state restore startup execs ([#18739](https://github.com/vm0-ai/vm0/issues/18739)) ([1fcfe7c](https://github.com/vm0-ai/vm0/commit/1fcfe7caf4c7f1589ac4d2684cff2fec61669d21))
+
 ## [0.129.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.7...runner-rs-v0.129.8) (2026-06-24)
 
 

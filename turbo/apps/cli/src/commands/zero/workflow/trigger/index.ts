@@ -36,7 +36,7 @@ interface AddOptions extends GmailTriggerOptions {
   readonly agent?: string;
 }
 
-interface UpdateOptions {
+interface UpdateOptions extends GmailTriggerOptions {
   readonly expr?: string;
   readonly at?: string;
   readonly every?: string;
@@ -53,7 +53,46 @@ const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
 const EVENT_KINDS = ["gmail-new-message"] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop)";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), or provide Gmail match options";
+
+function addGmailTriggerOptions(command: Command): Command {
+  return command
+    .option(
+      "--config <path>",
+      "Path to a Gmail new message trigger config JSON",
+    )
+    .option("--from-contains <text>", "Require the From header to contain text")
+    .option(
+      "--from-not-contains <text>",
+      "Require the From header not to contain text",
+    )
+    .option(
+      "--subject-contains <text>",
+      "Require the Subject header to contain text",
+    )
+    .option(
+      "--subject-not-contains <text>",
+      "Require the Subject header not to contain text",
+    )
+    .option(
+      "--body-contains <text>",
+      "Require the message body to contain text",
+    )
+    .option(
+      "--body-not-contains <text>",
+      "Require the message body not to contain text",
+    )
+    .option("--to-contains <text>", "Require the To header to contain text")
+    .option(
+      "--to-not-contains <text>",
+      "Require the To header not to contain text",
+    )
+    .option("--cc-contains <text>", "Require the Cc header to contain text")
+    .option(
+      "--cc-not-contains <text>",
+      "Require the Cc header not to contain text",
+    );
+}
 
 function timezoneOrUtc(timezone: string | undefined): string {
   return timezone ?? "UTC";
@@ -259,6 +298,13 @@ function buildUpdate(options: UpdateOptions): ZeroWorkflowTriggerUpdateRequest {
       return value !== undefined;
     },
   ).length;
+  const hasGmailOptions = hasGmailTriggerOptions(options);
+  if (hasGmailOptions) {
+    if (flagCount > 0 || options.timezone !== undefined) {
+      throw new Error("Use either schedule flags or Gmail match options");
+    }
+    return { eventConfig: buildGmailNewMessageEventConfig(options) };
+  }
   if (flagCount !== 1) {
     throw new Error(EXACTLY_ONE_FLAG_MESSAGE);
   }
@@ -301,44 +347,23 @@ async function resolveWorkflowId(
   return matches[0]!.id;
 }
 
-const addCommand = new Command()
-  .name("add")
-  .description("Add a trigger to a workflow")
-  .argument("<workflow>", "Workflow ID or name")
-  .argument("<kind>", `Trigger type: ${TRIGGER_KINDS.join(" | ")}`)
-  .option("--expr <expression>", 'Cron expression for kind "cron"')
-  .option("--at <iso-time>", 'Fire time for kind "once"')
-  .option("--every <duration>", 'Interval for kind "loop" (e.g. 15m, 1h, 90s)')
-  .option("-z, --timezone <tz>", "IANA timezone for cron/once (default: UTC)")
-  .option("--config <path>", "Path to a Gmail new message trigger config JSON")
-  .option("--from-contains <text>", "Require the From header to contain text")
-  .option(
-    "--from-not-contains <text>",
-    "Require the From header not to contain text",
-  )
-  .option(
-    "--subject-contains <text>",
-    "Require the Subject header to contain text",
-  )
-  .option(
-    "--subject-not-contains <text>",
-    "Require the Subject header not to contain text",
-  )
-  .option("--body-contains <text>", "Require the message body to contain text")
-  .option(
-    "--body-not-contains <text>",
-    "Require the message body not to contain text",
-  )
-  .option("--to-contains <text>", "Require the To header to contain text")
-  .option(
-    "--to-not-contains <text>",
-    "Require the To header not to contain text",
-  )
-  .option("--cc-contains <text>", "Require the Cc header to contain text")
-  .option(
-    "--cc-not-contains <text>",
-    "Require the Cc header not to contain text",
-  )
+const addCommand = addGmailTriggerOptions(
+  new Command()
+    .name("add")
+    .description("Add a trigger to a workflow")
+    .argument("<workflow>", "Workflow ID or name")
+    .argument("<kind>", `Trigger type: ${TRIGGER_KINDS.join(" | ")}`)
+    .option("--expr <expression>", 'Cron expression for kind "cron"')
+    .option("--at <iso-time>", 'Fire time for kind "once"')
+    .option(
+      "--every <duration>",
+      'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
+    )
+    .option(
+      "-z, --timezone <tz>",
+      "IANA timezone for cron/once (default: UTC)",
+    ),
+)
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -378,21 +403,25 @@ Notes:
     ),
   );
 
-const updateCommand = new Command()
-  .name("update")
-  .description("Replace a workflow trigger's schedule")
-  .argument("<trigger>", "Workflow trigger ID")
-  .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
-  .option("--at <iso-time>", 'New one-time fire (e.g. "2026-06-10T09:00")')
-  .option("--every <duration>", "New loop interval (e.g. 15m, 1h, 90s)")
-  .option("-z, --timezone <tz>", "IANA timezone for --expr / --at")
+const updateCommand = addGmailTriggerOptions(
+  new Command()
+    .name("update")
+    .description("Replace a workflow trigger's schedule or Gmail match config")
+    .argument("<trigger>", "Workflow trigger ID")
+    .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
+    .option("--at <iso-time>", 'New one-time fire (e.g. "2026-06-10T09:00")')
+    .option("--every <duration>", "New loop interval (e.g. 15m, 1h, 90s)")
+    .option("-z, --timezone <tz>", "IANA timezone for --expr / --at"),
+)
   .addHelpText(
     "after",
     `
 Examples:
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
-  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --every 10m`,
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --every 10m
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --config ./gmail-trigger.json`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
