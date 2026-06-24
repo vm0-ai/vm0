@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix | jq -c 'map({ id, label, target })')
           group_count=$(jq -r 'length' <<<"$matrix")
           if [ "$group_count" -lt 1 ]; then
             echo "::error::No production runner host architecture groups found"
@@ -165,23 +165,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.target_version }}
           TARGET_TRIPLE: ${{ matrix.target }}
-          ASSET_SUFFIX: ${{ matrix.assetSuffix }}
-          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
         shell: bash
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
           runner_image_validate_target "$TARGET_TRIPLE"
-          EXPECTED_ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
-          EXPECTED_UNAME_M=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
-          if [ "$ASSET_SUFFIX" != "$EXPECTED_ASSET_SUFFIX" ]; then
-            echo "::error::matrix asset suffix ${ASSET_SUFFIX} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_ASSET_SUFFIX})"
-            exit 1
-          fi
-          if [ "$EXPECTED_RUNNER_UNAME_M" != "$EXPECTED_UNAME_M" ]; then
-            echo "::error::matrix uname ${EXPECTED_RUNNER_UNAME_M} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_UNAME_M})"
-            exit 1
-          fi
+          ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
 
           TAG="runner-rs-v${VERSION}"
           ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
@@ -253,8 +242,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_VERSION: ${{ inputs.target_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
-          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           API_URL: ${{ vars.VM0_API_URL }}
         run: |
@@ -265,8 +252,6 @@ jobs:
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
-            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
-            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "rollback_mode=${ROLLBACK_MODE}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \

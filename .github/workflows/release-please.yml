@@ -2283,7 +2283,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix | jq -c 'map({ id, label, target })')
           group_count=$(jq -r 'length' <<<"$matrix")
           if [ "$group_count" -lt 1 ]; then
             echo "::error::No production runner host architecture groups found"
@@ -2375,24 +2375,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           TARGET_TRIPLE: ${{ matrix.target }}
-          ASSET_SUFFIX: ${{ matrix.assetSuffix }}
-          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
         shell: bash
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
           runner_image_validate_target "$TARGET_TRIPLE"
-          EXPECTED_ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
-          EXPECTED_UNAME_M=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
+          ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
           EXPECTED_ELF_MACHINE=$(runner_image_elf_machine_hex "$TARGET_TRIPLE")
-          if [ "$ASSET_SUFFIX" != "$EXPECTED_ASSET_SUFFIX" ]; then
-            echo "::error::matrix asset suffix ${ASSET_SUFFIX} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_ASSET_SUFFIX})"
-            exit 1
-          fi
-          if [ "$EXPECTED_RUNNER_UNAME_M" != "$EXPECTED_UNAME_M" ]; then
-            echo "::error::matrix uname ${EXPECTED_RUNNER_UNAME_M} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_UNAME_M})"
-            exit 1
-          fi
 
           TAG="runner-rs-v${VERSION}"
           ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
@@ -2480,8 +2469,6 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
-          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           API_URL: ${{ vars.VM0_API_URL }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
@@ -2499,8 +2486,6 @@ jobs:
             -e "api_url=${API_URL}" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
-            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
-            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
@@ -2663,8 +2648,6 @@ jobs:
           AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
-          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
@@ -2678,8 +2661,6 @@ jobs:
             -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
-            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
-            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \

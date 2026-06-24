@@ -24,8 +24,6 @@
 # Required Variables:
 #   - runner_version: Semantic version of the runner being built
 #   - runner_target: Rust target triple for the copied runner binary
-#   - runner_asset_suffix: Release asset suffix selected for this target
-#   - expected_runner_uname_m: Expected remote `uname -m` for this target
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
