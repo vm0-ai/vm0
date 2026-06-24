@@ -43,12 +43,10 @@ fn checkpoint_request_has_artifact_snapshot(
     })
 }
 
-unsafe fn setup_env(temp_dir: &Path, server: &MockServer, mount_path: &Path, version_id: &str) {
+unsafe fn setup_env(temp_dir: &Path, mount_path: &Path, version_id: &str) {
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_RUN_ID", RUN_ID);
-        std::env::set_var("VM0_API_URL", server.base_url());
-        std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             temp_dir.join("runtime"),
@@ -69,19 +67,20 @@ unsafe fn setup_env(temp_dir: &Path, server: &MockServer, mount_path: &Path, ver
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn unchanged_artifact_checkpoint_records_content_hash_timing()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    let server = MockServer::start();
     let mount_path = temp_dir.path().join("workspace");
     std::fs::create_dir(&mount_path)?;
     std::fs::write(mount_path.join("a.txt"), "hello")?;
     let version_id = content_hash_for_single_file(STORAGE_ID, "a.txt", "hello");
 
     unsafe {
-        setup_env(temp_dir.path(), &server, &mount_path, &version_id);
+        setup_env(temp_dir.path(), &mount_path, &version_id);
     }
+
+    let server = MockServer::start();
 
     let history_path = temp_dir.path().join("history.jsonl");
     std::fs::write(&history_path, r#"{"type":"system"}"#)?;
