@@ -16,8 +16,17 @@ async fn restore_guest_state_combines_clock_sync_and_reseed() {
 
     let calls = sandbox.exec_calls();
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].cmd.contains("date -s \"@"));
-    assert!(calls[0].cmd.contains("guest-reseed"));
+    let clock_sync_index = calls[0]
+        .cmd
+        .find("date -s \"@")
+        .expect("guest state restore should sync the clock first");
+    let reseed_index = calls[0]
+        .cmd
+        .find("guest-reseed")
+        .expect("guest state restore should reseed entropy");
+    assert!(clock_sync_index < reseed_index);
+    assert!(calls[0].cmd.contains("guest clock sync failed"));
+    assert!(calls[0].cmd.contains("guest-reseed failed"));
     assert!(calls[0].sudo);
     let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
     assert_eq!(stdin_bytes.len(), 256);
@@ -31,6 +40,35 @@ async fn restore_guest_state_propagates_exec_error() {
     let result = restore_guest_state(&sandbox);
 
     assert!(result.await.is_err());
+}
+
+#[tokio::test]
+async fn restore_guest_state_fails_on_non_exited_result() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::WaitFailed,
+        stdout: b"restore stdout".to_vec(),
+        stderr: b"wait failed".to_vec(),
+        diagnostic: String::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+
+    let result = restore_guest_state(&sandbox).await;
+
+    let message = result.unwrap_err().to_string();
+    assert!(
+        message.contains("guest state restore failed (wait failed)"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("stderr (captured): wait failed"),
+        "got: {message}"
+    );
+    assert!(
+        message.contains("stdout (captured): restore stdout"),
+        "got: {message}"
+    );
 }
 
 #[tokio::test]
