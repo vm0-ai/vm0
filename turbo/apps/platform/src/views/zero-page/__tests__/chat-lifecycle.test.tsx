@@ -3001,6 +3001,46 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("uses physical groups for the initial window when run group folding is disabled", async () => {
+    const threadId = "render-window-run-group-folding-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run group render window without folding",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 11,
+          runGroupId: "disabled-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 1,
+          runGroupId: "disabled-group-b",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run group render window without folding"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Expand grouped run history"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("A reply 8")).toBeInTheDocument();
+      expect(screen.getByText("B reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("A reply 7")).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "render-window-middle-run-group";
     mockChatLifecycle(context, {
