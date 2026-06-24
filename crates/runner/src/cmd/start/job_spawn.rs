@@ -853,6 +853,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                     | FailureReason::InvalidCredentials
                     | FailureReason::OutputTokenLimit
                     | FailureReason::ProviderOverloaded
+                    | FailureReason::ProviderServerError
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
             )
@@ -1025,6 +1026,7 @@ mod tests {
             FailureReason::InvalidCredentials,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
+            FailureReason::ProviderServerError,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
@@ -1041,8 +1043,11 @@ mod tests {
                 Some("job execution failed")
             );
             assert_field_eq(&event, "error", &failure_error);
+            assert_field_eq(&event, "run_id", &RunId::nil().to_string());
+            assert_field_eq(&event, "exit_code", "1");
             assert_field_eq(&event, "failure_reason", reason.as_str());
             assert_field_eq(&event, "failure_class", "cli_nonzero");
+            assert_field_eq(&event, "failure_framework", "codex");
             assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
         }
     }
@@ -1081,6 +1086,7 @@ mod tests {
             FailureReason::InvalidCredentials,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
+            FailureReason::ProviderServerError,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
