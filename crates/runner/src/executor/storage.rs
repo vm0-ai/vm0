@@ -1,9 +1,10 @@
 //! Storage manifest filtering and guest download helpers.
 
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
-use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecRequest, Sandbox};
-use tracing::info;
+use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use tracing::{info, warn};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
@@ -12,6 +13,8 @@ use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
 };
+
+const STORAGE_MANIFEST_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 struct ManifestReuseFilter {
@@ -151,6 +154,10 @@ pub(super) fn guest_download_stdin_command() -> String {
     format!("{} --manifest-stdin", guest::DOWNLOAD_BIN)
 }
 
+pub(super) fn guest_storage_manifest_cleanup_command() -> String {
+    format!("rm -f -- {}", guest::STORAGE_MANIFEST)
+}
+
 pub(super) fn guest_download_env<'a>(
     run_id: &'a str,
     runtime_dir: &'a str,
@@ -186,7 +193,7 @@ pub(super) async fn download_storages(
     let runtime_dir = guest_runtime_dir(context.run_id)?;
     let download_env = guest_download_env(&run_id, &runtime_dir);
     info!(run_id = %context.run_id, "downloading storages");
-    let result = sandbox
+    let result = match sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
                 cmd: &download_cmd,
@@ -198,7 +205,16 @@ pub(super) async fn download_storages(
             },
             "storage-download",
         )
-        .await?;
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            if !use_stdin {
+                cleanup_fallback_storage_manifest_after_exec_error(sandbox, context).await;
+            }
+            return Err(e.into());
+        }
+    };
 
     if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(format_guest_download_failure(
@@ -206,6 +222,44 @@ pub(super) async fn download_storages(
         )));
     }
     Ok(())
+}
+
+async fn cleanup_fallback_storage_manifest_after_exec_error(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+) {
+    let cleanup_cmd = guest_storage_manifest_cleanup_command();
+    let cleanup_result = sandbox
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &cleanup_cmd,
+                timeout: STORAGE_MANIFEST_CLEANUP_TIMEOUT,
+                env: &[],
+                sudo: false,
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "storage-manifest-cleanup",
+        )
+        .await;
+
+    match cleanup_result {
+        Ok(result) if helper_exec_succeeded(&result) => {}
+        Ok(result) => {
+            warn!(
+                run_id = %context.run_id,
+                error = %format_helper_exec_failure("storage manifest cleanup", &result),
+                "failed to remove fallback storage manifest after exec error"
+            );
+        }
+        Err(error) => {
+            warn!(
+                run_id = %context.run_id,
+                error = %error,
+                "failed to remove fallback storage manifest after exec error"
+            );
+        }
+    }
 }
 
 pub(super) fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {

@@ -8,9 +8,9 @@ use super::super::guest_runtime_dir;
 use super::super::storage::{
     apply_storage_fingerprint_reuse, download_storages, format_guest_download_failure,
     guest_download_command, guest_download_env, guest_download_has_work,
-    guest_download_stdin_command,
+    guest_download_stdin_command, guest_storage_manifest_cleanup_command,
 };
-use super::support::{minimal_context, sandbox_write_file_error};
+use super::support::{minimal_context, sandbox_exec_error, sandbox_write_file_error};
 use crate::helper_exec::{HELPER_EXEC_OUTPUT_EXCERPT_BYTES, format_command_output_excerpt};
 use crate::paths::guest;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
@@ -120,6 +120,42 @@ async fn download_storages_oversized_manifest_falls_back_to_write_file() {
     assert_eq!(exec_calls.len(), 1);
     assert_eq!(exec_calls[0].cmd, guest_download_command());
     assert!(exec_calls[0].stdin_bytes.is_none());
+}
+
+#[tokio::test]
+async fn download_storages_oversized_manifest_cleans_file_on_exec_error() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("vsock exec failed"), "got: {err}");
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 2);
+    assert_eq!(exec_calls[0].cmd, guest_download_command());
+    assert_eq!(exec_calls[1].cmd, guest_storage_manifest_cleanup_command());
+    assert_eq!(exec_calls[1].timeout, std::time::Duration::from_secs(5));
+}
+
+#[tokio::test]
+async fn download_storages_stdin_manifest_does_not_cleanup_on_exec_error() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES);
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("vsock exec failed"), "got: {err}");
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_download_stdin_command());
 }
 
 #[tokio::test]
