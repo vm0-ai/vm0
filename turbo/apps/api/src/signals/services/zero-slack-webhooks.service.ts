@@ -13,6 +13,7 @@ import {
   type ModelProviderCredentialScope,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -21,7 +22,7 @@ import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session"
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -218,6 +219,7 @@ interface RunAgentParams {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly computerUseHostId?: string;
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
@@ -1187,6 +1189,7 @@ const runAgentForSlackOrg$ = command(
         modelProviderId: params.modelProviderId,
         modelProviderCredentialScope: params.modelProviderCredentialScope,
         selectedModelOverride: params.selectedModelOverride,
+        computerUseHostId: params.computerUseHostId,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         callbacks: [
           {
@@ -1274,6 +1277,46 @@ async function resolveCompatibleThreadSession(args: {
   }
 
   return session.agentSessionId;
+}
+
+async function resolveComputerUseHostForSlackThread(args: {
+  readonly db: Db;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly connectionId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<string | undefined> {
+  const [binding] = await args.db
+    .select({ computerUseHostId: slackOrgThreadSessions.computerUseHostId })
+    .from(slackOrgThreadSessions)
+    .where(
+      and(
+        eq(slackOrgThreadSessions.connectionId, args.connectionId),
+        eq(slackOrgThreadSessions.slackChannelId, args.channelId),
+        eq(slackOrgThreadSessions.slackThreadTs, args.threadTs),
+      ),
+    )
+    .limit(1);
+
+  if (!binding?.computerUseHostId) {
+    return undefined;
+  }
+
+  const [host] = await args.db
+    .select({ id: computerUseHosts.id })
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.id, binding.computerUseHostId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+
+  return host?.id;
 }
 
 const postPreDispatchErrorReply$ = command(
@@ -1478,6 +1521,14 @@ const buildRunAgentParams$ = command(
       agentComposeId: resolved.composeId,
       modelRoute,
     });
+    const computerUseHostId = await resolveComputerUseHostForSlackThread({
+      db: args.db,
+      channelId: args.channelId,
+      threadTs: resolved.threadTs,
+      connectionId: resolved.connection.id,
+      orgId: resolved.installation.orgId,
+      userId: resolved.connection.vm0UserId,
+    });
     const { executionContext } = await fetchConversationContexts(
       resolved.client,
       args.channelId,
@@ -1514,6 +1565,7 @@ const buildRunAgentParams$ = command(
         modelRoute?.modelProviderCredentialScope ?? undefined,
       modelProviderType: modelRoute?.modelProviderType ?? undefined,
       selectedModelOverride: modelRoute?.selectedModel ?? undefined,
+      computerUseHostId,
     };
   },
 );

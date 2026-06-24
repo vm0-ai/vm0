@@ -20,6 +20,7 @@ import {
   type ComputerUseCommandKind,
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
+  type ComputerUseHost,
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
   type StoredScreenshotPointer,
@@ -30,6 +31,7 @@ import {
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -212,7 +214,7 @@ function samePermissions(
 
 function normalizeHostPermissions(
   permissions: ComputerUseHostRow["permissions"],
-): ComputerUseHostRow["permissions"] {
+): ComputerUseHost["permissions"] {
   return {
     accessibility: permissions.accessibility,
     screenRecording: permissions.screenRecording,
@@ -247,15 +249,20 @@ async function clearComputerUseHostThreadBindings(params: {
   readonly userId: string;
   readonly hostId: string;
 }): Promise<void> {
+  const now = nowDate();
   await params.tx
     .update(chatThreads)
-    .set({ computerUseHostId: null, updatedAt: nowDate() })
+    .set({ computerUseHostId: null, updatedAt: now })
     .where(
       and(
         eq(chatThreads.userId, params.userId),
         eq(chatThreads.computerUseHostId, params.hostId),
       ),
     );
+  await params.tx
+    .update(slackOrgThreadSessions)
+    .set({ computerUseHostId: null, updatedAt: now })
+    .where(eq(slackOrgThreadSessions.computerUseHostId, params.hostId));
 }
 
 function hostSupportsCommand(

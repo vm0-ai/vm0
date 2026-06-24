@@ -8,6 +8,7 @@ import {
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -24,6 +25,9 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../../../external/db";
 import { encryptSecretForTests } from "./encrypt-secret";
+
+const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
+const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 
 export interface SlackWebhookFixture {
   readonly orgId: string;
@@ -75,7 +79,11 @@ async function seedRunnableAgent(args: {
       agents: {
         [name]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "test-key" },
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
+            ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
+          },
         },
       },
     },
@@ -223,6 +231,15 @@ export const deleteSlackWebhookFixture$ = command(
     await db
       .delete(slackUserAgentPreferences)
       .where(eq(slackUserAgentPreferences.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db
+      .delete(computerUseHosts)
+      .where(
+        and(
+          eq(computerUseHosts.orgId, fixture.orgId),
+          eq(computerUseHosts.userId, fixture.userId),
+        ),
+      );
     signal.throwIfAborted();
     await db
       .delete(slackOrgConnections)

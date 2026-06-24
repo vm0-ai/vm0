@@ -325,6 +325,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable short-lived Computer Use authorization links for agent runs that need a user to bind a Desktop host to the current chat or Slack thread.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

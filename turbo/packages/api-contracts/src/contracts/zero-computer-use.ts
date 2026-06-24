@@ -55,6 +55,9 @@ const hostOsVersionSchema = z.string().trim().min(1).max(128);
 const hostIdPathParamsSchema = z.object({
   hostId: z.string().min(1),
 });
+const authorizationRequestTokenPathParamsSchema = z.object({
+  requestToken: z.string().min(1),
+});
 const commandIdPathParamsSchema = z.object({
   commandId: z.string().min(1),
 });
@@ -391,6 +394,33 @@ export const computerUseHostDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
+export const computerUseAuthorizationSourceSchema = z.enum(["chat", "slack"]);
+
+const computerUseAuthorizationRequestCreateBodySchema = z.object({});
+
+export const computerUseAuthorizationRequestCreateResponseSchema = z.object({
+  authorizationUrl: z.string().url(),
+  source: computerUseAuthorizationSourceSchema,
+  expiresAt: z.string(),
+});
+
+export const computerUseAuthorizationRequestResponseSchema = z.object({
+  source: computerUseAuthorizationSourceSchema,
+  expiresAt: z.string(),
+  completedAt: z.string().nullable(),
+  hosts: z.array(computerUseHostSchema),
+});
+
+const computerUseAuthorizationRequestApplyBodySchema = z.object({
+  computerUseHostId: z.string().uuid(),
+});
+
+export const computerUseAuthorizationRequestApplyResponseSchema = z.object({
+  ok: z.literal(true),
+  source: computerUseAuthorizationSourceSchema,
+  computerUseHostId: z.string().uuid(),
+});
+
 export const computerUseCommandCreateResponseSchema = z.object({
   commandId: z.string(),
   status: z.literal("queued"),
@@ -524,6 +554,55 @@ export const zeroComputerUseHeartbeatContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Stop a desktop computer-use host",
+  },
+});
+
+export const zeroComputerUseAuthorizationRequestsContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/computer-use/authorization-requests",
+    headers: authHeadersSchema,
+    body: computerUseAuthorizationRequestCreateBodySchema,
+    responses: {
+      200: computerUseAuthorizationRequestCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary:
+      "Create a short-lived Computer Use authorization request for the current run",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/computer-use/authorization-requests/:requestToken",
+    headers: authHeadersSchema,
+    pathParams: authorizationRequestTokenPathParamsSchema,
+    responses: {
+      200: computerUseAuthorizationRequestResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary: "Read a Computer Use authorization request",
+  },
+  apply: {
+    method: "POST",
+    path: "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+    headers: authHeadersSchema,
+    pathParams: authorizationRequestTokenPathParamsSchema,
+    body: computerUseAuthorizationRequestApplyBodySchema,
+    responses: {
+      200: computerUseAuthorizationRequestApplyResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary: "Bind a Computer Use host for a delegated authorization request",
   },
 });
 
@@ -667,6 +746,18 @@ export type ComputerUseHostDeleteResponse = z.infer<
 export type ComputerUseHostListResponse = z.infer<
   typeof computerUseHostListResponseSchema
 >;
+export type ComputerUseAuthorizationRequestCreateResponse = z.infer<
+  typeof computerUseAuthorizationRequestCreateResponseSchema
+>;
+export type ComputerUseAuthorizationRequestResponse = z.infer<
+  typeof computerUseAuthorizationRequestResponseSchema
+>;
+export type ComputerUseAuthorizationRequestApplyResponse = z.infer<
+  typeof computerUseAuthorizationRequestApplyResponseSchema
+>;
+export type ComputerUseAuthorizationSource = z.infer<
+  typeof computerUseAuthorizationSourceSchema
+>;
 export type ComputerUseReadCommandKind = z.infer<
   typeof computerUseReadCommandKindSchema
 >;
@@ -679,6 +770,8 @@ export type ZeroComputerUseCommandContract =
   typeof zeroComputerUseCommandContract;
 export type ZeroComputerUseHeartbeatContract =
   typeof zeroComputerUseHeartbeatContract;
+export type ZeroComputerUseAuthorizationRequestsContract =
+  typeof zeroComputerUseAuthorizationRequestsContract;
 export type ZeroComputerUseHostCommandsContract =
   typeof zeroComputerUseHostCommandsContract;
 export type ZeroComputerUseHostsContract = typeof zeroComputerUseHostsContract;

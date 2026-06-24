@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { slackOrgConnections } from "./slack-org-connection";
 import { agentSessions } from "./agent-session";
+import { computerUseHosts } from "./computer-use-host";
 
 /**
  * Org-aware Slack thread sessions table.
@@ -34,6 +35,12 @@ export const slackOrgThreadSessions = pgTable(
       },
       { onDelete: "set null" },
     ),
+    computerUseHostId: uuid("computer_use_host_id").references(
+      () => {
+        return computerUseHosts.id;
+      },
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -45,6 +52,9 @@ export const slackOrgThreadSessions = pgTable(
         table.slackThreadTs,
       ),
       index("idx_slack_org_thread_sessions_connection").on(table.connectionId),
+      index("idx_slack_org_thread_sessions_computer_use_host").on(
+        table.computerUseHostId,
+      ),
     ];
   },
 );

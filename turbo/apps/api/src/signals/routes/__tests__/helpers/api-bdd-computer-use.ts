@@ -3,12 +3,16 @@ import { randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import {
+  zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseAuditEventsContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
   zeroComputerUseWriteCommandContract,
+  type ComputerUseAuthorizationRequestApplyResponse,
+  type ComputerUseAuthorizationRequestCreateResponse,
+  type ComputerUseAuthorizationRequestResponse,
   type ComputerUseAuditEventListResponse,
   type ComputerUseCommandCreateResponse,
   type ComputerUseCommandError,
@@ -197,10 +201,11 @@ export function zeroComputerUseToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
+  readonly runId?: string;
   readonly computerUseHostId?: string;
 }): { readonly token: string; readonly runId: string } {
   const seconds = Math.floor(now() / 1000);
-  const runId = `run_${randomUUID()}`;
+  const runId = args.runId ?? `run_${randomUUID()}`;
   const token = signSandboxJwtForTests({
     scope: "zero",
     userId: args.userId,
@@ -255,6 +260,10 @@ export function createComputerUseBddApi(context: TestContext) {
 
   function auditEventsClient() {
     return setupApp({ context })(zeroComputerUseAuditEventsContract);
+  }
+
+  function authorizationRequestsClient() {
+    return setupApp({ context })(zeroComputerUseAuthorizationRequestsContract);
   }
 
   function cleanupCronClient() {
@@ -684,6 +693,92 @@ export function createComputerUseBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async createComputerUseAuthorizationRequest(
+      auth: ComputerUseAuth,
+    ): Promise<ComputerUseAuthorizationRequestCreateResponse> {
+      const response = await accept(
+        authorizationRequestsClient().create({
+          headers: authenticate(auth),
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestCreateComputerUseAuthorizationRequest(
+      auth: ComputerUseAuth,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        authorizationRequestsClient().create({
+          headers: authenticate(auth),
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async readComputerUseAuthorizationRequest(
+      actor: ApiTestUser,
+      requestToken: string,
+    ): Promise<ComputerUseAuthorizationRequestResponse> {
+      const response = await accept(
+        authorizationRequestsClient().get({
+          headers: authenticate(actor),
+          params: { requestToken },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestReadComputerUseAuthorizationRequest(
+      actor: ApiTestUser | null,
+      requestToken: string,
+      statuses: readonly (200 | 401 | 403 | 404 | 410)[],
+    ) {
+      return await accept(
+        authorizationRequestsClient().get({
+          headers: authenticate(actor),
+          params: { requestToken },
+        }),
+        statuses,
+      );
+    },
+
+    async applyComputerUseAuthorizationRequest(
+      actor: ApiTestUser,
+      requestToken: string,
+      computerUseHostId: string,
+    ): Promise<ComputerUseAuthorizationRequestApplyResponse> {
+      const response = await accept(
+        authorizationRequestsClient().apply({
+          headers: authenticate(actor),
+          params: { requestToken },
+          body: { computerUseHostId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestApplyComputerUseAuthorizationRequest(
+      actor: ApiTestUser | null,
+      requestToken: string,
+      computerUseHostId: string,
+      statuses: readonly (200 | 401 | 403 | 404 | 410)[],
+    ) {
+      return await accept(
+        authorizationRequestsClient().apply({
+          headers: authenticate(actor),
+          params: { requestToken },
+          body: { computerUseHostId },
+        }),
+        statuses,
+      );
     },
 
     // Kept out of any shared safe-cron helper for the same shared-database

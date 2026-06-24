@@ -227,6 +227,57 @@ describe("chat message action cards", () => {
     expect(configureLink).toHaveAttribute("href", proposalUrl);
   });
 
+  it("renders delegated computer use authorization links as action cards", async () => {
+    const authorizationUrl =
+      "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-computer-use-authorization`,
+      threadTitle: "Computer Use authorization card",
+      chatMessages: [
+        {
+          id: "msg-user-computer-use-authorization",
+          role: "user",
+          content: "Use my desktop",
+          runId: "run-computer-use-authorization",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-computer-use-authorization-card",
+          role: "assistant",
+          content: authorizationUrl,
+          runId: "run-computer-use-authorization",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
+      },
+      path: `/chats/${THREAD_ID}-computer-use-authorization`,
+    });
+
+    const card = await screen.findByTestId("computer-use-authorization-card");
+    expect(
+      within(card).getByText("Computer Use authorization"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "Select a Desktop host for future runs in this thread.",
+      ),
+    ).toBeInTheDocument();
+    const authorizeLink = queryAllByRoleFast("link", card).find((link) => {
+      return /authorize/i.test(link.textContent ?? "");
+    });
+    expect(authorizeLink).toHaveAttribute(
+      "href",
+      "/computer-use/authorize/vm0_computer_use_authorization_request_test",
+    );
+  });
+
   it("automatically retries permission action loading before showing an error", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;

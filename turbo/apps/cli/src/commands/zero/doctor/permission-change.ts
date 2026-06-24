@@ -11,6 +11,10 @@ import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,
 } from "./computer-use-guidance";
+import {
+  ApiRequestError,
+  createComputerUseAuthorizationRequest,
+} from "../../../lib/api";
 
 const DEFAULT_PERMISSION_GRANT_DURATION: UserPermissionGrantExpiresIn = "1h";
 const PERMISSION_GRANT_DURATIONS = [
@@ -84,6 +88,55 @@ function printPermissionActionMessage(args: {
     console.log(
       `Requested duration: ${args.duration}. Use --duration 1h|24h|7d|always to choose a different grant lifetime.`,
     );
+  }
+}
+
+function printComputerUseAuthorizationLink(args: {
+  readonly authorizationUrl: string;
+  readonly expiresAt: string;
+}): void {
+  console.log(
+    "Computer Use needs a Zero Desktop host selected before a run starts.",
+  );
+  console.log(
+    "Ask the user to authorize a host for future runs in this chat or Slack thread:",
+  );
+  console.log(args.authorizationUrl);
+  console.log(
+    `This link expires at ${args.expiresAt}. Existing run tokens cannot be upgraded in place; start a new run after authorization.`,
+  );
+}
+
+async function printComputerUsePermissionChangeMessage(
+  action: PermissionAction,
+): Promise<void> {
+  if (action !== "enable") {
+    printComputerUsePermissionGuidance();
+    return;
+  }
+
+  if (!process.env.ZERO_TOKEN) {
+    printComputerUsePermissionGuidance();
+    return;
+  }
+
+  try {
+    const request = await createComputerUseAuthorizationRequest();
+    printComputerUseAuthorizationLink({
+      authorizationUrl: request.authorizationUrl,
+      expiresAt: request.expiresAt,
+    });
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      console.log(
+        `Computer Use authorization link unavailable: ${error.message}`,
+      );
+      printComputerUsePermissionGuidance();
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.log(`Computer Use authorization link unavailable: ${message}`);
+    printComputerUsePermissionGuidance();
   }
 }
 
@@ -204,7 +257,9 @@ Notes:
             permission: opts.permission,
           })
         ) {
-          printComputerUsePermissionGuidance();
+          await printComputerUsePermissionChangeMessage(
+            opts.enable ? "enable" : "disable",
+          );
           return;
         }
 

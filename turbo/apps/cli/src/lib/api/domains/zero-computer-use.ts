@@ -1,11 +1,13 @@
 import { initClient } from "@ts-rest/core";
 import type {
+  ComputerUseAuthorizationRequestCreateResponse,
   ComputerUseCommandCreateResponse,
   ComputerUseCommandResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
+  zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
@@ -146,6 +148,21 @@ export async function getComputerUseCommand(
   }
 
   handleError(result, "Failed to get computer-use command");
+}
+
+export async function createComputerUseAuthorizationRequest(): Promise<ComputerUseAuthorizationRequestCreateResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(
+    zeroComputerUseAuthorizationRequestsContract,
+    config,
+  );
+  const result = await client.create({ body: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create computer-use authorization request");
 }
 
 /**

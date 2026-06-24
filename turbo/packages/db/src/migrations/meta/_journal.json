@@ -3501,6 +3501,13 @@
       "when": 1782293870738,
       "tag": "0499_zippy_agent_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 500,
+      "version": "7",
+      "when": 1782296951051,
+      "tag": "0500_fast_the_twelve",
+      "breakpoints": true
     }
   ]
 }
