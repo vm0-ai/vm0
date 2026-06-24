@@ -675,15 +675,6 @@ function buildGmailNewMessageEventConfig(
 ): GmailNewMessageEventConfig {
   const baseMatch = baseConfig?.match;
   const match: GmailMatchRules = {};
-  if (baseMatch?.snippet) {
-    match.snippet = baseMatch.snippet;
-  }
-  if (baseMatch?.labels) {
-    match.labels = baseMatch.labels;
-  }
-  if (baseMatch?.hasAttachment !== undefined) {
-    match.hasAttachment = baseMatch.hasAttachment;
-  }
   for (const { field } of GMAIL_TEXT_FIELDS) {
     const existing = baseMatch?.[field];
     const contains = formTextValue(form, `${field}Contains`);
@@ -752,9 +743,6 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
     if (matcher) {
       parts.push(...textMatcherParts(field, matcher));
     }
-  }
-  if (match.snippet || match.labels || match.hasAttachment !== undefined) {
-    parts.push("custom match rules");
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }

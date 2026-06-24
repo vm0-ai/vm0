@@ -61,9 +61,6 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
       parts.push(...textMatcherParts(field, matcher));
     }
   }
-  if (match.snippet || match.labels || match.hasAttachment !== undefined) {
-    parts.push("custom match rules");
-  }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 

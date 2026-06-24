@@ -122,7 +122,6 @@ function configureGmailMessageMocks(): void {
           id: "msg-1",
           threadId: "gmail-thread-1",
           labelIds: ["INBOX", "IMPORTANT"],
-          snippet: "Need help with the invoice",
           payload: {
             mimeType: "multipart/alternative",
             headers: [
