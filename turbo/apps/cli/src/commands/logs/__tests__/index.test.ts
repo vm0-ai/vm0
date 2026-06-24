@@ -1515,8 +1515,14 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "turn.failed",
+                    error: "Turn failed.",
                     turn: {
                       id: "turn-1",
+                      duration_ms: 2500,
+                      usage: {
+                        input_tokens: 12,
+                        output_tokens: 3,
+                      },
                       error: {
                         message: "selected model is at capacity",
                         additional_details: "retry later",
@@ -1538,6 +1544,9 @@ describe("logs command", () => {
       expect(logCalls).toContain("Codex Failed");
       expect(logCalls).toContain("selected model is at capacity");
       expect(logCalls).toContain("retry later");
+      expect(logCalls).toContain("Duration:");
+      expect(logCalls).toContain("2.5s");
+      expect(logCalls).toContain("input=12 output=3");
       expect(logCalls).not.toContain("Turn failed");
     });
 
@@ -1609,6 +1618,51 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
+    });
+
+    it("should render top-level error event with nested turn error details", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "error",
+                    error: "Unknown error",
+                    turn: {
+                      id: "turn-1",
+                      duration_ms: 1200,
+                      usage: {
+                        input_tokens: 9,
+                        output_tokens: 2,
+                      },
+                      error: {
+                        message: "authentication expired",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("authentication expired");
+      expect(logCalls).toContain("1.2s");
+      expect(logCalls).toContain("input=9 output=2");
+      expect(logCalls).not.toContain("Unknown error");
     });
 
     it("should collapse paired top-level error and turn.failed into one Codex failure", async () => {
@@ -2682,6 +2736,19 @@ describe("logs command", () => {
                     },
                   },
                 },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "message-error",
+                      type: "agent_message",
+                      error: { message: "message unavailable" },
+                    },
+                  },
+                },
               ],
               framework: "codex",
               hasMore: false,
@@ -2697,6 +2764,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("read was denied");
       expect(logCalls).toContain("[files]");
       expect(logCalls).toContain("patch rejected");
+      expect(logCalls).toContain("message unavailable");
       expect(countOccurrences(logCalls, "✗")).toBeGreaterThanOrEqual(2);
       expect(logCalls).not.toContain("File read completed");
     });

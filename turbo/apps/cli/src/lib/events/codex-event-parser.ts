@@ -250,6 +250,20 @@ function combineDistinctMessages(
   return messages.length > 0 ? messages.join("\n") : undefined;
 }
 
+function isGenericFailureMessage(message: string): boolean {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.:!?]+$/u, "");
+  return (
+    normalized === "error" ||
+    normalized === "turn failed" ||
+    normalized === "turn interrupted" ||
+    normalized === "unknown error" ||
+    normalized === "codex error"
+  );
+}
+
 function combineResultWithError(
   result: string | undefined,
   errorMessage: string | undefined,
@@ -405,15 +419,26 @@ function getTurnErrorMessage(
   event: JsonRecord,
   turn: JsonRecord | null,
 ): string | undefined {
-  return combineDistinctMessages(
-    turn !== null ? extractErrorMessage(turn.error) : undefined,
-    extractEventErrorMessage(event),
-  );
+  const turnMessage =
+    turn !== null ? extractErrorMessage(turn.error) : undefined;
+  const eventMessage = extractEventErrorMessage(event);
+  if (turnMessage && eventMessage && isGenericFailureMessage(eventMessage)) {
+    return turnMessage;
+  }
+  return combineDistinctMessages(turnMessage, eventMessage);
 }
 
 function getUsage(event: JsonRecord): JsonRecord {
   const turn = getTurnRecord(event);
   return asRecord(event.usage) ?? (turn ? asRecord(turn.usage) : null) ?? {};
+}
+
+function getTurnDurationMs(event: JsonRecord, turn: JsonRecord | null): number {
+  return (
+    (turn ? getFirstNumber(turn, ["duration_ms", "durationMs"]) : undefined) ??
+    getFirstNumber(event, ["duration_ms", "durationMs"]) ??
+    0
+  );
 }
 
 function getItem(event: JsonRecord): JsonRecord | null {
@@ -434,6 +459,17 @@ function getItemStatus(item: JsonRecord): string | undefined {
 
 function getItemErrorMessage(item: JsonRecord): string | undefined {
   return extractErrorMessage(item.error);
+}
+
+function shouldRenderGenericItemFailure(
+  eventType: string,
+  item: JsonRecord,
+): boolean {
+  return (
+    eventType === "item.completed" &&
+    (isFailedStatus(getItemStatus(item)) ||
+      getItemErrorMessage(item) !== undefined)
+  );
 }
 
 function formatPlanStatus(status: string | undefined): string {
@@ -582,12 +618,7 @@ export class CodexEventParser {
     const status = getTurnStatus(event);
     const turn = getTurnRecord(event);
     const turnId = getTurnId(event);
-    const durationMs =
-      (turn
-        ? getFirstNumber(turn, ["duration_ms", "durationMs"])
-        : undefined) ??
-      getFirstNumber(event, ["duration_ms", "durationMs"]) ??
-      0;
+    const durationMs = getTurnDurationMs(event, turn);
 
     if (
       isUnsuccessfulTurnCompletionStatus(status) ||
@@ -635,10 +666,10 @@ export class CodexEventParser {
       data: {
         success: false,
         result: getTurnErrorMessage(event, turn) ?? "Turn failed",
-        durationMs: 0,
+        durationMs: getTurnDurationMs(event, turn),
         numTurns: 1,
         cost: 0,
-        usage: {},
+        usage: getUsage(event),
         ...(turnId ? { turnId } : {}),
       },
     };
@@ -692,10 +723,9 @@ export class CodexEventParser {
     }
 
     if (itemType === "agent_message") {
-      const text = trimmedStringValue(item.text);
-      return text
-        ? { type: "text", timestamp: new Date(), data: { text } }
-        : null;
+      return this.parseTextItem(eventType, item, (text) => {
+        return text;
+      });
     }
     if (itemType === "command_execution") {
       return this.parseCommandExecution(eventType, item);
@@ -710,34 +740,49 @@ export class CodexEventParser {
       return this.parseFileChange(item);
     }
     if (itemType === "reasoning") {
-      const text = trimmedStringValue(item.text);
-      return text
-        ? {
-            type: "text",
-            timestamp: new Date(),
-            data: { text: `[thinking] ${text}` },
-          }
-        : null;
+      return this.parseTextItem(eventType, item, (text) => {
+        return `[thinking] ${text}`;
+      });
     }
     if (itemType === "plan") {
-      const text = trimmedStringValue(item.text);
-      return text
-        ? {
-            type: "text",
-            timestamp: new Date(),
-            data: { text: `[plan]\n${text}` },
-          }
-        : null;
+      return this.parseTextItem(eventType, item, (text) => {
+        return `[plan]\n${text}`;
+      });
     }
 
     if (eventType === "item.completed") {
-      const text = formatGenericItem(item);
-      return text
-        ? { type: "text", timestamp: new Date(), data: { text } }
-        : null;
+      return this.parseGenericCompletedItem(item);
     }
 
     return null;
+  }
+
+  private static parseTextItem(
+    eventType: string,
+    item: JsonRecord,
+    formatText: (text: string) => string,
+  ): ParsedEvent | null {
+    const text = trimmedStringValue(item.text);
+    if (text) {
+      return {
+        type: "text",
+        timestamp: new Date(),
+        data: { text: formatText(text) },
+      };
+    }
+
+    return shouldRenderGenericItemFailure(eventType, item)
+      ? this.parseGenericCompletedItem(item)
+      : null;
+  }
+
+  private static parseGenericCompletedItem(
+    item: JsonRecord,
+  ): ParsedEvent | null {
+    const text = formatGenericItem(item);
+    return text
+      ? { type: "text", timestamp: new Date(), data: { text } }
+      : null;
   }
 
   private static parseCommandExecution(
@@ -931,17 +976,19 @@ export class CodexEventParser {
   }
 
   private static parseErrorEvent(event: JsonRecord): ParsedEvent | null {
+    const turn = getTurnRecord(event);
     const turnId = getTurnId(event);
+    const hasTurnContext = turn !== null || turnId !== undefined;
     return {
       type: "result",
       timestamp: new Date(),
       data: {
         success: false,
-        result: extractEventErrorMessage(event) ?? "Unknown error",
-        durationMs: 0,
-        numTurns: 0,
+        result: getTurnErrorMessage(event, turn) ?? "Unknown error",
+        durationMs: getTurnDurationMs(event, turn),
+        numTurns: hasTurnContext ? 1 : 0,
         cost: 0,
-        usage: {},
+        usage: getUsage(event),
         ...(turnId ? { turnId } : {}),
       },
     };
