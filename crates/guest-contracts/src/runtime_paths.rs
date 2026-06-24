@@ -252,6 +252,29 @@ fn chmod_dir_fd(fd: &OwnedFd, path: &Path) -> io::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
+fn chmod_proc_fd_path(fd: &OwnedFd, name: &OsStr, full_path: &Path) -> io::Result<()> {
+    let proc_fd_path =
+        CString::new(format!("/proc/self/fd/{}", fd.as_raw_fd())).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid proc fd path while chmodding runtime directory: {error}"),
+            )
+        })?;
+    // SAFETY: `proc_fd_path` is NUL-terminated and points to this process's
+    // still-open O_PATH fd, so chmod applies to the pinned directory.
+    let result = unsafe { libc::chmod(proc_fd_path.as_ptr(), PRIVATE_DIR_MODE) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(wrap_last_os_error(format!(
+            "chmod newly-created runtime directory component {} for {} through proc fd",
+            name.to_string_lossy(),
+            full_path.display()
+        )))
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn chmod_created_dir_component(
     parent: &OwnedFd,
     name: &OsStr,
@@ -293,10 +316,10 @@ fn chmod_created_dir_component(
         error.raw_os_error(),
         Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP)
     ) {
-        // Older kernels may not support fchmodat(AT_EMPTY_PATH). The regular
-        // openat + fchmod path below still fixes modes when the umask left owner
-        // access intact, which is the common guest case.
-        return Ok(());
+        // Older kernels may not support fchmodat(AT_EMPTY_PATH). The O_PATH fd
+        // still pins the directory, so chmod through /proc/self/fd instead of
+        // falling back to the original path.
+        return chmod_proc_fd_path(&fd, name, full_path);
     }
 
     Err(io::Error::new(
@@ -683,6 +706,10 @@ fn path_is_under(path: &Path, parent: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use std::os::fd::FromRawFd;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::ffi::OsStrExt;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -752,6 +779,30 @@ mod tests {
             assert_eq!(mode(temp.path().join("run/logs")), 0o700);
             assert_eq!(mode(&path), 0o600);
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn chmod_proc_fd_path_updates_o_path_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("run");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let path_c = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `path_c` is NUL-terminated and points to the test directory.
+        let raw_fd = unsafe {
+            libc::open(
+                path_c.as_ptr(),
+                libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        assert!(raw_fd >= 0, "open O_PATH: {}", io::Error::last_os_error());
+        // SAFETY: `raw_fd` is a fresh descriptor returned by `open`.
+        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        chmod_proc_fd_path(&fd, OsStr::new("run"), &path).unwrap();
+
+        assert_eq!(mode(&path), 0o700);
     }
 
     #[test]
