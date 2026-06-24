@@ -18,7 +18,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{fix_guest_clock, reseed_guest_entropy, sync_guest_timezone};
 use super::session_restore::restore_session;
-use super::storage::{download_storages, filter_unchanged_storages, guest_download_has_work};
+use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
@@ -252,7 +252,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if let Some(manifest) = &context.storage_manifest {
         let guest_manifest = GuestDownloadManifest::from(manifest);
         let mut effective: GuestDownloadManifest = match start.prev_storage {
-            Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
+            Some(prev) => apply_storage_fingerprint_reuse(&guest_manifest, prev),
             None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if no downloads, cleanup, or

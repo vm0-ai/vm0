@@ -1,6 +1,6 @@
 //! Runner-side content-addressed cache for small storage archives.
 //!
-//! Sits between `filter_unchanged_storages` and `download_storages` in
+//! Sits between `apply_storage_fingerprint_reuse` and `download_storages` in
 //! `run_in_sandbox`. For each eligible manifest entry, checks a host-local
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
 //! tarball from disk and pushes it into the guest via vsock; on miss,
@@ -15,7 +15,7 @@
 //!
 //! Entries above [`CACHE_MAX_SIZE`], entries without a content key, and
 //! entries already marked `cached = true` (reuse-in-place from
-//! `filter_unchanged_storages`) pass through untouched.
+//! `apply_storage_fingerprint_reuse`) pass through untouched.
 //! If the probe says an entry is cache-eligible but the full response exceeds
 //! [`CACHE_MAX_SIZE`], the cache fails closed instead of handing the same
 //! inconsistent URL to the guest.
@@ -153,7 +153,7 @@ impl GuestWriteLocks {
 ///
 /// Invariant: only touches entries where `cached == false`, `archive_url.is_some()`,
 /// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
-/// `filter_unchanged_storages` marked as reuse-in-place (`archive_url = None`)
+/// `apply_storage_fingerprint_reuse` marked as reuse-in-place (`archive_url = None`)
 /// are left untouched.
 pub async fn populate_cache(
     manifest: &mut GuestDownloadManifest,

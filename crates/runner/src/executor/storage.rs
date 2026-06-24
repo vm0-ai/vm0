@@ -1,5 +1,7 @@
 //! Storage manifest filtering and guest download helpers.
 
+use std::collections::{HashMap, HashSet};
+
 use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecRequest, Sandbox};
 use tracing::info;
 
@@ -11,25 +13,60 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
 };
 
-pub(super) fn filter_unchanged_storages(
+#[derive(Default)]
+struct ManifestReuseFilter {
+    skipped: usize,
+    cleanup_paths: Vec<String>,
+}
+
+impl ManifestReuseFilter {
+    fn record_entry(
+        &mut self,
+        previous: Option<&StorageFingerprint>,
+        mount_path: &str,
+        vas_storage_name: &str,
+        vas_version_id: &str,
+    ) -> bool {
+        let unchanged = previous
+            .is_some_and(|fingerprint| fingerprint.matches(vas_storage_name, vas_version_id));
+        if unchanged {
+            self.skipped += 1;
+        } else {
+            self.cleanup_paths.push(mount_path.to_string());
+        }
+        unchanged
+    }
+
+    fn record_removed_paths<'a>(
+        &mut self,
+        previous: &HashMap<String, StorageFingerprint>,
+        current_paths: impl IntoIterator<Item = &'a str>,
+    ) {
+        let current_paths: HashSet<&str> = current_paths.into_iter().collect();
+        for prev_path in previous.keys() {
+            if !current_paths.contains(prev_path.as_str()) {
+                self.cleanup_paths.push(prev_path.clone());
+            }
+        }
+    }
+}
+
+pub(super) fn apply_storage_fingerprint_reuse(
     manifest: &GuestDownloadManifest,
     prev: &StorageFingerprints,
 ) -> GuestDownloadManifest {
-    let mut skipped: usize = 0;
-    let mut cleanup_paths: Vec<String> = Vec::new();
+    let mut filter = ManifestReuseFilter::default();
 
     let storages: Vec<GuestDownloadStorageEntry> = manifest
         .storages
         .iter()
         .map(|s| {
-            let unchanged = prev.storages.get(&s.mount_path).is_some_and(|fingerprint| {
-                fingerprint.matches(&s.vas_storage_name, &s.vas_version_id)
-            });
-            if unchanged {
-                skipped += 1;
-            } else {
-                cleanup_paths.push(s.mount_path.clone());
-            }
+            let unchanged = filter.record_entry(
+                prev.storages.get(&s.mount_path),
+                &s.mount_path,
+                &s.vas_storage_name,
+                &s.vas_version_id,
+            );
             GuestDownloadStorageEntry {
                 archive_url: if unchanged {
                     None
@@ -43,58 +80,42 @@ pub(super) fn filter_unchanged_storages(
         })
         .collect();
 
-    // Detect removed storages: paths in previous fingerprints not in current manifest.
-    let current_paths: std::collections::HashSet<&str> = manifest
-        .storages
-        .iter()
-        .map(|s| s.mount_path.as_str())
-        .collect();
-    for prev_path in prev.storages.keys() {
-        if !current_paths.contains(prev_path.as_str()) {
-            cleanup_paths.push(prev_path.clone());
-        }
-    }
-
-    let filter_artifact = |a: &GuestDownloadArtifactEntry,
-                           prev_ver: Option<&StorageFingerprint>,
-                           skipped: &mut usize,
-                           cleanup: &mut Vec<String>| {
-        let same = prev_ver
-            .is_some_and(|fingerprint| fingerprint.matches(&a.vas_storage_name, &a.vas_version_id));
-        if same {
-            *skipped += 1;
-        } else {
-            cleanup.push(a.mount_path.clone());
-        }
-        GuestDownloadArtifactEntry {
-            archive_url: a.archive_url.clone(),
-            cached: same,
-            ..a.clone()
-        }
-    };
+    filter.record_removed_paths(
+        &prev.storages,
+        manifest.storages.iter().map(|s| s.mount_path.as_str()),
+    );
 
     let artifacts: Vec<GuestDownloadArtifactEntry> = manifest
         .artifacts
         .iter()
         .map(|a| {
-            let prev_ver = prev.artifacts.get(&a.mount_path);
-            filter_artifact(a, prev_ver, &mut skipped, &mut cleanup_paths)
+            let unchanged = filter.record_entry(
+                prev.artifacts.get(&a.mount_path),
+                &a.mount_path,
+                &a.vas_storage_name,
+                &a.vas_version_id,
+            );
+            GuestDownloadArtifactEntry {
+                archive_url: a.archive_url.clone(),
+                cached: unchanged,
+                ..a.clone()
+            }
         })
         .collect();
-    // Detect removed artifacts: previous artifact mount_paths not in current manifest.
-    let current_artifact_paths: std::collections::HashSet<&str> = manifest
-        .artifacts
-        .iter()
-        .map(|a| a.mount_path.as_str())
-        .collect();
-    for prev_path in prev.artifacts.keys() {
-        if !current_artifact_paths.contains(prev_path.as_str()) {
-            cleanup_paths.push(prev_path.clone());
-        }
-    }
+
+    filter.record_removed_paths(
+        &prev.artifacts,
+        manifest.artifacts.iter().map(|a| a.mount_path.as_str()),
+    );
+
+    let ManifestReuseFilter {
+        skipped,
+        cleanup_paths,
+    } = filter;
+
     if skipped > 0 {
         let total = manifest.storages.len() + manifest.artifacts.len();
-        info!(skipped, total, "filtered unchanged storage entries");
+        info!(skipped, total, "filtered unchanged manifest entries");
     }
 
     if !cleanup_paths.is_empty() {
