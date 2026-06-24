@@ -10,7 +10,7 @@ import {
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
-import { getConnectorFirewall } from "@vm0/connectors/firewalls";
+import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -50,6 +50,8 @@ const context = testContext();
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const connectorFirewalls = getAllConnectorFirewalls();
+type ConnectorFirewallType = keyof typeof connectorFirewalls;
 
 function modelProviderPlaceholder(
   type: ModelProviderType,
@@ -64,10 +66,10 @@ function modelProviderPlaceholder(
 }
 
 function connectorPlaceholder(
-  type: Parameters<typeof getConnectorFirewall>[0],
+  type: ConnectorFirewallType,
   secretName: string,
 ): string {
-  const placeholder = getConnectorFirewall(type)?.placeholders?.[secretName];
+  const placeholder = connectorFirewalls[type].placeholders?.[secretName];
   if (!placeholder) {
     throw new Error(`Missing connector placeholder for ${secretName}`);
   }
