@@ -1564,6 +1564,7 @@ class TestResponseHandler:
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["model_usage_provider"] = "gpt-5.5"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
