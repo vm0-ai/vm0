@@ -3,7 +3,9 @@ use sandbox_mock::MockSandbox;
 use tracing::Level;
 use tracing_subscriber::prelude::*;
 
-use super::super::guest_state::{restore_guest_state, sync_guest_timezone};
+use super::super::guest_state::{
+    restore_guest_state, restore_guest_state_with_timezone, sync_guest_timezone,
+};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_exec_error};
 use crate::ids::RunId;
 use crate::types::ExecutionContext;
@@ -67,6 +69,41 @@ async fn restore_guest_state_folds_timezone_sync_into_restore_exec() {
     assert!(calls[0].sudo);
     let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
     assert_eq!(stdin_bytes.len(), 256);
+}
+
+#[tokio::test]
+async fn restore_guest_state_with_explicit_timezone_folds_sync_into_restore_exec() {
+    let sandbox = MockSandbox::new("test");
+
+    restore_guest_state_with_timezone(&sandbox, "UTC")
+        .await
+        .unwrap();
+
+    let calls = sandbox.exec_calls();
+    assert_eq!(calls.len(), 1);
+    let command = &calls[0].cmd;
+    assert!(command.contains("date -s \"@"));
+    assert!(command.contains("guest-reseed"));
+    assert!(
+        command.contains("if test -f /usr/share/zoneinfo/UTC; then { echo 'UTC' > /etc/timezone"),
+        "unexpected command: {command}"
+    );
+    assert!(command.contains("echo 'TZ=UTC' >> /etc/environment"));
+    assert!(command.contains("guest timezone sync failed"));
+}
+
+#[tokio::test]
+async fn restore_guest_state_with_explicit_timezone_rejects_invalid_timezone_before_exec() {
+    let sandbox = MockSandbox::new("test");
+
+    let result = restore_guest_state_with_timezone(&sandbox, "UTC;id").await;
+
+    let message = result.unwrap_err().to_string();
+    assert!(
+        message.contains("invalid timezone"),
+        "unexpected error: {message}"
+    );
+    assert!(sandbox.exec_calls().is_empty());
 }
 
 #[tokio::test]
