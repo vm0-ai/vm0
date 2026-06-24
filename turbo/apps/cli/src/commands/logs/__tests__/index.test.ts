@@ -2907,6 +2907,7 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:01Z",
                   eventData: {
                     type: "turn.completed",
+                    duration_ms: -1000,
                     turn: {
                       id: "turn-1",
                       status: "failed",
@@ -2916,7 +2917,7 @@ describe("logs command", () => {
                       },
                       usage: {
                         input_tokens: "not-a-number",
-                        output_tokens: "also-not-a-number",
+                        output_tokens: -7,
                       },
                     },
                   },
@@ -2952,8 +2953,10 @@ describe("logs command", () => {
       expect(mockExit).not.toHaveBeenCalled();
       expect(logCalls).toContain("server_error");
       expect(logCalls).toContain("retry later");
+      expect(logCalls).toContain("Duration: 0.0s");
       expect(logCalls).toContain("input=0 output=0");
       expect(logCalls).not.toContain("NaN");
+      expect(logCalls).not.toContain("output=-7");
       expect(logCalls).toContain("Modified: /workspace/ok.ts");
       expect(logCalls).not.toContain("[object Object]");
     });

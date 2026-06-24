@@ -54,9 +54,16 @@ function displayString(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function displayNumber(value: unknown): number {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : 0;
+function displayNonNegativeNumber(value: unknown): number {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : undefined;
+  return number !== undefined && Number.isFinite(number) && number >= 0
+    ? number
+    : 0;
 }
 
 /**
@@ -420,17 +427,17 @@ export class EventRenderer {
       }
     }
 
-    const durationMs = displayNumber(event.data.durationMs);
+    const durationMs = displayNonNegativeNumber(event.data.durationMs);
     const durationSec = (durationMs / 1000).toFixed(1);
     console.log(`  Duration: ${chalk.dim(durationSec + "s")}`);
 
-    const numTurns = displayNumber(event.data.numTurns);
+    const numTurns = displayNonNegativeNumber(event.data.numTurns);
     console.log(`  Turns: ${chalk.dim(String(numTurns))}`);
 
     const usage = event.data.usage as Record<string, unknown>;
     if (usage && typeof usage === "object") {
-      const inputTokens = displayNumber(usage.input_tokens);
-      const outputTokens = displayNumber(usage.output_tokens);
+      const inputTokens = displayNonNegativeNumber(usage.input_tokens);
+      const outputTokens = displayNonNegativeNumber(usage.output_tokens);
 
       const formatTokens = (count: number): string => {
         if (count >= 1000) {
