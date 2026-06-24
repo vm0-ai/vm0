@@ -147,6 +147,10 @@ pub(super) fn guest_download_command() -> String {
     format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
 }
 
+pub(super) fn guest_download_stdin_command() -> String {
+    format!("{} --manifest-stdin", guest::DOWNLOAD_BIN)
+}
+
 pub(super) fn guest_download_env<'a>(
     run_id: &'a str,
     runtime_dir: &'a str,
@@ -167,11 +171,17 @@ pub(super) async fn download_storages(
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
-    sandbox
-        .write_file(guest::STORAGE_MANIFEST, &manifest_json)
-        .await?;
+    let use_stdin = manifest_json.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES;
+    let download_cmd = if use_stdin {
+        guest_download_stdin_command()
+    } else {
+        sandbox
+            .write_file(guest::STORAGE_MANIFEST, &manifest_json)
+            .await?;
+        guest_download_command()
+    };
+    let stdin_bytes = use_stdin.then_some(manifest_json.as_slice());
 
-    let download_cmd = guest_download_command();
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id)?;
     let download_env = guest_download_env(&run_id, &runtime_dir);
@@ -183,7 +193,7 @@ pub(super) async fn download_storages(
                 timeout: DEFAULT_EXEC_TIMEOUT,
                 env: &download_env,
                 sudo: false,
-                stdin_bytes: None,
+                stdin_bytes,
                 output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
             },
             "storage-download",

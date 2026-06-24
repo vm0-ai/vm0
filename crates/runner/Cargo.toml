@@ -29,6 +29,7 @@ tokio-util = { workspace = true, features = ["io", "io-util"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
+vsock-proto = { workspace = true }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }

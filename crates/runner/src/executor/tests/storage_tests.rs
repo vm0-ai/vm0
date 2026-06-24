@@ -8,16 +8,18 @@ use super::super::guest_runtime_dir;
 use super::super::storage::{
     apply_storage_fingerprint_reuse, download_storages, format_guest_download_failure,
     guest_download_command, guest_download_env, guest_download_has_work,
+    guest_download_stdin_command,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
 use crate::helper_exec::{HELPER_EXEC_OUTPUT_EXCERPT_BYTES, format_command_output_excerpt};
+use crate::paths::guest;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
 
 #[tokio::test]
 async fn download_storages_success() {
     let sandbox = MockSandbox::new("test");
-    // write_file succeeds by default, exec returns exit 0 by default.
+    // exec returns exit 0 by default.
     let ctx = minimal_context();
     let manifest = GuestDownloadManifest {
         storages: vec![guest_storage(
@@ -29,7 +31,17 @@ async fn download_storages_success() {
         artifacts: vec![],
         cleanup_paths: vec![],
     };
+    let manifest_json = serde_json::to_vec(&manifest).unwrap();
     download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+
+    assert!(sandbox.write_file_calls().is_empty());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_download_stdin_command());
+    assert_eq!(
+        exec_calls[0].stdin_bytes.as_deref(),
+        Some(manifest_json.as_slice())
+    );
 }
 
 #[test]
@@ -40,6 +52,16 @@ fn guest_download_command_uses_guest_common_system_log_without_shell_redirect() 
         cmd,
         "/usr/local/bin/guest-download /tmp/storage-manifest.json"
     );
+    assert!(!cmd.contains(">>"));
+    assert!(!cmd.contains("2>&1"));
+    assert!(!cmd.contains("--system-log"));
+}
+
+#[test]
+fn guest_download_stdin_command_uses_explicit_stdin_mode_without_shell_redirect() {
+    let cmd = guest_download_stdin_command();
+
+    assert_eq!(cmd, "/usr/local/bin/guest-download --manifest-stdin");
     assert!(!cmd.contains(">>"));
     assert!(!cmd.contains("2>&1"));
     assert!(!cmd.contains("--system-log"));
@@ -62,9 +84,48 @@ fn guest_download_env_includes_run_id_for_guest_common_logs() {
 }
 
 #[tokio::test]
+async fn download_storages_exact_stdin_limit_uses_fast_path() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES);
+    let manifest_json = serde_json::to_vec(&manifest).unwrap();
+    assert_eq!(manifest_json.len(), vsock_proto::MAX_EXEC_STDIN_BYTES);
+
+    download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+
+    assert!(sandbox.write_file_calls().is_empty());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_download_stdin_command());
+    assert_eq!(
+        exec_calls[0].stdin_bytes.as_deref(),
+        Some(manifest_json.as_slice())
+    );
+}
+
+#[tokio::test]
+async fn download_storages_oversized_manifest_falls_back_to_write_file() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest_json = serde_json::to_vec(&manifest).unwrap();
+
+    download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, guest::STORAGE_MANIFEST);
+    assert_eq!(writes[0].content, manifest_json);
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_download_command());
+    assert!(exec_calls[0].stdin_bytes.is_none());
+}
+
+#[tokio::test]
 async fn download_storages_nonzero_exit_code() {
     let sandbox = MockSandbox::new("test");
-    // write_file succeeds, but exec returns non-zero.
+    // Exec returns non-zero so failure formatting includes helper output.
     sandbox.push_exec_result(Ok(ExecResult::new(
             1,
             b"stdout clue".to_vec(),
@@ -199,15 +260,12 @@ async fn download_storages_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
     let ctx = minimal_context();
-    let manifest = GuestDownloadManifest {
-        storages: vec![],
-        artifacts: vec![],
-        cleanup_paths: vec![],
-    };
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
     let err = download_storages(&sandbox, &ctx, &manifest)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("vsock write failed"), "got: {err}");
+    assert!(sandbox.exec_calls().is_empty());
 }
 
 // -----------------------------------------------------------------------
@@ -216,6 +274,19 @@ async fn download_storages_fails_on_write_file_error() {
 
 fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
     guest_art_with_policy(name, ver, url, None)
+}
+
+fn manifest_with_serialized_len(len: usize) -> GuestDownloadManifest {
+    let mut manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: vec![String::new()],
+    };
+    let empty_len = serde_json::to_vec(&manifest).unwrap().len();
+    assert!(len >= empty_len);
+    manifest.cleanup_paths[0] = "x".repeat(len - empty_len);
+    assert_eq!(serde_json::to_vec(&manifest).unwrap().len(), len);
+    manifest
 }
 
 fn guest_art_with_policy(

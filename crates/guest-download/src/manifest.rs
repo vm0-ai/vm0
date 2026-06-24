@@ -18,7 +18,11 @@ pub(crate) struct Manifest {
 impl Manifest {
     pub(crate) fn load(manifest_path: &str) -> Result<Self, ManifestLoadError> {
         let manifest_json = fs::read_to_string(manifest_path).map_err(ManifestLoadError::Read)?;
-        serde_json::from_str(&manifest_json).map_err(ManifestLoadError::Parse)
+        Self::parse(manifest_json.as_bytes()).map_err(ManifestLoadError::Parse)
+    }
+
+    pub(crate) fn parse(manifest_json: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(manifest_json)
     }
 }
 

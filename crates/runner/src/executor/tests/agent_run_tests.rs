@@ -8,7 +8,7 @@ use sandbox_mock::MockSandboxFactory;
 
 use super::super::agent_run::{ProcessCancelTimeouts, RunControls, RunStart, run_in_sandbox};
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
-use super::super::storage::guest_download_command;
+use super::super::storage::guest_download_stdin_command;
 use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT};
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
@@ -120,7 +120,7 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
     assert!(
         exec_calls
             .iter()
-            .any(|call| call.cmd == guest_download_command()),
+            .any(|call| call.cmd == guest_download_stdin_command()),
         "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
 }
