@@ -278,10 +278,9 @@ jobs:
       )
     timeout-minutes: 5
     outputs:
-      # Keep cross-job architecture metadata sanitized. Jobs that need hosts
-      # resolve the host subset from matrix.id inside that job.
       matrix: ${{ steps.groups.outputs.matrix }}
       representative-group-id: ${{ steps.groups.outputs.representative-group-id }}
+      representative-hosts: ${{ steps.groups.outputs.representative-hosts }}
       representative-target: ${{ steps.groups.outputs.representative-target }}
       representative-cache-suffix: ${{ steps.groups.outputs.representative-cache-suffix }}
     steps:
@@ -300,7 +299,7 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         run: |
-          MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix-with-hosts)
           GROUP_COUNT=$(jq -r 'length' <<<"$MATRIX")
           if [ "$GROUP_COUNT" -lt 1 ]; then
             echo "::error::No runner host architecture groups found"
@@ -311,6 +310,7 @@ jobs:
           {
             echo "matrix=${MATRIX}"
             echo "representative-group-id=$(jq -r '.id' <<<"$REPRESENTATIVE")"
+            echo "representative-hosts=$(jq -r '.hosts' <<<"$REPRESENTATIVE")"
             echo "representative-target=$(jq -r '.target' <<<"$REPRESENTATIVE")"
             echo "representative-cache-suffix=$(jq -r '.cacheSuffix' <<<"$REPRESENTATIVE")"
           } >> "$GITHUB_OUTPUT"
@@ -466,12 +466,10 @@ jobs:
       - name: Select metal host
         id: selected-host
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOSTS: ${{ matrix.hosts }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
           NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
@@ -524,12 +522,10 @@ jobs:
       - name: Select representative metal host
         id: selected-host
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOSTS: ${{ needs.runner-host-groups.outputs.representative-hosts }}
           RUNNER_HOST_GROUP_ID: ${{ needs.runner-host-groups.outputs.representative-group-id }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
           NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
@@ -585,11 +581,9 @@ jobs:
       - name: Resolve metal hosts
         id: hosts
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOSTS: ${{ matrix.hosts }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
           if ! printf '%s\n' "$HOSTS" | grep -q .; then
             echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
             exit 1
