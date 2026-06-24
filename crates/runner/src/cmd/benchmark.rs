@@ -394,7 +394,7 @@ async fn setup_guest(sandbox: &dyn sandbox::Sandbox) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Start sandbox, fix clock, exec command. Returns result + timing.
+/// Start sandbox, restore guest state, exec command. Returns result + timing.
 async fn run_in_sandbox(
     args: &BenchmarkArgs,
     env_pairs: &[(String, String)],
