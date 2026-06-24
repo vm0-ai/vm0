@@ -69,26 +69,23 @@ jobs:
           echo "::error::'confirmed_compatible' must be 'yes'. Operator must vet the target version for API / guest ABI / on-disk state compatibility before rolling back."
           exit 1
 
-      # Reject shell-unsafe / semver-ish injection in target_version. This
-      # string flows into systemd unit names, file paths, URLs, and --name
-      # flags; keep it strictly numeric + dots to match `validate_name` in
-      # crates/runner/src/runner_dirname.rs.
-      - name: Validate target_version format
-        env:
-          VERSION: ${{ inputs.target_version }}
-        shell: bash
-        run: |
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::target_version='$VERSION' is not semver (e.g. 0.81.0). Reject."
-            exit 1
-          fi
-
       # Use main's rollback-runner.yml — this playbook did not exist in
       # older tags. The playbook only calls stable runner CLI surfaces
       # (`service install` / `service drain` / `service stop` / `service
       # resume` / `doctor` / `gc` / `setup` / `build` / `config`), so it
       # works against any target binary the runner CLI contract supports.
       - uses: actions/checkout@v7
+
+      # Reject shell-unsafe / semver-ish injection in target_version using
+      # the same helper that derives release tag and asset names elsewhere.
+      - name: Validate target_version format
+        env:
+          VERSION: ${{ inputs.target_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          . .github/scripts/runner-image-target.sh
+          runner_image_release_tag "$VERSION" >/dev/null
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
