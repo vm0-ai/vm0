@@ -1,7 +1,6 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, run-once, copy, and delete.
-import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -42,9 +41,11 @@ import {
   copyWorkflow$,
   deleteWorkflow$,
   deleteWorkflowTrigger$,
+  editingGmailTriggerId$,
   runWorkflow$,
   runWorkflowTrigger$,
   selectedWorkflowFilePath$,
+  setEditingGmailTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowTriggerEnabled$,
   updateWorkflowGmailNewMessageTrigger$,
@@ -989,19 +990,9 @@ function TriggerRow({
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
 }) {
-  const [editingMatch, setEditingMatch] = useState(false);
-  const pageSignal = useGet(pageSignal$);
-  const [enabledLoadable, setEnabled] = useLoadableSet(
-    setWorkflowTriggerEnabled$,
-  );
-  const [deleteLoadable, deleteTrigger] = useLoadableSet(
-    deleteWorkflowTrigger$,
-  );
-  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowTrigger$);
-  const busy =
-    enabledLoadable.state === "loading" ||
-    deleteLoadable.state === "loading" ||
-    runLoadable.state === "loading";
+  const editingTriggerId = useGet(editingGmailTriggerId$);
+  const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
+  const editingMatch = editingTriggerId === trigger.id;
   const title =
     trigger.kind === "schedule" ? trigger.scheduleSummary : "Gmail new message";
   const matchSummary =
@@ -1049,71 +1040,92 @@ function TriggerRow({
           </Link>
         ) : null}
         {canManage ? (
-          <div className="mt-1 flex items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-              onClick={() => {
-                detach(runTrigger(trigger.id, pageSignal), Reason.DomCallback);
-              }}
-            >
-              Test run
-            </button>
-            {trigger.kind === "event" && !editingMatch ? (
-              <button
-                type="button"
-                disabled={busy}
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                onClick={() => {
-                  setEditingMatch((value) => {
-                    return !value;
-                  });
-                }}
-              >
-                Edit match
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-              onClick={() => {
-                detach(
-                  setEnabled(
-                    { triggerId: trigger.id, enabled: !trigger.enabled },
-                    pageSignal,
-                  ),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              {trigger.enabled ? "Pause" : "Resume"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className="text-xs text-destructive/80 transition-colors hover:text-destructive disabled:opacity-60"
-              onClick={() => {
-                detach(
-                  deleteTrigger(trigger.id, pageSignal),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              Delete
-            </button>
-          </div>
+          <TriggerControls trigger={trigger} editingMatch={editingMatch} />
         ) : null}
         {canManage && trigger.kind === "event" && editingMatch ? (
           <UpdateGmailNewMessageTriggerForm
             trigger={trigger}
             onCancel={() => {
-              setEditingMatch(false);
+              setEditingTriggerId(null);
             }}
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function TriggerControls({
+  trigger,
+  editingMatch,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly editingMatch: boolean;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const [deleteLoadable, deleteTrigger] = useLoadableSet(
+    deleteWorkflowTrigger$,
+  );
+  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowTrigger$);
+  const busy =
+    enabledLoadable.state === "loading" ||
+    deleteLoadable.state === "loading" ||
+    runLoadable.state === "loading";
+
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+        onClick={() => {
+          detach(runTrigger(trigger.id, pageSignal), Reason.DomCallback);
+        }}
+      >
+        Test run
+      </button>
+      {trigger.kind === "event" && !editingMatch ? (
+        <button
+          type="button"
+          disabled={busy}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+          onClick={() => {
+            setEditingTriggerId(trigger.id);
+          }}
+        >
+          Edit match
+        </button>
+      ) : null}
+      <button
+        type="button"
+        disabled={busy}
+        className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+        onClick={() => {
+          detach(
+            setEnabled(
+              { triggerId: trigger.id, enabled: !trigger.enabled },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        {trigger.enabled ? "Pause" : "Resume"}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        className="text-xs text-destructive/80 transition-colors hover:text-destructive disabled:opacity-60"
+        onClick={() => {
+          detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
+        }}
+      >
+        Delete
+      </button>
     </div>
   );
 }
@@ -1139,18 +1151,19 @@ function UpdateGmailNewMessageTriggerForm({
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         detach(
-          updateGmailTrigger(
-            {
-              triggerId: trigger.id,
-              eventConfig: buildGmailNewMessageEventConfig(
-                form,
-                trigger.eventConfig,
-              ),
-            },
-            pageSignal,
-          ).then(() => {
+          (async () => {
+            await updateGmailTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig: buildGmailNewMessageEventConfig(
+                  form,
+                  trigger.eventConfig,
+                ),
+              },
+              pageSignal,
+            );
             onCancel();
-          }),
+          })(),
           Reason.DomCallback,
         );
       }}

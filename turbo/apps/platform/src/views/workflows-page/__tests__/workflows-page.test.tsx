@@ -420,7 +420,7 @@ describe("workflow detail page", () => {
         0,
       );
     });
-    click(screen.getByRole("button", { name: "Edit match" }));
+    click(screen.getByText("Edit match"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail new message trigger",
