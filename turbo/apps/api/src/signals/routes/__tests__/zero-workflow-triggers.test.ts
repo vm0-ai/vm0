@@ -21,6 +21,7 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { encryptStoredSecretValue } from "../../services/crypto.utils";
 import {
@@ -216,6 +217,97 @@ describe("zero workflow triggers", () => {
       throw new Error("Expected a schedule trigger");
     }
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
+  });
+
+  async function createScheduleTrigger(workflowId: string): Promise<string> {
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [201],
+    );
+    expect(created.body.unattendedPermissionPolicy).toBeNull();
+    return created.body.id;
+  }
+
+  it("sets and clears the unattended permission policy from a session", async () => {
+    const { workflowId } = await setupFixture();
+    const triggerId = await createScheduleTrigger(workflowId);
+
+    const set = await accept(
+      triggersClient().setPermissionPolicy({
+        headers: authHeaders(),
+        params: { id: triggerId },
+        body: {
+          unattendedPermissionPolicy: {
+            gmail: { policies: { "messages.write": "allow" } },
+          },
+        },
+      }),
+      [200],
+    );
+    expect(set.body.unattendedPermissionPolicy).toStrictEqual({
+      gmail: { policies: { "messages.write": "allow" } },
+    });
+
+    const cleared = await accept(
+      triggersClient().setPermissionPolicy({
+        headers: authHeaders(),
+        params: { id: triggerId },
+        body: { unattendedPermissionPolicy: null },
+      }),
+      [200],
+    );
+    expect(cleared.body.unattendedPermissionPolicy).toBeNull();
+  });
+
+  it("rejects a permission policy with an unknown permission name", async () => {
+    const { workflowId } = await setupFixture();
+    const triggerId = await createScheduleTrigger(workflowId);
+
+    await accept(
+      triggersClient().setPermissionPolicy({
+        headers: authHeaders(),
+        params: { id: triggerId },
+        body: {
+          unattendedPermissionPolicy: {
+            gmail: { policies: { "messages.not-a-real-permission": "allow" } },
+          },
+        },
+      }),
+      [400],
+    );
+  });
+
+  it("rejects setting the policy from an in-run token even with agent:write", async () => {
+    const { workflowId } = await setupFixture();
+    const triggerId = await createScheduleTrigger(workflowId);
+
+    const seconds = Math.floor(now() / 1000);
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["agent:write"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    await accept(
+      triggersClient().setPermissionPolicy({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: triggerId },
+        body: {
+          unattendedPermissionPolicy: {
+            gmail: { policies: { "messages.write": "allow" } },
+          },
+        },
+      }),
+      [403],
+    );
   });
 
   it("lists thread-bound workflow triggers", async () => {

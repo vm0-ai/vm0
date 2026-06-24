@@ -207,6 +207,17 @@ export type UnattendedTriggerPermissionPolicy = z.infer<
 >;
 
 /**
+ * Full-replace request for a trigger's unattended permission policy. `null`
+ * clears the policy back to connector metadata defaults.
+ */
+export const setUnattendedTriggerPermissionPolicyRequestSchema = z.object({
+  unattendedPermissionPolicy: unattendedTriggerPermissionPolicySchema.nullable(),
+});
+export type SetUnattendedTriggerPermissionPolicyRequest = z.infer<
+  typeof setUnattendedTriggerPermissionPolicyRequestSchema
+>;
+
+/**
  * Trigger summary. Under 1:N the agent is derived from the workflow, so triggers
  * no longer carry an agentId. Detail responses only ever list the caller's own
  * triggers.
@@ -707,6 +718,22 @@ export const zeroWorkflowTriggersContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Fire a one-off test run of a workflow trigger",
+  },
+  setPermissionPolicy: {
+    method: "PUT",
+    path: "/api/zero/workflow-triggers/:id/permission-policy",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParams,
+    body: setUnattendedTriggerPermissionPolicyRequestSchema,
+    responses: {
+      200: zeroWorkflowTriggerSummarySchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Set a workflow trigger unattended permission policy (session/PAT only)",
   },
 });
 
