@@ -1,4 +1,4 @@
-use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
+use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
 use std::io::{ErrorKind, Read as _};
 use std::time::Instant;
 
@@ -50,7 +50,9 @@ fn run(input: ManifestInput) -> bool {
     match input {
         ManifestInput::Path(manifest_path) => guest_download::run(&manifest_path),
         ManifestInput::Stdin => {
-            remove_legacy_manifest_file(LEGACY_MANIFEST_PATH);
+            if !remove_legacy_manifest_file(LEGACY_MANIFEST_PATH) {
+                return false;
+            }
 
             let mut manifest_json = Vec::new();
             if let Err(e) = std::io::stdin().read_to_end(&mut manifest_json) {
@@ -62,11 +64,14 @@ fn run(input: ManifestInput) -> bool {
     }
 }
 
-fn remove_legacy_manifest_file(path: &str) {
+fn remove_legacy_manifest_file(path: &str) -> bool {
     match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(e) if e.kind() == ErrorKind::NotFound => {}
-        Err(e) => log_warn!(LOG_TAG, "Failed to remove stale manifest {path}: {e}"),
+        Ok(()) => true,
+        Err(e) if e.kind() == ErrorKind::NotFound => true,
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to remove stale manifest {path}: {e}");
+            false
+        }
     }
 }
 
@@ -80,7 +85,7 @@ mod tests {
         let path = dir.path().join("storage-manifest.json");
         std::fs::write(&path, br#"{"secret":"old"}"#).unwrap();
 
-        remove_legacy_manifest_file(path.to_str().unwrap());
+        assert!(remove_legacy_manifest_file(path.to_str().unwrap()));
 
         assert!(!path.exists());
     }
@@ -90,8 +95,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing-storage-manifest.json");
 
-        remove_legacy_manifest_file(path.to_str().unwrap());
+        assert!(remove_legacy_manifest_file(path.to_str().unwrap()));
 
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn remove_legacy_manifest_file_fails_for_non_removable_path() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(!remove_legacy_manifest_file(dir.path().to_str().unwrap()));
     }
 }
