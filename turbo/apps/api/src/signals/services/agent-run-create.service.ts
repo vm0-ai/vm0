@@ -3186,18 +3186,6 @@ async function enforceCaptureNetworkBodiesGate(
   return null;
 }
 
-function loadPersistedRunEnvironmentSnapshotForRun(
-  db: Db,
-  args: CreateAgentRunArgs,
-  content: AgentComposeContent,
-): Promise<PersistedRunEnvironmentSnapshot> {
-  return loadPersistedRunEnvironmentSnapshot(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    content,
-  });
-}
-
 function validateCompose(
   content: AgentComposeContent,
   vars: Record<string, string> | undefined,
@@ -4413,12 +4401,14 @@ function prepareRunContext(
         return notFound("Resource not found");
       }
 
-      const persistedEnvironment =
-        await loadPersistedRunEnvironmentSnapshotForRun(
-          db,
-          args,
-          resolved.content,
-        );
+      const persistedEnvironment = await loadPersistedRunEnvironmentSnapshot(
+        db,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          content: resolved.content,
+        },
+      );
       signal.throwIfAborted();
 
       const body = await buildResolvedRunBody({
