@@ -245,11 +245,7 @@ async fn execute(
                 )
                 .with_failure_detail_source(failure_message.source);
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
-                let diagnostic = with_cli_failure_reason(
-                    diagnostic,
-                    failure_message.message.as_str(),
-                    failure_message.failure_reason,
-                );
+                let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
                 (
                     cli_exit_code,
                     cli_exit_code,
@@ -404,11 +400,14 @@ fn diagnostic_framework() -> AgentFramework {
 
 fn with_cli_failure_reason(
     diagnostic: FailureDiagnostic,
-    failure_message: &str,
-    failure_reason: Option<FailureReason>,
+    failure_message: &CliFailureMessage,
 ) -> FailureDiagnostic {
-    if let Some(reason) =
-        classify_cli_failure_reason(diagnostic.framework, failure_message).or(failure_reason)
+    if let Some(reason) = classify_cli_failure_reason(
+        diagnostic.framework,
+        failure_message.source,
+        failure_message.message.as_str(),
+    )
+    .or(failure_message.failure_reason)
     {
         diagnostic.with_failure_reason(reason)
     } else {
@@ -418,6 +417,7 @@ fn with_cli_failure_reason(
 
 fn classify_cli_failure_reason(
     framework: AgentFramework,
+    source: FailureDetailSource,
     failure_message: &str,
 ) -> Option<FailureReason> {
     let normalized = failure_message.to_ascii_lowercase();
@@ -433,6 +433,11 @@ fn classify_cli_failure_reason(
         && is_claude_provider_overloaded_error(&normalized)
     {
         return Some(FailureReason::ProviderOverloaded);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_provider_server_error(source, &normalized)
+    {
+        return Some(FailureReason::ProviderServerError);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_output_token_limit_error(&normalized)
@@ -491,6 +496,13 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
             starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
         })
     })
+}
+
+fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
+    source == FailureDetailSource::ClaudeResult
+        && normalized.contains("api error: 500")
+        && normalized.contains("internal server error")
+        && normalized.contains("server-side issue")
 }
 
 fn is_claude_output_token_limit_error(normalized: &str) -> bool {
@@ -1073,6 +1085,28 @@ mod tests {
         }
     }
 
+    fn selected_failure_message(
+        message: &str,
+        source: FailureDetailSource,
+        failure_reason: Option<FailureReason>,
+    ) -> CliFailureMessage {
+        CliFailureMessage {
+            message: message.to_string(),
+            source,
+            failure_reason,
+        }
+    }
+
+    fn classify_cli_failure_reason(
+        framework: AgentFramework,
+        failure_message: &str,
+    ) -> Option<FailureReason> {
+        // Existing direct classifier tests model messages selected from stderr.
+        super::classify_cli_failure_reason(framework, FailureDetailSource::Stderr, failure_message)
+    }
+
+    const CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+
     #[test]
     fn cli_failure_message_logs_stderr_to_system_log() {
         let _test_state_guard = lock_test_state();
@@ -1286,8 +1320,7 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic =
-            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
         assert_eq!(msg.source, FailureDetailSource::Stderr);
         assert_eq!(
@@ -1385,8 +1418,7 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic =
-            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
         assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
         assert_eq!(
@@ -1461,8 +1493,7 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic =
-            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
         assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
         assert_eq!(
@@ -1490,13 +1521,64 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic =
-            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
         assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
         assert_eq!(
             diagnostic.failure_reason,
             Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_provider_server_error() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderServerError));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_provider_server_error_from_stderr() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::Stderr,
+            CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_provider_server_error_diagnostic() {
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(
+                CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
+                FailureDetailSource::ClaudeResult,
+            )),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderServerError)
         );
         assert_eq!(
             diagnostic.failure_detail_source,
@@ -1539,8 +1621,7 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic =
-            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
         assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
         assert_eq!(
@@ -1847,11 +1928,12 @@ mod tests {
             PromptMetadata::from_prompt("debug failure"),
         )
         .with_cli_exit_code(1);
-        let diagnostic = with_cli_failure_reason(
-            diagnostic,
+        let failure_message = selected_failure_message(
             "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+            FailureDetailSource::Stderr,
             Some(FailureReason::InvalidApiKey),
         );
+        let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
 
         assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
     }
@@ -1945,11 +2027,12 @@ mod tests {
         )
         .with_cli_exit_code(2)
         .with_failure_detail_source(FailureDetailSource::Stderr);
-        let unchanged = with_cli_failure_reason(
-            diagnostic.clone(),
+        let failure_message = selected_failure_message(
             "permission denied while running command",
+            FailureDetailSource::Stderr,
             None,
         );
+        let unchanged = with_cli_failure_reason(diagnostic.clone(), &failure_message);
 
         assert_eq!(unchanged, diagnostic);
     }
@@ -1963,11 +2046,12 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(FailureDetailSource::CodexJsonl);
-        let diagnostic = with_cli_failure_reason(
-            diagnostic,
+        let failure_message = selected_failure_message(
             "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+            FailureDetailSource::CodexJsonl,
             None,
         );
+        let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
 
         assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
         assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
