@@ -71,10 +71,7 @@ pub async fn upload_network_logs(
     };
 
     let mut lines = BufReader::new(file).lines();
-    let mut batch = Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES);
-    let mut batch_bytes = empty_batch_estimated_bytes(&run_id);
-    let mut batch_index = 0usize;
-    let mut total_uploaded = 0usize;
+    let mut uploader = NetworkLogBatchUploader::new(http, run_id, sandbox_token);
 
     loop {
         let line = match lines.next_line().await {
@@ -99,131 +96,145 @@ pub async fn upload_network_logs(
         };
         let entry_bytes = estimated_entry_bytes(line);
 
-        if !batch.is_empty()
-            && (batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
-                || batch_bytes.saturating_add(entry_bytes) > NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES)
-            && !flush_network_log_batch(
-                http,
-                run_id,
-                sandbox_token,
-                &mut batch,
-                &mut batch_bytes,
-                &mut batch_index,
-                &mut total_uploaded,
-            )
-            .await
-        {
-            return;
-        }
-
-        batch.push(log);
-        batch_bytes = batch_bytes.saturating_add(entry_bytes);
-
-        if (batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
-            || batch_bytes >= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES)
-            && !flush_network_log_batch(
-                http,
-                run_id,
-                sandbox_token,
-                &mut batch,
-                &mut batch_bytes,
-                &mut batch_index,
-                &mut total_uploaded,
-            )
-            .await
-        {
+        if !uploader.push(log, entry_bytes).await {
             return;
         }
     }
 
-    if !flush_network_log_batch(
-        http,
-        run_id,
-        sandbox_token,
-        &mut batch,
-        &mut batch_bytes,
-        &mut batch_index,
-        &mut total_uploaded,
-    )
-    .await
-    {
+    if !uploader.finish().await {
         return;
     }
 
-    if total_uploaded > 0 {
+    if uploader.total_uploaded() > 0 {
         info!(
             run_id = %run_id,
-            batches = batch_index,
-            count = total_uploaded,
+            batches = uploader.batch_count(),
+            count = uploader.total_uploaded(),
             "uploaded network logs"
         );
     }
 }
 
-async fn flush_network_log_batch(
-    http: &HttpClient,
+struct NetworkLogBatchUploader<'a> {
+    http: &'a HttpClient,
     run_id: RunId,
-    sandbox_token: &str,
-    batch: &mut Vec<NetworkLog>,
-    batch_bytes: &mut usize,
-    batch_index: &mut usize,
-    total_uploaded: &mut usize,
-) -> bool {
-    if batch.is_empty() {
-        return true;
+    sandbox_token: &'a str,
+    batch: Vec<NetworkLog>,
+    batch_bytes: usize,
+    batch_index: usize,
+    total_uploaded: usize,
+}
+
+impl<'a> NetworkLogBatchUploader<'a> {
+    fn new(http: &'a HttpClient, run_id: RunId, sandbox_token: &'a str) -> Self {
+        Self {
+            http,
+            run_id,
+            sandbox_token,
+            batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+            batch_bytes: empty_batch_estimated_bytes(&run_id),
+            batch_index: 0,
+            total_uploaded: 0,
+        }
     }
 
-    *batch_index += 1;
-    let batch_index = *batch_index;
-    let logs = std::mem::replace(
-        batch,
-        Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
-    );
-    *batch_bytes = empty_batch_estimated_bytes(&run_id);
-    let count = logs.len();
-
-    info!(run_id = %run_id, batch_index, count, "uploading network log batch");
-
-    let payload = NetworkLogPayload {
-        run_id: run_id.to_string(),
-        network_logs: logs,
-    };
-
-    let result = http
-        .request_route(routes::webhooks::agent::telemetry::SEND, sandbox_token)
-        .json(&payload)
-        .send()
-        .await;
-
-    match result {
-        Ok(resp) if resp.status().is_success() => {
-            // File is kept locally for debugging; gc_job_logs deletes after 7 days.
-            *total_uploaded += count;
-            true
+    async fn push(&mut self, log: NetworkLog, entry_bytes: usize) -> bool {
+        if self.should_flush_before_push(entry_bytes) && !self.flush().await {
+            return false;
         }
-        Ok(resp) => {
-            let status = resp.status();
-            let rejection = upload_rejection_details(resp).await;
-            warn!(
-                run_id = %run_id,
-                batch_index,
-                status = %status,
-                response_error_code = rejection.error_code.as_deref().unwrap_or(""),
-                response_error_message = rejection.error_message.as_deref().unwrap_or(""),
-                response_body_truncated = rejection.body_truncated,
-                response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
-                "network logs upload rejected"
-            );
-            false
+
+        self.batch.push(log);
+        self.batch_bytes = self.batch_bytes.saturating_add(entry_bytes);
+
+        if self.should_flush_after_push() {
+            return self.flush().await;
         }
-        Err(e) => {
-            warn!(
-                run_id = %run_id,
-                batch_index,
-                error = %e,
-                "network logs upload failed"
-            );
-            false
+
+        true
+    }
+
+    async fn finish(&mut self) -> bool {
+        self.flush().await
+    }
+
+    fn total_uploaded(&self) -> usize {
+        self.total_uploaded
+    }
+
+    fn batch_count(&self) -> usize {
+        self.batch_index
+    }
+
+    fn should_flush_before_push(&self, entry_bytes: usize) -> bool {
+        !self.batch.is_empty()
+            && (self.batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
+                || self.batch_bytes.saturating_add(entry_bytes)
+                    > NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES)
+    }
+
+    fn should_flush_after_push(&self) -> bool {
+        self.batch.len() >= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES
+            || self.batch_bytes >= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES
+    }
+
+    async fn flush(&mut self) -> bool {
+        if self.batch.is_empty() {
+            return true;
+        }
+
+        self.batch_index += 1;
+        let batch_index = self.batch_index;
+        let logs = std::mem::replace(
+            &mut self.batch,
+            Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+        );
+        self.batch_bytes = empty_batch_estimated_bytes(&self.run_id);
+        let count = logs.len();
+
+        info!(run_id = %self.run_id, batch_index, count, "uploading network log batch");
+
+        let payload = NetworkLogPayload {
+            run_id: self.run_id.to_string(),
+            network_logs: logs,
+        };
+
+        let result = self
+            .http
+            .request_route(routes::webhooks::agent::telemetry::SEND, self.sandbox_token)
+            .json(&payload)
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                // File is kept locally for debugging; gc_job_logs deletes after 7 days.
+                self.total_uploaded += count;
+                true
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let rejection = upload_rejection_details(resp).await;
+                warn!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    status = %status,
+                    response_error_code = rejection.error_code.as_deref().unwrap_or(""),
+                    response_error_message = rejection.error_message.as_deref().unwrap_or(""),
+                    response_body_truncated = rejection.body_truncated,
+                    response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
+                    "network logs upload rejected"
+                );
+                false
+            }
+            Err(e) => {
+                warn!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    error = %e,
+                    "network logs upload failed"
+                );
+                false
+            }
         }
     }
 }
@@ -583,6 +594,42 @@ mod tests {
 
         first_upload.assert_calls_async(1).await;
         second_upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_uploads_single_oversized_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let oversized_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES);
+        let log = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "oversized.example",
+            "body": oversized_value,
+        });
+        let logs = vec![log.clone()];
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [log],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+
+        upload.assert_calls_async(1).await;
     }
 
     #[tokio::test]
