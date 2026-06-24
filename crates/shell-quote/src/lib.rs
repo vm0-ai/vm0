@@ -23,6 +23,7 @@ pub fn quote_shell_arg(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     #[test]
     fn quotes_empty_string() {
@@ -85,5 +86,49 @@ mod tests {
     #[test]
     fn quotes_shell_reserved_words() {
         assert_eq!(quote_shell_arg("if"), "'if'");
+    }
+
+    #[test]
+    fn quoted_words_round_trip_through_posix_shell() {
+        for value in [
+            "",
+            "plain",
+            "with space",
+            "it's",
+            "'starts",
+            "ends'",
+            "a'b'c",
+            "$HOME",
+            "$(uname)",
+            "`uname`",
+            "*",
+            "x > out",
+            "ok; uname -a",
+            "line1\nline2",
+            "tab\tseparated",
+            "carriage\rreturn",
+            "hello 世界",
+            "/tmp/a-b.c:+@%",
+            "FOO=bar",
+            "if",
+        ] {
+            let command = format!("printf '%s' {}", quote_shell_arg(value));
+            let output = Command::new("sh")
+                .arg("-c")
+                .arg(&command)
+                .output()
+                .unwrap_or_else(|error| panic!("failed to run shell for {value:?}: {error}"));
+
+            assert!(
+                output.status.success(),
+                "shell failed for {value:?} via {command:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                String::from_utf8(output.stdout)
+                    .unwrap_or_else(|error| panic!("non-UTF-8 shell output: {error}")),
+                value
+            );
+        }
     }
 }
