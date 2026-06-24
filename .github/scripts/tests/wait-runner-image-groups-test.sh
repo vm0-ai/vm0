@@ -12,6 +12,9 @@ mkdir -p "$FAKE_BIN" "$MANIFEST_DIR"
 cat >"$FAKE_BIN/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" = "-n" ]; then
+  shift
+fi
 target="${1#*@}"
 case "$target" in
   arm-1|arm-2)
