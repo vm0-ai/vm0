@@ -487,7 +487,9 @@ async function loadTriggerRunContext(
       ),
     )
     .limit(1);
-  return row ? { policy: row.policy ?? null, workflowId: row.workflowId } : null;
+  return row
+    ? { policy: row.policy ?? null, workflowId: row.workflowId }
+    : null;
 }
 
 /**
