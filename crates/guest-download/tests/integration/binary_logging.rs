@@ -118,6 +118,62 @@ fn binary_reads_manifest_from_stdin() {
 }
 
 #[test]
+fn binary_path_mode_ignores_extra_args_for_compatibility() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = unique_run_id("path-extra-arg");
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .arg("--ignored")
+        .env("VM0_RUN_ID", &run_id)
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = std::fs::read_to_string(&logs.system_log).unwrap();
+    assert!(
+        content.contains("[INFO] [sandbox:download] Download completed"),
+        "unexpected system log: {content:?}"
+    );
+}
+
+#[test]
+fn binary_manifest_stdin_rejects_extra_args_before_telemetry() {
+    let dir = tempfile::tempdir().unwrap();
+    let run_id = unique_run_id("stdin-extra-arg");
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg("--manifest-stdin")
+        .arg("--ignored")
+        .env("VM0_RUN_ID", &run_id)
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let content = std::fs::read_to_string(&logs.system_log).unwrap();
+    assert!(
+        content.contains("[ERROR] [sandbox:download] Usage: guest-download"),
+        "unexpected system log: {content:?}"
+    );
+    assert!(!logs.ops_log.exists());
+}
+
+#[test]
 fn binary_invalid_stdin_manifest_logs_parse_failure_without_body() {
     let dir = tempfile::tempdir().unwrap();
     let run_id = unique_run_id("stdin-invalid");

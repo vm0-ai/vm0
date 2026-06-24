@@ -35,10 +35,10 @@ fn main() {
 fn manifest_input_from_args() -> Option<ManifestInput> {
     let mut args = std::env::args().skip(1);
     let arg = args.next()?;
-    if args.next().is_some() {
-        return None;
-    }
     if arg == MANIFEST_STDIN_ARG {
+        if args.next().is_some() {
+            return None;
+        }
         Some(ManifestInput::Stdin)
     } else {
         Some(ManifestInput::Path(arg))
