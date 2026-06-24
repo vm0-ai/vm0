@@ -163,7 +163,6 @@ describe("migration 0496 backfill chat run groups", () => {
           ownerUserId: userId,
           kind: "event",
           eventType: "thread-idle",
-          eventConfig: {},
           chatThreadId: thread!.id,
           runGroupId: workflowRunGroupId,
         })
