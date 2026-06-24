@@ -35,7 +35,7 @@
 //! | 0x06 | G→H       | operations_quiesced    | (empty) |
 //! | 0x07 | H→G       | resume_operations | (empty) |
 //! | 0x08 | G→H       | operations_resumed | (empty) |
-//! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
+//! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`, `PRIVATE=0x04`; `PRIVATE` and `SUDO` are mutually exclusive) |
 //! | 0x0A | G→H       | write_file_result | `[1B success][2B error_len][error]` |
 //! | 0x0B | H→G       | exec_start     | see payload schema below |
 //! | 0x0C | G→H       | exec_started | `[4B pid]` |
