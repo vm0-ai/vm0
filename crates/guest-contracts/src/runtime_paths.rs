@@ -251,6 +251,63 @@ fn chmod_dir_fd(fd: &OwnedFd, path: &Path) -> io::Result<()> {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn chmod_created_dir_component(
+    parent: &OwnedFd,
+    name: &OsStr,
+    name_c: &CString,
+    full_path: &Path,
+) -> io::Result<()> {
+    // `mkdirat` applies the process umask. Open the directory with O_PATH first
+    // so a restrictive umask cannot prevent us from correcting the mode.
+    // SAFETY: `name_c` is NUL-terminated and `parent` owns a live directory fd.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name_c.as_ptr(),
+            libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(dir_component_error("open newly-created", name, full_path));
+    }
+    // SAFETY: `fd` is a fresh descriptor returned by `openat`.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let empty_path = b"\0";
+    // SAFETY: `fd` owns a live O_PATH directory descriptor and empty_path is
+    // NUL-terminated for AT_EMPTY_PATH.
+    let result = unsafe {
+        libc::fchmodat(
+            fd.as_raw_fd(),
+            empty_path.as_ptr().cast(),
+            PRIVATE_DIR_MODE,
+            libc::AT_EMPTY_PATH,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(wrap_last_os_error(format!(
+            "chmod newly-created runtime directory component {} for {}",
+            name.to_string_lossy(),
+            full_path.display()
+        )))
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn chmod_created_dir_component(
+    _parent: &OwnedFd,
+    _name: &OsStr,
+    _name_c: &CString,
+    _full_path: &Path,
+) -> io::Result<()> {
+    // Non-Linux Unix targets do not have Linux's O_PATH + AT_EMPTY_PATH fd-only
+    // chmod flow. Keep the secure fd validation path below instead of adding a
+    // path-based chmod race for non-guest development targets.
+    Ok(())
+}
+
 #[cfg(unix)]
 fn dir_component_error(operation: &str, name: &OsStr, full_path: &Path) -> io::Error {
     let error = io::Error::last_os_error();
@@ -294,6 +351,7 @@ fn open_or_create_dir_component(
     let path = component_path(parent_path, name);
     // SAFETY: `name_c` is NUL-terminated and `parent` owns a live directory fd.
     let mut fd = unsafe { libc::openat(parent.as_raw_fd(), name_c.as_ptr(), dir_open_flags()) };
+    let mut created = false;
     if fd < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT) {
         // SAFETY: `name_c` is NUL-terminated and `parent` owns a live directory fd.
         let mkdir_result =
@@ -305,6 +363,10 @@ fn open_or_create_dir_component(
                 full_path.display()
             )));
         }
+        if mkdir_result == 0 {
+            created = true;
+            chmod_created_dir_component(parent, name, &name_c, full_path)?;
+        }
         // SAFETY: `name_c` is NUL-terminated and `parent` owns a live directory fd.
         fd = unsafe { libc::openat(parent.as_raw_fd(), name_c.as_ptr(), dir_open_flags()) };
     }
@@ -315,7 +377,7 @@ fn open_or_create_dir_component(
     // SAFETY: `fd` is a fresh descriptor returned by `openat`.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
     validate_dir_fd(&fd, &path)?;
-    if is_final {
+    if is_final || created {
         chmod_dir_fd(&fd, &path)?;
     }
     Ok(fd)
@@ -610,6 +672,11 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(unix)]
+    fn mode(path: impl AsRef<Path>) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
     #[test]
     fn canonical_paths_are_not_under_tmp() {
         let run_dir =
@@ -667,20 +734,9 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"hello");
         #[cfg(unix)]
         {
-            let run_mode = std::fs::metadata(temp.path().join("run"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777;
-            let logs_mode = std::fs::metadata(temp.path().join("run/logs"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777;
-            let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(run_mode, 0o700);
-            assert_eq!(logs_mode, 0o700);
-            assert_eq!(file_mode, 0o600);
+            assert_eq!(mode(temp.path().join("run")), 0o700);
+            assert_eq!(mode(temp.path().join("run/logs")), 0o700);
+            assert_eq!(mode(&path), 0o600);
         }
     }
 

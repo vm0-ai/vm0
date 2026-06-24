@@ -17,21 +17,47 @@ fn run_helper_in_dir(args: &[&str], stdin: &[u8], current_dir: &Path) -> std::pr
     run_helper_with_current_dir(args, stdin, Some(current_dir))
 }
 
-fn run_helper_with_current_dir(
-    args: &[&str],
-    stdin: &[u8],
-    current_dir: Option<&Path>,
-) -> std::process::Output {
+fn helper_command(args: &[&str]) -> Command {
     let mut command = Command::new(BIN);
     command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    command
+}
+
+fn run_helper_with_current_dir(
+    args: &[&str],
+    stdin: &[u8],
+    current_dir: Option<&Path>,
+) -> std::process::Output {
+    let mut command = helper_command(args);
     if let Some(current_dir) = current_dir {
         command.current_dir(current_dir);
     }
 
+    run_helper_command(command, stdin)
+}
+
+#[cfg(unix)]
+fn run_helper_with_umask(args: &[&str], stdin: &[u8], umask: libc::mode_t) -> std::process::Output {
+    use std::os::unix::process::CommandExt;
+
+    let mut command = helper_command(args);
+    // SAFETY: `pre_exec` runs in the child process after fork and before exec.
+    // It only changes that child's umask, leaving the test process unaffected.
+    unsafe {
+        command.pre_exec(move || {
+            libc::umask(umask);
+            Ok(())
+        });
+    }
+
+    run_helper_command(command, stdin)
+}
+
+fn run_helper_command(mut command: Command, stdin: &[u8]) -> std::process::Output {
     let mut child = command.spawn().expect("spawn guest-write-file");
     child
         .stdin
@@ -255,6 +281,22 @@ fn private_mode_creates_private_parent_dirs_and_writes_content() {
     assert_eq!(std::fs::read(&path).unwrap(), b"hello");
     assert_eq!(mode(&dir.path().join("run")), 0o700);
     assert_eq!(mode(&dir.path().join("run/user-env")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_forces_parent_modes_with_restrictive_umask() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper_with_umask(&["--private", path_str], b"hello", 0o777);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/logs")), 0o700);
     assert_eq!(mode(&path), 0o600);
 }
 
