@@ -6,7 +6,7 @@ use sandbox_mock::MockSandbox;
 
 use super::super::guest_runtime_dir;
 use super::super::storage::{
-    download_storages, filter_unchanged_storages, format_guest_download_failure,
+    apply_storage_fingerprint_reuse, download_storages, format_guest_download_failure,
     guest_download_command, guest_download_env, guest_download_has_work,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
@@ -211,7 +211,7 @@ async fn download_storages_fails_on_write_file_error() {
 }
 
 // -----------------------------------------------------------------------
-// filter_unchanged_storages tests
+// apply_storage_fingerprint_reuse tests
 // -----------------------------------------------------------------------
 
 fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
@@ -331,7 +331,7 @@ fn filter_same_artifact_version_keeps_url_for_mount_repair() {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert_eq!(
         result.artifacts[0].archive_url.as_deref(),
         Some("https://s3/v1")
@@ -351,7 +351,7 @@ fn filter_different_artifact_version_keeps_url() {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert_eq!(
         result.artifacts[0].archive_url.as_deref(),
         Some("https://s3/v2"),
@@ -369,7 +369,7 @@ fn filter_different_artifact_name_keeps_url() {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.artifacts[0].archive_url.is_some());
 }
 
@@ -381,7 +381,7 @@ fn filter_new_artifact_not_in_prev_keeps_url() {
         cleanup_paths: vec![],
     };
     let prev = StorageFingerprints::default();
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.artifacts[0].archive_url.is_some());
 }
 
@@ -398,7 +398,7 @@ fn filter_empty_prev_downloads_everything() {
         cleanup_paths: vec![],
     };
     let prev = StorageFingerprints::default();
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.storages[0].archive_url.is_some());
     assert!(result.artifacts[0].archive_url.is_some());
 }
@@ -421,7 +421,7 @@ fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
         storages,
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.storages[0].archive_url.is_none());
     assert!(result.storages[0].cached);
     assert_eq!(
@@ -464,7 +464,7 @@ fn filter_two_artifacts_at_different_mount_paths() {
         storages: HashMap::new(),
         artifacts,
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert_eq!(result.artifacts.len(), 2);
     // art-a changed → keeps URL, not cached, cleanup path added
     assert!(result.artifacts[0].archive_url.is_some());
@@ -493,9 +493,53 @@ fn filter_detects_removed_artifacts() {
         storages: HashMap::new(),
         artifacts,
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     // Removed artifact path must appear in cleanup_paths.
     assert!(result.cleanup_paths.contains(&"/old".to_string()));
+}
+
+#[test]
+fn filter_cleanup_paths_keep_broad_phase_order() {
+    let manifest = GuestDownloadManifest {
+        storages: vec![guest_storage(
+            "/storage-changed",
+            "storage",
+            "v2",
+            Some("https://s3/storage"),
+        )],
+        artifacts: vec![GuestDownloadArtifactEntry {
+            mount_path: "/artifact-changed".into(),
+            archive_url: Some("https://s3/artifact".into()),
+            cached: false,
+            vas_storage_name: "artifact".into(),
+            vas_storage_id: String::new(),
+            vas_version_id: "v2".into(),
+            missing_root_policy: None,
+        }],
+        cleanup_paths: vec![],
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::from([
+            ("/storage-changed".into(), fp("storage", "v1")),
+            ("/storage-removed".into(), fp("removed-storage", "v1")),
+        ]),
+        artifacts: HashMap::from([
+            ("/artifact-changed".into(), fp("artifact", "v1")),
+            ("/artifact-removed".into(), fp("removed-artifact", "v1")),
+        ]),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert_eq!(
+        result.cleanup_paths,
+        vec![
+            "/storage-changed",
+            "/storage-removed",
+            "/artifact-changed",
+            "/artifact-removed"
+        ]
+    );
 }
 
 #[test]
@@ -528,7 +572,7 @@ fn filter_computes_cleanup_for_changed_storages() {
         storages,
         artifacts: HashMap::new(),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     // Instructions changed (v1→v2), skill-foo unchanged
     assert!(result.storages[0].archive_url.is_some());
     assert!(!result.storages[0].cached);
@@ -560,7 +604,7 @@ fn filter_detects_removed_storages() {
         storages,
         artifacts: HashMap::new(),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     // instructions unchanged, old-skill removed
     assert!(result.storages[0].archive_url.is_none());
     assert!(
@@ -581,7 +625,7 @@ fn filter_changed_artifact_adds_cleanup_path() {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.artifacts[0].archive_url.is_some());
     assert!(
         result
@@ -601,7 +645,7 @@ fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     // Version changed → must be in cleanup_paths even though URL is absent.
     assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
     assert!(!result.artifacts[0].cached);
@@ -624,7 +668,7 @@ fn filter_unchanged_artifact_policy_does_not_force_redownload() {
         artifacts: art_fp("/workspace", "memory", "v1"),
     };
 
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
 
     assert_eq!(
         result.artifacts[0].archive_url.as_deref(),
@@ -647,7 +691,7 @@ fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         storages,
         artifacts: HashMap::new(),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     // Version changed → must be in cleanup_paths even though URL is absent.
     assert!(result.cleanup_paths.contains(&"/data".to_string()));
     assert!(!result.storages[0].cached);
@@ -671,7 +715,7 @@ fn filter_unchanged_storage_sets_cached_true() {
         storages,
         artifacts: HashMap::new(),
     };
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
     assert!(result.storages[0].cached);
     assert!(result.storages[0].archive_url.is_none());
 }
@@ -695,7 +739,7 @@ fn filter_unchanged_storage_leaves_instruction_normalization_work() {
         artifacts: HashMap::new(),
     };
 
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
 
     assert!(result.storages[0].cached);
     assert!(result.storages[0].archive_url.is_none());
@@ -733,7 +777,7 @@ fn filter_tainted_paths_force_download_even_when_versions_match() {
     }
     .tainted_paths();
 
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
 
     assert_eq!(
         result.storages[0].archive_url.as_deref(),
@@ -770,7 +814,7 @@ fn filter_tainted_removed_paths_are_cleaned() {
     }
     .tainted_paths();
 
-    let result = filter_unchanged_storages(&manifest, &prev);
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
 
     assert!(
         result
