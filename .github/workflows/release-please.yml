@@ -2187,6 +2187,32 @@ jobs:
             --data-binary "@${ASSET_PATH}" \
             "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME_ENCODED}"
 
+  notify-runner-release-assets-failure:
+    needs: [release-please, build-runner-release-assets]
+    if: >-
+      always() &&
+      needs.release-please.outputs.runner_rs_release_created == 'true' &&
+      needs.build-runner-release-assets.result != 'success' &&
+      needs.build-runner-release-assets.result != 'skipped' &&
+      vars.SLACK_RELEASE_CHANNEL_ID != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Notify Slack - Failure
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Runner RS* ❌ Release asset publishing failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Release asset publishing failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n📌 Result: `${{ needs.build-runner-release-assets.result }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
   # Build runner: compile binary and stage it on
   # metal hosts (provision OS + monitoring + `runner build`
   # rootfs/snapshot). This job does not flip traffic — the systemd
