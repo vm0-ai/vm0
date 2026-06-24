@@ -1,4 +1,4 @@
-import { type ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
   ZeroGoalResponse,
   ZeroGoalStatus,
@@ -41,7 +41,7 @@ export type GoalResult =
   | { readonly kind: "bad-request"; readonly message: string }
   | { readonly kind: "conflict"; readonly message: string };
 
-export type ClearGoalResult =
+type ClearGoalResult =
   | { readonly kind: "ok"; readonly cleared: true }
   | Exclude<GoalResult, { readonly kind: "ok" }>;
 
@@ -121,7 +121,7 @@ async function currentGoalContext(
   return row ?? null;
 }
 
-export async function loadGoalForThread(
+async function loadGoalForThread(
   db: ReadonlyDb,
   args: { readonly orgId: string; readonly threadId: string },
 ): Promise<GoalRow | null> {

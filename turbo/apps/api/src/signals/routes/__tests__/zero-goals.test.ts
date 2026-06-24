@@ -337,7 +337,9 @@ describe("zero goals", () => {
     );
 
     expect(paused.body.status).toBe("paused");
-    expect(await loadGoalRow(fixture)).toMatchObject({ status: "paused" });
+    await expect(loadGoalRow(fixture)).resolves.toMatchObject({
+      status: "paused",
+    });
     expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
       type: "state",
       status: "paused",
@@ -356,7 +358,7 @@ describe("zero goals", () => {
     );
 
     expect(cleared.body).toStrictEqual({ cleared: true });
-    expect(await loadGoalRow(fixture)).toBeNull();
+    await expect(loadGoalRow(fixture)).resolves.toBeNull();
     expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
       type: "cleared",
     });

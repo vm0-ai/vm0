@@ -1826,7 +1826,7 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
     ).toMatchObject({
       title: "Summarize the chat callback.",
-      body: "Task failed: Run failed",
+      body: "Task failed: Oops, something went wrong. Please try again later.",
       url: `/chats/${fixture.threadId}`,
     });
 

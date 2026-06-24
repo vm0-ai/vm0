@@ -52,7 +52,7 @@ type GoalContinuationResult =
       readonly error: string;
     };
 
-export type RunGoalResult =
+type RunGoalResult =
   | { readonly kind: "ok"; readonly runId: string }
   | { readonly kind: "conflict"; readonly message: string }
   | {
@@ -288,7 +288,7 @@ async function resolveModelContext(args: {
   };
 }
 
-export const runGoalNow$ = command(
+const runGoalNow$ = command(
   async (
     { set },
     args: {
