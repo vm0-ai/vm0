@@ -5286,16 +5286,23 @@ function ConnectorsPopoverButton({
   const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
   const showSearch = agentConnectors.length > 20;
 
-  // Use snapshot order if available, otherwise sort by added status
+  // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
     ? [...agentConnectors].sort((a, b) => {
         const ai = sortOrder.indexOf(a.type);
         const bi = sortOrder.indexOf(b.type);
-        return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+        if (ai === -1 && bi === -1) {
+          return 0;
+        }
+        if (ai === -1) {
+          return 1;
+        }
+        if (bi === -1) {
+          return -1;
+        }
+        return ai - bi;
       })
-    : [...agentConnectors].sort((a, b) => {
-        return Number(b.authorized) - Number(a.authorized);
-      });
+    : agentConnectors;
 
   const visibleConnectors =
     showSearch && search.trim()
@@ -5307,13 +5314,9 @@ function ConnectorsPopoverButton({
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
-      const freshSort = [...agentConnectors]
-        .sort((a, b) => {
-          return Number(b.authorized) - Number(a.authorized);
-        })
-        .map((c) => {
-          return c.type;
-        });
+      const freshSort = agentConnectors.map((c) => {
+        return c.type;
+      });
       setSortOrder(freshSort);
     } else {
       setSortOrder(null);
