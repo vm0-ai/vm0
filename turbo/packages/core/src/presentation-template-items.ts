@@ -3359,7 +3359,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `bloom-pitch` and template `html-ppt-bloom-pitch`, create a 15-slide investor pitch for PetalLoop, a climate-friendly flower delivery marketplace raising a seed round. Include cover, agenda, market shift, customer problem, solution, product flow, traction, business model, go-to-market, competitive position, roadmap, team, financial plan, ask, and next steps. Make it playful, optimistic, organic, and investor-ready.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2546d28c-8b48-4115-9d3c-acc62ead719b/bloom-pitch.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d29707fb-9b85-44bc-be55-cf3cf082f68d/bloom-pitch.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["bloom-pitch"][0],
       cardPreviewImagesByTheme:
@@ -3380,7 +3380,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `blueprint-academy` and template `html-ppt-blueprint-academy`, create a 15-slide curriculum proposal for Northline Academy launching an applied AI certificate for working professionals. Present it to academic leadership with cover, agenda, program context, learner needs, curriculum map, module sequence, faculty team, classroom experience, assessment model, outcomes, partnerships, enrollment plan, budget, and next steps. Make it academic, structured, blueprint-like, and credible.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d05dcd18-1086-49fc-8126-8a37e7168822/blueprint-academy.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f64cd670-7565-483f-b872-117a18c0c414/blueprint-academy.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["blueprint-academy"][0],
       cardPreviewImagesByTheme:
@@ -3401,7 +3401,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `meridian` and template `html-ppt-meridian`, create a 15-slide agency capabilities deck for Meridian Works, a data strategy studio helping enterprise teams modernize analytics operations. Present it to a prospective client executive team with cover, agenda, market context, client challenges, service model, team, process, case studies, measurement plan, operating rhythm, timeline, commercial model, and contact. Make it professional, sharp, data-led, and executive-ready.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/007fb006-02a3-48c6-a555-d96c3ffcac01/meridian.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58cc240d-7d84-49a7-92ba-57eea4168730/meridian.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["meridian"][0],
       cardPreviewImagesByTheme:
@@ -3421,7 +3421,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `neo-brutalism` and template `html-ppt-neo-brutalism`, create a 15-slide founder pitch for BlockForge, a developer tooling startup launching a collaborative build system. Present it to early-stage investors with cover, agenda, problem, product, technical edge, market, traction, customer proof, business model, go-to-market, competition, roadmap, team, funding ask, and next steps. Make it bold, direct, high-contrast, and brutalist.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f967f452-4e51-4dcb-9db5-0a91505e593a/neo-brutalism.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4d8a4052-b43d-498a-81cc-b4c743103ff2/neo-brutalism.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["neo-brutalism"][0],
       cardPreviewImagesByTheme:
@@ -3442,7 +3442,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `nocturne` and template `html-ppt-nocturne`, create a 15-slide annual keynote for NightOps Cloud reviewing reliability, infrastructure scale, and the roadmap for autonomous operations. Present it to technical customers with cover, agenda, state of the platform, usage growth, reliability metrics, architecture, product updates, customer stories, roadmap, ecosystem, pricing changes, and closing call to action. Make it dark, data-rich, polished, and keynote-ready.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/79497e0e-2518-4fb3-9838-1f2ee6048c77/nocturne.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd4ecb89-b6b1-4ed0-bfca-4ebf3db3a664/nocturne.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["nocturne"][0],
       cardPreviewImagesByTheme:
@@ -3462,7 +3462,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `pixel-glitch` and template `html-ppt-pixel-glitch`, create a 15-slide creative studio deck for Arcade Signal pitching a retro-futurist campaign for an indie game launch. Present it to the publisher team with cover, agenda, audience insight, campaign concept, visual world, channel plan, creator program, launch timeline, asset gallery, performance targets, budget, team, and next steps. Make it pixelated, energetic, digital, and sharp.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c81b175c-8990-46db-8bb5-e7115a22338a/pixel-glitch.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/274e4cc3-d811-40a1-a091-526db9a62734/pixel-glitch.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["pixel-glitch"][0],
       cardPreviewImagesByTheme:
@@ -3483,7 +3483,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `prospectus` and template `html-ppt-prospectus`, create a 15-slide business plan for Atlas Harbor, a B2B logistics platform expanding into regional fulfillment. Present it to strategic partners with cover, agenda, market context, customer problem, solution, operating model, product experience, growth plan, financial model, implementation roadmap, risks, team, partnership terms, and next steps. Make it corporate, polished, structured, and proposal-ready.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8eb0bee8-bb33-4929-b781-fefb8b0408f6/prospectus.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/64a9b8c5-f89d-4379-998c-9da755f7ca62/prospectus.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["prospectus"][0],
       cardPreviewImagesByTheme:
@@ -3504,7 +3504,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `schoolhouse` and template `html-ppt-schoolhouse`, create a 15-slide community education deck for Maple Hall launching a weekend skills program for families and local makers. Present it to city partners with cover, agenda, mission, audience needs, program tracks, sample day, instructor team, venue plan, safety approach, outcomes, testimonials, membership tiers, budget, and registration steps. Make it warm, retro, classroom-inspired, and approachable.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c584388-ff83-4d7b-a9a9-68858fa6e6a7/schoolhouse.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cb03f77b-982d-4708-8781-2a0ab450a4fb/schoolhouse.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["schoolhouse"][0],
       cardPreviewImagesByTheme:
@@ -3525,7 +3525,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `sticker-scrapbook` and template `html-ppt-sticker-scrapbook`, create a 15-slide brand collaboration deck for Patch Party, a youth culture festival launching sponsor activations, creator booths, and collectible merch. Present it to brand partners with cover, agenda, audience story, event concept, activation zones, creator plan, media moments, sponsor packages, timeline, reach metrics, testimonials, budget, and contact. Make it vibrant, scrapbook-like, sticker-heavy, and celebratory.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/55779c14-a043-413f-933d-3b18fec38728/sticker-scrapbook.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f15ccce7-90f1-4773-b4c8-c7eaf903ce76/sticker-scrapbook.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["sticker-scrapbook"][0],
       cardPreviewImagesByTheme:
@@ -3546,7 +3546,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `strata` and template `html-ppt-strata`, create a 15-slide agency proposal for Strata Studio helping a fintech brand redesign its onboarding and lifecycle communications. Present it to the client leadership team with cover, agenda, business challenge, strategic principles, design direction, service scope, sprint process, sample work, measurement plan, timeline, investment, team, and next steps. Make it Swiss-minimal, precise, editorial, and agency-grade.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ae2880fc-85be-4da7-8d19-f770958957e1/strata.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/040ddb5c-6819-436a-bd3a-87cb5de2be0e/strata.html",
       previewImage: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["strata"][0],
       cardPreviewImagesByTheme:
         PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["strata"],
@@ -3563,7 +3563,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `taped-consulting` and template `html-ppt-taped-consulting`, create a 15-slide transformation proposal for Clearpath Advisory helping a healthcare network improve patient intake operations. Present it to operations executives with cover, agenda, current-state diagnosis, opportunity, engagement model, workstreams, field research, process redesign, timeline, proof metrics, testimonials, pricing, and next steps. Make it consulting-focused, tactile, polished, and persuasive.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f415d7ea-cc9a-4009-ab76-e95963180a83/taped-consulting.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ffa53ff0-36b0-4bd1-b44a-4c2d8d66aaa6/taped-consulting.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["taped-consulting"][0],
       cardPreviewImagesByTheme:
@@ -3584,7 +3584,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       prompt:
         "/gen presentation with design system `vantage` and template `html-ppt-vantage`, create a 15-slide business proposal for Vantage Partners helping a robotics manufacturer launch a new service program. Present it to enterprise buyers with cover, agenda, market context, buyer pain points, proposed solution, service model, operating plan, proof metrics, roadmap, commercials, implementation timeline, team, and close. Make it business-focused, confident, structured, and modern.",
       embedUrl:
-        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d7841dee-15a9-438a-bef7-0367ff6cf411/vantage.html",
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/acada4b0-952c-4354-a382-56dcf49bb7e9/vantage.html",
       previewImage:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["vantage"][0],
       cardPreviewImagesByTheme:
