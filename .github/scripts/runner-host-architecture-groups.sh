@@ -129,18 +129,22 @@ emit_groups() {
   require_env METAL_USER
   validate_hosts_csv "$hosts" || return $?
 
-  local host uname_m
+  local host uname_m target
   while IFS= read -r host; do
     uname_m=$(host_uname_m "$host")
-    case "$uname_m" in
-      aarch64)
+    if ! target=$(runner_image_target_for_uname_m "$uname_m" 2>/dev/null); then
+      echo "unsupported runner host architecture for ${host}: ${uname_m}" >&2
+      return 2
+    fi
+    case "$target" in
+      aarch64-unknown-linux-musl)
         arm64_hosts=$(append_csv "$arm64_hosts" "$host")
         ;;
-      x86_64)
+      x86_64-unknown-linux-musl)
         x86_64_hosts=$(append_csv "$x86_64_hosts" "$host")
         ;;
       *)
-        echo "unsupported runner host architecture for ${host}: ${uname_m}" >&2
+        echo "unsupported runner host target for ${host}: ${target}" >&2
         return 2
         ;;
     esac

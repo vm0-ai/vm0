@@ -4,6 +4,10 @@ runner_image_supported_targets_text() {
   printf '%s\n' "aarch64-unknown-linux-musl, x86_64-unknown-linux-musl"
 }
 
+runner_image_supported_uname_m_text() {
+  printf '%s\n' "aarch64, x86_64"
+}
+
 runner_image_validate_target() {
   local target="${1:-}"
   if [ -z "$target" ]; then
@@ -17,6 +21,27 @@ runner_image_validate_target() {
       ;;
     *)
       echo "unsupported runner image target: ${target} (expected one of: $(runner_image_supported_targets_text))" >&2
+      return 2
+      ;;
+  esac
+}
+
+runner_image_target_for_uname_m() {
+  local uname_m="${1:-}"
+  if [ -z "$uname_m" ]; then
+    echo "missing runner host architecture" >&2
+    return 2
+  fi
+
+  case "$uname_m" in
+    aarch64)
+      printf '%s\n' "aarch64-unknown-linux-musl"
+      ;;
+    x86_64)
+      printf '%s\n' "x86_64-unknown-linux-musl"
+      ;;
+    *)
+      echo "unsupported runner host architecture: ${uname_m} (expected one of: $(runner_image_supported_uname_m_text))" >&2
       return 2
       ;;
   esac
