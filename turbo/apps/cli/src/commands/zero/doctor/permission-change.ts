@@ -140,6 +140,14 @@ async function printComputerUsePermissionChangeMessage(
   }
 }
 
+function resolveTriggerContext():
+  | { workflowId: string; triggerId: string }
+  | undefined {
+  const triggerId = process.env.ZERO_WORKFLOW_TRIGGER_ID;
+  const workflowId = process.env.ZERO_WORKFLOW_ID;
+  return triggerId && workflowId ? { workflowId, triggerId } : undefined;
+}
+
 async function outputPermissionChangeMessage(
   connectorRef: string,
   label: string,
@@ -147,8 +155,28 @@ async function outputPermissionChangeMessage(
   action: PermissionAction,
   duration: UserPermissionGrantExpiresIn | undefined,
   agentId: string | undefined,
+  triggerContext: { workflowId: string; triggerId: string } | undefined,
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
+
+  // Trigger-fired runs configure permissions on the trigger's own unattended
+  // allowlist (no expiry, no per-grant action), not on the agent. Deep-link to
+  // the trigger's permission editor for the relevant connector instead of the
+  // agent permission page.
+  if (triggerContext && agentId) {
+    const triggerUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}/triggers/${triggerContext.triggerId}/permissions?${new URLSearchParams(
+      { ref: connectorRef },
+    ).toString()}`;
+    printSensitivePermissionGuidance(connectorRef, permission, action);
+    printPermissionActionMessage({
+      action,
+      permission,
+      label,
+      url: triggerUrl,
+      duration: undefined,
+    });
+    return;
+  }
 
   const urlParams = new URLSearchParams({
     ref: connectorRef,
@@ -285,6 +313,7 @@ Notes:
           action,
           opts.duration,
           opts.agent ?? process.env.ZERO_AGENT_ID,
+          resolveTriggerContext(),
         );
       },
     ),

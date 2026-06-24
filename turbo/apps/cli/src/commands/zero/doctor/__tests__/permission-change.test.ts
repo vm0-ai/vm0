@@ -57,6 +57,33 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("admin approval");
   });
 
+  it("deep-links to the trigger permission editor inside an unattended trigger run", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
+    vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", "trig-456");
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "slack",
+      "--permission",
+      SLACK_READ_PERMISSION,
+      "--enable",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "/agents/agent-abc-123/workflows/wf-789/triggers/trig-456/permissions?",
+    );
+    expect(logCalls).toContain("ref=slack");
+    // The trigger editor toggles allow/deny per permission, so the agent-grant
+    // params and the agent permission page are not used.
+    expect(logCalls).not.toContain("/agents/agent-abc-123/permissions?");
+    expect(logCalls).not.toContain("expiresIn=");
+    expect(logCalls).not.toContain("action=allow");
+  });
+
   it("outputs an allow grant link with an explicit duration", async () => {
     vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");

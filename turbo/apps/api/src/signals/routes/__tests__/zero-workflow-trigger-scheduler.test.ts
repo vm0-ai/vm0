@@ -195,6 +195,20 @@ async function runNetworkPolicies(db: Db, runId: string) {
     .parse(job.ctx).networkPolicies;
 }
 
+async function runEnvironment(db: Db, runId: string) {
+  const [job] = await db
+    .select({ ctx: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  if (!job) {
+    throw new Error("Expected a runner job for the trigger run");
+  }
+  return z
+    .object({ environment: z.record(z.string(), z.string()) })
+    .parse(job.ctx).environment;
+}
+
 async function runIdForTrigger(db: Db, triggerId: string): Promise<string> {
   const [run] = await db
     .select({ id: zeroRuns.id })
@@ -272,6 +286,26 @@ describe("zero workflow trigger scheduler", () => {
     // It resolves to deny, and no permission is left as ask in an unattended run.
     expect(policies?.gmail?.deny ?? []).toContain("messages.write");
     expect(policies?.gmail?.ask ?? []).toHaveLength(0);
+  });
+
+  it("exposes the trigger and workflow ids to the run environment", async () => {
+    const scenario = await setup();
+    const trigger = await seedTrigger(scenario, {
+      scheduleType: "loop",
+      intervalSeconds: 60,
+      nextRunAt: pastDate(),
+    });
+
+    const result = await store.set(executeDueWorkflowTriggers$, context.signal);
+    expect(result.executed).toBe(1);
+
+    const db = store.set(writeDb$);
+    const environment = await runEnvironment(
+      db,
+      await runIdForTrigger(db, trigger.triggerId),
+    );
+    expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBe(trigger.triggerId);
+    expect(environment.ZERO_WORKFLOW_ID).toBe(scenario.workflowId);
   });
 
   it("fires a due cron trigger: creates a run, posts to the thread, sets last_run_id", async () => {

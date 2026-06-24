@@ -467,12 +467,18 @@ function coerceUnattendedPolicyAsks(
   return result;
 }
 
-async function loadTriggerUnattendedPolicy(
+async function loadTriggerRunContext(
   db: Db,
   args: { readonly orgId: string; readonly triggerId: string },
-): Promise<UnattendedTriggerPermissionPolicy | null> {
+): Promise<{
+  readonly policy: UnattendedTriggerPermissionPolicy | null;
+  readonly workflowId: string;
+} | null> {
   const [row] = await db
-    .select({ policy: zeroWorkflowTriggers.unattendedPermissionPolicy })
+    .select({
+      policy: zeroWorkflowTriggers.unattendedPermissionPolicy,
+      workflowId: zeroWorkflowTriggers.workflowId,
+    })
     .from(zeroWorkflowTriggers)
     .where(
       and(
@@ -481,7 +487,58 @@ async function loadTriggerUnattendedPolicy(
       ),
     )
     .limit(1);
-  return row?.policy ?? null;
+  return row ? { policy: row.policy ?? null, workflowId: row.workflowId } : null;
+}
+
+/**
+ * Resolves the trigger-run context for a run: the isolated unattended policy
+ * (undefined for interactive runs) plus the trigger/workflow env vars the
+ * in-sandbox CLI uses to deep-link permission changes to the trigger editor.
+ */
+async function resolveTriggerRunContext(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly workflowTriggerId: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<{
+  readonly unattended:
+    | { readonly policy: UnattendedTriggerPermissionPolicy | null }
+    | undefined;
+  readonly environment: Record<string, string>;
+}> {
+  const { workflowTriggerId } = args;
+  if (!workflowTriggerId) {
+    return { unattended: undefined, environment: {} };
+  }
+  const context = await loadTriggerRunContext(db, {
+    orgId: args.orgId,
+    triggerId: workflowTriggerId,
+  });
+  signal.throwIfAborted();
+  return {
+    unattended: { policy: context?.policy ?? null },
+    environment: {
+      ZERO_WORKFLOW_TRIGGER_ID: workflowTriggerId,
+      ...(context?.workflowId ? { ZERO_WORKFLOW_ID: context.workflowId } : {}),
+    },
+  };
+}
+
+function buildZeroRunExtraEnvironment(args: {
+  readonly agentId: string;
+  readonly chatThreadId: string | undefined;
+  readonly triggerEnvironment: Record<string, string>;
+}): Record<string, string> {
+  return {
+    ZERO_AGENT_ID: args.agentId,
+    // Chat-mode automation (and web) runs carry their thread id so the
+    // in-sandbox CLI can bind a newly created automation to it (the create
+    // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
+    ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    ...args.triggerEnvironment,
+  };
 }
 
 /**
@@ -832,18 +889,17 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    // Trigger-fired runs carry a workflowTriggerId; they resolve from the
-    // trigger's own isolated unattended policy instead of the caller's grants.
-    const workflowTriggerId = args.zeroRunMetadata?.workflowTriggerId;
-    const unattended = workflowTriggerId
-      ? {
-          policy: await loadTriggerUnattendedPolicy(db, {
-            orgId: args.auth.orgId,
-            triggerId: workflowTriggerId,
-          }),
-        }
-      : undefined;
-    signal.throwIfAborted();
+    // Trigger-fired runs resolve from the trigger's own isolated unattended
+    // policy (never the caller's grants) and expose their trigger/workflow ids
+    // so the in-sandbox permission-change deep-link targets the trigger editor.
+    const triggerRun = await resolveTriggerRunContext(
+      db,
+      {
+        orgId: args.auth.orgId,
+        workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId,
+      },
+      signal,
+    );
     const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
@@ -852,7 +908,7 @@ export const createZeroRun$ = command(
         agent,
         allowedConnectorTypes,
         checkedAt: new Date(args.apiStartTime),
-        unattended,
+        unattended: triggerRun.unattended,
       },
       signal,
     );
@@ -879,15 +935,11 @@ export const createZeroRun$ = command(
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         chatThreadId: args.chatThreadId,
-        extraEnvironment: {
-          ZERO_AGENT_ID: agent.id,
-          // Chat-mode automation (and web) runs carry their thread id so the
-          // in-sandbox CLI can bind a newly created automation to it (the
-          // create flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
-          ...(args.chatThreadId
-            ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
-            : {}),
-        },
+        extraEnvironment: buildZeroRunExtraEnvironment({
+          agentId: agent.id,
+          chatThreadId: args.chatThreadId,
+          triggerEnvironment: triggerRun.environment,
+        }),
         callbacks: [
           ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
           ...(args.callbacks ?? []),
