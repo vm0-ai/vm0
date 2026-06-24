@@ -45,6 +45,11 @@ interface ClerkOperation {
   tags?: string[];
 }
 
+interface ClerkOwnerOverride {
+  readonly tags: readonly string[];
+  readonly permission: string;
+}
+
 interface ClerkSpec extends OpenApiSpec {
   servers?: Array<{ url: string }>;
 }
@@ -78,9 +83,200 @@ function slugifyTag(tag: string): string {
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 const READ_METHODS = new Set(["get", "head"]);
+const RUNTIME_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
+// Clerk tags nested billing operations as both Users/Organizations and Billing.
+// Keep these billing-specific routes under Billing while validating the
+// official tag set still matches the override.
+const OWNER_OVERRIDES = new Map<string, ClerkOwnerOverride>([
+  [
+    "GET /organizations/{organization_id}/billing/credits",
+    {
+      tags: ["Organizations", "Billing"],
+      permission: "billing:read",
+    },
+  ],
+  [
+    "GET /organizations/{organization_id}/billing/subscription",
+    {
+      tags: ["Organizations", "Billing"],
+      permission: "billing:read",
+    },
+  ],
+  [
+    "GET /users/{user_id}/billing/credits",
+    {
+      tags: ["Users", "Billing"],
+      permission: "billing:read",
+    },
+  ],
+  [
+    "GET /users/{user_id}/billing/subscription",
+    {
+      tags: ["Users", "Billing"],
+      permission: "billing:read",
+    },
+  ],
+  [
+    "POST /organizations/{organization_id}/billing/credits",
+    {
+      tags: ["Organizations", "Billing"],
+      permission: "billing:write",
+    },
+  ],
+  [
+    "POST /users/{user_id}/billing/credits",
+    {
+      tags: ["Users", "Billing"],
+      permission: "billing:write",
+    },
+  ],
+]);
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => {
+    return left.localeCompare(right);
+  });
+}
+
+function formatList(values: readonly string[]): string {
+  return values.join(", ");
+}
+
+function permissionNameForTag(tag: string, access: string): string {
+  return `${slugifyTag(tag)}:${access}`;
+}
+
+function operationKey(methodLower: string, apiPath: string): string {
+  return `${methodLower.toUpperCase()} ${apiPath}`;
+}
+
+function sameValues(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => {
+      return value === right[index];
+    })
+  );
+}
+
+function resolveOwnerPermissions(
+  apiPath: string,
+  methodLower: string,
+  tags: readonly string[],
+  access: string,
+  usedOwnerOverrides: Set<string>,
+): string[] {
+  const ownerPermissions = uniqueSorted(
+    tags.map((tag) => {
+      return permissionNameForTag(tag, access);
+    }),
+  );
+  const key = operationKey(methodLower, apiPath);
+  const override = OWNER_OVERRIDES.get(key);
+  if (!override) return ownerPermissions;
+
+  usedOwnerOverrides.add(key);
+
+  const expectedOwnerPermissions = uniqueSorted(
+    override.tags.map((tag) => {
+      return permissionNameForTag(tag, access);
+    }),
+  );
+  if (!sameValues(ownerPermissions, expectedOwnerPermissions)) {
+    throw new Error(
+      `Clerk operation "${key}" owner override tags changed: expected [${formatList(
+        expectedOwnerPermissions,
+      )}], got [${formatList(ownerPermissions)}]`,
+    );
+  }
+
+  if (!expectedOwnerPermissions.includes(override.permission)) {
+    throw new Error(
+      `Clerk operation "${key}" owner override permission "${
+        override.permission
+      }" is not one of [${formatList(expectedOwnerPermissions)}]`,
+    );
+  }
+
+  return [override.permission];
+}
+
+function assertAllOwnerOverridesUsed(usedOwnerOverrides: Set<string>): void {
+  const unused = [...OWNER_OVERRIDES.keys()].filter((key) => {
+    return !usedOwnerOverrides.has(key);
+  });
+  if (unused.length === 0) return;
+
+  throw new Error(
+    "Clerk owner overrides no longer match official operations:\n" +
+      unused
+        .sort((left, right) => {
+          return left.localeCompare(right);
+        })
+        .map((key) => {
+          return `  - ${key}`;
+        })
+        .join("\n"),
+  );
+}
+
+function expandRuntimeRule(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+function assertUniqueClerkRules(permissions: readonly PermissionGroup[]): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      for (const runtimeRule of expandRuntimeRule(rule)) {
+        const existing = owners.get(runtimeRule);
+        if (existing) {
+          duplicates.push(`${runtimeRule}: ${existing}, ${permission.name}`);
+          continue;
+        }
+        owners.set(runtimeRule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Clerk generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
+}
 
 function buildGroups(spec: ClerkSpec): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
+  const usedOwnerOverrides = new Set<string>();
   if (!spec.paths) {
     throw new Error("OpenAPI spec has no 'paths'");
   }
@@ -101,9 +297,15 @@ function buildGroups(spec: ClerkSpec): PermissionGroup[] {
 
       const access = READ_METHODS.has(methodLower) ? "read" : "write";
       const rule = `${methodLower.toUpperCase()} ${prefix}${apiPath}`;
+      const ownerPermissions = resolveOwnerPermissions(
+        apiPath,
+        methodLower,
+        tags,
+        access,
+        usedOwnerOverrides,
+      );
 
-      for (const tag of tags) {
-        const groupName = `${slugifyTag(tag)}:${access}`;
+      for (const groupName of ownerPermissions) {
         let ruleSet = groups.get(groupName);
         if (!ruleSet) {
           ruleSet = new Set();
@@ -114,13 +316,19 @@ function buildGroups(spec: ClerkSpec): PermissionGroup[] {
     }
   }
 
-  return [...groups.entries()]
+  assertAllOwnerOverridesUsed(usedOwnerOverrides);
+
+  const permissions = [...groups.entries()]
     .filter(([, ruleSet]) => ruleSet.size > 0)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
+
+  assertUniqueClerkRules(permissions);
+
+  return permissions;
 }
 
 // ── Category assignment ─────────────────────────────────────────────────

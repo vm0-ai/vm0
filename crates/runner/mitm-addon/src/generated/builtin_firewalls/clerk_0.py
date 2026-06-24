@@ -382,9 +382,7 @@ JSON_PART = r"""{
           "name": "organizations:read",
           "rules": [
             "GET /v1/organizations",
-            "GET /v1/organizations/{organization_id}",
-            "GET /v1/organizations/{organization_id}/billing/credits",
-            "GET /v1/organizations/{organization_id}/billing/subscription"
+            "GET /v1/organizations/{organization_id}"
           ]
         },
         {
@@ -393,7 +391,6 @@ JSON_PART = r"""{
             "POST /v1/organizations",
             "PATCH /v1/organizations/{organization_id}",
             "DELETE /v1/organizations/{organization_id}",
-            "POST /v1/organizations/{organization_id}/billing/credits",
             "PUT /v1/organizations/{organization_id}/logo",
             "DELETE /v1/organizations/{organization_id}/logo",
             "PUT /v1/organizations/{organization_id}/metadata",
@@ -517,8 +514,6 @@ JSON_PART = r"""{
             "GET /v1/users",
             "GET /v1/users/count",
             "GET /v1/users/{user_id}",
-            "GET /v1/users/{user_id}/billing/credits",
-            "GET /v1/users/{user_id}/billing/subscription",
             "GET /v1/users/{user_id}/oauth_access_tokens/{provider}",
             "GET /v1/users/{user_id}/organization_invitations",
             "GET /v1/users/{user_id}/organization_memberships"
@@ -534,7 +529,6 @@ JSON_PART = r"""{
             "DELETE /v1/users/{user_id}",
             "DELETE /v1/users/{user_id}/backup_code",
             "POST /v1/users/{user_id}/ban",
-            "POST /v1/users/{user_id}/billing/credits",
             "DELETE /v1/users/{user_id}/external_accounts/{external_account_id}",
             "POST /v1/users/{user_id}/lock",
             "PUT /v1/users/{user_id}/metadata",
