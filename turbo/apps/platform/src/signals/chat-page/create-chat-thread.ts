@@ -42,11 +42,13 @@ import {
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { agentById } from "../agent.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -73,6 +75,10 @@ import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
 } from "./parse-body-blocks.ts";
+import {
+  previousRunGroupVisualWindowStartIndex,
+  runGroupVisualWindowStartIndex,
+} from "./run-group-folding.ts";
 import { clerk$ } from "../auth.ts";
 import {
   patchThreadMeta$,
@@ -2096,16 +2102,41 @@ const renderWindowStateByThreadId$ = state(
 function renderWindowStartIndex(
   groups: readonly GroupedChatMessageGroup[],
   cursorGroupId: string | null,
+  runGroupFoldingEnabled: boolean,
 ): number {
-  if (cursorGroupId === null) {
-    return Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
+  if (!runGroupFoldingEnabled) {
+    if (cursorGroupId === null) {
+      return Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
+    }
+    const cursorIndex = groups.findIndex((group) => {
+      return group.beginMessageId === cursorGroupId;
+    });
+    return cursorIndex !== -1
+      ? cursorIndex
+      : Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
   }
-  const cursorIndex = groups.findIndex((group) => {
-    return group.beginMessageId === cursorGroupId;
-  });
-  return cursorIndex !== -1
-    ? cursorIndex
-    : Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
+
+  return runGroupVisualWindowStartIndex(
+    groups,
+    cursorGroupId,
+    INITIAL_RENDER_GROUP_COUNT,
+  );
+}
+
+function previousRenderWindowStartIndex(
+  groups: readonly GroupedChatMessageGroup[],
+  currentStartGroupIndex: number,
+  runGroupFoldingEnabled: boolean,
+): number {
+  if (!runGroupFoldingEnabled) {
+    return Math.max(0, currentStartGroupIndex - RENDER_GROUP_LOAD_INCREMENT);
+  }
+
+  return previousRunGroupVisualWindowStartIndex(
+    groups,
+    currentStartGroupIndex,
+    RENDER_GROUP_LOAD_INCREMENT,
+  );
 }
 
 function renderWindowStateForThread(
@@ -2141,7 +2172,11 @@ function createChatRenderWindow({
         get(renderWindowStateByThreadId$),
         threadId,
       );
-      return groups.slice(renderWindowStartIndex(groups, cursorGroupId));
+      const runGroupFoldingEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.ChatRunGroupFolding] ?? false;
+      return groups.slice(
+        renderWindowStartIndex(groups, cursorGroupId, runGroupFoldingEnabled),
+      );
     },
   );
 
@@ -2153,10 +2188,17 @@ function createChatRenderWindow({
       );
       const groups = await get(groupedChatMessages$);
       signal.throwIfAborted();
-      const startIndex = renderWindowStartIndex(groups, current.cursorGroupId);
-      const nextStartIndex = Math.max(
-        0,
-        startIndex - RENDER_GROUP_LOAD_INCREMENT,
+      const runGroupFoldingEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.ChatRunGroupFolding] ?? false;
+      const startIndex = renderWindowStartIndex(
+        groups,
+        current.cursorGroupId,
+        runGroupFoldingEnabled,
+      );
+      const nextStartIndex = previousRenderWindowStartIndex(
+        groups,
+        startIndex,
+        runGroupFoldingEnabled,
       );
       if (nextStartIndex === startIndex) {
         return false;

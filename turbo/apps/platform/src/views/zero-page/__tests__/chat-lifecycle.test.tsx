@@ -215,6 +215,42 @@ function mockPushBrowserSupport(): PushBrowserMock {
   return { register };
 }
 
+function makeRunGroupMessages(params: {
+  readonly label: string;
+  readonly count: number;
+  readonly runGroupId: string;
+  readonly startMinute: number;
+}): PagedChatMessage[] {
+  return Array.from({ length: params.count }, (_, index) => {
+    const itemNumber = index + 1;
+    const runId = `${params.runGroupId}-run-${itemNumber}`;
+    const createdAt = new Date(
+      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 0),
+    ).toISOString();
+    const assistantCreatedAt = new Date(
+      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 30),
+    ).toISOString();
+    return [
+      {
+        id: `msg-${params.label.toLowerCase()}-${itemNumber}-user`,
+        role: "user" as const,
+        content: params.label,
+        runId,
+        runGroupId: params.runGroupId,
+        createdAt,
+      },
+      {
+        id: `msg-${params.label.toLowerCase()}-${itemNumber}-assistant`,
+        role: "assistant" as const,
+        content: `${params.label} reply ${itemNumber}`,
+        runId,
+        runGroupId: params.runGroupId,
+        createdAt: assistantCreatedAt,
+      },
+    ];
+  }).flat();
+}
+
 function activeRunTextarea(): Promise<HTMLTextAreaElement> {
   return waitFor(() => {
     return screen.getByPlaceholderText(
@@ -2925,6 +2961,129 @@ describe("chat lifecycle", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
+  });
+
+  it("counts a folded tail run group as one item in the initial chat window", async () => {
+    const threadId = "render-window-tail-run-group";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Tail run group window",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 11,
+          runGroupId: "tail-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 1,
+          runGroupId: "tail-group-b",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Tail run group window")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "10 runs",
+      );
+      expect(screen.getByText("A reply 11")).toBeInTheDocument();
+      expect(screen.getByText("B reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("A reply 10")).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses physical groups for the initial window when run group folding is disabled", async () => {
+    const threadId = "render-window-run-group-folding-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run group render window without folding",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 11,
+          runGroupId: "disabled-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 1,
+          runGroupId: "disabled-group-b",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run group render window without folding"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Expand grouped run history"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("A reply 8")).toBeInTheDocument();
+      expect(screen.getByText("B reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("A reply 7")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the item before a folded middle run group in the initial chat window", async () => {
+    const threadId = "render-window-middle-run-group";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Middle run group window",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 1,
+          runGroupId: "middle-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 10,
+          runGroupId: "middle-group-b",
+          startMinute: 10,
+        }),
+        ...makeRunGroupMessages({
+          label: "C",
+          count: 1,
+          runGroupId: "middle-group-c",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Middle run group window")).toBeInTheDocument();
+      expect(screen.getByText("A reply 1")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "9 runs",
+      );
+      expect(screen.getByText("B reply 10")).toBeInTheDocument();
+      expect(screen.getByText("C reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("B reply 9")).not.toBeInTheDocument();
+    });
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {
