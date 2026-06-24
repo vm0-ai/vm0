@@ -149,4 +149,30 @@ mod tests {
         );
         assert_eq!(output.stdout, value.as_bytes());
     }
+
+    #[test]
+    fn composed_quoted_words_keep_argument_boundaries_through_posix_shell() {
+        let values = ["", "with space", "it's", "$(uname)", "*", "line1\nline2"];
+        let command = format!(
+            "set -- {}; printf '%s\\037' \"$@\"",
+            values
+                .iter()
+                .map(|value| quote_shell_arg(value))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run shell: {error}"));
+
+        assert!(
+            output.status.success(),
+            "shell failed via {command:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let expected = values.join("\x1f") + "\x1f";
+        assert_eq!(output.stdout, expected.as_bytes());
+    }
 }
