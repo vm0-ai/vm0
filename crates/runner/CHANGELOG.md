@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.129.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.11...runner-rs-v0.129.12) (2026-06-24)
+
+
+### Bug Fixes
+
+* require auth write for deel magic links ([#18795](https://github.com/vm0-ai/vm0/issues/18795)) ([e87ea3e](https://github.com/vm0-ai/vm0/commit/e87ea3eed415c040852ea62c70b064acec12d8f9))
+* **runner:** classify Claude provider server errors ([#18781](https://github.com/vm0-ai/vm0/issues/18781)) ([c150950](https://github.com/vm0-ai/vm0/commit/c150950445346a61c63cb696adfa71b184c1e297))
+
+
+### Refactoring
+
+* **runner:** centralize workspace promotion eligibility ([#18790](https://github.com/vm0-ai/vm0/issues/18790)) ([f3e89e1](https://github.com/vm0-ai/vm0/commit/f3e89e1605bcf89e0d5a72ef1ae33d2ab4f0d2d8))
+
+
+### Performance Improvements
+
+* **mitm-addon:** share builtin firewall static payloads ([#18791](https://github.com/vm0-ai/vm0/issues/18791)) ([7b6f3bc](https://github.com/vm0-ai/vm0/commit/7b6f3bc9b6f0a166d64f6d49e3156214496bfa20))
+
 ## [0.129.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.10...runner-rs-v0.129.11) (2026-06-24)
 
 

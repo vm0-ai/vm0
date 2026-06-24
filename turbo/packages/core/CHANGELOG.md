@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.367.0](https://github.com/vm0-ai/vm0/compare/core-v8.366.1...core-v8.367.0) (2026-06-24)
+
+
+### Features
+
+* add presentation R2 template resources ([#18792](https://github.com/vm0-ai/vm0/issues/18792)) ([9907b5e](https://github.com/vm0-ai/vm0/commit/9907b5ee9c8f8101156f359ffe4e8dc89cddfa3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.2
+    * @vm0/connectors bumped to 1.106.1
+
 ## [8.366.1](https://github.com/vm0-ai/vm0/compare/core-v8.366.0...core-v8.366.1) (2026-06-24)
 
 
