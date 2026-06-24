@@ -60,7 +60,7 @@ where
             .into_iter()
             .map(SortableContentHashEntry::new)
             .collect();
-        sortable_entries.sort_by(|left, right| left.sort_key.cmp(&right.sort_key));
+        sortable_entries.sort_unstable_by(|left, right| left.sort_key.cmp(&right.sort_key));
         for (index, entry) in sortable_entries.iter().enumerate() {
             update_hash_for_entry(&mut hasher, index, entry.entry);
         }
@@ -175,6 +175,16 @@ mod tests {
 
         assert_eq!(got, sha256_hex(&format!("storage:{STORAGE_A}\na::0\na:z")));
         assert_ne!(got, sha256_hex(&format!("storage:{STORAGE_A}\na:z\na::0")));
+    }
+
+    #[test]
+    fn equal_formatted_entries_do_not_depend_on_stable_sorting() {
+        let got = compute_content_hash(STORAGE_A, [("a", "b:c"), ("a:b", "c")]);
+
+        assert_eq!(
+            got,
+            sha256_hex(&format!("storage:{STORAGE_A}\na:b:c\na:b:c"))
+        );
     }
 
     #[test]
