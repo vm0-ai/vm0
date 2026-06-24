@@ -114,6 +114,7 @@ interface ZeroRunMetadata {
   readonly triggerId?: string;
   readonly workflowTriggerId?: string;
   readonly runGroupId?: string;
+  readonly goalId?: string;
 }
 
 interface CreateZeroRunCommandArgs {

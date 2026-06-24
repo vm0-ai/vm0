@@ -162,7 +162,8 @@ describe("migration 0497 backfill chat run groups", () => {
           workflowId: workflow!.id,
           ownerUserId: userId,
           kind: "event",
-          eventType: "thread-idle",
+          eventType: "gmail-new-message",
+          eventConfig: { source: "migration-test" },
           chatThreadId: thread!.id,
           runGroupId: workflowRunGroupId,
         })

@@ -23,16 +23,6 @@ import { chatThreads } from "./chat-thread";
  * stored through the existing custom-skill volume storage name.
  */
 export type ZeroWorkflowVisibility = "public" | "private";
-export type ZeroWorkflowType = "workflow" | "goal";
-
-export interface ZeroGoalPreference {
-  readonly version: 1;
-  readonly objective: string;
-  readonly tokenBudget?: number;
-  readonly stopReason?: "paused" | "blocked" | "failed";
-}
-
-export type ZeroWorkflowPreference = ZeroGoalPreference;
 
 /**
  * Zero Workflows table
@@ -44,8 +34,8 @@ export const zeroWorkflows = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
-    // Hard 1:N ownership: every workflow (and goal) belongs to exactly one
-    // agent. Deleting the agent cascades to its workflows (and their volumes).
+    // Hard 1:N ownership: every workflow belongs to exactly one agent. Deleting
+    // the agent cascades to its workflows and their volumes.
     agentId: uuid("agent_id")
       .notNull()
       .references(
@@ -62,15 +52,9 @@ export const zeroWorkflows = pgTable(
     // Pending promotion request. Only meaningful while `visibility = 'private'`;
     // cleared back to false when the workflow becomes public.
     requestToPublish: boolean("request_to_publish").notNull().default(false),
-    type: varchar("type", { length: 16 })
-      .$type<ZeroWorkflowType>()
-      .notNull()
-      .default("workflow"),
-    active: boolean("active").default(true).notNull(),
-    preference: jsonb("preference").$type<ZeroWorkflowPreference>(),
     // Instruction body (the SKILL.md content below the frontmatter). DB is the
     // single source of truth; the SKILL.md written to the volume is synthesized
-    // from (name, description, instruction). Null for goals.
+    // from (name, description, instruction).
     instruction: text("instruction"),
     ownerUserId: text("owner_user_id").notNull(),
     displayName: varchar("display_name", { length: 256 }),
@@ -89,7 +73,7 @@ export const zeroWorkflows = pgTable(
         "idx_zero_workflows_public_agent_name_unique",
       )
         .on(table.orgId, table.agentId, table.name)
-        .where(sql`visibility = 'public' AND type = 'workflow'`),
+        .where(sql`visibility = 'public'`),
       orgIdx: index("idx_zero_workflows_org").on(table.orgId),
       ownerIdx: index("idx_zero_workflows_org_owner").on(
         table.orgId,
@@ -111,7 +95,7 @@ export const zeroWorkflows = pgTable(
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";
-export type ZeroWorkflowEventType = "thread-idle" | "gmail-new-message";
+export type ZeroWorkflowEventType = "gmail-new-message";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
 /**
@@ -178,11 +162,6 @@ export const zeroWorkflowTriggers = pgTable(
       index("idx_zero_workflow_triggers_org").on(table.orgId),
       index("idx_zero_workflow_triggers_chat_thread").on(table.chatThreadId),
       uniqueIndex("idx_zero_workflow_triggers_run_group").on(table.runGroupId),
-      uniqueIndex("idx_zero_workflow_triggers_thread_idle_thread_unique")
-        .on(table.orgId, table.chatThreadId)
-        .where(
-          sql`chat_thread_id IS NOT NULL AND kind = 'event' AND event_type = 'thread-idle'`,
-        ),
       // Partial index for the time poller: enabled triggers with a due next run.
       index("idx_zero_workflow_triggers_next_run")
         .on(table.nextRunAt)
@@ -199,15 +178,6 @@ export const zeroWorkflowTriggers = pgTable(
               OR (schedule_type = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
               OR (schedule_type = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
             )
-          )
-          OR (
-            kind = 'event'
-            AND event_type = 'thread-idle'
-            AND event_config IS NULL
-            AND schedule_type IS NULL
-            AND cron_expression IS NULL
-            AND interval_seconds IS NULL
-            AND at_time IS NULL
           )
           OR (
             kind = 'event'

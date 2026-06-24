@@ -1,20 +1,16 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
@@ -39,6 +35,12 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+const ALL_GOAL_CAPABILITIES = [
+  "goal:read",
+  "goal:agent-result:write",
+  "goal:user-control:write",
+] as const satisfies readonly ZeroCapability[];
+
 interface GoalApiFixture extends UsageInsightFixture {
   readonly runId: string;
   readonly threadId: string;
@@ -46,8 +48,6 @@ interface GoalApiFixture extends UsageInsightFixture {
 }
 
 const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
-  const db = store.set(writeDb$);
-  await db.delete(zeroWorkflows).where(eq(zeroWorkflows.orgId, fixture.orgId));
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await store.set(deleteOrgMembership$, fixture, context.signal);
 });
@@ -58,10 +58,6 @@ function currentSecond(): number {
 
 function goalsClient() {
   return setupApp({ context })(zeroGoalsContract);
-}
-
-function workflowsClient() {
-  return setupApp({ context })(zeroWorkflowsCollectionContract);
 }
 
 function zeroToken(
@@ -82,7 +78,7 @@ function zeroToken(
 
 function headers(
   fixture: GoalApiFixture,
-  capabilities: readonly ZeroCapability[] = ["goal:read", "goal:write"],
+  capabilities: readonly ZeroCapability[] = ALL_GOAL_CAPABILITIES,
 ) {
   return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
 }
@@ -142,86 +138,44 @@ async function seedGoalApiFixture(args: {
   );
 }
 
-async function loadGoalRows(fixture: GoalApiFixture) {
+async function loadGoalRow(fixture: GoalApiFixture) {
   const db = store.set(writeDb$);
   const [row] = await db
-    .select({
-      workflowId: zeroWorkflows.id,
-      workflowName: zeroWorkflows.name,
-      workflowType: zeroWorkflows.type,
-      active: zeroWorkflows.active,
-      visibility: zeroWorkflows.visibility,
-      preference: zeroWorkflows.preference,
-      triggerId: zeroWorkflowTriggers.id,
-      kind: zeroWorkflowTriggers.kind,
-      eventType: zeroWorkflowTriggers.eventType,
-      scheduleType: zeroWorkflowTriggers.scheduleType,
-      nextRunAt: zeroWorkflowTriggers.nextRunAt,
-      enabled: zeroWorkflowTriggers.enabled,
-      consecutiveFailures: zeroWorkflowTriggers.consecutiveFailures,
-      chatThreadId: zeroWorkflowTriggers.chatThreadId,
-      // The owning agent is derived from the workflow row under the 1:N model.
-      agentId: zeroWorkflows.agentId,
-    })
-    .from(zeroWorkflowTriggers)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-    )
+    .select()
+    .from(threadGoals)
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, fixture.orgId),
-        eq(zeroWorkflowTriggers.chatThreadId, fixture.threadId),
-        eq(zeroWorkflowTriggers.kind, "event"),
+        eq(threadGoals.orgId, fixture.orgId),
+        eq(threadGoals.chatThreadId, fixture.threadId),
       ),
     )
     .limit(1);
-  return row;
+  return row ?? null;
 }
 
 async function loadGoalMarkers(fixture: GoalApiFixture) {
   const db = store.set(writeDb$);
-  const rows = await db
+  return await db
     .select({
       role: chatMessages.role,
       content: chatMessages.content,
       runId: chatMessages.runId,
       runEventId: chatMessages.runEventId,
+      goalEvent: chatMessages.goalEvent,
     })
     .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, fixture.threadId));
-  return rows.filter((row) => {
-    return row.runEventId?.startsWith("goal-") ?? false;
-  });
+    .where(eq(chatMessages.chatThreadId, fixture.threadId))
+    .orderBy(asc(chatMessages.createdAt));
 }
 
-/**
- * Order-independent multiset of marker event ids. Markers written in the same
- * transaction (e.g. create's workflow+trigger pair) share a timestamp, so the
- * test compares the set rather than a brittle row order.
- */
-function eventIds(
-  rows: readonly { runEventId: string | null }[],
-): (string | null)[] {
-  return rows
-    .map((row) => {
-      return row.runEventId;
-    })
-    .sort();
-}
-
-/** The `content` payloads of every marker carrying the given event id. */
-function markerContent(
-  rows: readonly { runEventId: string | null; content: string | null }[],
-  eventId: string,
-): (string | null)[] {
-  return rows
-    .filter((row) => {
-      return row.runEventId === eventId;
-    })
-    .map((row) => {
-      return row.content;
-    });
+async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {
+  return await accept(
+    goalsClient().create({
+      headers: headers(fixture),
+      body: { objective },
+    }),
+    [201],
+  );
 }
 
 describe("zero goals", () => {
@@ -234,7 +188,7 @@ describe("zero goals", () => {
 
     const response = await accept(
       goalsClient().create({
-        headers: headers(fixture, ["goal:write"]),
+        headers: headers(fixture, ["goal:user-control:write"]),
         body: { objective: "finish the release" },
       }),
       [403],
@@ -248,41 +202,41 @@ describe("zero goals", () => {
     });
   });
 
-  it("creates, reads, blocks, resumes, completes, and lists goal workflows in the registry", async () => {
+  it("stores a thread goal row and writes goalEvent markers for lifecycle transitions", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
 
-    const created = await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows", tokenBudget: 10_000 },
-      }),
-      [201],
-    );
+    const created = await createGoal(fixture, "ship thread goals");
     expect(created.body).toStrictEqual({
-      active: true,
-      objective: "ship goal workflows",
+      objective: "ship thread goals",
+      objectiveBrief: "ship thread goals",
       status: "active",
-      tokenBudget: 10_000,
     });
 
-    const goalRows = await loadGoalRows(fixture);
-    expect(goalRows).toMatchObject({
-      workflowType: "goal",
-      active: true,
-      visibility: "private",
-      preference: {
-        version: 1,
-        objective: "ship goal workflows",
-        tokenBudget: 10_000,
-      },
-      kind: "event",
-      eventType: "thread-idle",
-      scheduleType: null,
-      nextRunAt: null,
-      enabled: true,
-      chatThreadId: fixture.threadId,
+    const row = await loadGoalRow(fixture);
+    expect(row).toMatchObject({
+      orgId: fixture.orgId,
+      ownerUserId: fixture.userId,
       agentId: fixture.agentId,
+      chatThreadId: fixture.threadId,
+      status: "active",
+      objective: "ship thread goals",
+      objectiveBrief: "ship thread goals",
     });
+
+    const afterCreate = await loadGoalMarkers(fixture);
+    expect(afterCreate).toStrictEqual([
+      {
+        role: "assistant",
+        content: null,
+        runId: null,
+        runEventId: null,
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: "ship thread goals",
+        },
+      },
+    ]);
 
     const duplicate = await accept(
       goalsClient().create({
@@ -291,467 +245,185 @@ describe("zero goals", () => {
       }),
       [409],
     );
-    expect(duplicate.body.error.message).toContain(
-      "Complete the existing goal",
-    );
-
-    const read = await accept(
-      goalsClient().get({ headers: headers(fixture, ["goal:read"]) }),
-      [200],
-    );
-    expect(read.body).toStrictEqual(created.body);
-
-    // Goals are managed via `zero goal`, not the workflow registry: the
-    // workflow list endpoint excludes `type = 'goal'` rows. The goal lifecycle
-    // is exercised through the goal endpoints below, never the list.
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const workflows = await accept(
-      workflowsClient().list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const workflowNames = workflows.body.map((workflow) => {
-      return workflow.name;
-    });
-    expect(workflowNames).not.toContain(goalRows?.workflowName);
+    expect(duplicate.body.error.message).toContain("existing goal");
 
     const blocked = await accept(
       goalsClient().block({ headers: headers(fixture) }),
       [200],
     );
-    expect(blocked.body).toMatchObject({
-      active: true,
-      objective: "ship goal workflows",
-      status: "blocked",
-    });
-
-    const db = store.set(writeDb$);
-    await db
-      .update(zeroWorkflowTriggers)
-      .set({ consecutiveFailures: 2 })
-      .where(eq(zeroWorkflowTriggers.id, goalRows!.triggerId));
+    expect(blocked.body.status).toBe("blocked");
 
     const resumed = await accept(
       goalsClient().resume({ headers: headers(fixture) }),
       [200],
     );
-    expect(resumed.body).toMatchObject({
-      active: true,
-      objective: "ship goal workflows",
-      status: "active",
-    });
-    const resumedRows = await loadGoalRows(fixture);
-    expect(resumedRows?.consecutiveFailures).toBe(0);
+    expect(resumed.body.status).toBe("active");
 
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
       [200],
     );
-    expect(completed.body).toMatchObject({
-      active: false,
-      objective: "ship goal workflows",
-      status: "complete",
+    expect(completed.body.status).toBe("complete");
+
+    const events = (await loadGoalMarkers(fixture)).map((marker) => {
+      return marker.goalEvent;
     });
-    const [completedTrigger] = await db
-      .select({
-        enabled: zeroWorkflowTriggers.enabled,
-        chatThreadId: zeroWorkflowTriggers.chatThreadId,
-        nextRunAt: zeroWorkflowTriggers.nextRunAt,
-      })
-      .from(zeroWorkflowTriggers)
-      .where(eq(zeroWorkflowTriggers.id, goalRows!.triggerId))
-      .limit(1);
-    expect(completedTrigger).toStrictEqual({
-      enabled: false,
-      chatThreadId: null,
-      nextRunAt: null,
+    expect(events).toStrictEqual([
+      {
+        type: "state",
+        status: "active",
+        objectiveBrief: "ship thread goals",
+      },
+      { type: "state", status: "blocked" },
+      {
+        type: "state",
+        status: "active",
+        objectiveBrief: "ship thread goals",
+      },
+      { type: "state", status: "complete" },
+    ]);
+  });
+
+  it("edits a blocked goal back to active and replaces a completed goal", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await createGoal(fixture, "ship goals");
+
+    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
+    const edited = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "ship goals v2" },
+      }),
+      [200],
+    );
+    expect(edited.body).toStrictEqual({
+      objective: "ship goals v2",
+      objectiveBrief: "ship goals v2",
+      status: "active",
     });
 
-    const nextGoal = await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "start next goal" },
+    const editedRow = await loadGoalRow(fixture);
+    await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
+
+    const replacement = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "start the next goal" },
       }),
-      [201],
+      [200],
     );
-    expect(nextGoal.body).toMatchObject({
-      active: true,
-      objective: "start next goal",
+    expect(replacement.body.status).toBe("active");
+
+    const replacementRow = await loadGoalRow(fixture);
+    expect(replacementRow?.id).not.toBe(editedRow?.id);
+    expect(replacementRow).toMatchObject({
+      objective: "start the next goal",
+      objectiveBrief: "start the next goal",
       status: "active",
     });
   });
 
-  it("blocks a chat thread goal with session auth", async () => {
+  it("pauses a chat thread goal with session auth", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
+    await createGoal(fixture, "ship thread goals");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const blocked = await accept(
-      goalsClient().blockForChatThread({
+    const paused = await accept(
+      goalsClient().pauseForChatThread({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: fixture.threadId },
       }),
       [200],
     );
 
-    expect(blocked.body).toMatchObject({
-      active: true,
-      objective: "ship goal workflows",
-      status: "blocked",
+    expect(paused.body.status).toBe("paused");
+    await expect(loadGoalRow(fixture)).resolves.toMatchObject({
+      status: "paused",
     });
-    const rows = await loadGoalRows(fixture);
-    expect(rows?.enabled).toBeFalsy();
-  });
-
-  it("enforces one thread-idle goal trigger per chat thread at the database layer", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
-
-    const db = store.set(writeDb$);
-    const [workflow] = await db
-      .insert(zeroWorkflows)
-      .values({
-        orgId: fixture.orgId,
-        agentId: fixture.agentId,
-        name: "goal-db-unique",
-        visibility: "private",
-        type: "goal",
-        active: true,
-        preference: { version: 1, objective: "second active goal" },
-        ownerUserId: fixture.userId,
-        displayName: "Goal",
-        description: null,
-        createdBy: fixture.userId,
-      })
-      .returning({ id: zeroWorkflows.id });
-
-    await expect(
-      db.insert(zeroWorkflowTriggers).values({
-        orgId: fixture.orgId,
-        workflowId: workflow!.id,
-        ownerUserId: fixture.userId,
-        kind: "event",
-        eventType: "thread-idle",
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: true,
-        chatThreadId: fixture.threadId,
-        nextRunAt: null,
-      }),
-    ).rejects.toMatchObject({
-      cause: expect.objectContaining({
-        code: "23505",
-        constraint: "idx_zero_workflow_triggers_thread_idle_thread_unique",
-      }),
+    expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
+      type: "state",
+      status: "paused",
     });
   });
 
-  it("provisions a chat thread when the current run has none", async () => {
+  it("clears the current goal and writes a cleared marker", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    // A run from a non-chat trigger (slack/telegram/email) has no chat thread.
-    const threadlessRun = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.agentId,
-        triggerSource: "slack",
-        status: "running",
-      },
-      context.signal,
-    );
+    await createGoal(fixture, "ship thread goals");
 
-    const created = await accept(
-      goalsClient().create({
-        headers: headers({ ...fixture, runId: threadlessRun.runId }),
-        body: { objective: "merge the release PR into main" },
+    const cleared = await accept(
+      goalsClient().clear({
+        headers: headers(fixture, ["goal:user-control:write"]),
       }),
-      [201],
+      [200],
     );
-    expect(created.body).toMatchObject({
-      active: true,
-      objective: "merge the release PR into main",
-      status: "active",
-    });
 
-    const db = store.set(writeDb$);
-    const triggers = await db
-      .select({
-        chatThreadId: zeroWorkflowTriggers.chatThreadId,
-        agentId: zeroWorkflows.agentId,
-        eventType: zeroWorkflowTriggers.eventType,
-      })
-      .from(zeroWorkflowTriggers)
-      .innerJoin(
-        zeroWorkflows,
-        eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-      )
-      .where(
-        and(
-          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
-          eq(zeroWorkflows.type, "goal"),
-          eq(zeroWorkflowTriggers.kind, "event"),
-        ),
-      );
-    expect(triggers).toHaveLength(1);
-    const trigger = triggers[0]!;
-    expect(trigger.eventType).toBe("thread-idle");
-    expect(trigger.agentId).toBe(fixture.agentId);
-    // The goal is bound to a freshly provisioned thread, not the seeded one.
-    expect(trigger.chatThreadId).not.toBeNull();
-    expect(trigger.chatThreadId).not.toBe(fixture.threadId);
-
-    const [thread] = await db
-      .select({
-        agentComposeId: chatThreads.agentComposeId,
-        title: chatThreads.title,
-      })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, trigger.chatThreadId!))
-      .limit(1);
-    expect(thread).toMatchObject({
-      agentComposeId: fixture.agentId,
-      title: "merge the release PR into main",
+    expect(cleared.body).toStrictEqual({ cleared: true });
+    await expect(loadGoalRow(fixture)).resolves.toBeNull();
+    expect((await loadGoalMarkers(fixture)).at(-1)?.goalEvent).toStrictEqual({
+      type: "cleared",
     });
   });
 
-  it("publishes goal-state markers into the thread on each transition", async () => {
+  it("enforces user-control and agent-result capability boundaries", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    const objective =
-      "Ship goal workflows by auditing every implementation detail, creating a release plan, coordinating the rollout across the web app and CLI, and continuing without waiting for more input.";
+    await createGoal(fixture, "ship thread goals");
 
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective },
-      }),
-      [201],
-    );
-
-    const goalRows = await loadGoalRows(fixture);
-    const afterCreate = await loadGoalMarkers(fixture);
-    // Every marker is an assistant control row that belongs to no run.
-    for (const marker of afterCreate) {
-      expect(marker.role).toBe("assistant");
-      expect(marker.runId).toBeNull();
-    }
-    // Creating a goal publishes both dimensions active; the workflow marker
-    // carries the objective brief and the trigger marker carries the trigger id
-    // (for the client fold + cancel control).
-    expect(eventIds(afterCreate)).toStrictEqual([
-      "goal-trigger:active",
-      "goal-workflow:active",
-    ]);
-    const [workflowMarkerContent] = markerContent(
-      afterCreate,
-      "goal-workflow:active",
-    );
-    expect(workflowMarkerContent).not.toBe(objective);
-    expect(workflowMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
-    expect(workflowMarkerContent).toMatch(/\.\.\.$/);
-    expect(goalRows?.preference).toMatchObject({
-      objective,
-      objectiveBrief: workflowMarkerContent,
-    });
-    expect(markerContent(afterCreate, "goal-trigger:active")).toStrictEqual([
-      goalRows!.triggerId,
-    ]);
-
-    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
-    await accept(goalsClient().resume({ headers: headers(fixture) }), [200]);
-    await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
-
-    // block → trigger inactive, resume → trigger active, complete → workflow +
-    // trigger inactive. The full history lets the client fold the final state.
-    expect(eventIds(await loadGoalMarkers(fixture))).toStrictEqual([
-      "goal-trigger:active",
-      "goal-trigger:active",
-      "goal-trigger:inactive",
-      "goal-trigger:inactive",
-      "goal-workflow:active",
-      "goal-workflow:inactive",
-    ]);
-  });
-
-  it("edits a goal's objective and token budget", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
-    const objective =
-      "Ship goal workflows v2 by verifying every backend state transition, updating the visible marker copy, coordinating the CLI behavior, and keeping the autonomous continuation prompt unchanged.";
-
-    const edited = await accept(
+    const editDenied = await accept(
       goalsClient().edit({
-        headers: headers(fixture, ["goal-objective:write"]),
-        body: { objective, tokenBudget: 5000 },
-      }),
-      [200],
-    );
-    expect(edited.body).toStrictEqual({
-      active: true,
-      objective,
-      status: "active",
-      tokenBudget: 5000,
-    });
-
-    const read = await accept(
-      goalsClient().get({ headers: headers(fixture, ["goal:read"]) }),
-      [200],
-    );
-    expect(read.body).toStrictEqual({
-      active: true,
-      objective,
-      status: "active",
-      tokenBudget: 5000,
-    });
-    const workflowMarkerContents = markerContent(
-      await loadGoalMarkers(fixture),
-      "goal-workflow:active",
-    );
-    expect(workflowMarkerContents).toHaveLength(2);
-    expect(workflowMarkerContents).toContain("ship goal workflows");
-    const editedMarkerContent = workflowMarkerContents.find((content) => {
-      return content !== "ship goal workflows";
-    });
-    expect(editedMarkerContent).not.toBe(objective);
-    expect(editedMarkerContent?.length ?? 0).toBeLessThanOrEqual(140);
-    expect(editedMarkerContent).toMatch(/\.\.\.$/);
-    expect((await loadGoalRows(fixture))?.preference).toMatchObject({
-      objective,
-      objectiveBrief: editedMarkerContent,
-    });
-  });
-
-  it("auto-resumes a blocked goal when edited and clears stopReason", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
-
-    const blocked = await accept(
-      goalsClient().block({ headers: headers(fixture) }),
-      [200],
-    );
-    expect(blocked.body).toMatchObject({
-      status: "blocked",
-      stopReason: "blocked",
-    });
-
-    const edited = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal-objective:write"]),
-        body: { objective: "resume and keep going" },
-      }),
-      [200],
-    );
-    expect(edited.body).toMatchObject({
-      active: true,
-      objective: "resume and keep going",
-      status: "active",
-    });
-    expect(edited.body.stopReason).toBeUndefined();
-
-    const rows = await loadGoalRows(fixture);
-    expect(rows).toMatchObject({
-      enabled: true,
-      preference: { version: 1, objective: "resume and keep going" },
-    });
-  });
-
-  it("rejects goal edits when the token lacks goal-objective:write", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
-
-    const response = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:read", "goal:write"]),
+        headers: headers(fixture, ["goal:read", "goal:agent-result:write"]),
         body: { objective: "should be forbidden" },
       }),
       [403],
     );
-    expect(response.body.error.message).toContain("goal-objective:write");
+    expect(editDenied.body.error.message).toContain("goal:user-control:write");
+
+    const completeDenied = await accept(
+      goalsClient().complete({
+        headers: headers(fixture, ["goal:read", "goal:user-control:write"]),
+      }),
+      [403],
+    );
+    expect(completeDenied.body.error.message).toContain(
+      "goal:agent-result:write",
+    );
   });
 
-  it("returns 404 when editing with no active goal", async () => {
+  it("rejects stale autonomous goal result writes without user-control capability", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    await createGoal(fixture, "ship thread goals");
 
-    const response = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal-objective:write"]),
-        body: { objective: "no goal here" },
+    const stale = await accept(
+      goalsClient().block({
+        headers: headers(fixture, ["goal:agent-result:write"]),
       }),
-      [404],
+      [409],
     );
-    expect(response.body.error.message).toContain("Goal not found");
-  });
+    expect(stale.body.error.message).toBe(
+      "The goal changed after this run started",
+    );
 
-  it("sets stopReason 'blocked' on block and clears it on resume", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
+    const currentGoal = await loadGoalRow(fixture);
+    if (!currentGoal) {
+      throw new Error("Expected current goal");
+    }
+    await store
+      .set(writeDb$)
+      .update(zeroRuns)
+      .set({ goalId: currentGoal.id })
+      .where(eq(zeroRuns.id, fixture.runId));
 
     const blocked = await accept(
-      goalsClient().block({ headers: headers(fixture) }),
+      goalsClient().block({
+        headers: headers(fixture, ["goal:agent-result:write"]),
+      }),
       [200],
     );
-    expect(blocked.body.stopReason).toBe("blocked");
-    const blockedRows = await loadGoalRows(fixture);
-    expect(blockedRows?.preference).toMatchObject({ stopReason: "blocked" });
-
-    const resumed = await accept(
-      goalsClient().resume({ headers: headers(fixture) }),
-      [200],
-    );
-    expect(resumed.body.stopReason).toBeUndefined();
-    const resumedRows = await loadGoalRows(fixture);
-    expect(resumedRows?.preference).not.toHaveProperty("stopReason");
+    expect(blocked.body.status).toBe("blocked");
   });
 
   it("excludes goal-state markers from a thread's unread state", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
-    await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "ship goal workflows" },
-      }),
-      [201],
-    );
+    await createGoal(fixture, "ship thread goals");
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const unreads = await accept(
@@ -762,8 +434,6 @@ describe("zero goals", () => {
       [200],
     );
 
-    // The thread's only messages are goal markers (control rows). Even though
-    // they are the newest rows, the thread must not be surfaced as unread.
     expect(
       unreads.body.unreads.map((unread) => {
         return unread.threadId;

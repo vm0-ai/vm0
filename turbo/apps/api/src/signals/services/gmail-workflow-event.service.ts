@@ -1146,7 +1146,6 @@ async function loadGmailEventTriggers(args: {
         eq(zeroWorkflowTriggers.kind, "event"),
         eq(zeroWorkflowTriggers.eventType, "gmail-new-message"),
         isNotNull(zeroWorkflowTriggers.chatThreadId),
-        eq(zeroWorkflows.type, "workflow"),
       ),
     );
   args.signal.throwIfAborted();

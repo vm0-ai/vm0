@@ -3344,36 +3344,32 @@ describe("chat lifecycle", () => {
           runId: "run-active",
           createdAt: "2026-06-09T10:00:01Z",
         },
-        // Goal-state markers: the workflow is active (carrying the objective)
-        // and its trigger is enabled — the fold should surface the goal.
+        // Goal-state marker carrying the objective brief; the fold should
+        // surface the goal while keeping the marker out of transcript bubbles.
         {
-          id: "msg-goal-workflow-active",
+          id: "msg-goal-active",
           runId: undefined,
           role: "assistant",
-          content: "Drive the release to merge",
-          runEventId: "goal-workflow:active",
+          content: null,
+          goalEvent: {
+            type: "state",
+            status: "active",
+            objectiveBrief: "Drive the release to merge",
+          },
           createdAt: "2026-06-09T10:00:02Z",
-        },
-        {
-          id: "msg-goal-trigger-active",
-          runId: undefined,
-          role: "assistant",
-          content: "trigger-goal-fold-1",
-          runEventId: "goal-trigger:active",
-          createdAt: "2026-06-09T10:00:03Z",
         },
       ],
       activeRunIds: ["run-active"],
     });
-    let blockedGoalThreadId: string | null = null;
+    let pausedGoalThreadId: string | null = null;
     context.mocks.api(
-      zeroGoalsContract.blockForChatThread,
+      zeroGoalsContract.pauseForChatThread,
       ({ params, respond }) => {
-        blockedGoalThreadId = params.threadId;
+        pausedGoalThreadId = params.threadId;
         return respond(200, {
-          active: true,
           objective: "Drive the release to merge",
-          status: "blocked",
+          objectiveBrief: "Drive the release to merge",
+          status: "paused",
         });
       },
     );
@@ -3407,10 +3403,10 @@ describe("chat lifecycle", () => {
     expect(queuedIndex).toBeGreaterThanOrEqual(0);
     expect(goalIndex).toBeGreaterThan(queuedIndex);
 
-    // Cancelling the goal row blocks the active goal by thread.
+    // Cancelling the goal row pauses the active goal by thread.
     await user.click(within(goalRow).getByLabelText("Cancel goal"));
     await waitFor(() => {
-      expect(blockedGoalThreadId).toBe(threadId);
+      expect(pausedGoalThreadId).toBe(threadId);
     });
   });
 
@@ -3420,27 +3416,23 @@ describe("chat lifecycle", () => {
       threadId,
       chatMessages: [
         {
-          id: "msg-goalc-workflow-active",
-          runId: undefined,
-          role: "assistant",
-          content: "Drive the release to merge",
-          runEventId: "goal-workflow:active",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-goalc-trigger-active",
-          runId: undefined,
-          role: "assistant",
-          content: "trigger-goal-complete-1",
-          runEventId: "goal-trigger:active",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-goalc-workflow-inactive",
+          id: "msg-goalc-active",
           runId: undefined,
           role: "assistant",
           content: null,
-          runEventId: "goal-workflow:inactive",
+          goalEvent: {
+            type: "state",
+            status: "active",
+            objectiveBrief: "Drive the release to merge",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goalc-complete",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          goalEvent: { type: "state", status: "complete" },
           createdAt: "2026-06-09T10:00:02Z",
         },
       ],
@@ -3451,7 +3443,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
-    // Latest workflow marker is inactive → folds to "complete" → no goal row.
+    // Latest state marker is complete → no goal row.
     expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 

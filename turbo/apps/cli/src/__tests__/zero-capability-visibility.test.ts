@@ -445,7 +445,11 @@ describe("registerZeroCommands", () => {
   it("should show goal when goal capabilities are present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["goal:read", "goal:write"],
+      capabilities: [
+        "goal:read",
+        "goal:agent-result:write",
+        "goal:user-control:write",
+      ],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 

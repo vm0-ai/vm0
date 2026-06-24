@@ -5,8 +5,8 @@ import { server } from "../../../../mocks/server";
 import { zeroGoalCommand } from "../index";
 
 const ACTIVE_GOAL = {
-  active: true,
   objective: "ship goal workflows",
+  objectiveBrief: "ship goal workflows",
   status: "active",
 };
 
@@ -36,12 +36,8 @@ describe("zero goal command", () => {
       http.post("http://localhost:3000/api/zero/goal", async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows",
-          tokenBudget: 10000,
         });
-        return HttpResponse.json(
-          { ...ACTIVE_GOAL, tokenBudget: 10000 },
-          { status: 201 },
-        );
+        return HttpResponse.json(ACTIVE_GOAL, { status: 201 });
       }),
     );
 
@@ -51,27 +47,23 @@ describe("zero goal command", () => {
       "create",
       "--objective",
       "ship goal workflows",
-      "--token-budget",
-      "10000",
     ]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
-      { ...ACTIVE_GOAL, tokenBudget: 10000 },
+      ACTIVE_GOAL,
     );
   });
 
   it("edits a goal and prints the JSON response", async () => {
     const edited = {
-      active: true,
       objective: "ship goal workflows v2",
+      objectiveBrief: "ship goal workflows v2",
       status: "active",
-      tokenBudget: 5000,
     };
     server.use(
       http.patch("http://localhost:3000/api/zero/goal", async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows v2",
-          tokenBudget: 5000,
         });
         return HttpResponse.json(edited);
       }),
@@ -83,8 +75,6 @@ describe("zero goal command", () => {
       "edit",
       "--objective",
       "ship goal workflows v2",
-      "--token-budget",
-      "5000",
     ]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
@@ -110,9 +100,10 @@ describe("zero goal command", () => {
     [
       "complete",
       "/api/zero/goal/complete",
-      { ...ACTIVE_GOAL, active: false, status: "complete" },
+      { ...ACTIVE_GOAL, status: "complete" },
     ],
     ["block", "/api/zero/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
+    ["pause", "/api/zero/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
     ["resume", "/api/zero/goal/resume", ACTIVE_GOAL],
   ] as const)(
     "runs %s and prints the JSON response",
@@ -131,18 +122,17 @@ describe("zero goal command", () => {
     },
   );
 
-  it("rejects non-positive token budgets", async () => {
-    await expect(async () => {
-      await zeroGoalCommand.parseAsync([
-        "node",
-        "cli",
-        "create",
-        "--objective",
-        "ship goal workflows",
-        "--token-budget",
-        "0",
-      ]);
-    }).rejects.toThrow("process.exit called");
-    expect(mockExit).toHaveBeenCalledWith(1);
+  it("clears the current goal", async () => {
+    server.use(
+      http.delete("http://localhost:3000/api/zero/goal", () => {
+        return HttpResponse.json({ cleared: true });
+      }),
+    );
+
+    await zeroGoalCommand.parseAsync(["node", "cli", "clear"]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      { cleared: true },
+    );
   });
 });

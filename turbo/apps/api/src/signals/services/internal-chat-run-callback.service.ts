@@ -508,21 +508,15 @@ async function insertAssistantErrorMessage(args: {
       threadId: args.threadId,
     });
   }
-  // Goal-triggered failures are gated by goal continuation: a transient failure
-  // that will retry stays silent, and only a terminal auto-stop notifies. The
-  // auto-stop decision happens in continueGoalIfIdle$ after this callback, so
-  // the failure push is owned there rather than here.
-  if (!args.isGoalRun) {
-    await sendUserPushNotifications({
-      db: args.db,
-      userId: args.userId,
-      notification: {
-        title: args.prompt.slice(0, 60),
-        body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
-        url: `/chats/${args.threadId}`,
-      },
-    });
-  }
+  await sendUserPushNotifications({
+    db: args.db,
+    userId: args.userId,
+    notification: {
+      title: args.prompt.slice(0, 60),
+      body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
+      url: `/chats/${args.threadId}`,
+    },
+  });
   return true;
 }
 
@@ -695,17 +689,16 @@ async function handleCompletedChatCallback(args: {
   })();
 
   const pushStep = (async () => {
-    // A goal-triggered run that completes while the goal is still active and
-    // enabled is just one iteration of a self-continuing loop, so suppress its
-    // push. completeCurrentGoal / blockCurrentGoal run during the run (before
-    // this callback), so a goal that reached a terminal state already has its
-    // trigger disabled here and will fall through to notify.
+    // A goal-triggered run that completes while the goal is still active is just
+    // one iteration of a self-continuing loop, so suppress its push. If the run
+    // completed or blocked the goal, it no longer loads as active and falls
+    // through to notify.
     if (args.isGoalRun) {
       const goal = await loadActiveGoalForThread(args.db, {
         orgId: args.chatThread.orgId,
         threadId: args.chatThread.chatThreadId,
       });
-      if (goal !== null && goal.triggerEnabled) {
+      if (goal !== null) {
         return;
       }
     }

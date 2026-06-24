@@ -194,7 +194,7 @@ import {
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
-import { blockChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
+import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
   currentHeaderAutomationThreadId$,
@@ -3679,18 +3679,18 @@ function useChatComposerQueue(
 }
 
 // The thread's active goal (folded from goal-state markers, no /api/automations
-// poll) plus its cancel handler. Cancelling blocks the goal through the goal API;
-// the backend then emits a goal-trigger:inactive marker, so the row folds away.
+// poll) plus its cancel handler. Cancelling pauses the goal through the goal API;
+// the backend then emits a goal_event marker, so the row folds away.
 function useChatComposerActiveGoal(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
   const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
-  const blockChatThreadGoal = useSet(blockChatThreadGoal$);
+  const pauseChatThreadGoal = useSet(pauseChatThreadGoal$);
   const onCancelActiveGoal = activeGoal
     ? () => {
         detach(
-          blockChatThreadGoal(thread.threadId, pageSignal),
+          pauseChatThreadGoal(thread.threadId, pageSignal),
           Reason.DomCallback,
         );
       }

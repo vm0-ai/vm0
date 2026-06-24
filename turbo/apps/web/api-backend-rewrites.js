@@ -421,10 +421,10 @@ const ZERO_CHAT_THREAD_WORKFLOW_TRIGGERS_REWRITE_SOURCE =
   "/api/zero/chat-threads/:threadId/workflow-triggers";
 const ZERO_CHAT_THREAD_WORKFLOW_TRIGGERS_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/workflow-triggers$/;
-const ZERO_CHAT_THREAD_GOAL_BLOCK_REWRITE_SOURCE =
-  "/api/zero/chat-threads/:threadId/goal/block";
-const ZERO_CHAT_THREAD_GOAL_BLOCK_PATH_RE =
-  /^\/api\/zero\/chat-threads\/[^/]+\/goal\/block$/;
+const ZERO_CHAT_THREAD_GOAL_PAUSE_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:threadId/goal/pause";
+const ZERO_CHAT_THREAD_GOAL_PAUSE_PATH_RE =
+  /^\/api\/zero\/chat-threads\/[^/]+\/goal\/pause$/;
 const ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/mark-read";
 const ZERO_CHAT_THREAD_MARK_READ_PATH_RE =
@@ -488,6 +488,7 @@ const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
 const ZERO_GOAL_REWRITE_SOURCE = "/api/zero/goal";
 const ZERO_GOAL_BLOCK_REWRITE_SOURCE = "/api/zero/goal/block";
 const ZERO_GOAL_COMPLETE_REWRITE_SOURCE = "/api/zero/goal/complete";
+const ZERO_GOAL_PAUSE_REWRITE_SOURCE = "/api/zero/goal/pause";
 const ZERO_GOAL_RESUME_REWRITE_SOURCE = "/api/zero/goal/resume";
 
 export const API_BACKEND_REWRITES = [
@@ -1117,9 +1118,9 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_WORKFLOW_TRIGGERS_PATH_RE,
   ],
   [
-    ZERO_CHAT_THREAD_GOAL_BLOCK_REWRITE_SOURCE,
-    "/api/zero/chat-threads/:threadId/goal/block",
-    ZERO_CHAT_THREAD_GOAL_BLOCK_PATH_RE,
+    ZERO_CHAT_THREAD_GOAL_PAUSE_REWRITE_SOURCE,
+    "/api/zero/chat-threads/:threadId/goal/pause",
+    ZERO_CHAT_THREAD_GOAL_PAUSE_PATH_RE,
   ],
   [
     ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
@@ -1330,6 +1331,7 @@ export const API_BACKEND_REWRITES = [
   [ZERO_GOAL_REWRITE_SOURCE, "/api/zero/goal"],
   [ZERO_GOAL_BLOCK_REWRITE_SOURCE, "/api/zero/goal/block"],
   [ZERO_GOAL_COMPLETE_REWRITE_SOURCE, "/api/zero/goal/complete"],
+  [ZERO_GOAL_PAUSE_REWRITE_SOURCE, "/api/zero/goal/pause"],
   [ZERO_GOAL_RESUME_REWRITE_SOURCE, "/api/zero/goal/resume"],
   ["/api/zero/workflows", "/api/zero/workflows"],
   [

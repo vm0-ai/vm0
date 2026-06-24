@@ -51,7 +51,7 @@ const COMMAND_CAPABILITY_MAP: Record<
 > = {
   agent: "agent:read",
   workflow: "agent:read",
-  goal: ["goal:read", "goal:write"],
+  goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
   // "schedule" is deliberately absent: the rename stub stays out of
   // token-scoped (agent) help but remains invokable and visible to humans.

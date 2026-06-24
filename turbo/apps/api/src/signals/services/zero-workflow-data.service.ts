@@ -19,7 +19,6 @@ export interface WorkflowRow {
   readonly name: string;
   readonly visibility: "public" | "private";
   readonly requestToPublish: boolean;
-  readonly type: "workflow" | "goal";
   readonly instruction: string | null;
   readonly ownerUserId: string;
   readonly displayName: string | null;
@@ -155,7 +154,6 @@ export async function loadVisibleWorkflowById(
       and(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.id, args.workflowId),
-        eq(zeroWorkflows.type, "workflow"),
         visibleWorkflowCondition(args.member),
       ),
     )
@@ -264,7 +262,6 @@ export async function loadWorkflowShadowWinner(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.agentId, args.workflow.agentId),
         eq(zeroWorkflows.name, args.workflow.name),
-        eq(zeroWorkflows.type, "workflow"),
         injectableWorkflowCondition(args.member.userId),
       ),
     )
@@ -300,8 +297,6 @@ export function zeroWorkflowList(args: {
       .where(
         and(
           eq(zeroWorkflows.orgId, args.orgId),
-          // Goals are managed via the `zero goal` CLI and never appear here.
-          eq(zeroWorkflows.type, "workflow"),
           args.agentId ? eq(zeroWorkflows.agentId, args.agentId) : undefined,
           visibleWorkflowCondition(args.member),
         ),
@@ -356,7 +351,6 @@ export async function loadWorkflowsForRun(
       and(
         eq(zeroWorkflows.orgId, args.orgId),
         eq(zeroWorkflows.agentId, args.agentId),
-        eq(zeroWorkflows.type, "workflow"),
         or(
           eq(zeroWorkflows.visibility, "public"),
           eq(zeroWorkflows.ownerUserId, args.userId),

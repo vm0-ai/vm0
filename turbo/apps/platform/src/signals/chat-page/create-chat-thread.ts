@@ -109,23 +109,8 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-// Goal-state marker event ids (mirrors the backend goal-marker service). These
-// assistant rows publish a goal's workflow/trigger transitions into the thread
-// so the composer can fold the current goal state from the message stream
-// instead of polling. They are control rows: filtered out of the transcript.
-const GOAL_WORKFLOW_ACTIVE_EVENT_ID = "goal-workflow:active";
-const GOAL_WORKFLOW_INACTIVE_EVENT_ID = "goal-workflow:inactive";
-const GOAL_TRIGGER_ACTIVE_EVENT_ID = "goal-trigger:active";
-const GOAL_TRIGGER_INACTIVE_EVENT_ID = "goal-trigger:inactive";
-
 function isGoalMarkerMessage(msg: PagedChatMessage): boolean {
-  return (
-    msg.role === "assistant" &&
-    (msg.runEventId === GOAL_WORKFLOW_ACTIVE_EVENT_ID ||
-      msg.runEventId === GOAL_WORKFLOW_INACTIVE_EVENT_ID ||
-      msg.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID ||
-      msg.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID)
-  );
+  return msg.role === "assistant" && msg.goalEvent !== undefined;
 }
 
 /** The thread's current active goal, folded from its message stream. */
@@ -135,36 +120,31 @@ export interface ActiveGoalState {
 
 /**
  * Fold the thread's message stream into its current goal, surfaced above the
- * composer. Combines the two independent dimensions published by the backend —
- * the goal workflow's active state and its trigger's enabled state — with the
- * same rule as the backend `goalResponse`: the goal is shown only when it is
- * active (workflow active AND trigger enabled), mirroring the prior behavior of
- * hiding paused goals. The objective comes from the latest workflow-active
- * marker. Messages are chronological, so each dimension is last-write-wins.
+ * composer. Goal markers are chronological and last-write-wins: active shows
+ * the cached objective brief; paused, blocked, complete, and cleared hide it.
  */
 function foldActiveGoal(
   messages: readonly PagedChatMessage[],
 ): ActiveGoalState | null {
-  let workflowActive = false;
-  let triggerEnabled = false;
   let objective: string | null = null;
   for (const message of messages) {
-    if (message.role !== "assistant" || message.runEventId === undefined) {
+    const goalEvent =
+      message.role === "assistant" ? message.goalEvent : undefined;
+    if (!goalEvent) {
       continue;
     }
-    if (message.runEventId === GOAL_WORKFLOW_ACTIVE_EVENT_ID) {
-      workflowActive = true;
-      objective = message.content;
-    } else if (message.runEventId === GOAL_WORKFLOW_INACTIVE_EVENT_ID) {
-      workflowActive = false;
-    } else if (message.runEventId === GOAL_TRIGGER_ACTIVE_EVENT_ID) {
-      triggerEnabled = true;
-    } else if (message.runEventId === GOAL_TRIGGER_INACTIVE_EVENT_ID) {
-      triggerEnabled = false;
+    if (goalEvent.type === "cleared") {
+      objective = null;
+      continue;
     }
+    if (goalEvent.status === "active") {
+      objective = goalEvent.objectiveBrief;
+      continue;
+    }
+    objective = null;
   }
   const trimmed = objective?.trim();
-  if (workflowActive && triggerEnabled && trimmed) {
+  if (trimmed) {
     return { objective: trimmed };
   }
   return null;

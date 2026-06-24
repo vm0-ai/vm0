@@ -1,35 +1,27 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 
 import {
   blockGoal,
+  clearGoal,
   completeGoal,
   createGoal,
   editGoal,
   getGoal,
+  pauseGoal,
   resumeGoal,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 interface CreateOptions {
   readonly objective: string;
-  readonly tokenBudget?: number;
 }
 
 interface EditOptions {
-  readonly objective?: string;
-  readonly tokenBudget?: number;
+  readonly objective: string;
 }
 
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value));
-}
-
-function parseTokenBudget(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new InvalidArgumentError("--token-budget must be a positive integer");
-  }
-  return parsed;
 }
 
 const createCommand = new Command()
@@ -41,35 +33,19 @@ const createCommand = new Command()
     "--objective <text>",
     "Goal objective. Set a goal ONLY on an explicit user request for autonomous cross-turn work; never infer one from a one-off request.",
   )
-  .option("--token-budget <tokens>", "Optional token budget", parseTokenBudget)
   .action(
     withErrorHandler(async (options: CreateOptions) => {
-      printJson(
-        await createGoal({
-          objective: options.objective,
-          ...(options.tokenBudget ? { tokenBudget: options.tokenBudget } : {}),
-        }),
-      );
+      printJson(await createGoal({ objective: options.objective }));
     }),
   );
 
 const editCommand = new Command()
   .name("edit")
-  .description("Edit the current thread goal's objective or token budget")
-  .option("--objective <text>", "New goal objective")
-  .option("--token-budget <tokens>", "New token budget", parseTokenBudget)
+  .description("Edit the current thread goal objective")
+  .requiredOption("--objective <text>", "New goal objective")
   .action(
     withErrorHandler(async (options: EditOptions) => {
-      printJson(
-        await editGoal({
-          ...(options.objective !== undefined
-            ? { objective: options.objective }
-            : {}),
-          ...(options.tokenBudget !== undefined
-            ? { tokenBudget: options.tokenBudget }
-            : {}),
-        }),
-      );
+      printJson(await editGoal({ objective: options.objective }));
     }),
   );
 
@@ -93,10 +69,19 @@ const completeCommand = new Command()
 
 const blockCommand = new Command()
   .name("block")
-  .description("Pause continuation for the current thread goal")
+  .description("Mark the current thread goal blocked")
   .action(
     withErrorHandler(async () => {
       printJson(await blockGoal());
+    }),
+  );
+
+const pauseCommand = new Command()
+  .name("pause")
+  .description("Pause the current thread goal")
+  .action(
+    withErrorHandler(async () => {
+      printJson(await pauseGoal());
     }),
   );
 
@@ -109,6 +94,15 @@ const resumeCommand = new Command()
     }),
   );
 
+const clearCommand = new Command()
+  .name("clear")
+  .description("Clear the current thread goal")
+  .action(
+    withErrorHandler(async () => {
+      printJson(await clearGoal());
+    }),
+  );
+
 export const zeroGoalCommand = new Command()
   .name("goal")
   .description("Manage the current thread goal")
@@ -117,4 +111,6 @@ export const zeroGoalCommand = new Command()
   .addCommand(getCommand)
   .addCommand(completeCommand)
   .addCommand(blockCommand)
-  .addCommand(resumeCommand);
+  .addCommand(pauseCommand)
+  .addCommand(resumeCommand)
+  .addCommand(clearCommand);

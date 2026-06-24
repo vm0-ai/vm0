@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
+import { zeroGoalEventSchema } from "./zero-goals";
 import {
   isSupportedRunModel,
   modelProviderCredentialScopeSchema,
@@ -211,6 +212,7 @@ const pagedChatMessageBaseSchema = z.object({
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   runEventId: z.string().optional(),
+  goalEvent: zeroGoalEventSchema.optional(),
   usage: chatMessageUsagePayloadSchema.optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),

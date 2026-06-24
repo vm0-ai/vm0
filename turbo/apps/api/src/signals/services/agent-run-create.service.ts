@@ -252,6 +252,8 @@ interface ZeroRunMetadata {
   readonly workflowTriggerId?: string;
   // Stable chat run-group key for automation/workflow/goal-triggered runs.
   readonly runGroupId?: string;
+  // Run provenance for autonomous thread-goal continuation.
+  readonly goalId?: string;
 }
 
 interface AgentConfig {
@@ -3218,6 +3220,26 @@ function validateCompose(
   return { framework };
 }
 
+function zeroRunModelProviderValues(
+  modelProvider: ResolvedModelProviderEnvironment | null,
+): Pick<
+  typeof zeroRuns.$inferInsert,
+  "modelProvider" | "modelProviderId" | "selectedModel"
+> {
+  if (!modelProvider) {
+    return {
+      modelProvider: null,
+      modelProviderId: null,
+      selectedModel: null,
+    };
+  }
+  return {
+    modelProvider: modelProvider.type,
+    modelProviderId: modelProvider.id,
+    selectedModel: modelProvider.selectedModel,
+  };
+}
+
 async function insertZeroRunRecord(
   tx: Db,
   args: {
@@ -3228,17 +3250,17 @@ async function insertZeroRunRecord(
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   },
 ): Promise<void> {
+  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    automationId: args.zeroRunMetadata?.automationId ?? null,
-    triggerId: args.zeroRunMetadata?.triggerId ?? null,
-    workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId ?? null,
-    runGroupId: args.zeroRunMetadata?.runGroupId ?? null,
-    triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
-    modelProvider: args.modelProvider?.type ?? null,
-    modelProviderId: args.modelProvider?.id ?? null,
-    selectedModel: args.modelProvider?.selectedModel ?? null,
+    automationId: metadata.automationId ?? null,
+    triggerId: metadata.triggerId ?? null,
+    workflowTriggerId: metadata.workflowTriggerId ?? null,
+    runGroupId: metadata.runGroupId ?? null,
+    goalId: metadata.goalId ?? null,
+    triggerAgentId: metadata.triggerAgentId ?? null,
+    ...zeroRunModelProviderValues(args.modelProvider),
     chatThreadId: args.chatThreadId ?? null,
   });
 }

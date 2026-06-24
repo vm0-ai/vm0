@@ -51,10 +51,26 @@ export async function blockGoal(): Promise<ZeroGoalResponse> {
   handleError(result, "Failed to block goal");
 }
 
+export async function pauseGoal(): Promise<ZeroGoalResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroGoalsContract, config);
+  const result = await client.pause({});
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to pause goal");
+}
+
 export async function resumeGoal(): Promise<ZeroGoalResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroGoalsContract, config);
   const result = await client.resume({});
   if (result.status === 200) return result.body;
   handleError(result, "Failed to resume goal");
+}
+
+export async function clearGoal(): Promise<{ readonly cleared: true }> {
+  const config = await getClientConfig();
+  const client = initClient(zeroGoalsContract, config);
+  const result = await client.clear({});
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to clear goal");
 }

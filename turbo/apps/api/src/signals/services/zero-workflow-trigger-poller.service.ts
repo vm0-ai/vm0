@@ -9,15 +9,10 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { calculateNextRun } from "./automations/time-trigger";
-import {
-  GOAL_TRIGGER_INACTIVE_EVENT_ID,
-  appendGoalStateMarker,
-} from "./zero-chat-goal-marker.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -190,27 +185,6 @@ async function recordPreRunFailure(
       ...context,
       consecutiveFailures: newFailureCount,
     });
-    // Auto-disabling a goal's thread-idle trigger is a trigger→inactive
-    // transition; publish it into the thread so the composer's folded goal
-    // state reflects the pause.
-    if (trigger.chatThreadId && trigger.eventType === "thread-idle") {
-      const [workflow] = await db
-        .select({ type: zeroWorkflows.type })
-        .from(zeroWorkflows)
-        .where(eq(zeroWorkflows.id, trigger.workflowId))
-        .limit(1);
-      if (workflow?.type === "goal") {
-        await appendGoalStateMarker(db, {
-          chatThreadId: trigger.chatThreadId,
-          eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-          content: null,
-        });
-        await publishChatThreadMessageCreatedSafely(
-          trigger.ownerUserId,
-          trigger.chatThreadId,
-        );
-      }
-    }
   }
 }
 
@@ -283,7 +257,6 @@ export const executeDueWorkflowTriggers$ = command(
         and(
           eq(zeroWorkflowTriggers.enabled, true),
           eq(zeroWorkflowTriggers.kind, "schedule"),
-          eq(zeroWorkflows.type, "workflow"),
           isNotNull(zeroWorkflowTriggers.chatThreadId),
           lte(zeroWorkflowTriggers.nextRunAt, currentTime),
         ),

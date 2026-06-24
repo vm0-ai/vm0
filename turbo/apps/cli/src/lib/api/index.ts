@@ -141,7 +141,9 @@ export {
   getGoal,
   completeGoal,
   blockGoal,
+  pauseGoal,
   resumeGoal,
+  clearGoal,
 } from "./domains/zero-goals";
 
 // Domain modules - Zero Connectors

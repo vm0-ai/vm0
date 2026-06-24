@@ -68,10 +68,7 @@ export function automationsForThread(
   });
 }
 
-/**
- * A workflow trigger bound to a chat thread, projected for the header
- * automation sidebar. Goal triggers live in the composer through the goal API.
- */
+/** A workflow trigger bound to a chat thread, projected for the header automation sidebar. */
 export interface HeaderWorkflowTriggerEntry {
   readonly id: string;
   readonly chatThreadId: string;
@@ -84,9 +81,6 @@ export interface HeaderWorkflowTriggerEntry {
 
 function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
   if (trigger.kind === "event") {
-    if (trigger.eventType === "thread-idle") {
-      return "On thread idle";
-    }
     return trigger.eventType ?? "Event";
   }
   return trigger.scheduleSummary ?? "Schedule";
