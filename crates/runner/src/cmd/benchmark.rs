@@ -28,6 +28,8 @@ struct Timing {
     exec_ms: Option<u128>,
 }
 
+const DEFAULT_BENCHMARK_TIMEZONE: &str = "UTC";
+
 /// Reject malformed entries so typos fail loud before benchmark startup.
 fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
     env.iter()
@@ -50,6 +52,15 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
         .collect()
 }
 
+fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
+    if !timezone.is_empty() && executor::is_valid_guest_timezone_name(timezone) {
+        return Ok(());
+    }
+    Err(RunnerError::Config(format!(
+        "invalid --timezone {timezone:?}: expected a non-empty IANA timezone name"
+    )))
+}
+
 #[derive(Args)]
 pub struct BenchmarkArgs {
     /// The bash command to execute in the VM
@@ -63,6 +74,9 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
+    /// System timezone to configure in the VM before running the command
+    #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
+    timezone: String,
     /// Run the command as root (sudo)
     #[arg(long)]
     sudo: bool,
@@ -79,6 +93,7 @@ pub async fn run_benchmark(
 
     // Validate --env up front so typos fail before proxy/sandbox startup.
     let env_pairs = parse_env_args(&args.env)?;
+    validate_timezone_arg(&args.timezone)?;
 
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
@@ -389,8 +404,8 @@ async fn run_sandbox(
 }
 
 /// Images always contain a snapshot — fix guest clock drift and reseed entropy.
-async fn setup_guest(sandbox: &dyn sandbox::Sandbox) -> RunnerResult<()> {
-    executor::restore_guest_state_without_timezone(sandbox).await?;
+async fn setup_guest(sandbox: &dyn sandbox::Sandbox, timezone: &str) -> RunnerResult<()> {
+    executor::restore_guest_state_with_timezone(sandbox, timezone).await?;
     Ok(())
 }
 
@@ -417,7 +432,7 @@ async fn run_in_sandbox(
     }
 
     let t_clock = Instant::now();
-    let clock_result = setup_guest(sandbox).await;
+    let clock_result = setup_guest(sandbox, &args.timezone).await;
     timing.clock_ms = Some(t_clock.elapsed().as_millis());
     if let Err(e) = clock_result {
         return (Err(e), timing);
@@ -530,6 +545,29 @@ mod tests {
             );
             assert!(!err.to_string().contains("secret-value"), "got: {err}");
             assert!(!err.to_string().contains(value), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_accepts_default_and_common_names() {
+        for timezone in [
+            DEFAULT_BENCHMARK_TIMEZONE,
+            "Asia/Shanghai",
+            "Etc/GMT+1",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            validate_timezone_arg(timezone).unwrap();
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_rejects_empty_and_shell_metacharacters() {
+        for timezone in ["", "UTC;id", "America/New York", "UTC'", "$(date)"] {
+            let err = validate_timezone_arg(timezone).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid --timezone"),
+                "timezone {timezone:?} produced unexpected error: {err}"
+            );
         }
     }
 

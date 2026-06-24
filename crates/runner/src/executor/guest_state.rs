@@ -7,6 +7,7 @@ use crate::helper_exec::{
     format_command_output_excerpt, format_helper_exec_failure, helper_exec_succeeded,
     helper_exec_termination_label,
 };
+use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 const ENTROPY_SIZE: usize = 256;
@@ -15,7 +16,7 @@ const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
 #[derive(Clone, Copy)]
 struct GuestTimezone<'a> {
     name: &'a str,
-    context: &'a ExecutionContext,
+    run_id: Option<RunId>,
 }
 
 fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
@@ -48,7 +49,7 @@ fn read_host_entropy() -> RunnerResult<Vec<u8>> {
     Ok(entropy)
 }
 
-fn valid_timezone_name(tz: &str) -> bool {
+pub(crate) fn is_valid_guest_timezone_name(tz: &str) -> bool {
     tz.bytes()
         .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
 }
@@ -61,7 +62,7 @@ fn user_timezone(context: &ExecutionContext) -> Option<&str> {
     // Strict validation: timezone names are like "Asia/Shanghai" or "UTC".
     // Only allow alphanumeric, '/', '_', '-', '+'.  This prevents shell
     // injection since the value is interpolated into a sudo shell command.
-    if !valid_timezone_name(tz) {
+    if !is_valid_guest_timezone_name(tz) {
         tracing::warn!(tz = %tz, "rejected invalid timezone name");
         return None;
     }
@@ -89,11 +90,7 @@ fn timezone_sync_best_effort_command(tz: &str) -> String {
     )
 }
 
-fn log_embedded_timezone_failure(
-    context: &ExecutionContext,
-    tz: &str,
-    result: &sandbox::ExecResult,
-) {
+fn log_embedded_timezone_failure(run_id: Option<RunId>, tz: &str, result: &sandbox::ExecResult) {
     if !result
         .stderr
         .windows(TIMEZONE_SYNC_FAILED_MARKER.len())
@@ -106,14 +103,24 @@ fn log_embedded_timezone_failure(
         format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
     let stdout_excerpt =
         format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
-    tracing::warn!(
-        run_id = %context.run_id,
-        tz = %tz,
-        termination = helper_exec_termination_label(result),
-        stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
-        stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
-        "failed to set guest timezone"
-    );
+    if let Some(run_id) = run_id {
+        tracing::warn!(
+            run_id = %run_id,
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    } else {
+        tracing::warn!(
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    }
 }
 
 /// Restores snapshot-sensitive guest state in one exec before the agent starts.
@@ -128,14 +135,30 @@ pub(crate) async fn restore_guest_state(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
 ) -> RunnerResult<()> {
-    let timezone = user_timezone(context).map(|name| GuestTimezone { name, context });
+    let timezone = user_timezone(context).map(|name| GuestTimezone {
+        name,
+        run_id: Some(context.run_id),
+    });
     restore_guest_state_inner(sandbox, timezone).await
 }
 
-pub(crate) async fn restore_guest_state_without_timezone(
+pub(crate) async fn restore_guest_state_with_timezone(
     sandbox: &dyn Sandbox,
+    timezone: &str,
 ) -> RunnerResult<()> {
-    restore_guest_state_inner(sandbox, None).await
+    if timezone.is_empty() || !is_valid_guest_timezone_name(timezone) {
+        return Err(RunnerError::Config(format!(
+            "invalid timezone {timezone:?}: expected a non-empty IANA timezone name"
+        )));
+    }
+    restore_guest_state_inner(
+        sandbox,
+        Some(GuestTimezone {
+            name: timezone,
+            run_id: None,
+        }),
+    )
+    .await
 }
 
 async fn restore_guest_state_inner(
@@ -173,7 +196,7 @@ guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}
         )));
     }
     if let Some(timezone) = timezone {
-        log_embedded_timezone_failure(timezone.context, timezone.name, &result);
+        log_embedded_timezone_failure(timezone.run_id, timezone.name, &result);
     }
 
     Ok(())
