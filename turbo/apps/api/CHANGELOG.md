@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.175.1](https://github.com/vm0-ai/vm0/compare/api-v1.175.0...api-v1.175.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* polish archived goal chat folds ([#18786](https://github.com/vm0-ai/vm0/issues/18786)) ([b6cff9b](https://github.com/vm0-ai/vm0/commit/b6cff9b45b86976a5f3aeae62da06047a0255342))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.3
+    * @vm0/core bumped to 8.367.1
+    * @vm0/db bumped to 1.69.3
+
 ## [1.175.0](https://github.com/vm0-ai/vm0/compare/api-v1.174.1...api-v1.175.0) (2026-06-24)
 
 

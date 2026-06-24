@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.129.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.12...runner-rs-v0.129.13) (2026-06-24)
+
+
+### Bug Fixes
+
+* classify deel custom field patch as write ([#18794](https://github.com/vm0-ai/vm0/issues/18794)) ([6e54807](https://github.com/vm0-ai/vm0/commit/6e5480751b9477cfa9bbb6c73eeb8fe858ebfb73))
+
+
+### Refactoring
+
+* move builtin firewall renderer to generator ([#18788](https://github.com/vm0-ai/vm0/issues/18788)) ([1b91859](https://github.com/vm0-ai/vm0/commit/1b918597991e115e7f1a13e1f1bd03b64891d66f))
+
+
+### Performance Improvements
+
+* stream storage manifest through stdin ([#18787](https://github.com/vm0-ai/vm0/issues/18787)) ([7667dda](https://github.com/vm0-ai/vm0/commit/7667dda4552a4471a12c9558108b03c7844bcb50))
+
 ## [0.129.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.11...runner-rs-v0.129.12) (2026-06-24)
 
 

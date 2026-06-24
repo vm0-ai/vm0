@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.2...guest-write-file-v0.1.3) (2026-06-24)
+
+
+### Performance Improvements
+
+* stream storage manifest through stdin ([#18787](https://github.com/vm0-ai/vm0/issues/18787)) ([7667dda](https://github.com/vm0-ai/vm0/commit/7667dda4552a4471a12c9558108b03c7844bcb50))
+
 ## [0.1.2](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.1...guest-write-file-v0.1.2) (2026-06-18)
 
 
