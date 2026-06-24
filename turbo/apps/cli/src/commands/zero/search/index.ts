@@ -8,6 +8,7 @@ import type {
   ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -107,7 +108,7 @@ async function runLogsSource(
 }
 
 function formatTimestamp(iso: string): string {
-  return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return formatIsoTimestamp(iso);
 }
 
 function renderChatMessage(msg: ChatSearchMessage, isMatch: boolean): void {

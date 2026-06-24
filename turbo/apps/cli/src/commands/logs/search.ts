@@ -6,6 +6,7 @@ import {
   type LogsSearchResponse,
 } from "../../lib/api";
 import { parseTime } from "../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../lib/utils/time-format";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { withErrorHandler } from "../../lib/command";
@@ -47,7 +48,7 @@ function formatRunHeader(
   timestamp: string,
 ): string {
   const shortId = runId.slice(0, 8);
-  const time = new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const time = formatIsoTimestamp(timestamp);
   return `── Run ${shortId} (${agentName}, ${time}) ──────────`;
 }
 

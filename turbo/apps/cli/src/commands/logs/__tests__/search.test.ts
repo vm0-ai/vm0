@@ -76,6 +76,31 @@ describe("logs search command", () => {
     expect(logCalls).toContain("OOM killed");
   });
 
+  it("should tolerate invalid search result timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "abc12345-1234-1234-1234-123456789abc",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Build"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("Build failed");
+  });
+
   it("should pass context params to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(

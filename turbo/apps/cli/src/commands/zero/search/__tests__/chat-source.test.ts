@@ -87,6 +87,40 @@ describe("zero search --source chat", () => {
     expect(logs).toContain("OOM killed the build");
   });
 
+  it("tolerates invalid chat message timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/chat/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              chatThreadId: "thread-abc",
+              agentName: "my-agent",
+              matchedMessage: makeMessage({
+                content: "OOM killed the build",
+                createdAt: "not-a-timestamp",
+              }),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await zeroSearchCommand.parseAsync([
+      "node",
+      "cli",
+      "OOM",
+      "--source",
+      "chat",
+    ]);
+
+    const logs = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logs).toContain("invalid-date");
+    expect(logs).toContain("OOM killed the build");
+  });
+
   it("handles no matches", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/chat/search", () => {

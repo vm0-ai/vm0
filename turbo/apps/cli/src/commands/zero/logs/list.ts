@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listZeroLogs } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { withErrorHandler } from "../../../lib/command";
 
 function formatStatus(status: string): string {
@@ -23,7 +24,7 @@ function formatStatus(status: string): string {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return formatIsoTimestamp(iso);
 }
 
 export const listCommand = new Command()

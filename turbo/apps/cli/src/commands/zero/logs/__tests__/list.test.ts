@@ -77,6 +77,24 @@ describe("zero logs list command", () => {
     expect(logCalls).toContain("2026-04-01");
   });
 
+  it("should tolerate invalid run creation timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs", () => {
+        return HttpResponse.json({
+          data: [{ ...mockLogEntry, createdAt: "not-a-timestamp" }],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters: emptyFilters,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("My Agent");
+  });
+
   it("should handle empty run list", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs", () => {
