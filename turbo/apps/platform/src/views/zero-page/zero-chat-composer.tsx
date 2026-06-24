@@ -5203,7 +5203,7 @@ function ComputerUseConnectorMenuSection({
   onOpenDownloadDialog: () => void;
 }) {
   return (
-    <div className="border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
+    <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         Your computer
       </div>
@@ -5376,10 +5376,10 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="w-72 overflow-hidden rounded-lg p-0"
+        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
         {(agentConnectors.length > 0 || connectorsLoading) && (
-          <div className="py-1">
+          <div className="flex min-h-0 flex-col py-1">
             {showSearch && (
               <div className="px-3 py-1 border-b border-border/50">
                 <input
@@ -5406,7 +5406,7 @@ function ConnectorsPopoverButton({
                 })}
               </div>
             ) : (
-              <div className="flex flex-col max-h-72 overflow-y-auto">
+              <div className="flex min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
                   return (
                     <label
@@ -5435,7 +5435,7 @@ function ConnectorsPopoverButton({
             )}
           </div>
         )}
-        <div className="flex flex-col p-1">
+        <div className="flex shrink-0 flex-col p-1">
           {(agentConnectors.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
