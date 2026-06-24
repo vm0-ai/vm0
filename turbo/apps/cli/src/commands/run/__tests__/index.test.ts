@@ -2346,6 +2346,58 @@ describe("run command", () => {
       expect(logCalls).toContain("Second turn failed");
     });
 
+    it("should not collapse Codex polling failures when only the pending error has a turn id", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  turn_id: "turn-1",
+                  message: "First turn failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.failed",
+                eventData: {
+                  type: "turn.failed",
+                  error: "Unattributed terminal failure",
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Unattributed terminal failure");
+    });
+
     it("should flush pending Codex tool use before terminal run lifecycle output", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
