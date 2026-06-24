@@ -835,6 +835,9 @@ importers:
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
+      '@vm0/firewalls-generator':
+        specifier: workspace:*
+        version: link:../firewalls-generator
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
