@@ -96,6 +96,16 @@ function linkByText(text: string): HTMLElement {
   return link;
 }
 
+function presentationTemplateGridScrollContainer(): HTMLElement {
+  const scrollContainer = screen
+    .getByRole("dialog")
+    .querySelector<HTMLElement>("[data-presentation-template-grid-scroll]");
+  if (!scrollContainer) {
+    throw new Error("Presentation template grid scroll container not found");
+  }
+  return scrollContainer;
+}
+
 function mockNavigatorUserAgent(userAgent: string): () => void {
   const original = Object.getOwnPropertyDescriptor(navigator, "userAgent");
   Object.defineProperty(navigator, "userAgent", {
@@ -2325,6 +2335,72 @@ describe("chat composer templates", () => {
     expect(
       screen.queryByText(`${String(lastSlideNumber)} of 15`),
     ).not.toBeInTheDocument();
+  });
+
+  it("preserves presentation template grid scroll when returning from detail preview", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    const initialScrollContainer = presentationTemplateGridScrollContainer();
+    initialScrollContainer.scrollTop = 360;
+    fireEvent.scroll(initialScrollContainer);
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+
+    const templateDialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template / ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    click(within(templateDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(presentationTemplateGridScrollContainer().scrollTop).toBe(360);
+    });
+
+    const restoredAfterClose = presentationTemplateGridScrollContainer();
+    restoredAfterClose.scrollTop = 520;
+    fireEvent.scroll(restoredAfterClose);
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByRole("heading", {
+          name: `Template / ${template.title}`,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+
+    await waitFor(() => {
+      expect(presentationTemplateGridScrollContainer().scrollTop).toBe(520);
+    });
   });
 
   it("resumes presentation template detail preview loading after reopening the same slide", async () => {

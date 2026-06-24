@@ -172,6 +172,8 @@ import {
   setTemplatePickerSearch$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
+  restoreTemplatePickerPresentationScroll$,
+  setTemplatePickerPresentationScrollTop$,
   setComputerUseDownloadDialogOpen$,
   illustrationVariantIndex$,
   setIllustrationVariantIndex$,
@@ -4272,6 +4274,12 @@ function TemplatePickerDialog({
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const restorePresentationGridScroll = useSet(
+    restoreTemplatePickerPresentationScroll$,
+  );
+  const setPresentationGridScrollTop = useSet(
+    setTemplatePickerPresentationScrollTop$,
+  );
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
@@ -4365,22 +4373,27 @@ function TemplatePickerDialog({
     );
   };
 
+  const closeTemplatePicker = () => {
+    setPresentationGridScrollTop(0);
+    onClose();
+  };
+
   const handleSelectPresentation = (
     item: PresentationTemplateItem,
     colorSystemId?: string,
   ) => {
     onChange(toPresentationGenerationTemplate(item, colorSystemId));
-    onClose();
+    closeTemplatePicker();
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
-    onClose();
+    closeTemplatePicker();
   };
 
   const handleSelectIllustration = (item: IllustrationTemplateItem) => {
     onChange(toIllustrationGenerationTemplate(item));
-    onClose();
+    closeTemplatePicker();
   };
 
   const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
@@ -4475,6 +4488,13 @@ function TemplatePickerDialog({
     }
   };
 
+  const restorePresentationGridScrollNode = (node: HTMLDivElement | null) => {
+    if (node === null) {
+      return;
+    }
+    restorePresentationGridScroll(node);
+  };
+
   return (
     <Dialog
       open
@@ -4484,7 +4504,7 @@ function TemplatePickerDialog({
             setPreviewSlug(null);
             return;
           }
-          onClose();
+          closeTemplatePicker();
         }
       }}
     >
@@ -4544,7 +4564,11 @@ function TemplatePickerDialog({
             {selectedCategory === "slides" && hasPptTab && (
               <div
                 data-presentation-template-grid-scroll=""
+                ref={restorePresentationGridScrollNode}
                 className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+                onScroll={(event) => {
+                  setPresentationGridScrollTop(event.currentTarget.scrollTop);
+                }}
               >
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
