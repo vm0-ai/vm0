@@ -50,6 +50,16 @@ mod tests {
     }
 
     #[test]
+    fn quotes_command_separators() {
+        assert_eq!(quote_shell_arg("ok; uname -a"), "'ok; uname -a'");
+    }
+
+    #[test]
+    fn preserves_newlines_inside_quoted_word() {
+        assert_eq!(quote_shell_arg("line1\nline2"), "'line1\nline2'");
+    }
+
+    #[test]
     fn quotes_safe_punctuation() {
         assert_eq!(quote_shell_arg("/tmp/a-b.c:+@%"), "'/tmp/a-b.c:+@%'");
     }

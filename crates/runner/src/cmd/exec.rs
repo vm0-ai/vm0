@@ -515,6 +515,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn command_separator_in_arg_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["echo", "ok; uname -a"]), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'echo' 'ok; uname -a'".to_string()],
+        );
+    }
+
+    #[tokio::test]
     async fn empty_arg_is_quoted() {
         let control = MockSandboxControl::new("/tmp");
         run_exec(make_args_vec(vec!["echo", ""]), &control)
