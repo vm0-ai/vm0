@@ -16,7 +16,7 @@ use super::diagnostics::{
     should_collect_agent_abnormal_exit_diagnostics,
 };
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
-use super::guest_state::{fix_guest_clock, reseed_guest_entropy, sync_guest_timezone};
+use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_restore::restore_session;
 use super::storage::{download_storages, filter_unchanged_storages, guest_download_has_work};
 use super::telemetry::record_api_latency;
@@ -241,8 +241,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
     if start.restore_guest_state {
-        fix_guest_clock(sandbox).await?;
-        reseed_guest_entropy(sandbox).await?;
+        restore_guest_state(sandbox).await?;
     }
 
     // 2. Set guest timezone from user preference (best-effort, never fails).
