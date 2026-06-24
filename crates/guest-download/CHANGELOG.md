@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.34](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.33...guest-download-v0.20.34) (2026-06-24)
+
+
+### Performance Improvements
+
+* stream storage manifest through stdin ([#18787](https://github.com/vm0-ai/vm0/issues/18787)) ([7667dda](https://github.com/vm0-ai/vm0/commit/7667dda4552a4471a12c9558108b03c7844bcb50))
+
 ## [0.20.33](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.32...guest-download-v0.20.33) (2026-06-23)
 
 
