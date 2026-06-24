@@ -238,28 +238,6 @@ fn validate_dir_fd(fd: &OwnedFd, path: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-fn validate_private_dir_mode(fd: &OwnedFd, path: &Path) -> io::Result<()> {
-    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-    // SAFETY: `stat` points to writable memory and `fd` owns a live descriptor.
-    let result = unsafe { libc::fstat(fd.as_raw_fd(), stat.as_mut_ptr()) };
-    if result != 0 {
-        return Err(wrap_last_os_error(format!(
-            "stat runtime directory {}",
-            path.display()
-        )));
-    }
-    // SAFETY: successful `fstat` initialized the full struct.
-    let stat = unsafe { stat.assume_init() };
-    if stat.st_mode & 0o777 != PRIVATE_DIR_MODE {
-        return Err(permission_denied(format!(
-            "{} is not a private runtime directory",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
 fn chmod_dir_fd(fd: &OwnedFd, path: &Path) -> io::Result<()> {
     // SAFETY: `fd` owns a live directory descriptor.
     let result = unsafe { libc::fchmod(fd.as_raw_fd(), PRIVATE_DIR_MODE) };
@@ -314,7 +292,13 @@ fn chmod_created_dir_component(
         )
     };
     if fd < 0 {
-        return Err(dir_component_error("open newly-created", name, full_path));
+        return Err(dir_component_error(
+            "open newly-created",
+            parent,
+            name,
+            name_c,
+            full_path,
+        ));
     }
     // SAFETY: `fd` is a fresh descriptor returned by `openat`.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
@@ -368,7 +352,34 @@ fn chmod_created_dir_component(
 }
 
 #[cfg(unix)]
-fn dir_component_error(operation: &str, name: &OsStr, full_path: &Path) -> io::Error {
+fn component_is_symlink(parent: &OwnedFd, name_c: &CString) -> io::Result<bool> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `name_c` is NUL-terminated, `parent` owns a live directory fd,
+    // and `stat` points to writable memory.
+    let result = unsafe {
+        libc::fstatat(
+            parent.as_raw_fd(),
+            name_c.as_ptr(),
+            stat.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: successful `fstatat` initialized the full struct.
+    let stat = unsafe { stat.assume_init() };
+    Ok(stat.st_mode & libc::S_IFMT == libc::S_IFLNK)
+}
+
+#[cfg(unix)]
+fn dir_component_error(
+    operation: &str,
+    parent: &OwnedFd,
+    name: &OsStr,
+    name_c: &CString,
+    full_path: &Path,
+) -> io::Error {
     let error = io::Error::last_os_error();
     match error.raw_os_error() {
         Some(code) if code == libc::ELOOP => permission_denied(format!(
@@ -376,10 +387,28 @@ fn dir_component_error(operation: &str, name: &OsStr, full_path: &Path) -> io::E
             full_path.display(),
             name.to_string_lossy()
         )),
-        Some(code) if code == libc::ENOTDIR => permission_denied(format!(
-            "{} is not a directory; refusing to use it as runtime directory",
-            full_path.display()
-        )),
+        Some(code) if code == libc::ENOTDIR => match component_is_symlink(parent, name_c) {
+            Ok(true) => permission_denied(format!(
+                "{} contains symlink component {}; refusing to use it as runtime directory",
+                full_path.display(),
+                name.to_string_lossy()
+            )),
+            Ok(false) => io::Error::new(
+                io::ErrorKind::NotADirectory,
+                format!(
+                    "{} is not a directory; refusing to use it as runtime directory",
+                    full_path.display()
+                ),
+            ),
+            Err(stat_error) => io::Error::new(
+                error.kind(),
+                format!(
+                    "{operation} runtime directory component {} for {}: {error}; failed to inspect component after ENOTDIR: {stat_error}",
+                    name.to_string_lossy(),
+                    full_path.display()
+                ),
+            ),
+        },
         _ => io::Error::new(
             error.kind(),
             format!(
@@ -405,7 +434,6 @@ fn open_or_create_dir_component(
     name: &OsStr,
     full_path: &Path,
     is_final: bool,
-    chmod_existing_final: bool,
 ) -> io::Result<OwnedFd> {
     let name_c = component_cstring(name, full_path)?;
     let path = component_path(parent_path, name);
@@ -431,25 +459,22 @@ fn open_or_create_dir_component(
         fd = unsafe { libc::openat(parent.as_raw_fd(), name_c.as_ptr(), dir_open_flags()) };
     }
     if fd < 0 {
-        return Err(dir_component_error("open", name, full_path));
+        return Err(dir_component_error(
+            "open", parent, name, &name_c, full_path,
+        ));
     }
 
     // SAFETY: `fd` is a fresh descriptor returned by `openat`.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
     validate_dir_fd(&fd, &path)?;
-    if created || (is_final && chmod_existing_final) {
+    if is_final || created {
         chmod_dir_fd(&fd, &path)?;
-    } else if is_final {
-        validate_private_dir_mode(&fd, &path)?;
     }
     Ok(fd)
 }
 
 #[cfg(unix)]
-fn open_or_create_private_dir_with_options(
-    path: &Path,
-    chmod_existing_final: bool,
-) -> io::Result<OwnedFd> {
+fn open_or_create_private_dir(path: &Path) -> io::Result<OwnedFd> {
     if path.as_os_str().is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -479,14 +504,8 @@ fn open_or_create_private_dir_with_options(
             Component::Normal(name) => {
                 saw_normal_component = true;
                 let is_final = components.peek().is_none();
-                current = open_or_create_dir_component(
-                    &current,
-                    &current_path,
-                    name,
-                    path,
-                    is_final,
-                    chmod_existing_final,
-                )?;
+                current =
+                    open_or_create_dir_component(&current, &current_path, name, path, is_final)?;
                 current_path = component_path(&current_path, name);
             }
             Component::Prefix(prefix) => {
@@ -513,16 +532,6 @@ fn open_or_create_private_dir_with_options(
     }
 
     Ok(current)
-}
-
-#[cfg(unix)]
-fn open_or_create_private_dir(path: &Path) -> io::Result<OwnedFd> {
-    open_or_create_private_dir_with_options(path, true)
-}
-
-#[cfg(unix)]
-fn open_private_file_parent_dir(path: &Path) -> io::Result<OwnedFd> {
-    open_or_create_private_dir_with_options(path, false)
 }
 
 #[cfg(unix)]
@@ -642,7 +651,7 @@ fn parent_dir(path: &Path) -> io::Result<&Path> {
 fn open_private_file(path: &Path, append: bool) -> io::Result<File> {
     let name = file_name(path)?;
     let parent = parent_dir(path)?;
-    let parent = open_private_file_parent_dir(parent)?;
+    let parent = open_or_create_private_dir(parent)?;
     let name_c = component_cstring(name, path)?;
     let mut flags =
         libc::O_WRONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK;
@@ -706,8 +715,8 @@ fn secure_regular_private_file(file: &File, path: &Path) -> io::Result<()> {
 /// Create or truncate a runtime-private file.
 ///
 /// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and an existing final parent
-/// directory must already be private.
+/// symlinked parent components are rejected, and private permissions are
+/// enforced on the final parent directory.
 pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
     open_private_file(path.as_ref(), false)
 }
@@ -729,9 +738,8 @@ pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
 /// Write bytes to a runtime-private file.
 ///
 /// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and an existing final parent
-/// directory must already be private. This avoids chmodding arbitrary existing
-/// directories when a caller passes a non-runtime path by mistake.
+/// symlinked parent components are rejected, and private permissions are
+/// enforced on the final parent directory.
 pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     let mut file = create_private(path)?;
     std::io::Write::write_all(&mut file, bytes.as_ref())
@@ -748,8 +756,8 @@ fn private_append_options() -> OpenOptions {
 /// Open a runtime-private file for append.
 ///
 /// On Unix, missing parent directories are created with private permissions,
-/// symlinked parent components are rejected, and an existing final parent
-/// directory must already be private.
+/// symlinked parent components are rejected, and private permissions are
+/// enforced on the final parent directory.
 pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
     open_private_file(path.as_ref(), true)
 }
@@ -852,44 +860,6 @@ mod tests {
     }
 
     #[test]
-    fn create_private_rejects_non_private_existing_parent_without_chmod() {
-        let temp = tempfile::tempdir().unwrap();
-        let parent = temp.path().join("public");
-        std::fs::create_dir(&parent).unwrap();
-
-        #[cfg(unix)]
-        {
-            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
-            let path = parent.join("session-id");
-
-            let error = create_private(&path).unwrap_err();
-
-            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
-            assert_eq!(mode(&parent), 0o777);
-            assert!(!path.exists());
-        }
-    }
-
-    #[test]
-    fn open_private_append_rejects_non_private_existing_parent_without_chmod() {
-        let temp = tempfile::tempdir().unwrap();
-        let parent = temp.path().join("public");
-        std::fs::create_dir(&parent).unwrap();
-
-        #[cfg(unix)]
-        {
-            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
-            let path = parent.join("metrics.jsonl");
-
-            let error = open_private_append(&path).unwrap_err();
-
-            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
-            assert_eq!(mode(&parent), 0o777);
-            assert!(!path.exists());
-        }
-    }
-
-    #[test]
     fn ensure_dir_chmods_existing_target_dir() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("run");
@@ -902,6 +872,25 @@ mod tests {
             ensure_dir(&path).unwrap();
 
             assert_eq!(mode(&path), 0o700);
+        }
+    }
+
+    #[test]
+    fn write_private_chmods_existing_final_parent_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("run");
+        std::fs::create_dir(&parent).unwrap();
+        let path = parent.join("system.log");
+
+        #[cfg(unix)]
+        {
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+            write_private(&path, b"hello").unwrap();
+
+            assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+            assert_eq!(mode(&parent), 0o700);
+            assert_eq!(mode(&path), 0o600);
         }
     }
 
@@ -1014,6 +1003,23 @@ mod tests {
                 std::fs::read(target.join("metrics.jsonl")).unwrap(),
                 b"secret"
             );
+        }
+    }
+
+    #[test]
+    fn write_private_rejects_file_parent_as_not_a_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, b"file").unwrap();
+        let path = parent.join("system.log");
+
+        #[cfg(unix)]
+        {
+            let error = write_private(&path, b"new").unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::NotADirectory);
+            assert!(parent.is_file());
+            assert!(!path.exists());
         }
     }
 

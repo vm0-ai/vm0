@@ -286,11 +286,11 @@ fn private_mode_creates_private_parent_dirs_and_writes_content() {
 
 #[cfg(unix)]
 #[test]
-fn private_mode_rejects_non_private_existing_parent_without_chmod() {
+fn private_mode_chmods_existing_parent_and_writes_content() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().unwrap();
-    let parent = dir.path().join("public");
+    let parent = dir.path().join("run");
     std::fs::create_dir(&parent).unwrap();
     std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
     let path = parent.join("env.json");
@@ -298,9 +298,10 @@ fn private_mode_rejects_non_private_existing_parent_without_chmod() {
 
     let output = run_helper(&["--private", path_str], b"hello");
 
-    assert!(!output.status.success());
-    assert_eq!(mode(&parent), 0o777);
-    assert!(!path.exists());
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&parent), 0o700);
+    assert_eq!(mode(&path), 0o600);
 }
 
 #[cfg(unix)]
