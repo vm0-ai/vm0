@@ -227,11 +227,32 @@ pub struct CliExecutionResult {
 /// stop it before final telemetry. `execute_cli` only needs this one-shot
 /// status while the CLI process is running.
 pub enum HeartbeatStatus {
+    /// The heartbeat loop returned an error while CLI execution was running.
+    ///
+    /// `execute_cli` treats this as a guest-agent control-path failure and may
+    /// terminate the CLI process group so final diagnostics can report the
+    /// heartbeat failure.
     Failed(AgentError),
+
+    /// The heartbeat loop stopped cleanly.
+    ///
+    /// During CLI execution this is a non-error completion signal for the
+    /// heartbeat race.
     Stopped,
+
+    /// The heartbeat task itself failed, such as a task panic or join error.
+    ///
+    /// `execute_cli` surfaces this as a guest-agent execution error and may
+    /// terminate the CLI process group if no earlier control-path termination
+    /// is already in progress.
     TaskFailed(String),
 }
 
+/// Optional heartbeat completion receiver for a CLI execution.
+///
+/// `Some(receiver)` races CLI execution against heartbeat completion. `None`
+/// disables heartbeat monitoring for that run, which is useful for tests and
+/// callers that do not own a heartbeat task.
 pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
 
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
@@ -253,6 +274,24 @@ pub async fn execute_cli(
     .await
 }
 
+/// Execute the CLI process with caller-owned active-input state.
+///
+/// This is the active-input variant of [`execute_cli`]. Use it when the caller
+/// has already created an active-input runtime for the run and needs the
+/// process-control side to feed accepted follow-up user input into CLI stdin.
+/// The provided [`ActiveInputWriter`] is consumed for this single CLI
+/// execution.
+///
+/// For Claude stream-json stdin, the initial prompt frame is written first. If
+/// active input is enabled, accepted follow-up user frames are written after the
+/// initial prompt until the active-input terminal closes. If active input is
+/// disabled, the writer closes after the initial prompt. When active input is
+/// enabled, internally replayed initial-prompt and follow-up user events are
+/// filtered from outbound API event delivery.
+///
+/// Result collection, event-drain watermarking, heartbeat handling, shutdown,
+/// process-group termination, and error semantics otherwise match
+/// [`execute_cli`].
 pub async fn execute_cli_with_active_input(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
