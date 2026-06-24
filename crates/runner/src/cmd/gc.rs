@@ -852,9 +852,9 @@ async fn gc_debootstrap(
         }
     });
 
-    // Sort newest first, keep the N most recent stable tarballs. Stale
-    // `*.tar.tmp.<pid>` files are cancellation residue and must not consume a
-    // keep_latest slot that would otherwise protect a usable cache tarball.
+    // Sort newest first, keep the N most recent stable tarballs. Stale temp
+    // tarballs are cancellation residue and must not consume a keep_latest slot
+    // that would otherwise protect a usable cache tarball.
     files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
     let keep = keep_latest.unwrap_or(0);
     let mut stable_seen = 0usize;
@@ -900,13 +900,25 @@ enum DeBootstrapCacheFileKind {
 
 fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> {
     let name = path.file_name().and_then(|name| name.to_str())?;
-    if name.contains(".tar.tmp.") || (name.contains(".tmp.") && name.ends_with(".tar")) {
+    if is_debootstrap_temp_tarball_name(name) {
         Some(DeBootstrapCacheFileKind::Temp)
     } else if name.ends_with(".tar") {
         Some(DeBootstrapCacheFileKind::Stable)
     } else {
         None
     }
+}
+
+fn is_debootstrap_temp_tarball_name(name: &str) -> bool {
+    let Some(pid) = name
+        .strip_suffix(".tar")
+        .and_then(|stem| stem.rsplit_once(".tmp.").map(|(_, pid)| pid))
+        .or_else(|| name.rsplit_once(".tar.tmp.").map(|(_, pid)| pid))
+    else {
+        return false;
+    };
+
+    !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// Remove unused lock files.
@@ -2695,6 +2707,43 @@ mod tests {
         assert!(
             !newer_tmp.exists(),
             "stale temp tarballs must not consume keep_latest slots"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_non_pid_tmp_tarball_name_is_stable() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stable_tar = debootstrap_dir.join("noble-amd64.tmp.release.tar");
+        let temp_tar = debootstrap_dir.join("noble-amd64.tmp.789.tar");
+        std::fs::write(&stable_tar, b"stable").unwrap();
+        std::fs::write(&temp_tar, b"temp").unwrap();
+        let temp_size = std::fs::metadata(&temp_tar).unwrap().len();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let newer_time = old_time + Duration::from_secs(60);
+        std::fs::File::open(&temp_tar)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        std::fs::File::open(&stable_tar)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(newer_time))
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(1), false).await.unwrap();
+
+        assert_eq!(freed, temp_size);
+        assert!(
+            stable_tar.exists(),
+            "non-pid .tmp. tarball names should remain stable debootstrap cache tarballs"
+        );
+        assert!(
+            !temp_tar.exists(),
+            "pid-suffixed debootstrap temp tarball should be removed"
         );
     }
 
