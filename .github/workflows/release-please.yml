@@ -2334,6 +2334,13 @@ jobs:
           chmod 0755 "$ASSET_PATH"
           test -x "$ASSET_PATH"
 
+          ELF_MAGIC=$(od -An -tx1 -N4 "$ASSET_PATH" | tr -d ' \n')
+          ELF_MACHINE=$(dd if="$ASSET_PATH" bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')
+          if [ "$ELF_MAGIC" != "7f454c46" ] || [ "$ELF_MACHINE" != "b700" ]; then
+            echo "::error::downloaded runner asset is not an AArch64 ELF binary: magic=${ELF_MAGIC} machine=${ELF_MACHINE}"
+            exit 1
+          fi
+
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
