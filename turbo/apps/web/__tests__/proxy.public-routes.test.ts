@@ -272,6 +272,22 @@ describe("proxy middleware: public routes", () => {
     expect(clerkState.protectedPaths).toEqual([]);
   });
 
+  it("keeps locale-prefixed video gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/video");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-less video gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/video");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
   it("keeps locale-prefixed report gallery public", async () => {
     const request = new NextRequest("https://www.vm0.ai/en/report");
 
