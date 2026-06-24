@@ -578,41 +578,6 @@ export function setPermissionDraftGroupAllowPolicy({
   });
 }
 
-export function restorePermissionDraftGroup({
-  draft,
-  category,
-  permissions,
-}: {
-  readonly draft: PermissionDraftIntent;
-  readonly category: string;
-  readonly permissions: readonly PermissionLike[];
-}): PermissionDraftIntent {
-  const permissionNames = new Set(
-    permissions.map((permission) => {
-      return permission.name;
-    }),
-  );
-  return {
-    ...draft,
-    groupPolicies: omitKey(draft.groupPolicies, category),
-    permissionPolicies: omitKeys(draft.permissionPolicies, permissionNames),
-    restoredGroups: {
-      ...draft.restoredGroups,
-      [category]: true,
-    },
-    groupExpirations: omitKey(draft.groupExpirations, category),
-    permissionExpirations: omitKeys(
-      draft.permissionExpirations,
-      permissionNames,
-    ),
-    clearedPermissionExpirations: omitKeys(
-      draft.clearedPermissionExpirations,
-      permissionNames,
-    ),
-    restoredPermissions: omitKeys(draft.restoredPermissions, permissionNames),
-  };
-}
-
 export function restorePermissionDraftPermission({
   draft,
   permissionName,
@@ -838,7 +803,7 @@ export function isPermissionDraftPristine(
   );
 }
 
-export function hasPermissionDraftPermissionChange({
+function hasPermissionDraftPermissionChange({
   context,
   draft,
   permissionName,
@@ -868,7 +833,7 @@ export function hasPermissionDraftPermissionChange({
   return selected !== "always";
 }
 
-export function hasPermissionDraftUnknownChange({
+function hasPermissionDraftUnknownChange({
   context,
   draft,
   selected,
@@ -892,7 +857,7 @@ export function hasPermissionDraftUnknownChange({
   return selected !== "always";
 }
 
-export function hasPermissionDraftGroupChange({
+function hasPermissionDraftGroupChange({
   context,
   draft,
   permissions,

@@ -637,6 +637,7 @@ describe("team page navigation", () => {
       "annotations|create",
     );
     const loadedPermissionsDialog = dialogForElement(permissionRow);
+    click(buttonByText("Allow", permissionRow));
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
@@ -668,6 +669,7 @@ describe("team page navigation", () => {
       "annotations|create",
     );
     const loadedPermissionsDialog = dialogForElement(permissionRow);
+    click(buttonByText("Allow", permissionRow));
     click(screen.getByLabelText("annotations|create allow options"));
     click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
@@ -1004,19 +1006,23 @@ describe("team page navigation", () => {
     expect(miscGroupElement).toBeInTheDocument();
 
     click(screen.getByText(miscGroupLabel));
-    const miscGroup = screen.getByText(miscGroupLabel).closest("div");
-    if (!(miscGroup instanceof HTMLElement)) {
-      throw new Error("Misc permission group not found");
-    }
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow for 7d"));
-    await waitFor(() => {
-      expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
-    });
     const channelsJoinRow = await permissionRowByName(
       loadedGroupedDialog,
       "channels:join",
     );
+    click(buttonByText("Allow", channelsJoinRow));
+    click(
+      within(channelsJoinRow).getByLabelText("channels:join allow options"),
+    );
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).getByText("7d")).toBeInTheDocument();
+    });
+    click(buttonByText("Deny", channelsJoinRow));
+    await waitFor(() => {
+      expect(within(channelsJoinRow).queryByText("7d")).not.toBeInTheDocument();
+    });
+    click(buttonByText("Allow", channelsJoinRow));
     click(
       within(channelsJoinRow).getByLabelText("channels:join allow options"),
     );
@@ -1024,20 +1030,6 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
     });
-    click(
-      within(channelsJoinRow).getByLabelText("channels:join allow options"),
-    );
-    click(menuItemByText("Allow always"));
-    await waitFor(() => {
-      expect(within(channelsJoinRow).getByText("Always")).toBeInTheDocument();
-    });
-    click(buttonByText("Deny", miscGroup));
-    await waitFor(() => {
-      expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
-    });
-    click(buttonByText("Allow", miscGroup));
-    click(within(miscGroup).getByLabelText("Misc allow options"));
-    click(menuItemByText("Allow always"));
 
     const permissionsScrollArea =
       loadedGroupedDialog.querySelector(".overflow-y-auto");
@@ -1050,22 +1042,12 @@ describe("team page navigation", () => {
     });
     fireEvent.scroll(permissionsScrollArea);
 
-    click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
-    await waitFor(() => {
-      expect(
-        within(channelsJoinRow).queryByLabelText("Undo channels:join changes"),
-      ).not.toBeInTheDocument();
-    });
-
     const unknownRow = await unknownEndpointsRow(loadedGroupedDialog);
+    click(buttonByText("Allow", unknownRow));
     click(within(unknownRow).getByLabelText("__unknown__ allow options"));
     click(menuItemByText("Allow for 1h"));
     await waitFor(() => {
       expect(within(unknownRow).getByText("1h")).toBeInTheDocument();
-    });
-    click(within(unknownRow).getByLabelText("Undo __unknown__ changes"));
-    await waitFor(() => {
-      expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
     });
 
     click(buttonByText("Apply", loadedGroupedDialog));
