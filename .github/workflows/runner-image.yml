@@ -359,3 +359,41 @@ jobs:
           name: ${{ steps.artifact.outputs.artifact-name }}
           path: runner-image-manifest/manifest.json
           retention-days: 7
+
+  verify-x86_64-runner-build:
+    name: Verify x86_64 runner build
+    runs-on: ubuntu-latest-8-cores
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    permissions:
+      contents: read
+    env:
+      TARGET_TRIPLE: x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: x86_64-musl-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile guest binaries for x86_64
+        run: |
+          cd crates
+          cargo build --release --target "$TARGET_TRIPLE" \
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
+
+      - name: Cross-compile runner with embedded x86_64 guests
+        run: |
+          cd crates
+          TARGET_DIR="target/${TARGET_TRIPLE}/release"
+          GUEST_AGENT_PATH="${TARGET_DIR}/guest-agent" \
+          GUEST_DOWNLOAD_PATH="${TARGET_DIR}/guest-download" \
+          GUEST_INIT_PATH="${TARGET_DIR}/guest-init" \
+          GUEST_MOCK_CLAUDE_PATH="${TARGET_DIR}/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="${TARGET_DIR}/guest-mock-codex" \
+          GUEST_RESEED_PATH="${TARGET_DIR}/guest-reseed" \
+          GUEST_WRITE_FILE_PATH="${TARGET_DIR}/guest-write-file" \
+            cargo build --release --target "$TARGET_TRIPLE" -p runner
+          test -x "target/${TARGET_TRIPLE}/release/runner"
