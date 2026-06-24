@@ -40,6 +40,14 @@ function makeNestedArray(depth: number): unknown[] {
   return value;
 }
 
+function makeWideNestedObject(fieldCount: number): Record<string, unknown> {
+  const value: Record<string, unknown> = {};
+  for (let index = 0; index < fieldCount; index += 1) {
+    value[`ignored_${index}`] = { nested: { index } };
+  }
+  return value;
+}
+
 describe("logs command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -2369,6 +2377,44 @@ describe("logs command", () => {
       expect(logCalls).toContain("nested error detail");
       expect(logCalls).toContain("...");
       expect(logCalls).not.toContain("leaf");
+    });
+
+    it("should bound wide Codex fallback object formatting", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "wide-1",
+                      type: "mcp_tool_call",
+                      ...makeWideNestedObject(40),
+                      late: "should not be scanned",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(logCalls).toContain("[item] mcp_tool_call");
+      expect(logCalls).toContain("...");
+      expect(logCalls).not.toContain("should not be scanned");
     });
   });
 

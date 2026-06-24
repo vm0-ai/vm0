@@ -14,6 +14,7 @@ type JsonRecord = Record<string, unknown>;
 const MAX_FORMATTED_ARRAY_ITEMS = 6;
 const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
+const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
 const MAX_FORMATTED_TEXT_LENGTH = 240;
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -21,6 +22,10 @@ function asRecord(value: unknown): JsonRecord | null {
     return null;
   }
   return value as JsonRecord;
+}
+
+function hasOwnKey(record: JsonRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -122,11 +127,20 @@ function formatUnknownValue(value: unknown, depth = 0): string | undefined {
   }
 
   const fields: string[] = [];
-  for (const [key, fieldValue] of Object.entries(record)) {
-    if (fields.length >= MAX_FORMATTED_OBJECT_FIELDS) {
+  let inspectedFields = 0;
+  for (const key in record) {
+    if (!hasOwnKey(record, key)) {
+      continue;
+    }
+    if (
+      fields.length >= MAX_FORMATTED_OBJECT_FIELDS ||
+      inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+    ) {
       fields.push("...");
       break;
     }
+    inspectedFields += 1;
+    const fieldValue = record[key];
     const formatted = formatUnknownValue(fieldValue, depth + 1);
     if (formatted !== undefined) {
       fields.push(`${key}=${formatted}`);
@@ -351,14 +365,23 @@ function formatGenericItem(item: JsonRecord): string | undefined {
     fields.push(`status=${status}`);
   }
 
-  for (const [key, value] of Object.entries(item)) {
+  let inspectedFields = 0;
+  for (const key in item) {
+    if (!hasOwnKey(item, key)) {
+      continue;
+    }
     if (key === "id" || key === "type" || key === "status") {
       continue;
     }
-    if (fields.length >= MAX_FORMATTED_OBJECT_FIELDS + 3) {
+    if (
+      fields.length >= MAX_FORMATTED_OBJECT_FIELDS + 3 ||
+      inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+    ) {
       fields.push("...");
       break;
     }
+    inspectedFields += 1;
+    const value = item[key];
     const formatted = formatUnknownValue(value);
     if (formatted !== undefined) {
       fields.push(`${key}=${formatted}`);
