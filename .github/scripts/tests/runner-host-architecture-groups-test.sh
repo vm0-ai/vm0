@@ -70,6 +70,12 @@ out=$(bash -c '. "$1"; runner_image_target_for_uname_m aarch64' bash "$TARGET")
 out=$(bash -c '. "$1"; runner_image_target_for_uname_m x86_64' bash "$TARGET")
 [ "$out" = "x86_64-unknown-linux-musl" ] || fail "expected x86_64 target, got: ${out}"
 
+out=$(bash -c '. "$1"; runner_image_elf_machine_hex aarch64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "b700" ] || fail "expected aarch64 ELF machine metadata, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_elf_machine_hex x86_64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "3e00" ] || fail "expected x86_64 ELF machine metadata, got: ${out}"
+
 if bash -c '. "$1"; runner_image_target_for_uname_m ""' bash "$TARGET" >"${TMPDIR}/uname-empty.out" 2>"${TMPDIR}/uname-empty.err"; then
   fail "expected empty uname target lookup to fail"
 fi
@@ -244,5 +250,15 @@ if bash -c '. "$1"; runner_image_asset_suffix powerpc-unknown-linux-musl' bash "
   fail "expected unsupported asset suffix target to fail"
 fi
 grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/asset.err" || fail "expected unsupported asset suffix message"
+
+if bash -c '. "$1"; runner_image_elf_machine_hex ""' bash "$TARGET" >"${TMPDIR}/elf-empty.out" 2>"${TMPDIR}/elf-empty.err"; then
+  fail "expected empty ELF machine target to fail"
+fi
+grep -q "missing runner image target" "${TMPDIR}/elf-empty.err" || fail "expected missing ELF machine target message"
+
+if bash -c '. "$1"; runner_image_elf_machine_hex powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/elf.out" 2>"${TMPDIR}/elf.err"; then
+  fail "expected unsupported ELF machine target to fail"
+fi
+grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/elf.err" || fail "expected unsupported ELF machine message"
 
 echo "runner-host-architecture-groups-test: ok"

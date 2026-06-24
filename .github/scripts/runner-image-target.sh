@@ -109,3 +109,21 @@ runner_image_asset_suffix() {
       ;;
   esac
 }
+
+runner_image_elf_machine_hex() {
+  local target="${1:-}"
+
+  runner_image_validate_target "$target" || return $?
+  case "$target" in
+    aarch64-unknown-linux-musl)
+      printf '%s\n' "b700"
+      ;;
+    x86_64-unknown-linux-musl)
+      printf '%s\n' "3e00"
+      ;;
+    *)
+      echo "missing runner image ELF machine metadata for target: ${target}" >&2
+      return 2
+      ;;
+  esac
+}

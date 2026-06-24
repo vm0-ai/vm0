@@ -47,13 +47,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rollback:
+  prepare:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     permissions:
       contents: read
     environment: production
+    outputs:
+      # Keep cross-job architecture metadata sanitized. The rollback job
+      # resolves the concrete host subset from matrix.id inside the job.
+      matrix: ${{ steps.groups.outputs.matrix }}
 
     steps:
       # Hard gate — refuse to proceed unless the operator explicitly
@@ -79,6 +83,57 @@ jobs:
             exit 1
           fi
 
+      # Use main's rollback-runner.yml — this playbook did not exist in
+      # older tags. The playbook only calls stable runner CLI surfaces
+      # (`service install` / `service drain` / `service stop` / `service
+      # resume` / `doctor` / `gc` / `setup` / `build` / `config`), so it
+      # works against any target binary the runner CLI contract supports.
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve production runner host architecture groups
+        id: groups
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          group_count=$(jq -r 'length' <<<"$matrix")
+          if [ "$group_count" -lt 1 ]; then
+            echo "::error::No production runner host architecture groups found"
+            exit 1
+          fi
+
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Production runner host architecture groups:"
+          jq . <<<"$matrix"
+
+  rollback:
+    name: Roll back runner (${{ matrix.label }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    permissions:
+      contents: read
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix || '[]') }}
+
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
@@ -88,38 +143,48 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})..."
+            text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }} (${{ matrix.label }})..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }}...\n📦 Mode: `${{ inputs.rollback_mode }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }}...\n📦 Mode: `${{ inputs.rollback_mode }}`\n🏗️ Target: `${{ matrix.target }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Record start time
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      # Use main's rollback-runner.yml — this playbook did not exist in
-      # older tags. The playbook only calls stable runner CLI surfaces
-      # (`service install` / `service drain` / `service stop` / `service
-      # resume` / `doctor` / `gc` / `setup` / `build` / `config`), so it
-      # works against any target binary the runner CLI contract supports.
-      - uses: actions/checkout@v7
-
-      # Preflight: confirm the release asset is downloadable before we go
-      # SSH-tinkering with production hosts. gc typically keeps the last
-      # 6 versions on-host so this is a fallback check, but if a host
-      # recently replaced its disk the playbook's binary-download branch
-      # will need the asset — fail fast rather than mid-rollout.
+      # Preflight: confirm the exact architecture-specific release asset is
+      # downloadable before we go SSH-tinkering with production hosts. gc
+      # typically keeps the last 6 versions on-host so this is a fallback
+      # check, but if a host recently replaced its disk the playbook's
+      # binary-download branch will need the asset — fail fast rather than
+      # mid-rollout.
       - name: Verify target release asset exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.target_version }}
+          TARGET_TRIPLE: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.assetSuffix }}
+          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
         shell: bash
         run: |
           set -euo pipefail
+          . .github/scripts/runner-image-target.sh
+          runner_image_validate_target "$TARGET_TRIPLE"
+          EXPECTED_ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
+          EXPECTED_UNAME_M=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
+          if [ "$ASSET_SUFFIX" != "$EXPECTED_ASSET_SUFFIX" ]; then
+            echo "::error::matrix asset suffix ${ASSET_SUFFIX} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_ASSET_SUFFIX})"
+            exit 1
+          fi
+          if [ "$EXPECTED_RUNNER_UNAME_M" != "$EXPECTED_UNAME_M" ]; then
+            echo "::error::matrix uname ${EXPECTED_RUNNER_UNAME_M} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_UNAME_M})"
+            exit 1
+          fi
+
           TAG="runner-rs-v${VERSION}"
-          ASSET_NAME="runner-v${VERSION}-aarch64-linux"
+          ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
           # curl + jq instead of `gh` — the toolchain-rust image doesn't
           # ship `gh` (it's in stage 3 `development`, not stage 2). Same
           # REST endpoint and auth as the upload step in release-please.yml.
@@ -146,11 +211,31 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      # Invokes rollback-runner.yml against every production host. The
-      # playbook is idempotent and per-host state-machine-driven, so one
-      # invocation converges heterogeneous fleet states (some hosts with
-      # target inactive, some with target still draining, some with target
-      # already running, etc.) to "target is the sole live version".
+      - name: Resolve metal hosts for architecture
+        id: matrix-hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
+            echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}"
+            exit 1
+          fi
+
+          echo "hosts=${hosts}" >> "$GITHUB_OUTPUT"
+          host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
+
+      # Invokes rollback-runner.yml against one architecture group. The
+      # playbook is idempotent and per-host state-machine-driven, so the
+      # matrix invocation converges heterogeneous fleet states (some hosts
+      # with target inactive, some with target still draining, some with
+      # target already running, etc.) to "target is the sole live version".
       #
       # R2 credentials are NOT passed: on the happy path (target artifacts
       # still on disk thanks to gc --keep-latest 6), the playbook only
@@ -161,21 +246,27 @@ jobs:
       # have, not required for correctness.
       - name: Roll back runner on production hosts with Ansible
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_VERSION: ${{ inputs.target_version }}
+          RUNNER_TARGET: ${{ matrix.target }}
+          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
+          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           API_URL: ${{ vars.VM0_API_URL }}
         run: |
           cd ansible
           ansible-playbook \
-            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            -i "${RUNNER_HOSTS}," \
             playbooks/rollback-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "runner_version=${RUNNER_VERSION}" \
+            -e "runner_target=${RUNNER_TARGET}" \
+            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
+            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "rollback_mode=${ROLLBACK_MODE}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
@@ -208,7 +299,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>"
+                  text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -224,4 +315,4 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ❌ Rollback to v${{ inputs.target_version }} FAILED\n📦 Mode: `${{ inputs.rollback_mode }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n\n⚠️ Fleet may be in a split-version state. Inspect per-host and decide whether to re-run or SSH manually."
+                  text: "*Runner RS* ❌ Rollback to v${{ inputs.target_version }} FAILED\n📦 Mode: `${{ inputs.rollback_mode }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n\n⚠️ Fleet may be in a split-version state. Inspect per-host and decide whether to re-run or SSH manually."

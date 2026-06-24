@@ -1112,6 +1112,7 @@ jobs:
       - build-api-production
       - build-app-production
       - build-runner-release-assets
+      - runner-production-host-groups
       - build-runner-production
       - build-e2b-template-production
       - sbom
@@ -2058,8 +2059,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # Publish runner release binaries for every supported host architecture.
-  # Production host staging remains in build-runner-production until #18486
-  # makes deploy/rollback architecture-aware.
   build-runner-release-assets:
     needs: release-please
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
@@ -2253,14 +2252,63 @@ jobs:
                   type: mrkdwn
                   text: "*Runner RS* ❌ Release asset publishing failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Build runner: download the published ARM64 release binary and stage it on
-  # metal hosts (provision OS + monitoring + `runner build`
+  runner-production-host-groups:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    environment: production
+    outputs:
+      # Keep cross-job architecture metadata sanitized. Jobs that need hosts
+      # resolve the host subset from matrix.id inside that job.
+      matrix: ${{ steps.groups.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve production runner host architecture groups
+        id: groups
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
+          group_count=$(jq -r 'length' <<<"$matrix")
+          if [ "$group_count" -lt 1 ]; then
+            echo "::error::No production runner host architecture groups found"
+            exit 1
+          fi
+
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Production runner host architecture groups:"
+          jq . <<<"$matrix"
+
+  # Build runner: download the matching published release binary and stage it
+  # on each architecture group (provision OS + monitoring + `runner build`
   # rootfs/snapshot). This job does not flip traffic — the systemd
   # service is still running the previous version. Runs after release assets
   # have been published so production staging uses the same binary users can
   # download from GitHub Releases.
   build-runner-production:
-    needs: [release-please, resolve-image-cache, build-runner-release-assets]
+    name: Build runner production (${{ matrix.label }})
+    needs:
+      [
+        release-please,
+        resolve-image-cache,
+        build-runner-release-assets,
+        runner-production-host-groups,
+      ]
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
@@ -2268,6 +2316,10 @@ jobs:
     permissions:
       contents: read
     environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -2280,28 +2332,68 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner RS* building staged production deployment..."
+            text: "*Runner RS* building staged production deployment (${{ matrix.label }})..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Record start time
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Download ARM64 runner binary from GitHub Release
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve metal hosts for architecture
+        id: matrix-hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
+            echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}"
+            exit 1
+          fi
+
+          echo "hosts=${hosts}" >> "$GITHUB_OUTPUT"
+          host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
+
+      - name: Download runner binary from GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
-          TARGET_TRIPLE: aarch64-unknown-linux-musl
+          TARGET_TRIPLE: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.assetSuffix }}
+          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
         shell: bash
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
           runner_image_validate_target "$TARGET_TRIPLE"
-          ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
+          EXPECTED_ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
+          EXPECTED_UNAME_M=$(runner_image_expected_uname_m "$TARGET_TRIPLE")
+          EXPECTED_ELF_MACHINE=$(runner_image_elf_machine_hex "$TARGET_TRIPLE")
+          if [ "$ASSET_SUFFIX" != "$EXPECTED_ASSET_SUFFIX" ]; then
+            echo "::error::matrix asset suffix ${ASSET_SUFFIX} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_ASSET_SUFFIX})"
+            exit 1
+          fi
+          if [ "$EXPECTED_RUNNER_UNAME_M" != "$EXPECTED_UNAME_M" ]; then
+            echo "::error::matrix uname ${EXPECTED_RUNNER_UNAME_M} does not match target ${TARGET_TRIPLE} (expected ${EXPECTED_UNAME_M})"
+            exit 1
+          fi
+
           TAG="runner-rs-v${VERSION}"
           ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
           ASSET_PATH="crates/target/${TARGET_TRIPLE}/release/runner"
@@ -2336,17 +2428,10 @@ jobs:
 
           ELF_MAGIC=$(od -An -tx1 -N4 "$ASSET_PATH" | tr -d ' \n')
           ELF_MACHINE=$(dd if="$ASSET_PATH" bs=1 skip=18 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')
-          if [ "$ELF_MAGIC" != "7f454c46" ] || [ "$ELF_MACHINE" != "b700" ]; then
-            echo "::error::downloaded runner asset is not an AArch64 ELF binary: magic=${ELF_MAGIC} machine=${ELF_MACHINE}"
+          if [ "$ELF_MAGIC" != "7f454c46" ] || [ "$ELF_MACHINE" != "$EXPECTED_ELF_MACHINE" ]; then
+            echo "::error::downloaded runner asset does not match ${TARGET_TRIPLE}: magic=${ELF_MAGIC} machine=${ELF_MACHINE} expected_machine=${EXPECTED_ELF_MACHINE}"
             exit 1
           fi
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       # Decrypt R2 secrets from resolve-image-cache.  The secrets were
       # AES-encrypted with GRAFANA_CLOUD_API_KEY (a repo-level-only
@@ -2381,7 +2466,7 @@ jobs:
       - name: Provision metal hosts
         uses: ./.github/actions/provision
         with:
-          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          hosts: ${{ steps.matrix-hosts.outputs.hosts }}
           metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
           grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
@@ -2390,10 +2475,13 @@ jobs:
 
       - name: Build rootfs and snapshot on production hosts
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          RUNNER_TARGET: ${{ matrix.target }}
+          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
+          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           API_URL: ${{ vars.VM0_API_URL }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
@@ -2404,12 +2492,15 @@ jobs:
         run: |
           cd ansible
           ansible-playbook \
-            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            -i "${RUNNER_HOSTS}," \
             playbooks/build-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${API_URL}" \
             -e "runner_version=${RUNNER_VERSION}" \
+            -e "runner_target=${RUNNER_TARGET}" \
+            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
+            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
@@ -2441,7 +2532,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -2457,7 +2548,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote runner: install systemd service (traffic cutover), drain
   # old runners, garbage-collect old artifacts, global health check.
@@ -2466,6 +2557,7 @@ jobs:
   # targets is live. Host-level prep (provision-runner, provision-monitoring)
   # already ran in build.
   promote-runner-production:
+    name: Promote runner production (${{ matrix.label }})
     needs:
       [
         release-please,
@@ -2473,6 +2565,7 @@ jobs:
         promote-api-production,
         resolve-image-cache,
         build-runner-production,
+        runner-production-host-groups,
       ]
     if: >-
       always() &&
@@ -2487,6 +2580,10 @@ jobs:
     permissions:
       contents: read
     environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -2499,12 +2596,12 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner RS* promoting staged deployment to production..."
+            text: "*Runner RS* promoting staged deployment to production (${{ matrix.label }})..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -2516,6 +2613,26 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Resolve metal hosts for architecture
+        id: matrix-hosts
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
+            echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}"
+            exit 1
+          fi
+
+          echo "hosts=${hosts}" >> "$GITHUB_OUTPUT"
+          host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
 
       # Same decrypt as build; needed here so `runner gc` (inside
       # promote-runner.yml) can sweep stale image cache objects in R2.
@@ -2540,23 +2657,29 @@ jobs:
 
       - name: Promote runner on production hosts with Ansible
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
           AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          RUNNER_TARGET: ${{ matrix.target }}
+          RUNNER_ASSET_SUFFIX: ${{ matrix.assetSuffix }}
+          EXPECTED_RUNNER_UNAME_M: ${{ matrix.unameM }}
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
           cd ansible
           ansible-playbook \
-            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            -i "${RUNNER_HOSTS}," \
             playbooks/promote-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "axiom_token_telemetry=${AXIOM_TOKEN_TELEMETRY}" \
             -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
+            -e "runner_target=${RUNNER_TARGET}" \
+            -e "runner_asset_suffix=${RUNNER_ASSET_SUFFIX}" \
+            -e "expected_runner_uname_m=${EXPECTED_RUNNER_UNAME_M}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
@@ -2567,13 +2690,13 @@ jobs:
         id: global-doctor
         if: ${{ success() }}
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
         run: |
           RUNNER_BIN="/var/lib/vm0-runner/bin/v${RUNNER_VERSION}/runner"
           has_warnings=false
-          for host in $(echo "$AWS_METAL_RUNNER_HOSTS" | tr ',' ' '); do
+          for host in $(echo "$RUNNER_HOSTS" | tr ',' ' '); do
             [ -z "$host" ] && continue
             # shellcheck disable=SC2029
             if ! ssh "${AWS_METAL_RUNNER_USER}@${host}" "sudo ${RUNNER_BIN} doctor" 2>&1; then
@@ -2608,7 +2731,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Success with warnings
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
@@ -2624,7 +2747,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -2640,7 +2763,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
