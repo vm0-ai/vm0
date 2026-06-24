@@ -237,8 +237,23 @@ const FAILED_STATUSES = new Set([
   "timeout",
 ]);
 
+const SUCCESSFUL_TURN_COMPLETION_STATUSES = new Set([
+  "completed",
+  "success",
+  "succeeded",
+]);
+
 function isFailedStatus(status: string | undefined): boolean {
   return status !== undefined && FAILED_STATUSES.has(status.toLowerCase());
+}
+
+function isUnsuccessfulTurnCompletionStatus(
+  status: string | undefined,
+): boolean {
+  return (
+    status !== undefined &&
+    !SUCCESSFUL_TURN_COMPLETION_STATUSES.has(status.toLowerCase())
+  );
 }
 
 function hasExtractableError(value: unknown): boolean {
@@ -430,7 +445,10 @@ export class CodexEventParser {
       getFirstNumber(event, ["duration_ms", "durationMs"]) ??
       0;
 
-    if (isFailedStatus(status) || hasTurnCompletionError(event, turn)) {
+    if (
+      isUnsuccessfulTurnCompletionStatus(status) ||
+      hasTurnCompletionError(event, turn)
+    ) {
       const result =
         getTurnCompletionErrorMessage(event, turn) ??
         (status ? `Turn ${status}` : "Turn failed");
