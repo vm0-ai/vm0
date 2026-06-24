@@ -2,6 +2,14 @@
 
 import generated.builtin_firewalls as builtin_firewalls
 
+READ_LIKE_PERMISSION_NAMES = {"read", "readonly"}
+READ_LIKE_PERMISSION_SUFFIXES = (":read", ".read")
+READ_LIKE_MUTATION_METHODS = {"DELETE", "PATCH", "PUT"}
+
+
+def _is_read_like_permission(name: str) -> bool:
+    return name in READ_LIKE_PERMISSION_NAMES or name.endswith(READ_LIKE_PERMISSION_SUFFIXES)
+
 
 def test_get_existing_builtin_firewall():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
@@ -46,6 +54,23 @@ def test_builtin_firewalls_cache_loaded_values():
 
 def test_builtin_firewalls_mapping_is_read_only():
     assert not hasattr(builtin_firewalls.BUILTIN_FIREWALLS, "__setitem__")
+
+
+def test_read_like_builtin_permissions_do_not_own_mutation_methods():
+    violations: list[str] = []
+
+    for firewall_name, firewall in builtin_firewalls.BUILTIN_FIREWALLS.items():
+        for api in firewall["apis"]:
+            for permission in api.get("permissions", []):
+                permission_name = permission["name"]
+                if not _is_read_like_permission(permission_name):
+                    continue
+                for rule in permission.get("rules", []):
+                    method = rule.split(" ", 1)[0]
+                    if method in READ_LIKE_MUTATION_METHODS:
+                        violations.append(f"{firewall_name}: {permission_name}: {rule}")
+
+    assert violations == []
 
 
 def test_google_drive_builtin_uses_vm0_permissions():

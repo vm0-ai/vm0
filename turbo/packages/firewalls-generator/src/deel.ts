@@ -328,6 +328,10 @@ const DOCUMENTED_SCOPE_REMAPS: Record<string, DeelDocumentedScopeRemap> = {
     expectedScopes: ["worker:read"],
     targetScope: "auth:write",
   },
+  "PATCH /rest/v2/hris/organization-structures/teams/{team_id}/custom-fields": {
+    expectedScopes: ["organizations:read"],
+    targetScope: "organizations:write",
+  },
 };
 
 // ── Scopeless endpoints ──────────────────────────────────────────────────

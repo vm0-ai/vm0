@@ -164,6 +164,46 @@ class TestFirewallNetworkPolicyDecisions:
         assert result.permission == "auth:write"
         assert result.rule == "POST /rest/v2/magic-link"
 
+    def test_deel_organizations_read_does_not_allow_team_custom_field_mutations(self):
+        policies = self._deel_policy_allowing("organizations:read")
+        url = (
+            "https://api.letsdeel.com/rest/v2/hris/organization-structures/"
+            "teams/team_123/custom-fields"
+        )
+
+        read_result = match_request_with_raw_firewalls(
+            url,
+            "GET",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+        mutation_result = match_request_with_raw_firewalls(
+            url,
+            "PATCH",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(read_result, matching.FirewallAllow)
+        assert read_result.permission == "organizations:read"
+        assert isinstance(mutation_result, matching.FirewallBlock)
+        assert mutation_result.reason == "permission_denied"
+        assert mutation_result.permissions == ("organizations:write",)
+
+    def test_deel_organizations_write_allows_team_custom_field_mutations(self):
+        policies = self._deel_policy_allowing("organizations:write")
+
+        result = match_request_with_raw_firewalls(
+            "https://api.letsdeel.com/rest/v2/hris/organization-structures/"
+            "teams/team_123/custom-fields",
+            "PATCH",
+            self._deel_firewall(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "organizations:write"
+
     def test_denied_permission_blocked(self):
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}

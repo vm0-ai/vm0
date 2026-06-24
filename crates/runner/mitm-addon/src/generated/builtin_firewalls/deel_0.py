@@ -376,7 +376,6 @@ JSON_PART = r"""{
             "GET /rest/v2/departments",
             "GET /rest/v2/eor/job-scopes",
             "GET /rest/v2/hris/organization-structures/teams/{team_id}/custom-fields",
-            "PATCH /rest/v2/hris/organization-structures/teams/{team_id}/custom-fields",
             "GET /rest/v2/hris/organization_structures",
             "GET /rest/v2/hris/organization_structures/external/{external_id}",
             "GET /rest/v2/hris/organization_structures/{hrisOrgStr_id}",
@@ -393,6 +392,7 @@ JSON_PART = r"""{
         {
           "name": "organizations:write",
           "rules": [
+            "PATCH /rest/v2/hris/organization-structures/teams/{team_id}/custom-fields",
             "POST /rest/v2/hris/organization_structures",
             "PATCH /rest/v2/hris/organization_structures/external/{external_id}",
             "DELETE /rest/v2/hris/organization_structures/external/{external_id}",
