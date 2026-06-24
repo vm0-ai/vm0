@@ -25,6 +25,7 @@ VM0 is a platform for running AI agent workflows in isolated sandbox environment
 ### High-Level Architecture
 
 **Execution Flow**:
+
 ```
 User CLI/API Request
   ↓
@@ -66,10 +67,12 @@ The storage layer persists user data (volumes, artifacts, session state) in Clou
 #### Storage Types
 
 **Volumes**: Read-only data mounted at specified paths
+
 - Examples: Code repositories, dependencies, reference data
 - Defined in `vm0.yaml`
 
 **Artifacts**: Read-write working directory
+
 - Agent output, modified files, generated assets
 - Versioned after each run
 - Used for checkpoints and resume
@@ -77,12 +80,14 @@ The storage layer persists user data (volumes, artifacts, session state) in Clou
 #### Data Flow
 
 **Upload**:
+
 ```
 CLI → tar.gz archive → presigned PUT URL → R2
 Database records: storage_id, version_id, s3_key
 ```
 
 **Download**:
+
 ```
 Server → presigned GET URL (1h expiration)
   ↓
@@ -100,10 +105,12 @@ Extracts to mount paths
 The orchestration layer coordinates job execution between web API and runners.
 
 **Job Notification**:
+
 - **Wakeup**: Ably realtime notifications wake runners for instant HTTP polling (~100-200ms)
 - **Fallback**: HTTP polling every 30s catches missed notifications
 
 **Runner Behavior**:
+
 1. Subscribe to Ably channel `runner-group:{org}/{name}`
 2. Receive job notification and wake HTTP poll
 3. Select the next job via `/api/runners/poll`
@@ -115,10 +122,12 @@ The orchestration layer coordinates job execution between web API and runners.
 #### Runner Groups
 
 **Format**: `{org}/{name}`
+
 - Official: `vm0/*` (e.g., `vm0/production`) - VM0-managed runners
 - User: `{org-slug}/*` (e.g., `my-team/private`) - Self-hosted runners
 
 **Authentication**:
+
 - Official runners: HMAC signature using `OFFICIAL_RUNNER_SECRET`
 - User runners: JWT bearer token with userId claim
 
@@ -130,14 +139,19 @@ The orchestration layer coordinates job execution between web API and runners.
 
 Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS that creates lightweight microVMs using Linux KVM.
 
+For host-architecture-driven runner deployment, release assets, and validation
+checklists, see [Runner Multi-Architecture Rollout](runner-multi-architecture.md).
+
 #### Infrastructure Requirements
 
 **Hardware**:
+
 - Bare metal Linux server
 - KVM support: `/dev/kvm` device
 - Cannot run on cloud VMs (nested virtualization limitations)
 
 **Software**:
+
 - Firecracker v1.15.1 binary
 - Linux kernel v6.1.155 (for microVM)
 - Node.js 24.x, pnpm, pm2
@@ -150,6 +164,7 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 **Runner Application**: Rust application in `crates/runner/`
 
 **VM Configuration**:
+
 ```yaml
 # runner.yaml
 name: prod-1
@@ -175,6 +190,7 @@ profiles:
 ```
 
 **Host-local runner overrides**:
+
 - Host-specific capacity belongs in `/etc/vm0-runner/host.env`, not
   `runner.yaml`. The file is parsed with an allowlist so accidental secrets or
   unrelated environment values fail visibly.
@@ -198,6 +214,7 @@ profiles:
 #### Storage Architecture
 
 **Shared Read-Only Base**:
+
 - ext4 rootfs (~500MB-1GB)
 - Content-addressed: `/var/lib/vm0-runner/images/{rootfs_hash}/rootfs.ext4`
 - Shared across all VMs via nbd-cow
@@ -205,12 +222,14 @@ profiles:
   guest binaries and host-specific settings in `customize-rootfs.sh`
 
 **Per-VM Copy-on-Write (nbd-cow)**:
+
 - Userspace NBD-based COW backed by sparse file
 - Device: `/dev/nbdN` (writable block device)
 - Reads of unmodified blocks go to base image, writes captured in COW file
 - Enables instant boot without rootfs copy
 
 **Per-VM Workspace Drive**:
+
 - Sparse ext4 image: `{base_dir}/workspaces/{sandbox_id}/workspace.ext4`
 - Exposed to the guest as `/dev/vdb`
 - Mounted by the runner at `/home/user/workspace`
@@ -221,16 +240,19 @@ profiles:
 **Isolation**: Each VM in separate network namespace via pre-warmed namespace pool
 
 **Namespace Pool**: Pre-allocated network namespaces for fast VM startup
+
 - Each namespace gets a unique veth pair
 - Namespace side: `veth0` (e.g., `10.200.0.2`)
 - Host side: `vm0-ve-{pool}-{index}` (e.g., `vm0-ve-00-00`)
 - Pool supports up to 64 pools × 256 namespaces
 
 **IP Allocation**: 10.200.0.0/16 subnets
+
 - Guest fixed IP: `192.168.241.2` (same across VMs, isolated by namespace)
 - NAT/MASQUERADE: Guest traffic routed through namespace to external network
 
 **HTTP Proxy**: mitmproxy (dynamically allocated port)
+
 - Intercepts all HTTP/HTTPS traffic
 - Logs requests/responses to per-run JSONL files
 - CA certificate injected into VM trust store
@@ -270,6 +292,7 @@ Cloudflare R2 is S3-compatible object storage with zero egress fees.
 #### Direct Download
 
 Sandboxes download directly from R2 (no proxy through VM0 API):
+
 1. VM0 API generates presigned GET URLs
 2. Storage manifest JSON uploaded to sandbox
 3. Sandbox's `download.mjs` script fetches from R2
