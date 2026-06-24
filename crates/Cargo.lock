@@ -1309,6 +1309,7 @@ dependencies = [
  "guest-common",
  "guest-contracts",
  "httpmock",
+ "libc",
  "serde",
  "serde_json",
  "tar",

@@ -387,6 +387,30 @@ async fn download_storages_fails_on_write_file_error() {
     assert_eq!(exec_calls[1].cmd, guest_storage_manifest_cleanup_command());
 }
 
+#[tokio::test]
+async fn download_storages_retains_write_file_error_when_failure_cleanup_fails() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        Vec::new(),
+        b"rm: cannot remove manifest".to_vec(),
+    )));
+    sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("vsock write failed"), "got: {err}");
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 2);
+    assert_eq!(exec_calls[0].cmd, guest_storage_manifest_cleanup_command());
+    assert_eq!(exec_calls[1].cmd, guest_storage_manifest_cleanup_command());
+}
+
 // -----------------------------------------------------------------------
 // apply_storage_fingerprint_reuse tests
 // -----------------------------------------------------------------------

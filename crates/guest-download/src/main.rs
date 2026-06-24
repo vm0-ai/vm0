@@ -1,5 +1,6 @@
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
-use std::io::{ErrorKind, Read as _};
+use std::fs::{File, OpenOptions};
+use std::io::{self, ErrorKind, Read as _};
 use std::time::Instant;
 
 const LOG_TAG: &str = "sandbox:download";
@@ -73,7 +74,7 @@ fn run_path(manifest_path: &str) -> bool {
 }
 
 fn run_manifest_file_and_remove(manifest_path: &str) -> bool {
-    let manifest_json = match std::fs::read(manifest_path) {
+    let manifest_json = match read_manifest_file(manifest_path) {
         Ok(manifest_json) => manifest_json,
         Err(e) => {
             log_error!(LOG_TAG, "Failed to read manifest: {e}");
@@ -87,6 +88,55 @@ fn run_manifest_file_and_remove(manifest_path: &str) -> bool {
     }
 
     guest_download::run_manifest_bytes(&manifest_json)
+}
+
+fn read_manifest_file(path: &str) -> io::Result<Vec<u8>> {
+    let mut file = open_manifest_file(path)?;
+    let mut manifest_json = Vec::new();
+    file.read_to_end(&mut manifest_json)?;
+    Ok(manifest_json)
+}
+
+#[cfg(unix)]
+fn open_manifest_file(path: &str) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::io::AsRawFd;
+
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+
+    let fd = file.as_raw_fd();
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to valid writable memory and `fd` comes from a live
+    // File. On success, fstat initializes the whole struct.
+    let result = unsafe { libc::fstat(fd, stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstat succeeded and initialized `stat`.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "storage manifest is not a regular file",
+        ));
+    }
+
+    Ok(file)
+}
+
+#[cfg(not(unix))]
+fn open_manifest_file(path: &str) -> io::Result<File> {
+    let file = File::open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "storage manifest is not a regular file",
+        ));
+    }
+    Ok(file)
 }
 
 fn remove_manifest_file(path: &str) -> bool {
@@ -194,5 +244,40 @@ mod tests {
 
         assert!(!path.exists());
         assert!(target_dir.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_manifest_file_and_remove_rejects_symlink_to_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target-manifest.json");
+        let path = dir.path().join("storage-manifest.json");
+        std::fs::write(&target, br#"{"storages":[],"artifacts":[]}"#).unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+
+        assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));
+
+        assert!(!path.exists());
+        assert!(target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_manifest_file_and_remove_rejects_fifo_without_blocking() {
+        use std::ffi::CString;
+        use std::io;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage-manifest.json");
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+
+        // SAFETY: `c_path` is a valid, NUL-terminated filesystem path.
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(result, 0, "mkfifo failed: {}", io::Error::last_os_error());
+
+        assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));
+
+        assert!(!path.exists());
     }
 }
