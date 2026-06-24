@@ -60,6 +60,8 @@ where
             .into_iter()
             .map(SortableContentHashEntry::new)
             .collect();
+        // Equal sort keys are identical formatted `path:hash` lines, so
+        // stability cannot affect the final hash byte stream.
         sortable_entries.sort_unstable_by(|left, right| left.sort_key.cmp(&right.sort_key));
         for (index, entry) in sortable_entries.iter().enumerate() {
             update_hash_for_entry(&mut hasher, index, entry.entry);
@@ -83,12 +85,11 @@ fn update_hash_for_entry(hasher: &mut Sha256, index: usize, entry: ContentHashEn
 }
 
 fn formatted_entry_sort_key(entry: ContentHashEntry<'_>) -> Vec<u16> {
-    entry
-        .path
-        .encode_utf16()
-        .chain(std::iter::once(u16::from(b':')))
-        .chain(entry.hash.encode_utf16())
-        .collect()
+    let mut sort_key = Vec::with_capacity(entry.path.len() + 1 + entry.hash.len());
+    sort_key.extend(entry.path.encode_utf16());
+    sort_key.push(u16::from(b':'));
+    sort_key.extend(entry.hash.encode_utf16());
+    sort_key
 }
 
 #[cfg(test)]
