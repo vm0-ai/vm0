@@ -478,483 +478,483 @@ const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES = {
   },
   "bloom-pitch": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90b4dd6f-b468-4a2e-a60a-e4afcd564555/template-card-presentation-bloom-pitch-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35347eab-989d-46da-8cd4-6846e9e18ae9/template-card-presentation-bloom-pitch-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f1958eb2-f55c-4250-ba92-3e660b92ca05/template-card-presentation-bloom-pitch-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/230f3210-598c-40da-8fad-7d9542b81a4c/template-card-presentation-bloom-pitch-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/65f7a8fd-e497-4367-b3c7-ac993ad3c29c/template-card-presentation-bloom-pitch-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14a9175b-eef4-4e7d-bb60-460320f9218a/template-card-presentation-bloom-pitch-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9c4a7498-97f6-4b7d-9c7b-3308ba86680a/template-card-presentation-bloom-pitch-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/25c375ca-29a9-46a2-83f4-9c6fe1bbbd4f/template-card-presentation-bloom-pitch-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0050a76-e4c5-4ffa-bc4d-116a70e56824/template-card-presentation-bloom-pitch-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/301f42f0-6951-4a4d-ae7d-492698cc9258/template-card-presentation-bloom-pitch-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/870d193c-e808-4a5e-840f-618dcb9d5194/template-card-presentation-bloom-pitch-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/33f0825f-7ee7-440b-963b-fa0d530d33fc/template-card-presentation-bloom-pitch-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07ca987a-caec-4ee8-8ff8-9163905d02b0/template-card-presentation-bloom-pitch-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/af105437-5b40-4aa4-a89c-d82af48c0f7e/template-card-presentation-bloom-pitch-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d661e90a-405e-4fb0-839a-a74972496ac5/template-card-presentation-bloom-pitch-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/31ca5d00-5892-4066-b86b-4ab0cb9a152f/template-card-presentation-bloom-pitch-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32c9f442-b043-48ac-9452-8037d669083b/template-card-presentation-bloom-pitch-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/905769f2-adc4-49d0-b4a5-d53a13b4dd2a/template-card-presentation-bloom-pitch-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ea0fc921-37bf-47cb-8adf-eb2e4aa887fe/template-card-presentation-bloom-pitch-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a3324ce-31ee-4e27-9185-18af861e8a64/template-card-presentation-bloom-pitch-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/10dfe180-f9f9-4840-830d-daca2abe0f85/template-card-presentation-bloom-pitch-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14ece89e-3cac-428a-afb8-a693a7eb6edf/template-card-presentation-bloom-pitch-berry-pop-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a8ea8a26-0167-403b-98f8-a89c2c1370e1/template-card-presentation-bloom-pitch-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54187934-28bb-45f9-99b2-85a87b393b68/template-card-presentation-bloom-pitch-mauve-dusk-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9eb3e832-ac17-4d7d-a74c-a9db859ec23d/template-card-presentation-bloom-pitch-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bcbfde4e-8e65-4ac1-acf3-ee3f3af1c0bf/template-card-presentation-bloom-pitch-citrus-fresh-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd0b98f4-eade-4363-a1f2-59c7d6b27868/template-card-presentation-bloom-pitch-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc225486-a2bd-4914-8bff-490178ac69ad/template-card-presentation-bloom-pitch-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a308ade-b184-4228-b0a7-45962c772902/template-card-presentation-bloom-pitch-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a37df412-a08f-4a4f-9aa6-95fad92954e3/template-card-presentation-bloom-pitch-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5d220bd-ac49-4e68-a68c-7cd331f07d38/template-card-presentation-bloom-pitch-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4276aab6-90fe-4ea8-8672-be653e59e062/template-card-presentation-bloom-pitch-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77cf29f5-815e-42f3-94e4-e56f042e5095/template-card-presentation-bloom-pitch-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/207bbb3b-70a3-41ad-9680-4f80dd6c6d34/template-card-presentation-bloom-pitch-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/696fb9c5-8447-4b51-8e27-1988d735c8af/template-card-presentation-bloom-pitch-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c07c402d-9dfc-4ccc-8eea-383fab53775c/template-card-presentation-bloom-pitch-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/64fe7f8f-ef15-4dd4-9e97-5eff17dd849e/template-card-presentation-bloom-pitch-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99ca85e7-744d-4082-9cab-c0d274b1337d/template-card-presentation-bloom-pitch-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "blueprint-academy": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4112617-00e0-450a-95c8-332042781df9/template-card-presentation-blueprint-academy-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d2e08a0-439f-46fe-a441-e39747de1212/template-card-presentation-blueprint-academy-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75379886-551d-4b0a-9e4a-6475a9980cad/template-card-presentation-blueprint-academy-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ba862728-b489-4bb4-8f6b-2afb5be91001/template-card-presentation-blueprint-academy-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d4a62f-13bb-4657-a7f9-b3f6df4fac6c/template-card-presentation-blueprint-academy-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/efc7d153-29e9-4180-bff0-1c6fe42bf5e5/template-card-presentation-blueprint-academy-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6634d50f-1c8e-4d22-bb3e-5f81879ab8e7/template-card-presentation-blueprint-academy-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fac3c5c7-e87f-4482-9214-afbc37ee6135/template-card-presentation-blueprint-academy-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f5ef5948-2e53-493f-a5a1-714cc1273fe9/template-card-presentation-blueprint-academy-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/beeee408-82cf-4965-bafe-2db5fb8602bd/template-card-presentation-blueprint-academy-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00a78817-b20a-4e44-9b05-8ef34584e0cb/template-card-presentation-blueprint-academy-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3557bad1-2e19-4284-a263-eece873a07f8/template-card-presentation-blueprint-academy-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6baeba57-2d88-4b15-a09a-792a182b6993/template-card-presentation-blueprint-academy-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/96d87e06-aaaa-4b46-8547-1876f8f1c8a3/template-card-presentation-blueprint-academy-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a6571b6-31ca-43b4-8023-b82296a1b1d2/template-card-presentation-blueprint-academy-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b6f8be0a-2ebc-4060-a6cb-f68a7640a514/template-card-presentation-blueprint-academy-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e890dbc-e2f0-4b06-98d8-3210f298638c/template-card-presentation-blueprint-academy-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/599907b0-e101-4f73-93e6-14ed149d561a/template-card-presentation-blueprint-academy-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dabfd2ad-225d-40d1-9a52-2d1133e4e373/template-card-presentation-blueprint-academy-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/87e2f57f-584c-46e4-b51c-a5549fd597c7/template-card-presentation-blueprint-academy-terracotta-clay-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c9ef857-9aa8-40c9-bbf8-227255c9a8b2/template-card-presentation-blueprint-academy-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e2cd5cf4-ab78-4b96-8013-aea034087622/template-card-presentation-blueprint-academy-citrus-fresh-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e770fa8-92c2-4420-82bf-4caf63a0ae3c/template-card-presentation-blueprint-academy-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9814e9c7-1b58-40a5-a341-e6dbc8a8be9f/template-card-presentation-blueprint-academy-berry-pop-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c043c114-a0a9-42a4-abdc-942e2fb7a61c/template-card-presentation-blueprint-academy-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/93bb8ccf-477e-4859-9a80-4117664d2bf4/template-card-presentation-blueprint-academy-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1324b886-b65d-4c17-b74d-2dbee264d207/template-card-presentation-blueprint-academy-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/69e3e91b-eaa4-417c-9ad4-10c19e78a72c/template-card-presentation-blueprint-academy-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18d8b224-21dc-4f21-ba73-7fa6b55756a1/template-card-presentation-blueprint-academy-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a2b24f7b-ef4d-489d-a35e-42440a60417b/template-card-presentation-blueprint-academy-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44e505ea-1654-4680-9e5c-7a0033a2ec4d/template-card-presentation-blueprint-academy-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/27b26028-107d-4574-975f-876a97580e15/template-card-presentation-blueprint-academy-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c5863ee-9bcb-471f-865f-7c0cfebbf424/template-card-presentation-blueprint-academy-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a54294df-1162-47c8-9734-4e63fe3e2de8/template-card-presentation-blueprint-academy-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ecfd6a2a-3241-4a5b-9d9e-e3e36a3ef324/template-card-presentation-blueprint-academy-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/11516e2b-644e-45be-b302-22482daa4578/template-card-presentation-blueprint-academy-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9090f022-1d26-4b18-a3e9-675e6168393a/template-card-presentation-blueprint-academy-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/277df515-a377-4689-8821-69cef46faa34/template-card-presentation-blueprint-academy-gold-luxe-iframe-viewport-480x270.jpg",
   },
   meridian: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90001eb7-c947-414b-b15e-12fa7e6984bf/template-card-presentation-meridian-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/de20bbf9-8e3a-4559-b973-8e5e8257a3ee/template-card-presentation-meridian-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4a16b3c6-436c-4740-9d73-4ca1e106f1fa/template-card-presentation-meridian-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b567ed2a-93ce-491e-a57b-3695030d15de/template-card-presentation-meridian-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e28bc324-04de-465d-a8b0-35c900e6064c/template-card-presentation-meridian-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0cda265e-dc6f-4155-a574-03738317ae25/template-card-presentation-meridian-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c5852e07-561c-4973-948e-723db241e0b3/template-card-presentation-meridian-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77928d19-c357-4879-a4c4-4dcf73fa80fd/template-card-presentation-meridian-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/128bcf7c-1c6d-4fc9-ae2e-6cf97fd2725e/template-card-presentation-meridian-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2294bc61-1f38-42f0-82d4-3161e63a6a81/template-card-presentation-meridian-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f6be476c-bf24-4788-88ca-fdbd69458b4e/template-card-presentation-meridian-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/139debec-2762-4f12-8b51-e6c81f6bed91/template-card-presentation-meridian-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32f12d60-7a93-4551-860a-454226489ddb/template-card-presentation-meridian-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd11cdd5-c52f-4944-a735-ac54a60788e5/template-card-presentation-meridian-forest-editorial-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/abdfd93a-fa30-4192-b902-c334af7c0f54/template-card-presentation-meridian-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9f44f1a6-8e86-48fd-9322-5e7f60cc2f9a/template-card-presentation-meridian-slate-corporate-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4899d210-c248-4e36-9d09-f990d7e957bc/template-card-presentation-meridian-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/766756ad-9abb-42a9-acd2-8b8d983bc001/template-card-presentation-meridian-coral-studio-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3932a783-9251-4f1e-9e86-390f0cc002f9/template-card-presentation-meridian-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/093a5d56-c399-43a8-97eb-caa988f76a11/template-card-presentation-meridian-terracotta-clay-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c5ca6491-3d70-4e88-afdf-17aa790a9ea0/template-card-presentation-meridian-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/49f1dccc-8b0e-488c-813e-69db266bb7cb/template-card-presentation-meridian-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cfc2a738-7d23-4967-9b78-904fbd9da69b/template-card-presentation-meridian-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0fcac9c7-b1e4-472f-9595-5b1969f69e8f/template-card-presentation-meridian-mauve-dusk-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5fe0ca12-4186-42bf-81e8-739abe712860/template-card-presentation-meridian-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9896d112-e859-494e-9750-d0126af2873d/template-card-presentation-meridian-berry-pop-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3c7ac8b-e1a1-45ec-aa9c-3076a7463cd2/template-card-presentation-meridian-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/acbbf029-1f2a-420f-b9fc-5c3e9eadc9a5/template-card-presentation-meridian-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/076e5a7f-6745-49aa-adb0-d18fbda46bd3/template-card-presentation-meridian-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3bd1b7ec-6a88-4b4b-9622-4c844255b971/template-card-presentation-meridian-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54c5ee44-d271-4d35-8c72-099054b06afa/template-card-presentation-meridian-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/23eb2ed6-fc1f-4070-8b0d-693376592de6/template-card-presentation-meridian-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94bd348f-1646-4bb3-b16e-51b71f0375e7/template-card-presentation-meridian-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c38bdf2-674d-4d1c-8d58-4cb69607dfcb/template-card-presentation-meridian-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b88f9269-dfcd-4756-a07e-e731084209cd/template-card-presentation-meridian-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5749c58a-6c4b-4b32-903f-7be7ae4a89c2/template-card-presentation-meridian-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a35727fb-b73a-46f1-b417-6d196c8a5b50/template-card-presentation-meridian-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/023b2be2-a37e-4c1c-8d88-19cea31a0cbc/template-card-presentation-meridian-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "neo-brutalism": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7ecd2e46-9771-459c-89ee-70fc779ae61d/template-card-presentation-neo-brutalism-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e5a46773-05fd-4924-91f2-b8c902d84958/template-card-presentation-neo-brutalism-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd59e5d0-dc25-4b60-889f-9f76b87b00f0/template-card-presentation-neo-brutalism-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d9c04806-8fbf-41c1-a669-e793522204d8/template-card-presentation-neo-brutalism-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83e6ea13-49ef-4166-84ad-8fbbc17db452/template-card-presentation-neo-brutalism-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/97ab3f21-3105-4fb9-b0e0-264d9865eef2/template-card-presentation-neo-brutalism-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/42be215f-90f8-4294-95fb-9823b0763226/template-card-presentation-neo-brutalism-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58accc81-eacc-4f8f-b02a-35b5d2acb742/template-card-presentation-neo-brutalism-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d70cad4-8c4f-4295-98b4-1dc800322497/template-card-presentation-neo-brutalism-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c73c3b1a-0e68-4740-af75-614118574683/template-card-presentation-neo-brutalism-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c84abaf-71c1-4b50-bdd9-8866dd2967b1/template-card-presentation-neo-brutalism-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e3ddc73-36ad-4640-97c6-6420e3df5860/template-card-presentation-neo-brutalism-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1611eb0-d3f4-476f-ab4d-679bdba63a19/template-card-presentation-neo-brutalism-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/611711cc-b79f-4d02-a8e6-1ef2803797ff/template-card-presentation-neo-brutalism-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ae6e876-40c1-4f47-b0d6-09a4381257e7/template-card-presentation-neo-brutalism-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1ce685e3-8f30-4f73-870a-5c33eb50c934/template-card-presentation-neo-brutalism-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aa7e7f5-f556-4d49-9c0c-2700592e2f91/template-card-presentation-neo-brutalism-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6ed0fe45-5cb1-4b5a-81a2-2cef5df8c765/template-card-presentation-neo-brutalism-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/429973c5-51a4-4a37-85ab-13c21eee2414/template-card-presentation-neo-brutalism-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/079cb4aa-bec0-43ff-875b-4ffffa467901/template-card-presentation-neo-brutalism-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a85ee055-eb1b-49a4-81ed-e0477a5d350c/template-card-presentation-neo-brutalism-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/96eb10dc-0658-43e0-88a9-4892d07d9f26/template-card-presentation-neo-brutalism-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddaf0aca-ca80-4b96-81b1-186296679a47/template-card-presentation-neo-brutalism-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cd3e83ce-91f3-4149-b9ad-422d00579433/template-card-presentation-neo-brutalism-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b73bfdbf-b5be-4a94-968f-09e70d615097/template-card-presentation-neo-brutalism-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e76f1c4f-5ef7-474a-951c-0b7a4ef2898d/template-card-presentation-neo-brutalism-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/666b0337-39d3-4a19-8bc6-ee7fe5786b07/template-card-presentation-neo-brutalism-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e682f70-2dab-41cb-b8d5-cbcc663bcf5b/template-card-presentation-neo-brutalism-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2af505c-d304-4c67-b0c4-7126a02d4b08/template-card-presentation-neo-brutalism-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b8928393-4a58-4f9e-bc6b-3096c6fe51b4/template-card-presentation-neo-brutalism-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b448661b-567b-41f3-8622-4053747c926b/template-card-presentation-neo-brutalism-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/379b03c0-17da-4aee-b790-1b516c9436ed/template-card-presentation-neo-brutalism-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ff100ac-a619-4dc9-a0ff-7165973e5adb/template-card-presentation-neo-brutalism-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3e5b2200-2a4d-4dbf-9c7a-ed69ba9dbc3b/template-card-presentation-neo-brutalism-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5640f7f6-0d20-4592-b4e9-5720cc7f3b05/template-card-presentation-neo-brutalism-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a2141a4-f0fb-4610-8035-f17cd7562f5e/template-card-presentation-neo-brutalism-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2ebcc146-0544-4869-8032-8272647b20f3/template-card-presentation-neo-brutalism-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7f029831-8e6d-49ce-9bb4-3879d78a2bdc/template-card-presentation-neo-brutalism-gold-luxe-iframe-viewport-480x270.jpg",
   },
   nocturne: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/43d9c473-87fd-4727-9501-b9f761b4289c/template-card-presentation-nocturne-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47060ac2-2255-491b-822e-17e4879e8bb3/template-card-presentation-nocturne-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e995be99-85c4-4271-8b46-34d8f59352df/template-card-presentation-nocturne-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/86e393ee-3e0c-4a96-b15c-af1a6bf6421a/template-card-presentation-nocturne-carnival-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/52c52903-00eb-4ff2-8665-96524a0d03a9/template-card-presentation-nocturne-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6c55154a-a225-4239-8c4e-c3e2f8963597/template-card-presentation-nocturne-warm-sand-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/68a3f0f1-fedf-4d01-be37-ef55591d6bbd/template-card-presentation-nocturne-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c1d697a-5a5b-4745-8786-d4a200907259/template-card-presentation-nocturne-pop-art-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c88ca1f3-1d14-4b5d-a2d1-efe2834d2b3b/template-card-presentation-nocturne-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ad83df4-0749-4516-a917-fe8a0a246989/template-card-presentation-nocturne-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ef4fd22-3ffc-4a45-b184-b45c6b41492e/template-card-presentation-nocturne-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb54e933-d3c0-48ec-83ce-4878acc674ea/template-card-presentation-nocturne-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3993f1ba-493d-431f-acee-1f7416787209/template-card-presentation-nocturne-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c5188fd6-2cf8-4967-a527-a73455608ef6/template-card-presentation-nocturne-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a19b2c7c-d19c-4d22-b3ca-b3fe14c5a127/template-card-presentation-nocturne-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32dea48f-97b4-44fc-a32c-dbd30335e67d/template-card-presentation-nocturne-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7340ea31-6156-468c-9129-efbaadc0024e/template-card-presentation-nocturne-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d60f2752-79e9-46d0-9f98-39f109529a2b/template-card-presentation-nocturne-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1675da4d-30d6-4865-902e-31e7bdd985ba/template-card-presentation-nocturne-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/193a67b0-1084-4b4d-a68f-ebd83cff3595/template-card-presentation-nocturne-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3cebadc7-19f8-4ceb-b26c-6838887645e8/template-card-presentation-nocturne-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bab7e049-8f49-4cbf-9084-77576c755218/template-card-presentation-nocturne-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c176f5d9-a55e-4447-8f99-4f4067675ec2/template-card-presentation-nocturne-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b7c2717f-cdf3-46af-8ffc-86a54d3cafd7/template-card-presentation-nocturne-citrus-fresh-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3d0202e-5836-4a21-b2f0-05bb989bb0b5/template-card-presentation-nocturne-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/696367c1-aee5-4c34-bc24-bdba10917111/template-card-presentation-nocturne-mono-ink-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2a884ce-e945-46d6-982c-6271f9a46839/template-card-presentation-nocturne-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e5415a3-27e7-4320-97db-bc5d9d684fc8/template-card-presentation-nocturne-mauve-dusk-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b6b39820-dc04-46cf-b80f-a7e534212869/template-card-presentation-nocturne-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/28abedd2-b9e0-447f-a445-f0daa2235fae/template-card-presentation-nocturne-mint-tech-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7a65daa-0269-4429-964a-08ae0f609546/template-card-presentation-nocturne-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b84c2859-8c0e-4e9b-b997-d9ff24162e01/template-card-presentation-nocturne-sunset-maroon-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bb5938e8-43b7-4ed6-90fd-9696c0d0dafd/template-card-presentation-nocturne-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b994d5c8-9601-4108-a80b-ed4cb88b3c18/template-card-presentation-nocturne-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e5b55692-f32c-4497-ab56-158b505d13c3/template-card-presentation-nocturne-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9192f3e7-4ae4-4bf7-ac54-03d64834ce95/template-card-presentation-nocturne-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c542c95d-2b5c-4820-97ec-e7aef1c5d21d/template-card-presentation-nocturne-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec854c97-62c3-4bdd-b820-cdf62fafa5ef/template-card-presentation-nocturne-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "pixel-glitch": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7cd9b7dd-10a2-400f-9ab8-2dc7dc3865aa/template-card-presentation-pixel-glitch-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/481b2398-8cbe-436b-a54d-6b277cb5c444/template-card-presentation-pixel-glitch-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/362ee4d2-5dcd-41ca-a777-a0c1f24102c6/template-card-presentation-pixel-glitch-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2480dd7a-16ca-41e7-9308-731a0a8ed3bf/template-card-presentation-pixel-glitch-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/353a2b48-af0a-4bd6-a916-cdb7feb5963d/template-card-presentation-pixel-glitch-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/522d8149-0bba-4cb3-87df-234d8e7c8119/template-card-presentation-pixel-glitch-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a0ae4b39-9889-41a8-8dfd-fef08a99cb49/template-card-presentation-pixel-glitch-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd49cd12-5fa9-41af-ac99-0a6a7553b89f/template-card-presentation-pixel-glitch-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9cef87ee-532d-4696-8e87-296bfa24390b/template-card-presentation-pixel-glitch-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee6cc1a9-a8a7-4a66-9876-2d227c5a5a22/template-card-presentation-pixel-glitch-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cb0f193d-5010-4926-9e9b-e958d6137dd3/template-card-presentation-pixel-glitch-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51b7c1f4-6d8c-46d7-ab49-93562b316198/template-card-presentation-pixel-glitch-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56a190d6-ccc3-4a0b-9383-9493daaac2df/template-card-presentation-pixel-glitch-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/80d95fa9-436b-42ea-b8e0-910d498d55e6/template-card-presentation-pixel-glitch-forest-editorial-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aefc9fba-eaf8-4152-954d-262e79516b4e/template-card-presentation-pixel-glitch-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d18066ad-5876-46a4-9e2b-beabc6a38c87/template-card-presentation-pixel-glitch-slate-corporate-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da27de63-b44c-4dca-ba78-49b5ced65848/template-card-presentation-pixel-glitch-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/55e56b20-bef1-4d48-a84e-b1cafe758639/template-card-presentation-pixel-glitch-coral-studio-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4f050ade-9667-4821-a9c5-5a3d3aeaaab1/template-card-presentation-pixel-glitch-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30a04cf3-a8c1-40ee-810c-20f743888c55/template-card-presentation-pixel-glitch-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7157ba7c-fa92-4be1-922f-e3a80eef30da/template-card-presentation-pixel-glitch-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7337562e-a8ba-4fbb-8eb7-84d23d57ca8e/template-card-presentation-pixel-glitch-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1f2e94e3-cc3c-4a9f-bcf3-649a03670693/template-card-presentation-pixel-glitch-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/12b12048-c8e3-4db3-bb41-3a1cd52f36b4/template-card-presentation-pixel-glitch-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aab6fa8-23ae-4006-864c-c72d640b7d4d/template-card-presentation-pixel-glitch-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/89a13e2b-b065-4b37-bd7a-275fe81b0063/template-card-presentation-pixel-glitch-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0a903196-1d44-49d9-ac3b-fab4f26501c9/template-card-presentation-pixel-glitch-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/70351076-1fbd-4767-b21d-ee2948ce1655/template-card-presentation-pixel-glitch-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fe8b9ce2-09fa-4b08-a0be-41b7997e6557/template-card-presentation-pixel-glitch-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ade9a11c-3b04-4a50-95e3-c30850eca22f/template-card-presentation-pixel-glitch-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bd3ef0c-d182-453c-a72a-fa0dce60d204/template-card-presentation-pixel-glitch-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c85b5845-b940-477c-b612-7f3a6c8ee25f/template-card-presentation-pixel-glitch-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3be7b9ec-c968-40f0-b419-87c59ea4d5af/template-card-presentation-pixel-glitch-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b38c57a-09d3-4edf-84f1-4280b35e2c2b/template-card-presentation-pixel-glitch-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0c2fe4f2-80b2-4f60-9513-39d4f41ffe16/template-card-presentation-pixel-glitch-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75243e50-5478-4b14-8d4b-9162ab26b63c/template-card-presentation-pixel-glitch-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e8948ed5-8b1f-455a-8bcd-494bc6989be3/template-card-presentation-pixel-glitch-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e62a49a-5dda-4e37-b785-97627cda9db4/template-card-presentation-pixel-glitch-gold-luxe-iframe-viewport-480x270.jpg",
   },
   prospectus: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2f78973d-aff4-4ee6-8d8e-0c9b82a31519/template-card-presentation-prospectus-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee78696e-9a29-4988-b414-119e5bef18cf/template-card-presentation-prospectus-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a58e5e1-a4c0-4cd5-8425-7224c1e6bf56/template-card-presentation-prospectus-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c7621b28-8739-48e5-9d09-ef31bbad67c4/template-card-presentation-prospectus-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a2392c0-99f3-4bf0-8dd3-8f464020bec0/template-card-presentation-prospectus-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/911ce6d0-c609-4104-80ad-ff804f6432c8/template-card-presentation-prospectus-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a91cd92e-0236-4415-97eb-69bfc71430b5/template-card-presentation-prospectus-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/681e8f71-ab41-433a-8fb5-2bc2c6524d68/template-card-presentation-prospectus-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/146b5d8b-a24a-4bda-b5c9-c3faaa52b9bd/template-card-presentation-prospectus-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d281372-94d7-494b-96a0-69d4d693fae1/template-card-presentation-prospectus-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/81594140-cb3f-4265-a6a0-34a2a66cd5c2/template-card-presentation-prospectus-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/609ca9f6-6807-42f8-af02-64ec9abc699e/template-card-presentation-prospectus-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7464f0cf-2af6-41f7-8127-fd486ce8e493/template-card-presentation-prospectus-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f753c56-9598-4605-afde-b526761176c9/template-card-presentation-prospectus-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77e46d54-94e7-4a77-945a-76c7e6f560fc/template-card-presentation-prospectus-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d2239e3-ce16-4072-83cd-9f64ecf01e29/template-card-presentation-prospectus-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cec5b607-7d35-4f93-b4cb-4bc0c956aea1/template-card-presentation-prospectus-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35b01a49-0f92-482d-b930-edde0cfdeea1/template-card-presentation-prospectus-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e03cea12-a609-4fcb-84b9-9932fac0d231/template-card-presentation-prospectus-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7851aeb9-6adf-413e-97ce-d4159dcfaa75/template-card-presentation-prospectus-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e827288-5219-43db-9f2b-dcf174028c9f/template-card-presentation-prospectus-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a3b54886-3891-4b92-b54d-ceeec40b9816/template-card-presentation-prospectus-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7eaed99d-fc6d-43c1-8646-8df7056c8f28/template-card-presentation-prospectus-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d9b28cff-3f80-4ade-81b5-1fb198f9a268/template-card-presentation-prospectus-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d363d952-c6d8-452a-9043-0cbd85bef5be/template-card-presentation-prospectus-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c4d91151-4df8-418e-8ed4-0ca7e3f90028/template-card-presentation-prospectus-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c346a017-4433-4324-b775-7c080cf5c308/template-card-presentation-prospectus-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4d0c1fb-042f-4a67-93dd-318dd219e1d8/template-card-presentation-prospectus-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9c705b8a-881f-4692-8dd4-f4386feb736d/template-card-presentation-prospectus-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5915d9b5-c2d8-4fe2-996b-486fd21cad27/template-card-presentation-prospectus-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6fb072ec-03b1-47db-a4fe-7812659ac95c/template-card-presentation-prospectus-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a8b70c7d-c3f1-435f-9df9-7cc48a65b015/template-card-presentation-prospectus-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db6772b8-7d27-4504-86ad-d595ffa7073a/template-card-presentation-prospectus-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a37e9f5-42de-43aa-8273-df89a7821464/template-card-presentation-prospectus-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9538ef2c-c8e1-47d7-8196-1f6cd538e810/template-card-presentation-prospectus-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/93c4d241-247d-45cc-ad8a-6dd8d66ee18b/template-card-presentation-prospectus-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fcf77d4c-b002-4be1-82b8-a78473471d9c/template-card-presentation-prospectus-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aeda0b75-44aa-4baf-bf45-c279aba63e81/template-card-presentation-prospectus-gold-luxe-iframe-viewport-480x270.jpg",
   },
   schoolhouse: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59c77c26-0c42-4a46-837a-7580d7bb5093/template-card-presentation-schoolhouse-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd1bebe9-bc2b-4773-a437-969e5d820b43/template-card-presentation-schoolhouse-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e86ca6f-d266-4d25-9f41-5aa1b26765f1/template-card-presentation-schoolhouse-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/081c0721-fccd-4281-aae8-a690db56ce39/template-card-presentation-schoolhouse-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc6ac593-0b0b-4008-b946-ccca03f11562/template-card-presentation-schoolhouse-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1dabfea2-d93a-4cac-b18e-71c75385a768/template-card-presentation-schoolhouse-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d0d03396-9d55-4abe-92d1-873f11cbc02f/template-card-presentation-schoolhouse-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/43b0eb05-5efa-4e98-a342-776aec5ccf1e/template-card-presentation-schoolhouse-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/81951886-3cd4-4900-8174-8f3d52379c22/template-card-presentation-schoolhouse-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d65c960e-2dce-4f6a-b8c8-c5b270df41c3/template-card-presentation-schoolhouse-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6b00466d-0488-4dfd-a11c-f5dacecee346/template-card-presentation-schoolhouse-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/eecf7cf5-bd26-435b-bbc9-b9e9fddf8f86/template-card-presentation-schoolhouse-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5ed6d4eb-9559-485a-8892-191e4a89fb40/template-card-presentation-schoolhouse-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/821c23f9-46c4-4e6f-888c-80ff15250b7c/template-card-presentation-schoolhouse-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bf3dc800-848e-422b-9374-0b8fe7fd8a3d/template-card-presentation-schoolhouse-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4fc14c67-2280-4430-803b-a0046cfc09cf/template-card-presentation-schoolhouse-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a65a26a4-f556-4ee4-8ad1-fb226260f4a2/template-card-presentation-schoolhouse-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0d3047af-44ce-4f4c-92c9-463e9ba21b2f/template-card-presentation-schoolhouse-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e6f5691-d475-4ab4-b283-62180d578a11/template-card-presentation-schoolhouse-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/711a7c8e-dac2-459d-b751-0a016ee3763d/template-card-presentation-schoolhouse-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5faf823d-5869-4290-8a82-29e4aa5de049/template-card-presentation-schoolhouse-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bedee58f-4988-441a-b207-f894f03add4d/template-card-presentation-schoolhouse-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c4b1630a-69f3-4dbc-94fa-6b3db2760613/template-card-presentation-schoolhouse-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e9301948-d620-4dee-a76b-ab2ebf228148/template-card-presentation-schoolhouse-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ac3da5d6-5d44-44c6-b576-f44122a0bfbc/template-card-presentation-schoolhouse-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f91d627a-644e-4872-90b3-6abd4b7fd209/template-card-presentation-schoolhouse-mauve-dusk-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e6e11cec-345d-4ec4-8564-3e21b93e34bb/template-card-presentation-schoolhouse-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c0e50c3b-9e48-47d5-978f-5115d0094303/template-card-presentation-schoolhouse-sunset-maroon-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df8b3e7b-9e10-4220-9118-bb257a34a427/template-card-presentation-schoolhouse-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/50648f87-8f18-4646-ae36-2fd212e19158/template-card-presentation-schoolhouse-mono-ink-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c7d3c3d-a928-40d4-b0e9-7ad3d7ef72f5/template-card-presentation-schoolhouse-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2780816a-434d-4203-b80a-67ebd79aa025/template-card-presentation-schoolhouse-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4fd47238-9b1e-4982-b78a-7fc9ae92df3a/template-card-presentation-schoolhouse-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d20120c-2920-4148-ad42-bdcfb4b799f1/template-card-presentation-schoolhouse-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51d82de4-d1ef-42b7-9699-641bb5342a92/template-card-presentation-schoolhouse-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a43eebaa-911f-4c1a-823e-af4a6f797c91/template-card-presentation-schoolhouse-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/575a7cce-9e0d-4289-b90e-0be3eab45496/template-card-presentation-schoolhouse-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/be9c0717-742d-4d41-a4e8-ead241124b6d/template-card-presentation-schoolhouse-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "sticker-scrapbook": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/74402345-1943-4b12-ba72-d2e9442eda5b/template-card-presentation-sticker-scrapbook-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ca5c4a1c-eb36-4462-a6e8-e64453798c5b/template-card-presentation-sticker-scrapbook-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9dd3e3c0-e452-4735-856b-d07ecd34c657/template-card-presentation-sticker-scrapbook-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/336e9804-41cf-41d5-a2e3-ae127205f700/template-card-presentation-sticker-scrapbook-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ccf185c8-164c-469b-b31b-e84ab384b5a2/template-card-presentation-sticker-scrapbook-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b43c91a7-dbc3-442f-9319-6d3d8c9dbddf/template-card-presentation-sticker-scrapbook-pop-art-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99a1c790-3005-49c1-a50d-bf620ebe66f8/template-card-presentation-sticker-scrapbook-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9cf18292-0ae1-4c00-bf36-552e44468ee2/template-card-presentation-sticker-scrapbook-nordic-frost-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99c5b489-4e9e-457a-9d33-ac8afe2d3b64/template-card-presentation-sticker-scrapbook-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0eebc10c-16d4-4722-8483-157fbf4dc864/template-card-presentation-sticker-scrapbook-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6994bad3-1802-41b4-af7c-49a822694b5a/template-card-presentation-sticker-scrapbook-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a020f7d4-0cab-466e-a344-5fbe832cf476/template-card-presentation-sticker-scrapbook-bauhaus-primary-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc9e24ac-02d0-4083-a36f-09bb078ce4dd/template-card-presentation-sticker-scrapbook-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/210ea3dd-4298-468f-bef2-896f8dc20948/template-card-presentation-sticker-scrapbook-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6120565c-abe9-4a89-b272-a76b4feaae0f/template-card-presentation-sticker-scrapbook-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ab4ac022-0454-4c23-bcaa-a4258a2646aa/template-card-presentation-sticker-scrapbook-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c7a6c74-6362-4e80-b0ef-8b3af28c50df/template-card-presentation-sticker-scrapbook-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9fed234f-eb63-4296-915f-1de54528a1ff/template-card-presentation-sticker-scrapbook-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c722e1af-a99b-480a-ba1c-3a8cb2e34eb8/template-card-presentation-sticker-scrapbook-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f3197cd0-0b7b-4fa6-aca1-7f4dc363084c/template-card-presentation-sticker-scrapbook-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ccc066c-52b2-4a83-90f8-9747a77b7fde/template-card-presentation-sticker-scrapbook-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/092bd74d-0b60-49b8-88d9-7a73241bf6cc/template-card-presentation-sticker-scrapbook-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59ebe8fa-0f58-49ad-bf5b-f80b0ddbddc5/template-card-presentation-sticker-scrapbook-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07656a02-12dc-49fc-a328-25a7d11ed13e/template-card-presentation-sticker-scrapbook-citrus-fresh-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07407581-b218-4d34-8d39-bb8c7d6f1e9e/template-card-presentation-sticker-scrapbook-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2d8b7b45-129b-4ace-a528-b4381f42175b/template-card-presentation-sticker-scrapbook-mono-ink-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db905e89-cc97-4e12-ae29-8a0e15a22396/template-card-presentation-sticker-scrapbook-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44e915f1-5fbc-4129-bc03-444be1beca68/template-card-presentation-sticker-scrapbook-mauve-dusk-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14ad7a11-f762-4dbf-b4f8-0fc999a19697/template-card-presentation-sticker-scrapbook-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72e91eab-542d-45f6-9cef-5989ab861fcc/template-card-presentation-sticker-scrapbook-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82fc34a8-ba47-4e85-9462-8ef9d57b28f3/template-card-presentation-sticker-scrapbook-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75efce92-326a-44cf-b027-d5d265b087b1/template-card-presentation-sticker-scrapbook-mint-tech-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59c13941-54b6-42de-85e5-c628449f6d0e/template-card-presentation-sticker-scrapbook-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4bd6781b-bd7f-459f-8e58-d76f33e96854/template-card-presentation-sticker-scrapbook-ocean-deep-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0e7f9e9-de70-4671-a3df-a7835bf3f371/template-card-presentation-sticker-scrapbook-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2cae903b-0044-4255-9441-9b4e7d28c2eb/template-card-presentation-sticker-scrapbook-midnight-mono-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/505adfde-58bd-4e4f-8b11-c3756112ae14/template-card-presentation-sticker-scrapbook-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a21b891a-76f7-4195-83dc-d4fbc363ae82/template-card-presentation-sticker-scrapbook-gold-luxe-iframe-viewport-480x270.jpg",
   },
   strata: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/688b2ce5-da4b-48bb-8840-eb92ef2d8545/template-card-presentation-strata-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72a43438-0e3d-40af-95b3-5134e5dc3b4d/template-card-presentation-strata-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb592a79-498a-4d24-a38d-5aa4dcd8b839/template-card-presentation-strata-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/67855d35-f892-49ce-a53f-a73e65c2ada5/template-card-presentation-strata-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c008589-398f-46ec-9048-40ef0f118f17/template-card-presentation-strata-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58623674-39cf-4535-817b-6bf57e0c0a01/template-card-presentation-strata-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b4af9e9-6c35-40c3-84e7-97ae1ce1a276/template-card-presentation-strata-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d0ac85f-5d2d-4cb7-9390-38b8aea3da41/template-card-presentation-strata-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d967609-7e2a-46ee-9597-7b9ca253991f/template-card-presentation-strata-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18fad345-bc9e-4c43-974a-1103ee1f065e/template-card-presentation-strata-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b12bb821-2b9f-4b6a-b97e-03ef64f68a62/template-card-presentation-strata-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a74e1a5-869d-49de-8871-479322a0d539/template-card-presentation-strata-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f6bd12c0-0ab7-4a03-92ad-c5093cec82e6/template-card-presentation-strata-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee51749d-c417-4ca1-b556-28176166d86d/template-card-presentation-strata-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/09cff2c2-eeb0-4aaf-8308-f739bcee8f6f/template-card-presentation-strata-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c6577050-4bdb-447d-bb0b-ce19a56fdb25/template-card-presentation-strata-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5b1894e9-70e2-4e23-b5d9-3feaba11d691/template-card-presentation-strata-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/11168bfc-57b8-49ce-8d9a-a38ecbe899d9/template-card-presentation-strata-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51fc5501-02e1-4d9b-bef5-2ede295e3d64/template-card-presentation-strata-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/861353d6-7c4c-45df-aec0-9ef4103694cd/template-card-presentation-strata-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3db9a5d8-19d4-40ab-948a-6c67b9b027a1/template-card-presentation-strata-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4f82d9b5-65e1-4af5-8abe-cb1bfc3394d3/template-card-presentation-strata-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cf271f0c-dae4-4611-9fb1-0310e99af6bc/template-card-presentation-strata-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/661a2367-2d7c-4f46-8235-2a940c22234d/template-card-presentation-strata-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/31f7f13a-f8b7-49b6-8139-d042724cfc40/template-card-presentation-strata-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f8e12ed4-25f0-4c99-85a4-931aa56096c3/template-card-presentation-strata-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8796faad-4063-4728-893a-c305669a2ac2/template-card-presentation-strata-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1726673d-8581-42d0-a088-16c88ab396be/template-card-presentation-strata-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f8d87432-bc7b-4404-8105-58b9009cc0f0/template-card-presentation-strata-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/80f52012-f15e-4c0e-85c7-a66255fad20f/template-card-presentation-strata-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db9f10d4-e3a8-4175-a72a-6909ced3e8b3/template-card-presentation-strata-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ae36aa15-edbd-4c21-8c52-e67e0006ab37/template-card-presentation-strata-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a9654cad-285e-4011-8d33-020f39e5dad4/template-card-presentation-strata-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e96a8c7-e056-4eb6-a3d4-3b210fc0526c/template-card-presentation-strata-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0cc28cbc-81ff-48c7-abc5-aa1cca35b606/template-card-presentation-strata-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/76dbc0dd-0eef-47f2-96ae-d1581cb056bf/template-card-presentation-strata-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19abfa88-71a7-4b0e-8f62-4c8d8c3b8bab/template-card-presentation-strata-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d200d78-790c-4f75-863a-b164433363dd/template-card-presentation-strata-gold-luxe-iframe-viewport-480x270.jpg",
   },
   "taped-consulting": {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6caac2f7-7fdb-43de-9aca-5d735d5e2298/template-card-presentation-taped-consulting-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc1fa0b4-4a80-4080-aa29-2e5e88fcedc1/template-card-presentation-taped-consulting-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44d07e10-3b83-4fea-a8e8-eab2265314f2/template-card-presentation-taped-consulting-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/29a9f491-e529-4e25-a0fe-8bbad6292b5f/template-card-presentation-taped-consulting-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ed386c4-d8be-4ba3-86d6-7266d3b3b9e4/template-card-presentation-taped-consulting-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0962b3db-ebff-409d-84d9-280f9d776c67/template-card-presentation-taped-consulting-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1675787d-8f0b-45b7-b077-cca9bab8290b/template-card-presentation-taped-consulting-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a6e000f4-9495-4004-a4be-431fe3c2b1b7/template-card-presentation-taped-consulting-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cbd90340-aede-441d-beba-68ea433f65f3/template-card-presentation-taped-consulting-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/08e71cc7-b76d-465c-af0d-663f05f4e5d1/template-card-presentation-taped-consulting-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60ac6eb0-cb1e-4e21-849b-1ad49f758657/template-card-presentation-taped-consulting-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/eb1e00ad-835c-4dff-88c5-fca88e4b88c3/template-card-presentation-taped-consulting-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56aa8bbd-a433-425f-bb38-3db0205dd17b/template-card-presentation-taped-consulting-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ffee95a5-e561-419c-ac27-fdef4495d732/template-card-presentation-taped-consulting-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58468d01-8dd5-4ee5-a21e-dd294e926088/template-card-presentation-taped-consulting-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7ccb111a-d790-4545-bc77-e19a0b0042bb/template-card-presentation-taped-consulting-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ce10cd5-d1b2-4059-858c-a558fe69badd/template-card-presentation-taped-consulting-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ca89f7a-bd0f-4085-b7dc-d70e0558fcb6/template-card-presentation-taped-consulting-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/10e0791a-a50f-449d-b0fd-45dfe291ad00/template-card-presentation-taped-consulting-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37298c0c-3ecf-4d39-93b7-f01c0e156b4e/template-card-presentation-taped-consulting-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d8da52b8-cf46-4719-987e-9a777eba9854/template-card-presentation-taped-consulting-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3b185af-6b45-437a-af60-ab671ceab6eb/template-card-presentation-taped-consulting-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e04ee8c6-5af6-4943-8244-2e9113a8789c/template-card-presentation-taped-consulting-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f586c683-ae54-4ff3-9ed8-24e989f7fe8b/template-card-presentation-taped-consulting-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddb17e9a-28f8-4d54-8219-084c932a2139/template-card-presentation-taped-consulting-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7aa6b6b7-2039-40d6-8d59-edbf4442ecc6/template-card-presentation-taped-consulting-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d2120387-34d2-4ddd-a4e9-8030c02fb572/template-card-presentation-taped-consulting-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2984e4fe-83c7-4a4a-9dd0-a49a9dcb2a5e/template-card-presentation-taped-consulting-mono-ink-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e829fcd4-5d88-42db-9e7a-9e3b277e3979/template-card-presentation-taped-consulting-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72b5c577-251d-48c1-a429-096328ac8598/template-card-presentation-taped-consulting-sunset-maroon-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee82f786-7982-4c5e-a164-550601da200f/template-card-presentation-taped-consulting-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b77bd363-c309-47f8-b226-074cbbbc233d/template-card-presentation-taped-consulting-mint-tech-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da92b740-1953-4a52-abbb-0102b7858795/template-card-presentation-taped-consulting-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fdb68a30-f335-49ad-bedb-fa7d8c61117b/template-card-presentation-taped-consulting-midnight-mono-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92281108-c7bb-4946-bde7-f4641b277f5b/template-card-presentation-taped-consulting-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d4d3a17f-3a9d-4de0-b6ea-dcba7b86b5d7/template-card-presentation-taped-consulting-ocean-deep-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/077720e9-717d-4365-9c1e-5bde219dbaf0/template-card-presentation-taped-consulting-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0a2d990b-8368-4b46-8c3b-47ddb5dc9f04/template-card-presentation-taped-consulting-gold-luxe-iframe-viewport-480x270.jpg",
   },
   vantage: {
     prism:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7933b2a0-b9f3-477c-bcb1-336b30b1768b/template-card-presentation-vantage-prism-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/536ace67-54c4-4bf2-a53e-1ff0f0062ffd/template-card-presentation-vantage-prism-iframe-viewport-480x270.jpg",
     carnival:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a06f17a2-f48b-4d70-bca1-6adfaa396d7a/template-card-presentation-vantage-carnival-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb021ec7-f6a0-4124-b096-d9ae2173e01d/template-card-presentation-vantage-carnival-iframe-viewport-480x270.jpg",
     "pop-art":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bee05927-c19b-48a7-9640-1764817aa8e1/template-card-presentation-vantage-pop-art-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9df78d40-4ad9-4f07-ab09-b90dea758b19/template-card-presentation-vantage-pop-art-iframe-viewport-480x270.jpg",
     "warm-sand":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e9711425-4b42-48fe-b5ca-13c4ebf66c49/template-card-presentation-vantage-warm-sand-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9a3372b6-4b7a-4bc7-85f3-172e16b8d370/template-card-presentation-vantage-warm-sand-iframe-viewport-480x270.jpg",
     "bauhaus-primary":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/43c7d017-71ce-48f9-9cc7-e590c9c52bba/template-card-presentation-vantage-bauhaus-primary-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a67fd082-0300-48a2-8e06-76914aa59a34/template-card-presentation-vantage-bauhaus-primary-iframe-viewport-480x270.jpg",
     "nordic-frost":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4d404bee-bddc-475c-b11e-46d699828809/template-card-presentation-vantage-nordic-frost-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b1da8e2b-e23a-41dc-8aca-c36a66676b44/template-card-presentation-vantage-nordic-frost-iframe-viewport-480x270.jpg",
     "forest-editorial":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f592d164-e4c5-48c3-8a3e-4f5d9fe6860c/template-card-presentation-vantage-forest-editorial-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/66af2f92-353b-4d27-a12a-765e1186655e/template-card-presentation-vantage-forest-editorial-iframe-viewport-480x270.jpg",
     "coral-studio":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3392e875-7d35-4944-849f-db0a3142bf97/template-card-presentation-vantage-coral-studio-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/39c3bbd2-49e9-4254-847a-353aabd6b1ed/template-card-presentation-vantage-coral-studio-iframe-viewport-480x270.jpg",
     "slate-corporate":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a67a455-2bef-4257-84c4-a3f28cbf581e/template-card-presentation-vantage-slate-corporate-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/71e1059c-b040-4a6d-a7eb-0ae10b57e41e/template-card-presentation-vantage-slate-corporate-iframe-viewport-480x270.jpg",
     "terracotta-clay":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f4993f77-53cb-4a47-a969-823e219885a8/template-card-presentation-vantage-terracotta-clay-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/70232c94-4890-4dea-9e86-3d480b62f83a/template-card-presentation-vantage-terracotta-clay-iframe-viewport-480x270.jpg",
     "berry-pop":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8dbc3ca7-1c81-4e02-a5d6-9882373df6fd/template-card-presentation-vantage-berry-pop-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2471901a-80ed-4006-81cd-432b6a1fe4f6/template-card-presentation-vantage-berry-pop-iframe-viewport-480x270.jpg",
     "citrus-fresh":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85ddbf3e-17d9-464a-a527-2d367026592f/template-card-presentation-vantage-citrus-fresh-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2067e8c2-1d63-4764-8327-8b31a9313ba7/template-card-presentation-vantage-citrus-fresh-iframe-viewport-480x270.jpg",
     "mauve-dusk":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83d8fcd6-9be1-4f9a-aa0c-6d16e509ba3f/template-card-presentation-vantage-mauve-dusk-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/87ebbe2c-2877-4133-8a5d-385b81a3068e/template-card-presentation-vantage-mauve-dusk-iframe-viewport-480x270.jpg",
     "mono-ink":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a47cb6d9-970e-48a0-bccb-baa7a4303684/template-card-presentation-vantage-mono-ink-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1466a7a7-fb13-44db-8687-9c99d282dd8e/template-card-presentation-vantage-mono-ink-iframe-viewport-480x270.jpg",
     "mint-tech":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8f32a775-7931-4155-a060-2f6b797c5dc7/template-card-presentation-vantage-mint-tech-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f46edc1b-d119-4098-9b72-739227219258/template-card-presentation-vantage-mint-tech-iframe-viewport-480x270.jpg",
     "sunset-maroon":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/436b2987-a728-47b1-9956-d00aa9133bb4/template-card-presentation-vantage-sunset-maroon-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fc40f686-cf2a-41b4-b5d9-02568b6c25a4/template-card-presentation-vantage-sunset-maroon-iframe-viewport-480x270.jpg",
     "midnight-mono":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce26285a-d3a8-4d36-8341-2d5b5d4001a0/template-card-presentation-vantage-midnight-mono-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d1ee4993-9f2d-417e-a517-1db4fe580e21/template-card-presentation-vantage-midnight-mono-iframe-viewport-480x270.jpg",
     "gold-luxe":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72f39563-d8c7-452d-a3dd-e3fa51a514ae/template-card-presentation-vantage-gold-luxe-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/583606ad-eaed-472e-8495-03c57b778db4/template-card-presentation-vantage-gold-luxe-iframe-viewport-480x270.jpg",
     "ocean-deep":
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e6f178c-5ac5-4a43-a799-e281fa17cb8b/template-card-presentation-vantage-ocean-deep-iframe-viewport-480x270.jpg",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fbcc6ed8-6881-44d9-aedc-9478b6cd3eb8/template-card-presentation-vantage-ocean-deep-iframe-viewport-480x270.jpg",
   },
 } as const satisfies Readonly<
   Record<
