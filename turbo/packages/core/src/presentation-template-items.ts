@@ -5,6 +5,7 @@ export interface PresentationTemplateItem {
   readonly embedUrl: string;
   readonly previewImage: string;
   readonly previewImages: readonly string[];
+  readonly slideCount?: number;
   readonly cardPreviewImage?: string;
   readonly cardPreviewImagesByTheme?: Readonly<Record<string, string>>;
   readonly previewHtmls?: readonly string[];
@@ -3134,6 +3135,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "playful-launch-presentation"
         ]["carnival"],
       previewImages: PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES,
+      slideCount: 15,
       colorSystemId: "color-system:carnival",
       designSystemId: "design-system:playful-editorial",
       templateId: "template:html-ppt-playful-launch",
@@ -3153,6 +3155,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "mauve-dusk"
         ],
       previewImages: BOTANE_ORGANIC_PREVIEW_IMAGES,
+      slideCount: 15,
       colorSystemId: "color-system:mauve-dusk",
       designSystemId: "design-system:botane-organic",
       templateId: "template:html-ppt-botane-organic",
@@ -3174,6 +3177,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "business-data-presentation"
         ]["berry-pop"],
       previewImages: BUSINESS_DATA_CDN_PREVIEW_IMAGES,
+      slideCount: 15,
       colorSystemId: "color-system:berry-pop",
       designSystemId: "design-system:business-data",
       templateId: "template:html-ppt-business-data",
@@ -3195,6 +3199,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "crayon-learning-deck"
         ]["prism"],
       previewImages: CRAYON_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: CRAYON_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
       designSystemId: "design-system:crayon",
@@ -3217,6 +3222,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "creative-agency-presentation"
         ]["coral-studio"],
       previewImages: CREATIVE_AGENCY_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: CREATIVE_AGENCY_PREVIEW_HTMLS,
       colorSystemId: "color-system:coral-studio",
       designSystemId: "design-system:creative-agency",
@@ -3239,6 +3245,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "data-report-presentation"
         ]["prism"],
       previewImages: DATA_REPORT_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: DATA_REPORT_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
       designSystemId: "design-system:data-report",
@@ -3261,6 +3268,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "editorial-magazine-deck"
         ]["warm-sand"],
       previewImages: EDITORIAL_MAGAZINE_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: EDITORIAL_MAGAZINE_PREVIEW_HTMLS,
       colorSystemId: "color-system:warm-sand",
       designSystemId: "design-system:editorial-magazine",
@@ -3283,6 +3291,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "landing-consulting-deck"
         ]["pop-art"],
       previewImages: LANDING_CONSULTING_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: LANDING_CONSULTING_PREVIEW_HTMLS,
       colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:landing-consulting",
@@ -3305,6 +3314,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "lumina-creative-studio"
         ]["prism"],
       previewImages: LUMINA_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: LUMINA_PREVIEW_HTMLS,
       colorSystemId: "color-system:prism",
       designSystemId: "design-system:lumina",
@@ -3327,6 +3337,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "mosaic-geometric-pitch"
         ]["carnival"],
       previewImages: MOSAIC_GEOMETRIC_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: MOSAIC_GEOMETRIC_PREVIEW_HTMLS,
       colorSystemId: "color-system:carnival",
       designSystemId: "design-system:mosaic-geometric",
@@ -3347,6 +3358,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "pop-art"
         ],
       previewImages: PLAYFUL_POP_PREVIEW_IMAGES,
+      slideCount: 15,
       previewHtmls: PLAYFUL_POP_PREVIEW_HTMLS,
       colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:playful-pop",
@@ -3370,6 +3382,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["bloom-pitch"],
+      slideCount: 15,
       colorSystemId: "color-system:carnival",
       designSystemId: "design-system:bloom-pitch",
       templateId: "template:html-ppt-bloom-pitch",
@@ -3391,6 +3404,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["blueprint-academy"],
+      slideCount: 15,
       colorSystemId: "color-system:forest-editorial",
       designSystemId: "design-system:blueprint-academy",
       templateId: "template:html-ppt-blueprint-academy",
@@ -3411,6 +3425,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "slate-corporate"
         ],
       previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["meridian"],
+      slideCount: 15,
       colorSystemId: "color-system:slate-corporate",
       designSystemId: "design-system:meridian",
       templateId: "template:html-ppt-meridian",
@@ -3432,6 +3447,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["neo-brutalism"],
+      slideCount: 15,
       colorSystemId: "color-system:mono-ink",
       designSystemId: "design-system:neo-brutalism",
       templateId: "template:html-ppt-neo-brutalism",
@@ -3452,6 +3468,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "midnight-mono"
         ],
       previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["nocturne"],
+      slideCount: 15,
       colorSystemId: "color-system:midnight-mono",
       designSystemId: "design-system:nocturne",
       templateId: "template:html-ppt-nocturne",
@@ -3473,6 +3490,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["pixel-glitch"],
+      slideCount: 15,
       colorSystemId: "color-system:bauhaus-primary",
       designSystemId: "design-system:pixel-glitch",
       templateId: "template:html-ppt-pixel-glitch",
@@ -3494,6 +3512,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["prospectus"],
+      slideCount: 15,
       colorSystemId: "color-system:slate-corporate",
       designSystemId: "design-system:prospectus",
       templateId: "template:html-ppt-prospectus",
@@ -3515,6 +3534,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["schoolhouse"],
+      slideCount: 15,
       colorSystemId: "color-system:bauhaus-primary",
       designSystemId: "design-system:schoolhouse",
       templateId: "template:html-ppt-schoolhouse",
@@ -3536,6 +3556,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["sticker-scrapbook"],
+      slideCount: 15,
       colorSystemId: "color-system:prism",
       designSystemId: "design-system:sticker-scrapbook",
       templateId: "template:html-ppt-sticker-scrapbook",
@@ -3553,6 +3574,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       cardPreviewImage:
         PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["strata"]["mono-ink"],
       previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["strata"],
+      slideCount: 15,
       colorSystemId: "color-system:mono-ink",
       designSystemId: "design-system:strata",
       templateId: "template:html-ppt-strata",
@@ -3574,6 +3596,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
         ],
       previewImages:
         PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["taped-consulting"],
+      slideCount: 15,
       colorSystemId: "color-system:slate-corporate",
       designSystemId: "design-system:taped-consulting",
       templateId: "template:html-ppt-taped-consulting",
@@ -3594,6 +3617,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
           "slate-corporate"
         ],
       previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["vantage"],
+      slideCount: 15,
       colorSystemId: "color-system:slate-corporate",
       designSystemId: "design-system:vantage",
       templateId: "template:html-ppt-vantage",
