@@ -24,7 +24,7 @@ use crate::workspace_mount::ensure_workspace_drive_mounted;
 struct Timing {
     boot_ms: Option<u128>,
     workspace_mount_ms: Option<u128>,
-    clock_ms: Option<u128>,
+    guest_restore_ms: Option<u128>,
     exec_ms: Option<u128>,
 }
 
@@ -233,7 +233,7 @@ pub async fn run_benchmark(
     let Timing {
         boot_ms,
         workspace_mount_ms,
-        clock_ms,
+        guest_restore_ms,
         exec_ms,
     } = timing;
     match &result {
@@ -244,7 +244,7 @@ pub async fn run_benchmark(
                 factory_ms,
                 boot_ms = ?boot_ms,
                 workspace_mount_ms = ?workspace_mount_ms,
-                clock_ms = ?clock_ms,
+                guest_restore_ms = ?guest_restore_ms,
                 exec_ms = ?exec_ms,
                 total_ms,
                 termination = ?exec_result.termination,
@@ -253,7 +253,7 @@ pub async fn run_benchmark(
             );
         }
         Err(e) => {
-            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, clock_ms = ?clock_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, guest_restore_ms = ?guest_restore_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
@@ -431,10 +431,10 @@ async fn run_in_sandbox(
         return (Err(e), timing);
     }
 
-    let t_clock = Instant::now();
-    let clock_result = setup_guest(sandbox, &args.timezone).await;
-    timing.clock_ms = Some(t_clock.elapsed().as_millis());
-    if let Err(e) = clock_result {
+    let t_guest_restore = Instant::now();
+    let guest_restore_result = setup_guest(sandbox, &args.timezone).await;
+    timing.guest_restore_ms = Some(t_guest_restore.elapsed().as_millis());
+    if let Err(e) = guest_restore_result {
         return (Err(e), timing);
     }
 
