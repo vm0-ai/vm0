@@ -248,7 +248,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 2. Set guest timezone from user preference (best-effort, never fails).
     sync_guest_timezone(sandbox, context).await;
 
-    // 3. Download storages (skipping entries unchanged since the previous turn)
+    // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
         let guest_manifest = GuestDownloadManifest::from(manifest);
         let mut effective: GuestDownloadManifest = match start.prev_storage {
@@ -259,7 +259,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         // guest-side instruction normalization remain.
         let has_work = guest_download_has_work(&effective);
         if !has_work {
-            info!(run_id = %context.run_id, "all storages unchanged, skipping download");
+            info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
         }
         let t = Instant::now();
         let result = if has_work {
