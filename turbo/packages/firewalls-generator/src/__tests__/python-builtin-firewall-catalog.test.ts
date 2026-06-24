@@ -613,6 +613,32 @@ describe("Python builtin firewall catalog renderer", () => {
       ]);
     }).toThrow("unsupported JSON catalog object: Date");
 
+    let constructorAccessorInvoked = false;
+    const constructorAccessorPrototype = {};
+    Object.defineProperty(constructorAccessorPrototype, "constructor", {
+      get() {
+        constructorAccessorInvoked = true;
+        return Date;
+      },
+    });
+    const objectWithConstructorAccessor = {
+      name: "constructor-accessor",
+      apis: [
+        {
+          base: "https://constructor-accessor.example.com",
+          auth: {},
+        },
+      ],
+    };
+    Object.setPrototypeOf(
+      objectWithConstructorAccessor,
+      constructorAccessorPrototype,
+    );
+    expect(() => {
+      renderEntries([connectorEntry(objectWithConstructorAccessor)]);
+    }).toThrow("unsupported JSON catalog object: unknown");
+    expect(constructorAccessorInvoked).toBe(false);
+
     expect(() => {
       renderEntries([
         connectorEntry({
@@ -630,6 +656,60 @@ describe("Python builtin firewall catalog renderer", () => {
         }),
       ]);
     }).toThrow("unsupported JSON catalog object symbol key");
+
+    const objectWithHiddenProperty = {
+      ...testFirewall("hidden-object-property"),
+    };
+    Object.defineProperty(objectWithHiddenProperty, "hidden", {
+      value: "secret",
+    });
+    expect(() => {
+      renderEntries([connectorEntry(objectWithHiddenProperty)]);
+    }).toThrow(
+      "unsupported JSON catalog object non-enumerable property: hidden",
+    );
+
+    let objectAccessorInvoked = false;
+    const objectWithAccessor = {
+      ...testFirewall("object-accessor"),
+    };
+    Object.defineProperty(objectWithAccessor, "dynamic", {
+      enumerable: true,
+      get() {
+        objectAccessorInvoked = true;
+        return "secret";
+      },
+    });
+    expect(() => {
+      renderEntries([connectorEntry(objectWithAccessor)]);
+    }).toThrow("unsupported JSON catalog object accessor property: dynamic");
+    expect(objectAccessorInvoked).toBe(false);
+
+    let authAccessorInvoked = false;
+    const authWithAccessor: Record<string, unknown> = {};
+    Object.defineProperty(authWithAccessor, "headers", {
+      enumerable: true,
+      get() {
+        authAccessorInvoked = true;
+        return {
+          Authorization: "Bearer ${{ secrets.ACCESSOR_TOKEN }}",
+        };
+      },
+    });
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "auth-accessor",
+          apis: [
+            {
+              base: "https://auth-accessor.example.com",
+              auth: authWithAccessor,
+            },
+          ],
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog object accessor property: headers");
+    expect(authAccessorInvoked).toBe(false);
 
     const sparseApis: BuiltinFirewallRuntimeApi[] = [];
     sparseApis[1] = {
@@ -662,6 +742,51 @@ describe("Python builtin firewall catalog renderer", () => {
         }),
       ]);
     }).toThrow("unsupported JSON catalog array property: extra");
+
+    const apisWithHiddenProperty: BuiltinFirewallRuntimeApi[] = [
+      {
+        base: "https://hidden-array-property.example.com",
+        auth: {},
+      },
+    ];
+    Object.defineProperty(apisWithHiddenProperty, "hidden", {
+      value: "secret",
+    });
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "hidden-array-property",
+          apis: apisWithHiddenProperty,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog array property: hidden");
+
+    let arrayAccessorInvoked = false;
+    const apisWithAccessor: BuiltinFirewallRuntimeApi[] = [
+      {
+        base: "https://array-accessor.example.com",
+        auth: {},
+      },
+    ];
+    Object.defineProperty(apisWithAccessor, "0", {
+      enumerable: true,
+      get() {
+        arrayAccessorInvoked = true;
+        return {
+          base: "https://array-accessor.example.com",
+          auth: {},
+        };
+      },
+    });
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "array-accessor",
+          apis: apisWithAccessor,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog array accessor property: 0");
+    expect(arrayAccessorInvoked).toBe(false);
 
     const apisWithSymbol: BuiltinFirewallRuntimeApi[] = [
       {

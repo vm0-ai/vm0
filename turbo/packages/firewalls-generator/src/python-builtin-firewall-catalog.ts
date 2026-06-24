@@ -8,6 +8,10 @@ type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
+type DataPropertyDescriptor = PropertyDescriptor & {
+  readonly value: unknown;
+};
+
 export interface BuiltinFirewallRuntimePermission {
   readonly name: string;
   readonly rules: readonly string[];
@@ -111,6 +115,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isPlainJsonObject(value: object): value is Record<string, unknown> {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function isDataPropertyDescriptor(
+  descriptor: PropertyDescriptor,
+): descriptor is DataPropertyDescriptor {
+  return "value" in descriptor;
+}
+
+function isArrayIndexKey(key: string, length: number): boolean {
+  const index = Number(key);
+  return (
+    Number.isInteger(index) &&
+    index >= 0 &&
+    index < length &&
+    String(index) === key
+  );
+}
+
+function objectConstructorName(value: object): string {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === null) {
+    return "unknown";
+  }
+
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "constructor");
+  if (
+    descriptor === undefined ||
+    !isDataPropertyDescriptor(descriptor) ||
+    typeof descriptor.value !== "function"
+  ) {
+    return "unknown";
+  }
+
+  return descriptor.value.name;
 }
 
 function extractDiagnosticReferenceNames(value: unknown): readonly string[] {
@@ -318,15 +356,27 @@ function sortJson(
     if (Object.getOwnPropertySymbols(value).length > 0) {
       throw new Error("unsupported JSON catalog array symbol key");
     }
-    for (const key of Object.keys(value)) {
-      const index = Number(key);
-      if (
-        !Number.isInteger(index) ||
-        index < 0 ||
-        index >= value.length ||
-        String(index) !== key
-      ) {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    for (const key of Object.keys(descriptors)) {
+      if (key === "length") {
+        continue;
+      }
+      const descriptor = descriptors[key];
+      if (descriptor === undefined) {
+        throw new Error(`missing JSON catalog array descriptor: ${key}`);
+      }
+      if (!isArrayIndexKey(key, value.length)) {
         throw new Error(`unsupported JSON catalog array property: ${key}`);
+      }
+      if (!isDataPropertyDescriptor(descriptor)) {
+        throw new Error(
+          `unsupported JSON catalog array accessor property: ${key}`,
+        );
+      }
+      if (!descriptor.enumerable) {
+        throw new Error(
+          `unsupported JSON catalog array non-enumerable property: ${key}`,
+        );
       }
     }
     for (let index = 0; index < value.length; index += 1) {
@@ -340,8 +390,14 @@ function sortJson(
     ancestors.add(value);
     try {
       const sorted: JsonValue[] = [];
-      for (const item of value) {
-        sorted.push(sortJson(item, ancestors));
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = descriptors[String(index)];
+        if (descriptor === undefined || !isDataPropertyDescriptor(descriptor)) {
+          throw new Error(
+            `missing JSON catalog array value descriptor: ${index}`,
+          );
+        }
+        sorted.push(sortJson(descriptor.value, ancestors));
       }
       return sorted;
     } finally {
@@ -352,7 +408,7 @@ function sortJson(
     throw new Error(`unsupported JSON catalog value: ${typeof value}`);
   }
   if (!isPlainJsonObject(value)) {
-    const constructorName = value.constructor?.name ?? "unknown";
+    const constructorName = objectConstructorName(value);
     throw new Error(`unsupported JSON catalog object: ${constructorName}`);
   }
 
@@ -365,8 +421,23 @@ function sortJson(
   }
   ancestors.add(value);
   try {
-    for (const key of Object.keys(value).sort()) {
-      const nested = value[key];
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    for (const key of Object.keys(descriptors).sort()) {
+      const descriptor = descriptors[key];
+      if (descriptor === undefined) {
+        throw new Error(`missing JSON catalog object descriptor: ${key}`);
+      }
+      if (!isDataPropertyDescriptor(descriptor)) {
+        throw new Error(
+          `unsupported JSON catalog object accessor property: ${key}`,
+        );
+      }
+      if (!descriptor.enumerable) {
+        throw new Error(
+          `unsupported JSON catalog object non-enumerable property: ${key}`,
+        );
+      }
+      const nested = descriptor.value;
       if (nested === undefined) {
         throw new Error("unsupported JSON catalog value: undefined");
       }
@@ -888,6 +959,13 @@ export function renderPythonBuiltinFirewallCatalogFiles(
   options: RenderPythonBuiltinFirewallCatalogOptions,
 ): readonly PythonBuiltinFirewallCatalogFile[] {
   const entries = sortedUniqueEntries(options.entries);
+  const jsonByFirewallName = new Map<string, string>();
+  for (const entry of entries) {
+    jsonByFirewallName.set(
+      entry.firewall.name,
+      stablePrettyJson(entry.firewall),
+    );
+  }
   const diagnosticManifest = buildBuiltinFirewallDiagnosticManifest(entries);
   const maxJsonChunkLength =
     options.maxJsonChunkLength ?? DEFAULT_FIREWALL_JSON_CHUNK_LENGTH;
@@ -908,10 +986,12 @@ export function renderPythonBuiltinFirewallCatalogFiles(
       );
     }
 
-    const chunks = splitJsonLines(
-      stablePrettyJson(firewall),
-      maxJsonChunkLength,
-    );
+    const firewallJson = jsonByFirewallName.get(firewall.name);
+    if (firewallJson === undefined) {
+      throw new Error(`missing Python JSON for firewall: ${firewall.name}`);
+    }
+
+    const chunks = splitJsonLines(firewallJson, maxJsonChunkLength);
     const moduleNames = chunks.map((_, index) => {
       return `${baseName}_${index}`;
     });
