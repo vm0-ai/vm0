@@ -387,6 +387,47 @@ async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
 }
 
 #[tokio::test]
+async fn read_guest_failure_diagnostic_file_tolerates_unknown_failure_reason() {
+    let sandbox = MockSandbox::new("test");
+    let diagnostic = serde_json::json!({
+        "schemaVersion": 1,
+        "failureClass": "cli_nonzero",
+        "framework": "claude_code",
+        "cliExitCode": 1,
+        "claudeNumTurns": 1,
+        "failureDetailSource": "claude_result",
+        "failureReason": "future_provider_reason",
+        "sessionHistoryStatus": "present",
+        "promptShape": "slash_like",
+        "promptBytes": 5,
+        "firstLineBytes": 5
+    });
+    sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+
+    let read = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+    let diagnostic = read.expect("unknown optional failure reason should not drop diagnostic");
+
+    assert_eq!(
+        diagnostic.failure_class,
+        agent_diagnostics::FailureClass::CliNonzero
+    );
+    assert_eq!(
+        diagnostic.framework,
+        agent_diagnostics::AgentFramework::ClaudeCode
+    );
+    assert_eq!(diagnostic.cli_exit_code, Some(1));
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(agent_diagnostics::FailureDetailSource::ClaudeResult)
+    );
+    assert_eq!(diagnostic.failure_reason, None);
+    assert_eq!(
+        diagnostic.session_history_status,
+        agent_diagnostics::SessionHistoryStatus::Present
+    );
+}
+
+#[tokio::test]
 async fn read_guest_failure_diagnostic_file_returns_none_on_missing_file() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_read_file_result(Ok(None));
