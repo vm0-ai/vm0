@@ -130,7 +130,6 @@ async fn promote_current_cache_entry(
             .await
             .unwrap()
     );
-    drop(lease);
     cache.scoped_cache_key(
         TEST_PROFILE_NAME,
         session_id,
@@ -193,7 +192,6 @@ async fn promotion_does_not_overwrite_newer_cache_entry() {
         .unwrap();
 
     assert!(!promoted);
-    drop(stale_lease);
     let metadata = cache
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
         .await
@@ -260,7 +258,6 @@ async fn promotion_does_not_overwrite_same_completed_at_cache_entry() {
         .unwrap();
 
     assert!(!promoted);
-    drop(competing_lease);
     let metadata = cache
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
         .await
@@ -324,7 +321,6 @@ async fn promotion_overwrites_older_cache_entry() {
         .unwrap();
 
     assert!(promoted);
-    drop(newer_lease);
     let metadata = cache
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
         .await
@@ -1254,7 +1250,6 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
             .await
             .unwrap()
     );
-    drop(lease);
 
     let checkout = cache_b
         .prepare(WorkspaceImagePrepareRequest {
@@ -1391,7 +1386,6 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-02T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -1464,7 +1458,6 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -1525,7 +1518,6 @@ async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -1830,7 +1822,6 @@ async fn shared_cache_is_scoped_by_runner_group() {
             .await
             .unwrap()
     );
-    drop(lease);
 
     let checkout = cache_b
         .prepare(WorkspaceImagePrepareRequest {
@@ -1904,7 +1895,6 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
             .await
             .unwrap()
     );
-    drop(lease);
 
     cache_b.gc(false).await.unwrap();
 
@@ -2353,7 +2343,6 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
         .await
         .unwrap();
     assert_eq!(metadata.session_id, "sess-1");
-    drop(lease);
     assert_eq!(cache.held_session_states().await.len(), 1);
 }
 
@@ -2751,7 +2740,6 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
         .await;
 
     assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
-    assert!(lease.can_attempt_promotion(Some("sess-1")));
     assert_eq!(
         lease
             .workspace_drive_config()
@@ -2821,7 +2809,6 @@ async fn lock_busy_checkout_cannot_promote_without_entry_lock() {
         .await;
 
     assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::LockBusy);
-    assert!(!lease.can_attempt_promotion(Some("sess-1")));
     assert!(
         !lease
             .promote(
@@ -2936,7 +2923,6 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: local_timestamp(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -3036,7 +3022,6 @@ async fn promotion_context_validates_expected_identity() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: local_timestamp(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -4177,6 +4162,44 @@ async fn promote_skips_when_capacity_lock_is_busy() {
 }
 
 #[tokio::test]
+async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths);
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert!(
+        lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                cli_agent_session_id_override: None,
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-05-01T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+            })
+            .is_none(),
+        "workspace image promotion must wait until a CLI agent session id is available"
+    );
+}
+
+#[tokio::test]
 async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -4205,8 +4228,6 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
         .unwrap();
 
     assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
-    assert!(!lease.can_attempt_promotion(None));
-    assert!(lease.can_attempt_promotion(Some("sess-1")));
     assert!(
         lease
             .promote(
@@ -4271,7 +4292,6 @@ async fn late_session_promotion_skips_when_entry_lock_is_busy() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
     let cache_key = session_workspace_cache_key(session_id, "/workspace");
@@ -4322,7 +4342,6 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .unwrap();
 
@@ -4338,7 +4357,6 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
     let active_lease = promotion.try_into_active_lease(&expected, true).unwrap();
 
     assert_eq!(active_lease.working_dir(), "/workspace/repo");
-    assert!(active_lease.can_attempt_promotion(Some(session_id)));
     assert!(
         active_lease
             .into_promotion_context(WorkspaceImagePromotionRequest {
@@ -4348,7 +4366,6 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-05-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
-                promotable: true,
             })
             .is_some(),
         "reusing an idle sandbox created before the CLI reported a session id must not lose the future cache promotion"

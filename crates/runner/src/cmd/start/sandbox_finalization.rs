@@ -68,7 +68,6 @@ pub(super) struct FinalizeContext {
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
     pub(super) workspace_image_size_bytes: u64,
-    pub(super) workspace_promotable: bool,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
@@ -106,7 +105,6 @@ pub(super) async fn finalize_sandbox_for_completion(
         mut network_log_session,
         workspace_image,
         workspace_image_size_bytes,
-        workspace_promotable,
         storage_fingerprints,
         device_rate_limits,
         factory,
@@ -150,7 +148,6 @@ pub(super) async fn finalize_sandbox_for_completion(
             terminal_status,
             completed_at: completed_at.clone(),
             storage_fingerprints: storage_fingerprints.clone(),
-            promotable: workspace_promotable,
         })
     });
 
@@ -679,7 +676,6 @@ mod tests {
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
                 workspace_image_size_bytes: 0,
-                workspace_promotable: false,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
@@ -742,7 +738,6 @@ mod tests {
                 terminal_status,
                 completed_at: local_completed_at(),
                 storage_fingerprints,
-                promotable: true,
             })
             .expect("test workspace image should be promotable")
     }
@@ -1072,7 +1067,6 @@ mod tests {
                 workspace_drive_required: true,
             })
             .await;
-        assert!(workspace_image.can_attempt_promotion(Some("sess-guest")));
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
             .unwrap();
@@ -1090,7 +1084,6 @@ mod tests {
         context.discovered_cli_agent_session_id = Some("sess-guest".into());
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("guest-session-promotion"))),
@@ -1159,7 +1152,6 @@ mod tests {
         context.factory = factory;
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64 + 1;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(sandbox),
@@ -1187,6 +1179,71 @@ mod tests {
             cache.held_session_states().await.is_empty(),
             "mismatched park-time promotion must not publish workspace cache"
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_promotes_workspace_cache_from_lease_session_without_resolved_session() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-lease-only";
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "unused-context-session",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.cli_agent_session_id = None;
+        context.discovered_cli_agent_session_id = None;
+        context.exit_code = 1;
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("lease-session-promotion"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                1,
+                Some("invalid resume session".into()),
+                sandbox_id,
+                SandboxReuseResult::Reused,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let cache_states = cache.held_session_states().await;
+        assert_eq!(cache_states.len(), 1);
+        assert_eq!(cache_states[0].session_id, session_id);
     }
 
     #[tokio::test]
@@ -1246,7 +1303,6 @@ mod tests {
         );
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("rejected-workspace-promotion"))),

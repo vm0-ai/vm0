@@ -154,11 +154,6 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         controls,
     )
     .await;
-    outcome.workspace_promotable = workspace_image_promotable(
-        workspace_image.as_ref(),
-        context,
-        outcome.discovered_cli_agent_session_id.as_deref(),
-    );
     outcome.workspace_image = workspace_image;
     Ok(outcome)
 }
@@ -224,20 +219,6 @@ pub(super) async fn prepare_workspace_image(
         .await;
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
-}
-
-pub(super) fn workspace_image_promotable(
-    workspace_image: Option<&WorkspaceImageLease>,
-    context: &ExecutionContext,
-    discovered_cli_agent_session_id: Option<&str>,
-) -> bool {
-    workspace_image.is_some_and(|image| {
-        image.can_attempt_promotion(
-            context
-                .cli_agent_session_id()
-                .or(discovered_cli_agent_session_id),
-        )
-    })
 }
 
 async fn create_started_sandbox(
@@ -419,7 +400,6 @@ pub(super) async fn execute_reused_sandbox(
                 source_ip,
                 network_log_session: None,
                 workspace_image: None,
-                workspace_promotable: false,
                 discovered_cli_agent_session_id: None,
             };
         }
@@ -446,7 +426,6 @@ pub(super) async fn execute_reused_sandbox(
             source_ip,
             network_log_session: Some(network_log_session),
             workspace_image: None,
-            workspace_promotable: false,
             discovered_cli_agent_session_id: None,
         };
     }
@@ -551,7 +530,6 @@ pub(super) async fn execute_prepared_sandbox_run(
         source_ip,
         network_log_session: Some(network_log_session),
         workspace_image: None,
-        workspace_promotable: false,
         discovered_cli_agent_session_id,
     }
 }

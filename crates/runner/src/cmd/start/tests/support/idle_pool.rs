@@ -155,7 +155,6 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: TEST_SESSION_LAST_COMPLETED_AT.into(),
             storage_fingerprints: StorageFingerprints::default(),
-            promotable: true,
         })
         .expect("workspace image should be promotable");
     let budget_lease = ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb)

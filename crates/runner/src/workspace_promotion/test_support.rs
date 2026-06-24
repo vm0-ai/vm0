@@ -59,7 +59,6 @@ impl WorkspacePromotionFixture {
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: TEST_COMPLETED_AT.into(),
                 storage_fingerprints: StorageFingerprints::default(),
-                promotable: true,
             })
             .expect("workspace image should be promotable");
 
@@ -111,7 +110,6 @@ impl WorkspacePromotionFixture {
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-04T00:00:00.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
-                promotable: true,
             })
             .expect("workspace image cache hit should be promotable");
 

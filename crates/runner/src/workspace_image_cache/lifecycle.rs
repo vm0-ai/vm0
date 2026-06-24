@@ -93,6 +93,11 @@ struct WorkspaceImagePromotionInput<'a> {
     storage_fingerprints: &'a StorageFingerprints,
 }
 
+struct WorkspaceImagePromotionTarget {
+    cache_key: String,
+    cli_agent_session_id: String,
+}
+
 struct WorkspaceImageLeaseCommon<'a> {
     run_id: RunId,
     profile_name: &'a str,
@@ -933,28 +938,6 @@ impl WorkspaceImageLease {
             })
     }
 
-    pub(crate) fn can_attempt_promotion(
-        &self,
-        cli_agent_session_id_override: Option<&str>,
-    ) -> bool {
-        if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
-            return false;
-        }
-
-        match self.result {
-            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
-                self.cache_key.is_some() && self.cli_agent_session_id.is_some()
-            }
-            WorkspaceCacheCheckoutResult::NoSession => {
-                self.cli_agent_session_id.is_none() && cli_agent_session_id_override.is_some()
-            }
-            WorkspaceCacheCheckoutResult::InvalidWorkingDir
-            | WorkspaceCacheCheckoutResult::LockBusy
-            | WorkspaceCacheCheckoutResult::InvalidMetadata
-            | WorkspaceCacheCheckoutResult::DiskPressure => false,
-        }
-    }
-
     pub(crate) async fn invalidate(&self, run_id: RunId, reason: &str) -> RunnerResult<bool> {
         let Some(cache_key) = self.cache_key.as_deref() else {
             return Ok(false);
@@ -973,150 +956,83 @@ impl WorkspaceImageLease {
 
     #[cfg(test)]
     pub(crate) async fn promote(
-        &self,
+        self,
         run_id: RunId,
         cli_agent_session_id_override: Option<&str>,
         terminal_status: WorkspaceCacheTerminalStatus,
         completed_at: String,
         storage_fingerprints: &StorageFingerprints,
     ) -> RunnerResult<bool> {
-        if !self.workspace_drive_enabled {
+        let Some(promotion) = self.into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id: sandbox::SandboxId::new_v4(),
+            cli_agent_session_id_override,
+            terminal_status,
+            completed_at,
+            storage_fingerprints: storage_fingerprints.clone(),
+        }) else {
             debug!(
                 run_id = %run_id,
-                "workspace image cache promotion skipped: workspace drive unavailable"
-            );
-            return Ok(false);
-        }
-        if !is_safe_guest_working_dir(&self.working_dir) {
-            debug!(
-                run_id = %run_id,
-                working_dir = %self.working_dir,
-                "workspace image cache promotion skipped: unsafe working directory"
-            );
-            return Ok(false);
-        }
-        if !self.can_attempt_promotion(cli_agent_session_id_override) {
-            debug!(
-                run_id = %run_id,
-                checkout_result = ?self.result,
                 "workspace image cache promotion skipped: checkout result is not promotable"
             );
             return Ok(false);
+        };
+        let outcome = promotion.promote().await?;
+        Ok(matches!(outcome, WorkspaceImagePromotionOutcome::Promoted))
+    }
+
+    fn promotion_target(
+        &self,
+        cli_agent_session_id_override: Option<&str>,
+    ) -> Option<WorkspaceImagePromotionTarget> {
+        if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
+            return None;
         }
 
-        let mut _late_entry_lock_guard = None;
-        let late_cache_key;
-        let (cache_key, cli_agent_session_id) = if let Some(cache_key) = self.cache_key.as_deref() {
-            let Some(cli_agent_session_id) = self.cli_agent_session_id.as_deref() else {
-                debug!(run_id = %run_id, "workspace image cache promotion skipped: no session id");
-                return Ok(false);
-            };
-            if self.entry_lock.is_none() {
-                debug!(
-                    run_id = %run_id,
-                    cache_key,
-                    "workspace image cache promotion skipped: entry lock not held"
-                );
-                return Ok(false);
+        match self.result {
+            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
+                Some(WorkspaceImagePromotionTarget {
+                    cache_key: self.cache_key.clone()?,
+                    cli_agent_session_id: self.cli_agent_session_id.clone()?,
+                })
             }
-            (cache_key, cli_agent_session_id)
-        } else if self.cli_agent_session_id.is_none() {
-            let Some(cli_agent_session_id) = cli_agent_session_id_override else {
-                debug!(run_id = %run_id, "workspace image cache promotion skipped: no session id");
-                return Ok(false);
-            };
-            late_cache_key = self.cache.scoped_cache_key(
-                &self.profile_name,
-                cli_agent_session_id,
-                &self.working_dir,
-                self.image_size_bytes,
-            );
-            _late_entry_lock_guard = Some(
-                match crate::lock::try_acquire(self.cache.entry_lock_path(&late_cache_key)).await {
-                    Ok(lock) => lock,
-                    Err(e) => {
-                        info!(
-                            run_id = %run_id,
-                            cache_key = late_cache_key,
-                            error = %e,
-                            "workspace image cache promotion skipped: late entry lock unavailable"
-                        );
-                        return Ok(false);
-                    }
-                },
-            );
-            (late_cache_key.as_str(), cli_agent_session_id)
-        } else {
-            debug!(run_id = %run_id, "workspace image cache promotion skipped: no cache key");
-            return Ok(false);
-        };
-
-        let outcome = self
-            .cache
-            .promote_locked(WorkspaceImagePromotionInput {
-                run_id,
-                cache_key,
-                profile_name: &self.profile_name,
-                cli_agent_session_id,
-                working_dir: &self.working_dir,
-                active_image: &self.active_image,
-                image_size_bytes: self.image_size_bytes,
-                terminal_status,
-                completed_at: &completed_at,
-                storage_fingerprints,
-            })
-            .await?;
-        Ok(matches!(outcome, WorkspaceImagePromotionOutcome::Promoted))
+            WorkspaceCacheCheckoutResult::NoSession => {
+                if self.cli_agent_session_id.is_some() {
+                    return None;
+                }
+                let cli_agent_session_id = cli_agent_session_id_override?.to_owned();
+                let cache_key = self.cache.scoped_cache_key(
+                    &self.profile_name,
+                    &cli_agent_session_id,
+                    &self.working_dir,
+                    self.image_size_bytes,
+                );
+                Some(WorkspaceImagePromotionTarget {
+                    cache_key,
+                    cli_agent_session_id,
+                })
+            }
+            WorkspaceCacheCheckoutResult::InvalidWorkingDir
+            | WorkspaceCacheCheckoutResult::LockBusy
+            | WorkspaceCacheCheckoutResult::InvalidMetadata
+            | WorkspaceCacheCheckoutResult::DiskPressure => None,
+        }
     }
 
     pub(crate) fn into_promotion_context(
         mut self,
         request: WorkspaceImagePromotionRequest<'_>,
     ) -> Option<WorkspaceImagePromotionContext> {
-        if !request.promotable {
-            return None;
-        }
-        if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
-            return None;
-        }
-
-        let cli_agent_session_id = match self.result {
-            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
-                self.cli_agent_session_id.clone()?
-            }
-            WorkspaceCacheCheckoutResult::NoSession => {
-                request.cli_agent_session_id_override?.to_owned()
-            }
-            WorkspaceCacheCheckoutResult::InvalidWorkingDir
-            | WorkspaceCacheCheckoutResult::LockBusy
-            | WorkspaceCacheCheckoutResult::InvalidMetadata
-            | WorkspaceCacheCheckoutResult::DiskPressure => return None,
-        };
-
-        let cache_key = match self.result {
-            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
-                self.cache_key.clone()?
-            }
-            WorkspaceCacheCheckoutResult::NoSession => self.cache.scoped_cache_key(
-                &self.profile_name,
-                &cli_agent_session_id,
-                &self.working_dir,
-                self.image_size_bytes,
-            ),
-            WorkspaceCacheCheckoutResult::InvalidWorkingDir
-            | WorkspaceCacheCheckoutResult::LockBusy
-            | WorkspaceCacheCheckoutResult::InvalidMetadata
-            | WorkspaceCacheCheckoutResult::DiskPressure => return None,
-        };
+        let target = self.promotion_target(request.cli_agent_session_id_override)?;
 
         Some(WorkspaceImagePromotionContext {
             cache: self.cache.clone(),
-            cache_key,
+            cache_key: target.cache_key,
             entry_lock: self.entry_lock.take(),
             run_id: request.run_id,
             sandbox_id: request.sandbox_id,
             profile_name: self.profile_name.clone(),
-            cli_agent_session_id,
+            cli_agent_session_id: target.cli_agent_session_id,
             working_dir: self.working_dir.clone(),
             active_image: self.active_image.clone(),
             image_size_bytes: self.image_size_bytes,
