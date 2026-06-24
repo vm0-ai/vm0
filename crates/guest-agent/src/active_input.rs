@@ -12,26 +12,40 @@ const ACTIVE_INPUT_TYPE: &str = "active-input";
 const ACTIVE_INPUT_QUEUE_CAPACITY: usize = 8;
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 
+/// Accepted follow-up user input waiting to be written to Claude stream-json stdin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveInputFrame {
+    /// Control-plane message id used for duplicate detection and diagnostics.
     pub message_id: String,
+    /// Deterministic Claude user-frame UUID assigned to this active input.
     pub uuid: String,
+    /// User text to replay into the running CLI process.
     pub text: String,
 }
 
+/// Result returned to the process-control caller for an active-input payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActiveInputControlOutcome {
+    /// The payload was accepted and queued for the CLI stdin writer.
     Accepted,
+    /// The payload was rejected without being queued.
     Rejected { diagnostic: &'static str },
+    /// The payload could not be queued because the active-input backlog is full.
     QueueFull { diagnostic: &'static str },
+    /// The payload failed with a control-path error.
     Error { diagnostic: &'static str },
 }
 
+/// Classification of a CLI stdout user event during active-input replay filtering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayUserEventAction {
+    /// A normal external user event that should continue through event delivery.
     External,
+    /// The CLI replayed the run's initial prompt frame.
     InternalInitialPrompt,
+    /// The CLI replayed an accepted active-input follow-up frame.
     InternalActiveInput,
+    /// A prompt-like user event could not be attributed to known run input.
     UnknownPromptUser,
 }
 
@@ -232,11 +246,22 @@ struct ActiveInputInner {
     state: Mutex<ActiveInputState>,
 }
 
+/// Cloneable control-plane side of active input for one guest-agent run.
+///
+/// The process-control task uses this handle to accept or reject follow-up user
+/// input while CLI execution uses the paired [`ActiveInputWriter`] to consume
+/// accepted frames. The controller also classifies CLI stdout user events so
+/// internally replayed input can be kept out of outbound event delivery.
 #[derive(Debug, Clone)]
 pub struct ActiveInputController {
     inner: Arc<ActiveInputInner>,
 }
 
+/// Single-consumer CLI stdin side of active input for one guest-agent run.
+///
+/// `execute_cli_with_active_input` consumes this writer for the lifetime of one
+/// CLI execution. It yields accepted follow-up input frames and observes the
+/// same terminal close signal as the paired [`ActiveInputController`].
 #[derive(Debug)]
 pub struct ActiveInputWriter {
     controller: ActiveInputController,
@@ -244,6 +269,12 @@ pub struct ActiveInputWriter {
     close_rx: watch::Receiver<bool>,
 }
 
+/// Paired active-input state for one guest-agent run.
+///
+/// The runtime creates a cloneable [`ActiveInputController`] for control-plane
+/// requests and a single [`ActiveInputWriter`] for CLI stdin replay. Consuming
+/// the runtime with [`ActiveInputRuntime::into_writer`] transfers the writer to
+/// the CLI execution path.
 pub struct ActiveInputRuntime {
     controller: ActiveInputController,
     writer: ActiveInputWriter,
