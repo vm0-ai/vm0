@@ -101,6 +101,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
+import computerUseIllustration from "./assets/computer-use-illustration.png";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   parsePresentationEditDraft,
@@ -5449,36 +5450,38 @@ function ComputerUseDownloadDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md gap-5 pt-4">
-        <DialogHeader>
-          <div className="flex items-start gap-4 pr-8">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-gray-50 text-muted-foreground">
-              <IconDeviceDesktop size={20} stroke={1.5} />
-            </div>
-            <div className="min-w-0 text-left">
-              <DialogTitle className="text-xl leading-7">
-                Connect your computer
-              </DialogTitle>
-              <DialogDescription className="mt-3 leading-6">
-                Download Zero Computer Use for macOS, then open it to let Zero
-                use your desktop.
-              </DialogDescription>
-            </div>
-          </div>
+      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+        <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
+          <img
+            src={computerUseIllustration}
+            alt=""
+            className="h-40 w-40 object-contain"
+          />
+        </div>
+        <DialogHeader className="space-y-2 px-6 pt-5 text-left">
+          <DialogTitle className="text-xl leading-7">
+            Let Zero use your computer
+          </DialogTitle>
+          <DialogDescription className="leading-6">
+            So Zero can work in your browser and apps for you, even ones with no
+            connector like LinkedIn or Reddit.
+          </DialogDescription>
         </DialogHeader>
-        <Button asChild size="lg" className="w-full">
-          <a
-            href={downloadUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            <IconDownload size={16} stroke={1.5} />
-            Download for macOS
-          </a>
-        </Button>
+        <div className="px-6 pb-6 pt-4">
+          <Button asChild size="lg" className="w-full">
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              <IconDownload size={16} stroke={1.5} />
+              Download for macOS
+            </a>
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
