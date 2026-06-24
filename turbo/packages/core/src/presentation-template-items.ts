@@ -476,6 +476,486 @@ const PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES = {
     "gold-luxe":
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c7eb7646-65ae-463b-903e-4766f0721d70/template-card-presentation-playful-pop-deck-gold-luxe-iframe-viewport-480x270.jpg",
   },
+  "bloom-pitch": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90b4dd6f-b468-4a2e-a60a-e4afcd564555/template-card-presentation-bloom-pitch-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f1958eb2-f55c-4250-ba92-3e660b92ca05/template-card-presentation-bloom-pitch-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/65f7a8fd-e497-4367-b3c7-ac993ad3c29c/template-card-presentation-bloom-pitch-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9c4a7498-97f6-4b7d-9c7b-3308ba86680a/template-card-presentation-bloom-pitch-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0050a76-e4c5-4ffa-bc4d-116a70e56824/template-card-presentation-bloom-pitch-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/870d193c-e808-4a5e-840f-618dcb9d5194/template-card-presentation-bloom-pitch-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07ca987a-caec-4ee8-8ff8-9163905d02b0/template-card-presentation-bloom-pitch-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d661e90a-405e-4fb0-839a-a74972496ac5/template-card-presentation-bloom-pitch-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32c9f442-b043-48ac-9452-8037d669083b/template-card-presentation-bloom-pitch-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ea0fc921-37bf-47cb-8adf-eb2e4aa887fe/template-card-presentation-bloom-pitch-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/10dfe180-f9f9-4840-830d-daca2abe0f85/template-card-presentation-bloom-pitch-berry-pop-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a8ea8a26-0167-403b-98f8-a89c2c1370e1/template-card-presentation-bloom-pitch-mauve-dusk-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9eb3e832-ac17-4d7d-a74c-a9db859ec23d/template-card-presentation-bloom-pitch-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fd0b98f4-eade-4363-a1f2-59c7d6b27868/template-card-presentation-bloom-pitch-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a308ade-b184-4228-b0a7-45962c772902/template-card-presentation-bloom-pitch-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d5d220bd-ac49-4e68-a68c-7cd331f07d38/template-card-presentation-bloom-pitch-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77cf29f5-815e-42f3-94e4-e56f042e5095/template-card-presentation-bloom-pitch-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/696fb9c5-8447-4b51-8e27-1988d735c8af/template-card-presentation-bloom-pitch-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/64fe7f8f-ef15-4dd4-9e97-5eff17dd849e/template-card-presentation-bloom-pitch-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  "blueprint-academy": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4112617-00e0-450a-95c8-332042781df9/template-card-presentation-blueprint-academy-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75379886-551d-4b0a-9e4a-6475a9980cad/template-card-presentation-blueprint-academy-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/62d4a62f-13bb-4657-a7f9-b3f6df4fac6c/template-card-presentation-blueprint-academy-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6634d50f-1c8e-4d22-bb3e-5f81879ab8e7/template-card-presentation-blueprint-academy-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f5ef5948-2e53-493f-a5a1-714cc1273fe9/template-card-presentation-blueprint-academy-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/00a78817-b20a-4e44-9b05-8ef34584e0cb/template-card-presentation-blueprint-academy-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6baeba57-2d88-4b15-a09a-792a182b6993/template-card-presentation-blueprint-academy-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3a6571b6-31ca-43b4-8023-b82296a1b1d2/template-card-presentation-blueprint-academy-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e890dbc-e2f0-4b06-98d8-3210f298638c/template-card-presentation-blueprint-academy-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dabfd2ad-225d-40d1-9a52-2d1133e4e373/template-card-presentation-blueprint-academy-terracotta-clay-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4c9ef857-9aa8-40c9-bbf8-227255c9a8b2/template-card-presentation-blueprint-academy-citrus-fresh-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2e770fa8-92c2-4420-82bf-4caf63a0ae3c/template-card-presentation-blueprint-academy-berry-pop-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c043c114-a0a9-42a4-abdc-942e2fb7a61c/template-card-presentation-blueprint-academy-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1324b886-b65d-4c17-b74d-2dbee264d207/template-card-presentation-blueprint-academy-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/18d8b224-21dc-4f21-ba73-7fa6b55756a1/template-card-presentation-blueprint-academy-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44e505ea-1654-4680-9e5c-7a0033a2ec4d/template-card-presentation-blueprint-academy-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c5863ee-9bcb-471f-865f-7c0cfebbf424/template-card-presentation-blueprint-academy-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ecfd6a2a-3241-4a5b-9d9e-e3e36a3ef324/template-card-presentation-blueprint-academy-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9090f022-1d26-4b18-a3e9-675e6168393a/template-card-presentation-blueprint-academy-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  meridian: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/90001eb7-c947-414b-b15e-12fa7e6984bf/template-card-presentation-meridian-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4a16b3c6-436c-4740-9d73-4ca1e106f1fa/template-card-presentation-meridian-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e28bc324-04de-465d-a8b0-35c900e6064c/template-card-presentation-meridian-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c5852e07-561c-4973-948e-723db241e0b3/template-card-presentation-meridian-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/128bcf7c-1c6d-4fc9-ae2e-6cf97fd2725e/template-card-presentation-meridian-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f6be476c-bf24-4788-88ca-fdbd69458b4e/template-card-presentation-meridian-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/32f12d60-7a93-4551-860a-454226489ddb/template-card-presentation-meridian-forest-editorial-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/abdfd93a-fa30-4192-b902-c334af7c0f54/template-card-presentation-meridian-slate-corporate-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4899d210-c248-4e36-9d09-f990d7e957bc/template-card-presentation-meridian-coral-studio-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3932a783-9251-4f1e-9e86-390f0cc002f9/template-card-presentation-meridian-terracotta-clay-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c5ca6491-3d70-4e88-afdf-17aa790a9ea0/template-card-presentation-meridian-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cfc2a738-7d23-4967-9b78-904fbd9da69b/template-card-presentation-meridian-mauve-dusk-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5fe0ca12-4186-42bf-81e8-739abe712860/template-card-presentation-meridian-berry-pop-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e3c7ac8b-e1a1-45ec-aa9c-3076a7463cd2/template-card-presentation-meridian-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/076e5a7f-6745-49aa-adb0-d18fbda46bd3/template-card-presentation-meridian-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54c5ee44-d271-4d35-8c72-099054b06afa/template-card-presentation-meridian-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/94bd348f-1646-4bb3-b16e-51b71f0375e7/template-card-presentation-meridian-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b88f9269-dfcd-4756-a07e-e731084209cd/template-card-presentation-meridian-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a35727fb-b73a-46f1-b417-6d196c8a5b50/template-card-presentation-meridian-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  "neo-brutalism": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7ecd2e46-9771-459c-89ee-70fc779ae61d/template-card-presentation-neo-brutalism-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dd59e5d0-dc25-4b60-889f-9f76b87b00f0/template-card-presentation-neo-brutalism-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83e6ea13-49ef-4166-84ad-8fbbc17db452/template-card-presentation-neo-brutalism-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/42be215f-90f8-4294-95fb-9823b0763226/template-card-presentation-neo-brutalism-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7d70cad4-8c4f-4295-98b4-1dc800322497/template-card-presentation-neo-brutalism-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c84abaf-71c1-4b50-bdd9-8866dd2967b1/template-card-presentation-neo-brutalism-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1611eb0-d3f4-476f-ab4d-679bdba63a19/template-card-presentation-neo-brutalism-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ae6e876-40c1-4f47-b0d6-09a4381257e7/template-card-presentation-neo-brutalism-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aa7e7f5-f556-4d49-9c0c-2700592e2f91/template-card-presentation-neo-brutalism-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/429973c5-51a4-4a37-85ab-13c21eee2414/template-card-presentation-neo-brutalism-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a85ee055-eb1b-49a4-81ed-e0477a5d350c/template-card-presentation-neo-brutalism-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddaf0aca-ca80-4b96-81b1-186296679a47/template-card-presentation-neo-brutalism-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b73bfdbf-b5be-4a94-968f-09e70d615097/template-card-presentation-neo-brutalism-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/666b0337-39d3-4a19-8bc6-ee7fe5786b07/template-card-presentation-neo-brutalism-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2af505c-d304-4c67-b0c4-7126a02d4b08/template-card-presentation-neo-brutalism-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b448661b-567b-41f3-8622-4053747c926b/template-card-presentation-neo-brutalism-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ff100ac-a619-4dc9-a0ff-7165973e5adb/template-card-presentation-neo-brutalism-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5640f7f6-0d20-4592-b4e9-5720cc7f3b05/template-card-presentation-neo-brutalism-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2ebcc146-0544-4869-8032-8272647b20f3/template-card-presentation-neo-brutalism-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  nocturne: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/43d9c473-87fd-4727-9501-b9f761b4289c/template-card-presentation-nocturne-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e995be99-85c4-4271-8b46-34d8f59352df/template-card-presentation-nocturne-carnival-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/52c52903-00eb-4ff2-8665-96524a0d03a9/template-card-presentation-nocturne-warm-sand-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/68a3f0f1-fedf-4d01-be37-ef55591d6bbd/template-card-presentation-nocturne-pop-art-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c88ca1f3-1d14-4b5d-a2d1-efe2834d2b3b/template-card-presentation-nocturne-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ef4fd22-3ffc-4a45-b184-b45c6b41492e/template-card-presentation-nocturne-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3993f1ba-493d-431f-acee-1f7416787209/template-card-presentation-nocturne-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a19b2c7c-d19c-4d22-b3ca-b3fe14c5a127/template-card-presentation-nocturne-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7340ea31-6156-468c-9129-efbaadc0024e/template-card-presentation-nocturne-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1675da4d-30d6-4865-902e-31e7bdd985ba/template-card-presentation-nocturne-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3cebadc7-19f8-4ceb-b26c-6838887645e8/template-card-presentation-nocturne-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c176f5d9-a55e-4447-8f99-4f4067675ec2/template-card-presentation-nocturne-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d3d0202e-5836-4a21-b2f0-05bb989bb0b5/template-card-presentation-nocturne-mono-ink-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f2a884ce-e945-46d6-982c-6271f9a46839/template-card-presentation-nocturne-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b6b39820-dc04-46cf-b80f-a7e534212869/template-card-presentation-nocturne-mint-tech-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7a65daa-0269-4429-964a-08ae0f609546/template-card-presentation-nocturne-sunset-maroon-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bb5938e8-43b7-4ed6-90fd-9696c0d0dafd/template-card-presentation-nocturne-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e5b55692-f32c-4497-ab56-158b505d13c3/template-card-presentation-nocturne-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c542c95d-2b5c-4820-97ec-e7aef1c5d21d/template-card-presentation-nocturne-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  "pixel-glitch": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7cd9b7dd-10a2-400f-9ab8-2dc7dc3865aa/template-card-presentation-pixel-glitch-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/362ee4d2-5dcd-41ca-a777-a0c1f24102c6/template-card-presentation-pixel-glitch-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/353a2b48-af0a-4bd6-a916-cdb7feb5963d/template-card-presentation-pixel-glitch-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a0ae4b39-9889-41a8-8dfd-fef08a99cb49/template-card-presentation-pixel-glitch-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9cef87ee-532d-4696-8e87-296bfa24390b/template-card-presentation-pixel-glitch-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cb0f193d-5010-4926-9e9b-e958d6137dd3/template-card-presentation-pixel-glitch-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56a190d6-ccc3-4a0b-9383-9493daaac2df/template-card-presentation-pixel-glitch-forest-editorial-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/aefc9fba-eaf8-4152-954d-262e79516b4e/template-card-presentation-pixel-glitch-slate-corporate-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da27de63-b44c-4dca-ba78-49b5ced65848/template-card-presentation-pixel-glitch-coral-studio-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4f050ade-9667-4821-a9c5-5a3d3aeaaab1/template-card-presentation-pixel-glitch-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7157ba7c-fa92-4be1-922f-e3a80eef30da/template-card-presentation-pixel-glitch-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1f2e94e3-cc3c-4a9f-bcf3-649a03670693/template-card-presentation-pixel-glitch-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4aab6fa8-23ae-4006-864c-c72d640b7d4d/template-card-presentation-pixel-glitch-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0a903196-1d44-49d9-ac3b-fab4f26501c9/template-card-presentation-pixel-glitch-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fe8b9ce2-09fa-4b08-a0be-41b7997e6557/template-card-presentation-pixel-glitch-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0bd3ef0c-d182-453c-a72a-fa0dce60d204/template-card-presentation-pixel-glitch-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3be7b9ec-c968-40f0-b419-87c59ea4d5af/template-card-presentation-pixel-glitch-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0c2fe4f2-80b2-4f60-9513-39d4f41ffe16/template-card-presentation-pixel-glitch-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e8948ed5-8b1f-455a-8bcd-494bc6989be3/template-card-presentation-pixel-glitch-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  prospectus: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2f78973d-aff4-4ee6-8d8e-0c9b82a31519/template-card-presentation-prospectus-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a58e5e1-a4c0-4cd5-8425-7224c1e6bf56/template-card-presentation-prospectus-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a2392c0-99f3-4bf0-8dd3-8f464020bec0/template-card-presentation-prospectus-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a91cd92e-0236-4415-97eb-69bfc71430b5/template-card-presentation-prospectus-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/146b5d8b-a24a-4bda-b5c9-c3faaa52b9bd/template-card-presentation-prospectus-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/81594140-cb3f-4265-a6a0-34a2a66cd5c2/template-card-presentation-prospectus-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7464f0cf-2af6-41f7-8127-fd486ce8e493/template-card-presentation-prospectus-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/77e46d54-94e7-4a77-945a-76c7e6f560fc/template-card-presentation-prospectus-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cec5b607-7d35-4f93-b4cb-4bc0c956aea1/template-card-presentation-prospectus-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e03cea12-a609-4fcb-84b9-9932fac0d231/template-card-presentation-prospectus-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e827288-5219-43db-9f2b-dcf174028c9f/template-card-presentation-prospectus-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7eaed99d-fc6d-43c1-8646-8df7056c8f28/template-card-presentation-prospectus-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d363d952-c6d8-452a-9043-0cbd85bef5be/template-card-presentation-prospectus-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c346a017-4433-4324-b775-7c080cf5c308/template-card-presentation-prospectus-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9c705b8a-881f-4692-8dd4-f4386feb736d/template-card-presentation-prospectus-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6fb072ec-03b1-47db-a4fe-7812659ac95c/template-card-presentation-prospectus-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db6772b8-7d27-4504-86ad-d595ffa7073a/template-card-presentation-prospectus-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9538ef2c-c8e1-47d7-8196-1f6cd538e810/template-card-presentation-prospectus-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fcf77d4c-b002-4be1-82b8-a78473471d9c/template-card-presentation-prospectus-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  schoolhouse: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59c77c26-0c42-4a46-837a-7580d7bb5093/template-card-presentation-schoolhouse-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7e86ca6f-d266-4d25-9f41-5aa1b26765f1/template-card-presentation-schoolhouse-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cc6ac593-0b0b-4008-b946-ccca03f11562/template-card-presentation-schoolhouse-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d0d03396-9d55-4abe-92d1-873f11cbc02f/template-card-presentation-schoolhouse-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/81951886-3cd4-4900-8174-8f3d52379c22/template-card-presentation-schoolhouse-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6b00466d-0488-4dfd-a11c-f5dacecee346/template-card-presentation-schoolhouse-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5ed6d4eb-9559-485a-8892-191e4a89fb40/template-card-presentation-schoolhouse-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bf3dc800-848e-422b-9374-0b8fe7fd8a3d/template-card-presentation-schoolhouse-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a65a26a4-f556-4ee4-8ad1-fb226260f4a2/template-card-presentation-schoolhouse-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5e6f5691-d475-4ab4-b283-62180d578a11/template-card-presentation-schoolhouse-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5faf823d-5869-4290-8a82-29e4aa5de049/template-card-presentation-schoolhouse-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c4b1630a-69f3-4dbc-94fa-6b3db2760613/template-card-presentation-schoolhouse-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ac3da5d6-5d44-44c6-b576-f44122a0bfbc/template-card-presentation-schoolhouse-mauve-dusk-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e6e11cec-345d-4ec4-8564-3e21b93e34bb/template-card-presentation-schoolhouse-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df8b3e7b-9e10-4220-9118-bb257a34a427/template-card-presentation-schoolhouse-mono-ink-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c7d3c3d-a928-40d4-b0e9-7ad3d7ef72f5/template-card-presentation-schoolhouse-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4fd47238-9b1e-4982-b78a-7fc9ae92df3a/template-card-presentation-schoolhouse-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51d82de4-d1ef-42b7-9699-641bb5342a92/template-card-presentation-schoolhouse-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/575a7cce-9e0d-4289-b90e-0be3eab45496/template-card-presentation-schoolhouse-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  "sticker-scrapbook": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/74402345-1943-4b12-ba72-d2e9442eda5b/template-card-presentation-sticker-scrapbook-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9dd3e3c0-e452-4735-856b-d07ecd34c657/template-card-presentation-sticker-scrapbook-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ccf185c8-164c-469b-b31b-e84ab384b5a2/template-card-presentation-sticker-scrapbook-pop-art-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99a1c790-3005-49c1-a50d-bf620ebe66f8/template-card-presentation-sticker-scrapbook-nordic-frost-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/99c5b489-4e9e-457a-9d33-ac8afe2d3b64/template-card-presentation-sticker-scrapbook-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6994bad3-1802-41b4-af7c-49a822694b5a/template-card-presentation-sticker-scrapbook-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc9e24ac-02d0-4083-a36f-09bb078ce4dd/template-card-presentation-sticker-scrapbook-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6120565c-abe9-4a89-b272-a76b4feaae0f/template-card-presentation-sticker-scrapbook-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1c7a6c74-6362-4e80-b0ef-8b3af28c50df/template-card-presentation-sticker-scrapbook-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c722e1af-a99b-480a-ba1c-3a8cb2e34eb8/template-card-presentation-sticker-scrapbook-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0ccc066c-52b2-4a83-90f8-9747a77b7fde/template-card-presentation-sticker-scrapbook-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59ebe8fa-0f58-49ad-bf5b-f80b0ddbddc5/template-card-presentation-sticker-scrapbook-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/07407581-b218-4d34-8d39-bb8c7d6f1e9e/template-card-presentation-sticker-scrapbook-mono-ink-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db905e89-cc97-4e12-ae29-8a0e15a22396/template-card-presentation-sticker-scrapbook-mauve-dusk-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/14ad7a11-f762-4dbf-b4f8-0fc999a19697/template-card-presentation-sticker-scrapbook-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82fc34a8-ba47-4e85-9462-8ef9d57b28f3/template-card-presentation-sticker-scrapbook-mint-tech-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/59c13941-54b6-42de-85e5-c628449f6d0e/template-card-presentation-sticker-scrapbook-ocean-deep-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e0e7f9e9-de70-4671-a3df-a7835bf3f371/template-card-presentation-sticker-scrapbook-midnight-mono-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/505adfde-58bd-4e4f-8b11-c3756112ae14/template-card-presentation-sticker-scrapbook-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  strata: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/688b2ce5-da4b-48bb-8840-eb92ef2d8545/template-card-presentation-strata-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb592a79-498a-4d24-a38d-5aa4dcd8b839/template-card-presentation-strata-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c008589-398f-46ec-9048-40ef0f118f17/template-card-presentation-strata-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8b4af9e9-6c35-40c3-84e7-97ae1ce1a276/template-card-presentation-strata-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9d967609-7e2a-46ee-9597-7b9ca253991f/template-card-presentation-strata-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b12bb821-2b9f-4b6a-b97e-03ef64f68a62/template-card-presentation-strata-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f6bd12c0-0ab7-4a03-92ad-c5093cec82e6/template-card-presentation-strata-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/09cff2c2-eeb0-4aaf-8308-f739bcee8f6f/template-card-presentation-strata-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5b1894e9-70e2-4e23-b5d9-3feaba11d691/template-card-presentation-strata-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/51fc5501-02e1-4d9b-bef5-2ede295e3d64/template-card-presentation-strata-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3db9a5d8-19d4-40ab-948a-6c67b9b027a1/template-card-presentation-strata-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cf271f0c-dae4-4611-9fb1-0310e99af6bc/template-card-presentation-strata-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/31f7f13a-f8b7-49b6-8139-d042724cfc40/template-card-presentation-strata-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8796faad-4063-4728-893a-c305669a2ac2/template-card-presentation-strata-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f8d87432-bc7b-4404-8105-58b9009cc0f0/template-card-presentation-strata-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/db9f10d4-e3a8-4175-a72a-6909ced3e8b3/template-card-presentation-strata-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a9654cad-285e-4011-8d33-020f39e5dad4/template-card-presentation-strata-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/0cc28cbc-81ff-48c7-abc5-aa1cca35b606/template-card-presentation-strata-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/19abfa88-71a7-4b0e-8f62-4c8d8c3b8bab/template-card-presentation-strata-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  "taped-consulting": {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6caac2f7-7fdb-43de-9aca-5d735d5e2298/template-card-presentation-taped-consulting-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/44d07e10-3b83-4fea-a8e8-eab2265314f2/template-card-presentation-taped-consulting-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9ed386c4-d8be-4ba3-86d6-7266d3b3b9e4/template-card-presentation-taped-consulting-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1675787d-8f0b-45b7-b077-cca9bab8290b/template-card-presentation-taped-consulting-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/cbd90340-aede-441d-beba-68ea433f65f3/template-card-presentation-taped-consulting-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/60ac6eb0-cb1e-4e21-849b-1ad49f758657/template-card-presentation-taped-consulting-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/56aa8bbd-a433-425f-bb38-3db0205dd17b/template-card-presentation-taped-consulting-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/58468d01-8dd5-4ee5-a21e-dd294e926088/template-card-presentation-taped-consulting-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4ce10cd5-d1b2-4059-858c-a558fe69badd/template-card-presentation-taped-consulting-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/10e0791a-a50f-449d-b0fd-45dfe291ad00/template-card-presentation-taped-consulting-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d8da52b8-cf46-4719-987e-9a777eba9854/template-card-presentation-taped-consulting-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e04ee8c6-5af6-4943-8244-2e9113a8789c/template-card-presentation-taped-consulting-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ddb17e9a-28f8-4d54-8219-084c932a2139/template-card-presentation-taped-consulting-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d2120387-34d2-4ddd-a4e9-8030c02fb572/template-card-presentation-taped-consulting-mono-ink-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e829fcd4-5d88-42db-9e7a-9e3b277e3979/template-card-presentation-taped-consulting-sunset-maroon-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ee82f786-7982-4c5e-a164-550601da200f/template-card-presentation-taped-consulting-mint-tech-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da92b740-1953-4a52-abbb-0102b7858795/template-card-presentation-taped-consulting-midnight-mono-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92281108-c7bb-4946-bde7-f4641b277f5b/template-card-presentation-taped-consulting-ocean-deep-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/077720e9-717d-4365-9c1e-5bde219dbaf0/template-card-presentation-taped-consulting-gold-luxe-iframe-viewport-480x270.jpg",
+  },
+  vantage: {
+    prism:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7933b2a0-b9f3-477c-bcb1-336b30b1768b/template-card-presentation-vantage-prism-iframe-viewport-480x270.jpg",
+    carnival:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a06f17a2-f48b-4d70-bca1-6adfaa396d7a/template-card-presentation-vantage-carnival-iframe-viewport-480x270.jpg",
+    "pop-art":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/bee05927-c19b-48a7-9640-1764817aa8e1/template-card-presentation-vantage-pop-art-iframe-viewport-480x270.jpg",
+    "warm-sand":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e9711425-4b42-48fe-b5ca-13c4ebf66c49/template-card-presentation-vantage-warm-sand-iframe-viewport-480x270.jpg",
+    "bauhaus-primary":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/43c7d017-71ce-48f9-9cc7-e590c9c52bba/template-card-presentation-vantage-bauhaus-primary-iframe-viewport-480x270.jpg",
+    "nordic-frost":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4d404bee-bddc-475c-b11e-46d699828809/template-card-presentation-vantage-nordic-frost-iframe-viewport-480x270.jpg",
+    "forest-editorial":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f592d164-e4c5-48c3-8a3e-4f5d9fe6860c/template-card-presentation-vantage-forest-editorial-iframe-viewport-480x270.jpg",
+    "coral-studio":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3392e875-7d35-4944-849f-db0a3142bf97/template-card-presentation-vantage-coral-studio-iframe-viewport-480x270.jpg",
+    "slate-corporate":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7a67a455-2bef-4257-84c4-a3f28cbf581e/template-card-presentation-vantage-slate-corporate-iframe-viewport-480x270.jpg",
+    "terracotta-clay":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f4993f77-53cb-4a47-a969-823e219885a8/template-card-presentation-vantage-terracotta-clay-iframe-viewport-480x270.jpg",
+    "berry-pop":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8dbc3ca7-1c81-4e02-a5d6-9882373df6fd/template-card-presentation-vantage-berry-pop-iframe-viewport-480x270.jpg",
+    "citrus-fresh":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/85ddbf3e-17d9-464a-a527-2d367026592f/template-card-presentation-vantage-citrus-fresh-iframe-viewport-480x270.jpg",
+    "mauve-dusk":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/83d8fcd6-9be1-4f9a-aa0c-6d16e509ba3f/template-card-presentation-vantage-mauve-dusk-iframe-viewport-480x270.jpg",
+    "mono-ink":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a47cb6d9-970e-48a0-bccb-baa7a4303684/template-card-presentation-vantage-mono-ink-iframe-viewport-480x270.jpg",
+    "mint-tech":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8f32a775-7931-4155-a060-2f6b797c5dc7/template-card-presentation-vantage-mint-tech-iframe-viewport-480x270.jpg",
+    "sunset-maroon":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/436b2987-a728-47b1-9956-d00aa9133bb4/template-card-presentation-vantage-sunset-maroon-iframe-viewport-480x270.jpg",
+    "midnight-mono":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce26285a-d3a8-4d36-8341-2d5b5d4001a0/template-card-presentation-vantage-midnight-mono-iframe-viewport-480x270.jpg",
+    "gold-luxe":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72f39563-d8c7-452d-a3dd-e3fa51a514ae/template-card-presentation-vantage-gold-luxe-iframe-viewport-480x270.jpg",
+    "ocean-deep":
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e6f178c-5ac5-4a43-a799-e281fa17cb8b/template-card-presentation-vantage-ocean-deep-iframe-viewport-480x270.jpg",
+  },
 } as const satisfies Readonly<
   Record<
     string,
@@ -2596,6 +3076,45 @@ const PLAYFUL_POP_PREVIEW_HTMLS = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c3eaf388-6b9f-49b6-90af-ce27eedb87e2/slide-15.html",
 ] as const satisfies readonly [string, ...string[]];
 
+const PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES = {
+  "bloom-pitch": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ba49b06d-52ec-4872-98f4-f9f83c51631a/bloom-pitch.png",
+  ],
+  "blueprint-academy": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9148d8a1-ea93-41c9-8d75-f2daa26a89ca/blueprint-academy.png",
+  ],
+  meridian: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3ec2bc5c-0fa0-43cb-a5fa-e938c31a1d95/meridian.png",
+  ],
+  "neo-brutalism": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30f14341-4928-4f01-89d9-a0cfef45affa/neo-brutalism.png",
+  ],
+  nocturne: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/daab1cba-6f19-4ab9-a1e9-5070905a244e/nocturne.png",
+  ],
+  "pixel-glitch": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9388ff7-af83-44b7-bd7b-5393633e1900/pixel-glitch.png",
+  ],
+  prospectus: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c70efcfa-30cf-4db6-b2d7-f32a49779b00/prospectus.png",
+  ],
+  schoolhouse: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5263bdcd-135d-4c0f-8b67-03ae01a09448/schoolhouse.png",
+  ],
+  "sticker-scrapbook": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47808759-eca7-4d77-b51d-df0567a746f8/sticker-scrapbook.png",
+  ],
+  strata: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3476ca71-c8cc-4174-9f28-2569e5fe9962/strata.png",
+  ],
+  "taped-consulting": [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ef875c5b-4991-4671-b172-093b28aaffe7/taped-consulting.png",
+  ],
+  vantage: [
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/881a5fdc-1a2f-4b00-8bb4-bce2a6e3d043/vantage.png",
+  ],
+} as const satisfies Readonly<Record<string, readonly [string, ...string[]]>>;
+
 export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateItem[] =
   [
     {
@@ -2832,5 +3351,251 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
       colorSystemId: "color-system:pop-art",
       designSystemId: "design-system:playful-pop",
       templateId: "template:html-ppt-playful-pop",
+    },
+
+    {
+      slug: "bloom-pitch",
+      title: "Bloom pitch",
+      prompt:
+        "/gen presentation with design system `bloom-pitch` and template `html-ppt-bloom-pitch`, create a 15-slide investor pitch for PetalLoop, a climate-friendly flower delivery marketplace raising a seed round. Include cover, agenda, market shift, customer problem, solution, product flow, traction, business model, go-to-market, competitive position, roadmap, team, financial plan, ask, and next steps. Make it playful, optimistic, organic, and investor-ready.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2546d28c-8b48-4115-9d3c-acc62ead719b/bloom-pitch.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["bloom-pitch"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["bloom-pitch"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["bloom-pitch"][
+          "carnival"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["bloom-pitch"],
+      colorSystemId: "color-system:carnival",
+      designSystemId: "design-system:bloom-pitch",
+      templateId: "template:html-ppt-bloom-pitch",
+    },
+    {
+      slug: "blueprint-academy",
+      title: "Blueprint academy",
+      prompt:
+        "/gen presentation with design system `blueprint-academy` and template `html-ppt-blueprint-academy`, create a 15-slide curriculum proposal for Northline Academy launching an applied AI certificate for working professionals. Present it to academic leadership with cover, agenda, program context, learner needs, curriculum map, module sequence, faculty team, classroom experience, assessment model, outcomes, partnerships, enrollment plan, budget, and next steps. Make it academic, structured, blueprint-like, and credible.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d05dcd18-1086-49fc-8126-8a37e7168822/blueprint-academy.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["blueprint-academy"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["blueprint-academy"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["blueprint-academy"][
+          "forest-editorial"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["blueprint-academy"],
+      colorSystemId: "color-system:forest-editorial",
+      designSystemId: "design-system:blueprint-academy",
+      templateId: "template:html-ppt-blueprint-academy",
+    },
+    {
+      slug: "meridian",
+      title: "Meridian",
+      prompt:
+        "/gen presentation with design system `meridian` and template `html-ppt-meridian`, create a 15-slide agency capabilities deck for Meridian Works, a data strategy studio helping enterprise teams modernize analytics operations. Present it to a prospective client executive team with cover, agenda, market context, client challenges, service model, team, process, case studies, measurement plan, operating rhythm, timeline, commercial model, and contact. Make it professional, sharp, data-led, and executive-ready.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/007fb006-02a3-48c6-a555-d96c3ffcac01/meridian.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["meridian"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["meridian"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["meridian"][
+          "slate-corporate"
+        ],
+      previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["meridian"],
+      colorSystemId: "color-system:slate-corporate",
+      designSystemId: "design-system:meridian",
+      templateId: "template:html-ppt-meridian",
+    },
+    {
+      slug: "neo-brutalism",
+      title: "Neo brutalism",
+      prompt:
+        "/gen presentation with design system `neo-brutalism` and template `html-ppt-neo-brutalism`, create a 15-slide founder pitch for BlockForge, a developer tooling startup launching a collaborative build system. Present it to early-stage investors with cover, agenda, problem, product, technical edge, market, traction, customer proof, business model, go-to-market, competition, roadmap, team, funding ask, and next steps. Make it bold, direct, high-contrast, and brutalist.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f967f452-4e51-4dcb-9db5-0a91505e593a/neo-brutalism.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["neo-brutalism"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["neo-brutalism"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["neo-brutalism"][
+          "mono-ink"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["neo-brutalism"],
+      colorSystemId: "color-system:mono-ink",
+      designSystemId: "design-system:neo-brutalism",
+      templateId: "template:html-ppt-neo-brutalism",
+    },
+    {
+      slug: "nocturne",
+      title: "Nocturne",
+      prompt:
+        "/gen presentation with design system `nocturne` and template `html-ppt-nocturne`, create a 15-slide annual keynote for NightOps Cloud reviewing reliability, infrastructure scale, and the roadmap for autonomous operations. Present it to technical customers with cover, agenda, state of the platform, usage growth, reliability metrics, architecture, product updates, customer stories, roadmap, ecosystem, pricing changes, and closing call to action. Make it dark, data-rich, polished, and keynote-ready.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/79497e0e-2518-4fb3-9838-1f2ee6048c77/nocturne.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["nocturne"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["nocturne"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["nocturne"][
+          "midnight-mono"
+        ],
+      previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["nocturne"],
+      colorSystemId: "color-system:midnight-mono",
+      designSystemId: "design-system:nocturne",
+      templateId: "template:html-ppt-nocturne",
+    },
+    {
+      slug: "pixel-glitch",
+      title: "Pixel glitch",
+      prompt:
+        "/gen presentation with design system `pixel-glitch` and template `html-ppt-pixel-glitch`, create a 15-slide creative studio deck for Arcade Signal pitching a retro-futurist campaign for an indie game launch. Present it to the publisher team with cover, agenda, audience insight, campaign concept, visual world, channel plan, creator program, launch timeline, asset gallery, performance targets, budget, team, and next steps. Make it pixelated, energetic, digital, and sharp.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c81b175c-8990-46db-8bb5-e7115a22338a/pixel-glitch.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["pixel-glitch"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["pixel-glitch"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["pixel-glitch"][
+          "bauhaus-primary"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["pixel-glitch"],
+      colorSystemId: "color-system:bauhaus-primary",
+      designSystemId: "design-system:pixel-glitch",
+      templateId: "template:html-ppt-pixel-glitch",
+    },
+    {
+      slug: "prospectus",
+      title: "Prospectus",
+      prompt:
+        "/gen presentation with design system `prospectus` and template `html-ppt-prospectus`, create a 15-slide business plan for Atlas Harbor, a B2B logistics platform expanding into regional fulfillment. Present it to strategic partners with cover, agenda, market context, customer problem, solution, operating model, product experience, growth plan, financial model, implementation roadmap, risks, team, partnership terms, and next steps. Make it corporate, polished, structured, and proposal-ready.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8eb0bee8-bb33-4929-b781-fefb8b0408f6/prospectus.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["prospectus"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["prospectus"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["prospectus"][
+          "slate-corporate"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["prospectus"],
+      colorSystemId: "color-system:slate-corporate",
+      designSystemId: "design-system:prospectus",
+      templateId: "template:html-ppt-prospectus",
+    },
+    {
+      slug: "schoolhouse",
+      title: "Schoolhouse",
+      prompt:
+        "/gen presentation with design system `schoolhouse` and template `html-ppt-schoolhouse`, create a 15-slide community education deck for Maple Hall launching a weekend skills program for families and local makers. Present it to city partners with cover, agenda, mission, audience needs, program tracks, sample day, instructor team, venue plan, safety approach, outcomes, testimonials, membership tiers, budget, and registration steps. Make it warm, retro, classroom-inspired, and approachable.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8c584388-ff83-4d7b-a9a9-68858fa6e6a7/schoolhouse.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["schoolhouse"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["schoolhouse"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["schoolhouse"][
+          "bauhaus-primary"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["schoolhouse"],
+      colorSystemId: "color-system:bauhaus-primary",
+      designSystemId: "design-system:schoolhouse",
+      templateId: "template:html-ppt-schoolhouse",
+    },
+    {
+      slug: "sticker-scrapbook",
+      title: "Sticker scrapbook",
+      prompt:
+        "/gen presentation with design system `sticker-scrapbook` and template `html-ppt-sticker-scrapbook`, create a 15-slide brand collaboration deck for Patch Party, a youth culture festival launching sponsor activations, creator booths, and collectible merch. Present it to brand partners with cover, agenda, audience story, event concept, activation zones, creator plan, media moments, sponsor packages, timeline, reach metrics, testimonials, budget, and contact. Make it vibrant, scrapbook-like, sticker-heavy, and celebratory.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/55779c14-a043-413f-933d-3b18fec38728/sticker-scrapbook.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["sticker-scrapbook"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["sticker-scrapbook"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["sticker-scrapbook"][
+          "prism"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["sticker-scrapbook"],
+      colorSystemId: "color-system:prism",
+      designSystemId: "design-system:sticker-scrapbook",
+      templateId: "template:html-ppt-sticker-scrapbook",
+    },
+    {
+      slug: "strata",
+      title: "Strata",
+      prompt:
+        "/gen presentation with design system `strata` and template `html-ppt-strata`, create a 15-slide agency proposal for Strata Studio helping a fintech brand redesign its onboarding and lifecycle communications. Present it to the client leadership team with cover, agenda, business challenge, strategic principles, design direction, service scope, sprint process, sample work, measurement plan, timeline, investment, team, and next steps. Make it Swiss-minimal, precise, editorial, and agency-grade.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ae2880fc-85be-4da7-8d19-f770958957e1/strata.html",
+      previewImage: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["strata"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["strata"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["strata"]["mono-ink"],
+      previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["strata"],
+      colorSystemId: "color-system:mono-ink",
+      designSystemId: "design-system:strata",
+      templateId: "template:html-ppt-strata",
+    },
+    {
+      slug: "taped-consulting",
+      title: "Taped consulting",
+      prompt:
+        "/gen presentation with design system `taped-consulting` and template `html-ppt-taped-consulting`, create a 15-slide transformation proposal for Clearpath Advisory helping a healthcare network improve patient intake operations. Present it to operations executives with cover, agenda, current-state diagnosis, opportunity, engagement model, workstreams, field research, process redesign, timeline, proof metrics, testimonials, pricing, and next steps. Make it consulting-focused, tactile, polished, and persuasive.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f415d7ea-cc9a-4009-ab76-e95963180a83/taped-consulting.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["taped-consulting"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["taped-consulting"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["taped-consulting"][
+          "slate-corporate"
+        ],
+      previewImages:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["taped-consulting"],
+      colorSystemId: "color-system:slate-corporate",
+      designSystemId: "design-system:taped-consulting",
+      templateId: "template:html-ppt-taped-consulting",
+    },
+    {
+      slug: "vantage",
+      title: "Vantage",
+      prompt:
+        "/gen presentation with design system `vantage` and template `html-ppt-vantage`, create a 15-slide business proposal for Vantage Partners helping a robotics manufacturer launch a new service program. Present it to enterprise buyers with cover, agenda, market context, buyer pain points, proposed solution, service model, operating plan, proof metrics, roadmap, commercials, implementation timeline, team, and close. Make it business-focused, confident, structured, and modern.",
+      embedUrl:
+        "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d7841dee-15a9-438a-bef7-0367ff6cf411/vantage.html",
+      previewImage:
+        PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["vantage"][0],
+      cardPreviewImagesByTheme:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["vantage"],
+      cardPreviewImage:
+        PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_IMAGES["vantage"][
+          "slate-corporate"
+        ],
+      previewImages: PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES["vantage"],
+      colorSystemId: "color-system:slate-corporate",
+      designSystemId: "design-system:vantage",
+      templateId: "template:html-ppt-vantage",
     },
   ];
