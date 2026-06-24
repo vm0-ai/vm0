@@ -1990,14 +1990,50 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("keeps the presentation card image stable while the hover preview is loading", async () => {
+  it("keeps the pending presentation card slide while the hover preview is loading", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.previewImages.length > 1;
+      return item.slug === "bloom-pitch";
     });
     if (template === undefined) {
-      throw new Error("Presentation template with multiple slides not found");
+      throw new Error("Bloom pitch presentation template not found");
     }
+    const slideCount = template.slideCount;
+    if (slideCount === undefined) {
+      throw new Error("Bloom pitch presentation slide count not found");
+    }
+    expect(template.previewImages).toHaveLength(1);
+    expect(slideCount).toBe(15);
     const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    const blobHtml: Promise<string>[] = [];
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobHtml.push(blob.text());
+      return `blob:template-preview-late-${String(blobHtml.length)}`;
+    });
+    const htmlForFrame = (frame: HTMLElement): Promise<string> => {
+      const src = frame.getAttribute("src");
+      if (src === null) {
+        throw new Error("Preview frame src not set");
+      }
+      const match = /^blob:template-preview-late-(\d+)$/.exec(src);
+      if (match === null) {
+        throw new Error(`Unexpected preview frame src: ${src}`);
+      }
+      const html = blobHtml[Number(match[1]) - 1];
+      if (html === undefined) {
+        throw new Error(`Preview blob not found for ${src}`);
+      }
+      return html;
+    };
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
     let previewFetchCount = 0;
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       previewFetchCount += 1;
@@ -2019,10 +2055,6 @@ describe("chat composer templates", () => {
       }),
     );
     await fill(screen.getByLabelText("Search templates"), template.title);
-    const previewImage = screen.getByTestId(
-      `${template.title} card image preview`,
-    );
-    const initialPreviewSrc = previewImage.getAttribute("src");
     const preview = screen.getByLabelText(
       `Preview ${template.title} at current slide`,
     ).parentElement;
@@ -2042,24 +2074,45 @@ describe("chat composer templates", () => {
         expect(previewFetchCount).toBe(1);
       });
       fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-      const animationFrame = createDeferredPromise<void>(AbortSignal.any([]));
-      window.requestAnimationFrame(() => {
-        animationFrame.resolve();
-      });
-      try {
-        await animationFrame.promise;
-      } finally {
-        if (!animationFrame.settled()) {
-          animationFrame.reject(new Error("Animation frame cancelled"));
-        }
-      }
+      previewFetch.resolve(
+        new Response(
+          `<!doctype html><html><body>${Array.from(
+            { length: slideCount },
+            (_, index) => {
+              const slideNumber = index + 1;
+              return `<section data-vm0-slide data-slide-id="slide-${slideNumber}"><h1>Slide ${slideNumber}</h1></section>`;
+            },
+          ).join("")}</body></html>`,
+          { headers: { "Content-Type": "text/html" } },
+        ),
+      );
 
-      expect(
-        screen.getByTestId(`${template.title} card image preview`),
-      ).toHaveAttribute("src", initialPreviewSrc);
+      await waitFor(async () => {
+        await expect(
+          htmlForFrame(
+            screen.getByTestId(`${template.title} card HTML preview`),
+          ),
+        ).resolves.toContain("Slide 15");
+      });
     } finally {
       if (!previewFetch.settled()) {
         previewFetch.reject(new Error("Preview fetch intentionally cancelled"));
+      }
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
       }
     }
   });
@@ -2260,20 +2313,21 @@ describe("chat composer templates", () => {
 
   it("opens presentation template detail at the scrubbed card slide", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const lastSlideNumber = template.previewImages.length;
+    const lastSlideNumber = template.slideCount;
+    if (lastSlideNumber === undefined) {
+      throw new Error("Presentation template slide count not found");
+    }
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
         `
           <!doctype html>
           <html>
             <body>
-              ${template.previewImages
-                .map((_, index) => {
-                  return `<section data-vm0-slide data-slide-id="slide-${String(
-                    index + 1,
-                  )}"><h1>Slide ${String(index + 1)}</h1></section>`;
-                })
-                .join("")}
+              ${Array.from({ length: lastSlideNumber }, (_, index) => {
+                return `<section data-vm0-slide data-slide-id="slide-${String(
+                  index + 1,
+                )}"><h1>Slide ${String(index + 1)}</h1></section>`;
+              }).join("")}
             </body>
           </html>
         `,

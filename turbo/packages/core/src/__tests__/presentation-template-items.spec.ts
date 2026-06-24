@@ -433,6 +433,12 @@ describe("presentation template items", () => {
     }
   });
 
+  it("defines slide counts for picker presentation scrub previews", () => {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
+      expect(item.slideCount, item.slug).toBe(15);
+    }
+  });
+
   it("resolve every design system and template against the resource registry", () => {
     for (const item of allPresentationItems) {
       const designSystem = findDesignSystem(item.designSystemId);
@@ -542,6 +548,7 @@ describe("presentation template items", () => {
     expect(item.designSystemId).toBe("design-system:playful-editorial");
     expect(item.templateId).toBe("template:html-ppt-playful-launch");
     expectColorSystem(item.colorSystemId, "color-system:carnival");
+    expect(item.slideCount).toBe(15);
     expect(item.previewImages.length).toBe(15);
     expect(item.previewImage).toBe(item.previewImages[0]);
     expect(item.embedUrl).toMatch(
@@ -576,6 +583,7 @@ describe("presentation template items", () => {
     expect(item.designSystemId).toBe("design-system:business-data");
     expect(item.templateId).toBe("template:html-ppt-business-data");
     expectColorSystem(item.colorSystemId, "color-system:berry-pop");
+    expect(item.slideCount).toBe(15);
     expect(item.previewImages.length).toBe(15);
     expect(item.embedUrl).toMatch(
       /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/business-data-presentation\.html$/,
@@ -607,6 +615,7 @@ describe("presentation template items", () => {
       expect(item.designSystemId).toBe(expected.designSystemId);
       expect(item.templateId).toBe(expected.templateId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
+      expect(item.slideCount).toBe(15);
       expect(item.previewImages.length).toBe(15);
       expect(item.previewImage).toBe(item.previewImages[0]);
       expect(item.embedUrl).toMatch(
@@ -635,6 +644,7 @@ describe("presentation template items", () => {
       expect(item.designSystemId).toBe(expected.designSystemId);
       expect(item.templateId).toBe(expected.templateId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
+      expect(item.slideCount).toBe(15);
       expect(item.previewImages.length).toBe(1);
       expect(item.previewImage).toBe(item.previewImages[0]);
       expect(item.previewHtmls).toBeUndefined();

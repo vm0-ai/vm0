@@ -1195,6 +1195,12 @@ function presentationTemplateSlideImages(
   return item.previewImages;
 }
 
+function presentationTemplateSlideCount(
+  item: PresentationTemplateItem,
+): number {
+  return Math.max(item.slideCount ?? item.previewImages.length, 1);
+}
+
 function presentationTemplateThemedCardPreviewSource(
   item: PresentationTemplateItem,
   theme: PresentationTemplateThemeOption | undefined,
@@ -2544,8 +2550,7 @@ function TemplatePreview({
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
-  const slideImages = presentationTemplateSlideImages(item);
-  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
     Math.min(
@@ -2674,10 +2679,14 @@ function TemplatePreview({
 
         cache.drafts.set(item.embedUrl, result.value);
         if (cache.activeTokens.get(item.embedUrl) === activeToken) {
+          const nextIndex =
+            cache.pendingSlideIndexes.get(item.embedUrl) ??
+            cache.activeIndexes.get(item.embedUrl) ??
+            0;
           setHtmlPreview(
             createPresentationTemplateCardHtmlPreviewState({
               draft: result.value,
-              index: cache.activeIndexes.get(item.embedUrl) ?? 0,
+              index: nextIndex,
               item,
               previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
               theme: previewTheme,
@@ -2709,9 +2718,6 @@ function TemplatePreview({
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     const cache = presentationTemplateHtmlPreviewCache();
-    if (!cache.drafts.has(item.embedUrl)) {
-      return;
-    }
     if (scrubSlideCount < 2) {
       return;
     }
@@ -2935,7 +2941,6 @@ function TemplatePreviewPage({
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item);
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
@@ -2954,7 +2959,7 @@ function TemplatePreviewPage({
     detailPreview.index === activeSlideIndex
       ? detailPreview
       : null;
-  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
   const detailSlideCount =
     visibleDetailPreview?.slideCount ?? fallbackSlideCount;
   const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
