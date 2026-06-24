@@ -37,6 +37,16 @@ function hasIngest(client: Axiom): client is Axiom & AxiomIngestClient {
 }
 
 export function recordSandboxOperation(attrs: SandboxOperationAttrs): void {
+  recordSandboxOperations([attrs]);
+}
+
+export function recordSandboxOperations(
+  attrsList: readonly SandboxOperationAttrs[],
+): void {
+  if (attrsList.length === 0) {
+    return;
+  }
+
   const client = telemetryAxiomClient();
   if (!hasIngest(client)) {
     return;
@@ -46,18 +56,21 @@ export function recordSandboxOperation(attrs: SandboxOperationAttrs): void {
   waitUntil(
     tapError(
       Promise.resolve(
-        client.ingest(dataset, [
-          {
-            _time: attrs.timestamp ?? nowDate().toISOString(),
-            source: "api",
-            op_type: attrs.actionType,
-            sandbox_type: attrs.sandboxType,
-            duration_ms: attrs.durationMs,
-            success: attrs.success,
-            run_id: attrs.runId,
-            ...attrs.dimensions,
-          },
-        ]),
+        client.ingest(
+          dataset,
+          attrsList.map((attrs) => {
+            return {
+              _time: attrs.timestamp ?? nowDate().toISOString(),
+              source: "api",
+              op_type: attrs.actionType,
+              sandbox_type: attrs.sandboxType,
+              duration_ms: attrs.durationMs,
+              success: attrs.success,
+              run_id: attrs.runId,
+              ...attrs.dimensions,
+            };
+          }),
+        ),
       ),
       (error) => {
         L.warn("Failed to ingest sandbox operation log", { error });

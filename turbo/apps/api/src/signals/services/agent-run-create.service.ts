@@ -156,7 +156,10 @@ import {
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
 import { logger } from "../../lib/log";
-import { recordSandboxOperation } from "../external/sandbox-op-log";
+import {
+  recordSandboxOperation,
+  recordSandboxOperations,
+} from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   activePaidConcurrencySlots,
@@ -172,6 +175,88 @@ type ArtifactMissingRootPolicy = NonNullable<
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
+
+type ApiDispatchTimingSpanKind = "top_level" | "nested";
+type ApiDispatchTimingActionType =
+  | "api_dispatch_check_org_tier"
+  | "api_dispatch_prepare_run_context"
+  | "api_dispatch_check_vm0_credits"
+  | "api_dispatch_insert_run_with_concurrency"
+  | "api_dispatch_mark_pending_heartbeat"
+  | "api_dispatch_build_runner_job_payload"
+  | "api_dispatch_persist_runner_job_queue"
+  | "api_dispatch_admission_lock_wait"
+  | "api_dispatch_check_concurrency_limit"
+  | "api_dispatch_insert_run_record"
+  | "api_dispatch_prepare_storage_manifest"
+  | "api_dispatch_build_stored_execution_context";
+
+interface ApiDispatchTimingRecord {
+  readonly actionType: ApiDispatchTimingActionType;
+  readonly spanKind: ApiDispatchTimingSpanKind;
+  readonly durationMs: number;
+  readonly timestamp: string;
+}
+
+class ApiDispatchTimingCollector {
+  private readonly records: ApiDispatchTimingRecord[] = [];
+
+  measure<T>(
+    actionType: ApiDispatchTimingActionType,
+    spanKind: ApiDispatchTimingSpanKind,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = now();
+    return operation().finally(() => {
+      const finishedAt = now();
+      this.records.push({
+        actionType,
+        spanKind,
+        durationMs: Math.max(0, finishedAt - startedAt),
+        timestamp: new Date(finishedAt).toISOString(),
+      });
+    });
+  }
+
+  flush(args: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly dispatchPath: "direct";
+  }): void {
+    const records = this.records.splice(0);
+    recordSandboxOperations(
+      records.map((record) => {
+        return {
+          sandboxType: "runner",
+          actionType: record.actionType,
+          durationMs: record.durationMs,
+          success: true,
+          runId: args.runId,
+          timestamp: record.timestamp,
+          dimensions: {
+            runner_group: args.runnerGroup,
+            profile: args.profile,
+            dispatch_path: args.dispatchPath,
+            span_kind: record.spanKind,
+          },
+        };
+      }),
+    );
+  }
+}
+
+async function measureApiDispatchTiming<T>(
+  collector: ApiDispatchTimingCollector | undefined,
+  actionType: ApiDispatchTimingActionType,
+  spanKind: ApiDispatchTimingSpanKind,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!collector) {
+    return await operation();
+  }
+  return await collector.measure(actionType, spanKind, operation);
+}
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -3776,6 +3861,7 @@ function buildRunnerJobPayload(
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timing?: ApiDispatchTimingCollector;
   },
 ): Computed<Promise<ReturnType<typeof queuedRunnerJobPayload>>> {
   return computed(
@@ -3813,29 +3899,43 @@ function buildRunnerJobPayload(
             ),
           )
         : args.body;
-      const storageManifest = await get(
-        prepareAgentRunStorageManifest({
-          db,
-          content: args.resolved.content,
-          vars: body.vars,
-          agentOrgId: args.resolved.orgId,
-          runtimeOrgId: args.orgId,
-          userId: args.userId,
-          artifacts: args.artifacts,
-          volumeVersionOverrides: body.volumeVersions,
-          additionalVolumes: args.additionalVolumes,
-          framework: args.framework,
-        }),
+      const storageManifest = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_prepare_storage_manifest",
+        "nested",
+        async () => {
+          return await get(
+            prepareAgentRunStorageManifest({
+              db,
+              content: args.resolved.content,
+              vars: body.vars,
+              agentOrgId: args.resolved.orgId,
+              runtimeOrgId: args.orgId,
+              userId: args.userId,
+              artifacts: args.artifacts,
+              volumeVersionOverrides: body.volumeVersions,
+              additionalVolumes: args.additionalVolumes,
+              framework: args.framework,
+            }),
+          );
+        },
       );
-      const builtContext = await buildStoredExecutionContext({
-        ...args,
-        body,
-        runId: args.run.id,
-        chatThreadId: args.chatThreadId,
-        storageManifest,
-        userTimezone: args.userTimezone,
-        featureSwitchContext: args.featureSwitchContext,
-      });
+      const builtContext = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_build_stored_execution_context",
+        "nested",
+        async () => {
+          return await buildStoredExecutionContext({
+            ...args,
+            body,
+            runId: args.run.id,
+            chatThreadId: args.chatThreadId,
+            storageManifest,
+            userTimezone: args.userTimezone,
+            featureSwitchContext: args.featureSwitchContext,
+          });
+        },
+      );
       ingestRunContextSnapshot({
         runId: args.run.id,
         userId: args.userId,
@@ -3896,45 +3996,73 @@ function dispatchRun(
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timing: ApiDispatchTimingCollector;
   },
 ): Computed<Promise<DerivedPersistenceResult>> {
   return computed(async (get): Promise<DerivedPersistenceResult> => {
-    await db
-      .update(agentRuns)
-      .set({ lastHeartbeatAt: nowDate() })
-      .where(
-        and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
-      );
+    await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_mark_pending_heartbeat",
+      "top_level",
+      async () => {
+        await db
+          .update(agentRuns)
+          .set({ lastHeartbeatAt: nowDate() })
+          .where(
+            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
+          );
+      },
+    );
 
-    const payload = await get(buildRunnerJobPayload(db, args));
+    const payload = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_build_runner_job_payload",
+      "top_level",
+      async () => {
+        return await get(buildRunnerJobPayload(db, args));
+      },
+    );
 
-    const persisted = await db.transaction(async (tx) => {
-      const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-      if (!currentRun) {
-        throw new Error("Run disappeared before runner job persistence");
-      }
-      if (currentRun.status !== "pending") {
-        return currentRun;
-      }
+    const persisted = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_persist_runner_job_queue",
+      "top_level",
+      async () => {
+        return await db.transaction(async (tx) => {
+          const currentRun = await lockRunForDerivedPersistence(
+            tx,
+            args.run.id,
+          );
+          if (!currentRun) {
+            throw new Error("Run disappeared before runner job persistence");
+          }
+          if (currentRun.status !== "pending") {
+            return currentRun;
+          }
 
-      await tx.insert(runnerJobQueue).values({
-        runId: args.run.id,
-        runnerGroup: payload.runnerGroup,
-        profile: payload.profile,
-        cliAgentSessionId: payload.cliAgentSessionId,
-        executionContext: payload.executionContext,
-        expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
-      });
+          await tx.insert(runnerJobQueue).values({
+            runId: args.run.id,
+            runnerGroup: payload.runnerGroup,
+            profile: payload.profile,
+            cliAgentSessionId: payload.cliAgentSessionId,
+            executionContext: payload.executionContext,
+            expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+          });
 
-      await tx
-        .update(agentRuns)
-        .set({ runnerGroup: payload.runnerGroup })
-        .where(
-          and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
-        );
+          await tx
+            .update(agentRuns)
+            .set({ runnerGroup: payload.runnerGroup })
+            .where(
+              and(
+                eq(agentRuns.id, args.run.id),
+                eq(agentRuns.status, "pending"),
+              ),
+            );
 
-      return { status: "pending" as const };
-    });
+          return { status: "pending" as const };
+        });
+      },
+    );
 
     if (persisted.status === "pending") {
       await notifyRunnerJob(db, {
@@ -3942,6 +4070,12 @@ function dispatchRun(
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+      });
+      args.timing?.flush({
+        runId: args.run.id,
+        runnerGroup: payload.runnerGroup,
+        profile: payload.profile,
+        dispatchPath: "direct",
       });
     }
 
@@ -4447,12 +4581,25 @@ async function insertRunWithConcurrency(
   db: Db,
   args: CreateAgentRunArgs,
   context: PreparedRunContext,
+  timing: ApiDispatchTimingCollector,
 ): Promise<RunRecord | CreateRunErrorResult> {
   return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+    await timing.measure(
+      "api_dispatch_admission_lock_wait",
+      "nested",
+      async () => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+        );
+      },
     );
-    const concurrency = await checkRunConcurrencyLimit(tx, args.orgId);
+    const concurrency = await timing.measure(
+      "api_dispatch_check_concurrency_limit",
+      "nested",
+      async () => {
+        return await checkRunConcurrencyLimit(tx, args.orgId);
+      },
+    );
     if (concurrency) {
       if (args.queueOnConcurrencyLimit) {
         return await insertQueuedRunRecord(tx, {
@@ -4471,19 +4618,25 @@ async function insertRunWithConcurrency(
       }
       return concurrency;
     }
-    return await insertRunRecord(tx, {
-      userId: args.userId,
-      orgId: args.orgId,
-      resolved: context.resolved,
-      body: context.body,
-      artifacts: context.artifacts,
-      additionalVolumes: context.additionalVolumes,
-      modelProvider: context.modelProvider,
-      callbacks: args.callbacks,
-      chatThreadId: args.chatThreadId,
-      zeroRunMetadata: args.zeroRunMetadata,
-      featureSwitchContext: context.featureSwitchContext,
-    });
+    return await timing.measure(
+      "api_dispatch_insert_run_record",
+      "nested",
+      async () => {
+        return await insertRunRecord(tx, {
+          userId: args.userId,
+          orgId: args.orgId,
+          resolved: context.resolved,
+          body: context.body,
+          artifacts: context.artifacts,
+          additionalVolumes: context.additionalVolumes,
+          modelProvider: context.modelProvider,
+          callbacks: args.callbacks,
+          chatThreadId: args.chatThreadId,
+          zeroRunMetadata: args.zeroRunMetadata,
+          featureSwitchContext: context.featureSwitchContext,
+        });
+      },
+    );
   });
 }
 
@@ -4546,6 +4699,7 @@ function completePendingRun(input: {
   readonly run: RunRecord;
   readonly drainOrgQueue: () => Promise<void>;
   readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
 }): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
   return computed(
     async (
@@ -4573,6 +4727,7 @@ function completePendingRun(input: {
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
+            timing: input.timing,
           }),
         ),
       );
@@ -4610,27 +4765,52 @@ export const createAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<CreateRunRouteResult> => {
     const db = set(writeDb$);
-    const tierGate = await checkOrgRunTier(db, { orgId: args.orgId });
+    const timing = new ApiDispatchTimingCollector();
+    const tierGate = await timing.measure(
+      "api_dispatch_check_org_tier",
+      "top_level",
+      async () => {
+        return await checkOrgRunTier(db, { orgId: args.orgId });
+      },
+    );
     signal.throwIfAborted();
     if (tierGate) {
       return tierGate;
     }
 
-    const context = await get(prepareRunContext(db, args, signal));
+    const context = await timing.measure(
+      "api_dispatch_prepare_run_context",
+      "top_level",
+      async () => {
+        return await get(prepareRunContext(db, args, signal));
+      },
+    );
     signal.throwIfAborted();
     if (isRouteError(context)) {
       return context;
     }
 
     if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
-      const creditGate = await checkVm0Credits(db, { orgId: args.orgId });
+      const creditGate = await timing.measure(
+        "api_dispatch_check_vm0_credits",
+        "top_level",
+        async () => {
+          return await checkVm0Credits(db, { orgId: args.orgId });
+        },
+      );
       signal.throwIfAborted();
       if (creditGate) {
         return creditGate;
       }
     }
 
-    const transactionResult = await insertRunWithConcurrency(db, args, context);
+    const transactionResult = await timing.measure(
+      "api_dispatch_insert_run_with_concurrency",
+      "top_level",
+      async () => {
+        return await insertRunWithConcurrency(db, args, context, timing);
+      },
+    );
     signal.throwIfAborted();
 
     if (isRouteError(transactionResult)) {
@@ -4659,6 +4839,7 @@ export const createAgentRun$ = command(
           await set(drainOrgQueue$, { orgId: args.orgId }, signal);
         },
         signal,
+        timing,
       }),
     );
   },
