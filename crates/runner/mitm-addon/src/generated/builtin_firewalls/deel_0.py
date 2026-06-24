@@ -89,6 +89,7 @@ JSON_PART = r"""{
         {
           "name": "auth:write",
           "rules": [
+            "POST /rest/v2/magic-link",
             "POST /rest/v2/managers/magic-links"
           ]
         },
@@ -633,7 +634,6 @@ JSON_PART = r"""{
             "GET /rest/v2/immigration/workers/cases/{case_id}",
             "GET /rest/v2/immigration/workers/{worker_id}/cases/{case_id}/required-document",
             "GET /rest/v2/immigration/workers/{worker_id}/onboarding-case",
-            "POST /rest/v2/magic-link",
             "GET /rest/v2/payouts/auto-withdrawal-setting",
             "GET /rest/v2/payouts/balances",
             "GET /rest/v2/payouts/contractors/methods",

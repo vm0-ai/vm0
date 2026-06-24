@@ -81,6 +81,11 @@ describe("deel firewall", () => {
     ]);
   });
 
+  it("requires auth write for magic link creation", () => {
+    expectDeelMatches("POST", "/rest/v2/magic-link", ["auth:write"]);
+    expectDeelMatches("POST", "/rest/v2/managers/magic-links", ["auth:write"]);
+  });
+
   it("maps cross-resource alternatives to the route resource owner", () => {
     expectDeelMatches("GET", "/rest/v2/legal-entities", ["organizations:read"]);
     expectDeelMatches("GET", "/rest/v2/people/me", ["people:read"]);
