@@ -1,6 +1,6 @@
 //! Structured diagnostics shared by guest agents and runners.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
@@ -14,7 +14,6 @@ pub struct FailureDiagnostic {
     pub cli_termination: Option<CliTerminationDiagnostic>,
     pub claude_num_turns: Option<u64>,
     pub failure_detail_source: Option<FailureDetailSource>,
-    #[serde(default, deserialize_with = "deserialize_optional_failure_reason")]
     pub failure_reason: Option<FailureReason>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
@@ -260,30 +259,6 @@ impl FailureReason {
             Self::UsageLimit => "usage_limit",
         }
     }
-
-    fn from_serialized(value: &str) -> Option<Self> {
-        match value {
-            "insufficient_credits" => Some(Self::InsufficientCredits),
-            "invalid_api_key" => Some(Self::InvalidApiKey),
-            "invalid_credentials" => Some(Self::InvalidCredentials),
-            "output_token_limit" => Some(Self::OutputTokenLimit),
-            "provider_overloaded" => Some(Self::ProviderOverloaded),
-            "provider_server_error" => Some(Self::ProviderServerError),
-            "reconnect_required" => Some(Self::ReconnectRequired),
-            "usage_limit" => Some(Self::UsageLimit),
-            _ => None,
-        }
-    }
-}
-
-fn deserialize_optional_failure_reason<'de, D>(
-    deserializer: D,
-) -> Result<Option<FailureReason>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let raw = Option::<String>::deserialize(deserializer)?;
-    Ok(raw.and_then(|value| FailureReason::from_serialized(&value)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -711,37 +686,5 @@ mod tests {
         assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
         assert_eq!(diagnostic.cli_termination, None);
-    }
-
-    #[test]
-    fn failure_diagnostic_deserializes_unknown_failure_reason_as_none() {
-        let json = serde_json::json!({
-            "schemaVersion": 1,
-            "failureClass": "cli_nonzero",
-            "framework": "claude_code",
-            "cliExitCode": 1,
-            "claudeNumTurns": 1,
-            "failureDetailSource": "claude_result",
-            "failureReason": "future_provider_reason",
-            "sessionHistoryStatus": "present",
-            "promptShape": "plain",
-            "promptBytes": 13,
-            "firstLineBytes": 13
-        });
-
-        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
-
-        assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
-        assert_eq!(diagnostic.framework, AgentFramework::ClaudeCode);
-        assert_eq!(diagnostic.cli_exit_code, Some(1));
-        assert_eq!(
-            diagnostic.failure_detail_source,
-            Some(FailureDetailSource::ClaudeResult)
-        );
-        assert_eq!(diagnostic.failure_reason, None);
-        assert_eq!(
-            diagnostic.session_history_status,
-            SessionHistoryStatus::Present
-        );
     }
 }
