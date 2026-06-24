@@ -926,7 +926,7 @@ describe("logs command", () => {
                       type: "command_execution",
                       command: "echo completed-only",
                       exit_code: 0,
-                      aggregated_output: "completed output\n",
+                      aggregated_output: "  completed output  \n",
                     },
                   },
                 },
@@ -940,7 +940,7 @@ describe("logs command", () => {
                       id: "edit_only",
                       type: "file_edit",
                       path: "/workspace/src/edge.ts",
-                      diff: "-before\n+after",
+                      diff: "-before  \n+ after",
                     },
                   },
                 },
@@ -955,6 +955,7 @@ describe("logs command", () => {
                       type: "file_read",
                       path: "/workspace/package.json",
                       status: "completed",
+                      output: "  file body  \n",
                     },
                   },
                 },
@@ -971,14 +972,14 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Bash");
       expect(logCalls).toContain("echo completed-only");
-      expect(logCalls).toContain("completed output");
+      expect(logCalls).toContain("  completed output  ");
       expect(logCalls).toContain("Edit");
       expect(logCalls).toContain("/workspace/src/edge.ts");
-      expect(logCalls).toContain("-before");
-      expect(logCalls).toContain("+after");
+      expect(logCalls).toContain("-before  ");
+      expect(logCalls).toContain("+ after");
       expect(logCalls).toContain("Read");
       expect(logCalls).toContain("/workspace/package.json");
-      expect(logCalls).toContain("File read completed");
+      expect(logCalls).toContain("  file body  ");
     });
 
     it("should mark command_execution with non-zero exit_code as error", async () => {
@@ -1077,6 +1078,7 @@ describe("logs command", () => {
                       id: "write_1",
                       type: "file_write",
                       path: "/workspace/README.md",
+                      diff: "",
                     },
                   },
                 },
@@ -1103,6 +1105,7 @@ describe("logs command", () => {
                       id: "read_1",
                       type: "file_read",
                       path: "/workspace/package.json",
+                      output: "",
                     },
                   },
                 },
@@ -1139,6 +1142,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("File operation completed");
       expect(logCalls).toContain("Read");
       expect(logCalls).toContain("/workspace/package.json");
+      expect(logCalls).toContain("File read completed");
     });
 
     it("should render reasoning items with [thinking] prefix", async () => {

@@ -26,6 +26,11 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function nonEmptyStringValue(value: unknown): string | undefined {
+  const valueString = stringValue(value);
+  return valueString && valueString.length > 0 ? valueString : undefined;
+}
+
 function trimmedStringValue(value: unknown): string | undefined {
   const valueString = stringValue(value)?.trim();
   return valueString && valueString.length > 0 ? valueString : undefined;
@@ -561,8 +566,8 @@ export class CodexEventParser {
 
     if (eventType === "item.completed") {
       const output =
-        trimmedStringValue(item.aggregated_output) ??
-        trimmedStringValue(item.output) ??
+        nonEmptyStringValue(item.aggregated_output) ??
+        nonEmptyStringValue(item.output) ??
         "";
       const status = getItemStatus(item);
       const exitCode = numberValue(item.exit_code);
@@ -616,7 +621,7 @@ export class CodexEventParser {
           toolUseId: itemId,
           input: path ? { file_path: path } : {},
           result:
-            trimmedStringValue(item.diff) ??
+            nonEmptyStringValue(item.diff) ??
             (isFailedStatus(status)
               ? `File operation ${status}`
               : "File operation completed"),
@@ -652,6 +657,7 @@ export class CodexEventParser {
 
     if (eventType === "item.completed") {
       const status = getItemStatus(item);
+      const output = nonEmptyStringValue(item.output);
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -659,9 +665,11 @@ export class CodexEventParser {
           tool: "Read",
           toolUseId: itemId,
           input: path ? { file_path: path } : {},
-          result: isFailedStatus(status)
-            ? `File read ${status}`
-            : "File read completed",
+          result:
+            output ??
+            (isFailedStatus(status)
+              ? `File read ${status}`
+              : "File read completed"),
           isError: isFailedStatus(status),
         },
       };
