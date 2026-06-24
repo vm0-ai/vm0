@@ -249,20 +249,68 @@ pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
     })
 }
 
-pub(super) async fn write_user_env_file(
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn user_env_dir_command(runtime_dir: &str, dir_path: &str) -> String {
+    let runtime_dir = shell_quote(runtime_dir);
+    let dir_path = shell_quote(dir_path);
+    format!("mkdir -p -m 700 -- {runtime_dir} {dir_path} && chmod 700 -- {runtime_dir} {dir_path}")
+}
+
+fn user_env_write_command(runtime_dir: &str, dir_path: &str, file_path: &str) -> String {
+    let runtime_dir = shell_quote(runtime_dir);
+    let dir_path = shell_quote(dir_path);
+    let file_path = shell_quote(file_path);
+    format!(
+        "umask 077 && \
+         mkdir -p -m 700 -- {runtime_dir} {dir_path} && \
+         chmod 700 -- {runtime_dir} {dir_path} && \
+         cat > {file_path} && \
+         chmod 600 -- {file_path}"
+    )
+}
+
+async fn write_user_env_file_fast_path(
     sandbox: &dyn Sandbox,
-    run_id: RunId,
-    user_env: &HashMap<String, String>,
-) -> RunnerResult<Option<String>> {
-    if user_env.is_empty() {
-        return Ok(None);
+    runtime_dir: &str,
+    dir_path: &str,
+    file_path: &str,
+    payload: &[u8],
+) -> RunnerResult<()> {
+    let write_cmd = user_env_write_command(runtime_dir, dir_path, file_path);
+    let write_result = sandbox
+        .exec_with_diagnostic_label(
+            &ExecRequest {
+                cmd: &write_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+                stdin_bytes: Some(payload),
+                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+            },
+            "user-env-write",
+        )
+        .await?;
+    if !helper_exec_succeeded(&write_result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "user env file write",
+            &write_result,
+        )));
     }
 
-    let runtime_dir = guest_runtime_dir(run_id)?;
-    let dir_path = guest_user_env_dir_path(run_id)?;
-    let file_path = guest_user_env_file_path(run_id)?;
-    let mkdir_cmd =
-        format!("mkdir -p -m 700 {runtime_dir} {dir_path} && chmod 700 {runtime_dir} {dir_path}");
+    Ok(())
+}
+
+async fn write_user_env_file_fallback(
+    sandbox: &dyn Sandbox,
+    runtime_dir: &str,
+    dir_path: &str,
+    file_path: &str,
+    payload: &[u8],
+) -> RunnerResult<()> {
+    let mkdir_cmd = user_env_dir_command(runtime_dir, dir_path);
     let mkdir_result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
@@ -283,10 +331,8 @@ pub(super) async fn write_user_env_file(
         )));
     }
 
-    let payload = serde_json::to_vec(user_env)
-        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-    sandbox.write_file(&file_path, &payload).await?;
-    let chmod_cmd = format!("chmod 600 {file_path}");
+    sandbox.write_file(file_path, payload).await?;
+    let chmod_cmd = format!("chmod 600 -- {}", shell_quote(file_path));
     let chmod_result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
@@ -305,6 +351,32 @@ pub(super) async fn write_user_env_file(
             "user env file permission update",
             &chmod_result,
         )));
+    }
+
+    Ok(())
+}
+
+pub(super) async fn write_user_env_file(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    user_env: &HashMap<String, String>,
+) -> RunnerResult<Option<String>> {
+    if user_env.is_empty() {
+        return Ok(None);
+    }
+
+    let runtime_dir = guest_runtime_dir(run_id)?;
+    let dir_path = guest_user_env_dir_path(run_id)?;
+    let file_path = guest_user_env_file_path(run_id)?;
+    let payload = serde_json::to_vec(user_env)
+        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+
+    if payload.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES {
+        write_user_env_file_fast_path(sandbox, &runtime_dir, &dir_path, &file_path, &payload)
+            .await?;
+    } else {
+        write_user_env_file_fallback(sandbox, &runtime_dir, &dir_path, &file_path, &payload)
+            .await?;
     }
 
     Ok(Some(file_path))

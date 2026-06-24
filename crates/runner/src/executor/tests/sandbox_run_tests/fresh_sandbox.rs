@@ -235,30 +235,21 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         );
     }
 
-    let mkdir_call = overrides
+    let write_call = overrides
         .exec_calls()
         .into_iter()
         .find(|call| call.cmd.contains(&expected_user_env_dir))
-        .expect("user env directory should be created before agent start");
-    assert!(mkdir_call.cmd.starts_with("mkdir -p -m 700 "));
-    assert!(mkdir_call.cmd.contains(" && chmod 700 "));
-    assert!(mkdir_call.env_keys.is_empty());
-    assert!(!mkdir_call.sudo);
-    let chmod_call = overrides
-        .exec_calls()
-        .into_iter()
-        .find(|call| call.cmd == format!("chmod 600 {expected_user_env_file}"))
-        .expect("user env file mode should be tightened after write");
-    assert!(chmod_call.env_keys.is_empty());
-    assert!(!chmod_call.sudo);
-
-    let writes = overrides.write_file_calls();
-    let user_env_write = writes
-        .iter()
-        .find(|call| call.path == expected_user_env_file)
-        .expect("user env JSON should be written");
-    let user_env: HashMap<String, String> =
-        serde_json::from_slice(&user_env_write.content).unwrap();
+        .expect("user env file should be written before agent start");
+    assert!(write_call.cmd.contains("umask 077"));
+    assert!(write_call.cmd.contains("mkdir -p -m 700 --"));
+    assert!(write_call.cmd.contains("chmod 700 --"));
+    assert!(write_call.cmd.contains("cat >"));
+    assert!(write_call.cmd.contains("chmod 600 --"));
+    assert!(write_call.cmd.contains(&expected_user_env_file));
+    assert!(write_call.env_keys.is_empty());
+    assert!(!write_call.sudo);
+    let stdin_bytes = write_call.stdin_bytes.as_ref().unwrap();
+    let user_env: HashMap<String, String> = serde_json::from_slice(stdin_bytes).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
     assert_eq!(
@@ -269,6 +260,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(overrides.write_file_calls().is_empty());
 }
 
 #[tokio::test]
