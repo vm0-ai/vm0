@@ -1493,6 +1493,54 @@ describe("logs command", () => {
       expect(logCalls).toContain("Codex Failed");
     });
 
+    it("should render turn.failed with nested turn error details", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.failed",
+                    turn: {
+                      id: "turn-1",
+                      error: {
+                        message: "selected model is at capacity",
+                        additional_details: "retry later",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("selected model is at capacity");
+      expect(logCalls).toContain("retry later");
+      expect(logCalls).not.toContain("Turn failed");
+    });
+
     it("should render truncated Codex result events with the Codex label", async () => {
       server.use(
         http.get(
@@ -2584,6 +2632,73 @@ describe("logs command", () => {
       expect(logCalls).toContain("File read declined");
       expect(logCalls).toContain("sleep 10");
       expect(countOccurrences(logCalls, "✗")).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should render Codex item error payloads without explicit failed status", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd-error",
+                      type: "command_execution",
+                      command: "deploy",
+                      error: { message: "permission denied" },
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read-error",
+                      type: "file_read",
+                      path: "/workspace/private.txt",
+                      error: { message: "read was denied" },
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "files-error",
+                      type: "file_change",
+                      error: { message: "patch rejected" },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("permission denied");
+      expect(logCalls).toContain("read was denied");
+      expect(logCalls).toContain("[files]");
+      expect(logCalls).toContain("patch rejected");
+      expect(countOccurrences(logCalls, "✗")).toBeGreaterThanOrEqual(2);
+      expect(logCalls).not.toContain("File read completed");
     });
 
     it("should keep delayed Codex tool results after intervening text", async () => {

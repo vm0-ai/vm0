@@ -250,6 +250,31 @@ function combineDistinctMessages(
   return messages.length > 0 ? messages.join("\n") : undefined;
 }
 
+function combineResultWithError(
+  result: string | undefined,
+  errorMessage: string | undefined,
+): string | undefined {
+  if (result === undefined || result.length === 0) {
+    return errorMessage;
+  }
+  if (!errorMessage) {
+    return result;
+  }
+
+  const trimmedResult = result.trim();
+  if (!trimmedResult) {
+    return errorMessage;
+  }
+  if (trimmedResult === errorMessage || trimmedResult.includes(errorMessage)) {
+    return result;
+  }
+  if (errorMessage.includes(trimmedResult)) {
+    return errorMessage;
+  }
+
+  return `${result}\n${errorMessage}`;
+}
+
 function formatDetailSuffix(details: readonly string[]): string {
   return details.length > 0 ? ` (${details.join("; ")})` : "";
 }
@@ -376,7 +401,7 @@ function hasTurnCompletionError(
   );
 }
 
-function getTurnCompletionErrorMessage(
+function getTurnErrorMessage(
   event: JsonRecord,
   turn: JsonRecord | null,
 ): string | undefined {
@@ -405,6 +430,10 @@ function getItemType(item: JsonRecord): string | undefined {
 
 function getItemStatus(item: JsonRecord): string | undefined {
   return getFirstString(item, ["status"]);
+}
+
+function getItemErrorMessage(item: JsonRecord): string | undefined {
+  return extractErrorMessage(item.error);
 }
 
 function formatPlanStatus(status: string | undefined): string {
@@ -565,7 +594,7 @@ export class CodexEventParser {
       hasTurnCompletionError(event, turn)
     ) {
       const result =
-        getTurnCompletionErrorMessage(event, turn) ??
+        getTurnErrorMessage(event, turn) ??
         (status ? `Turn ${status}` : "Turn failed");
       return {
         type: "result",
@@ -598,13 +627,14 @@ export class CodexEventParser {
   }
 
   private static parseTurnFailed(event: JsonRecord): ParsedEvent | null {
+    const turn = getTurnRecord(event);
     const turnId = getTurnId(event);
     return {
       type: "result",
       timestamp: new Date(),
       data: {
         success: false,
-        result: extractEventErrorMessage(event) ?? "Turn failed",
+        result: getTurnErrorMessage(event, turn) ?? "Turn failed",
         durationMs: 0,
         numTurns: 1,
         cost: 0,
@@ -739,7 +769,11 @@ export class CodexEventParser {
         "";
       const status = getItemStatus(item);
       const exitCode = numberValue(item.exit_code);
-      const isError = exitCode !== undefined ? exitCode !== 0 : false;
+      const errorMessage = getItemErrorMessage(item);
+      const isError =
+        (exitCode !== undefined ? exitCode !== 0 : false) ||
+        isFailedStatus(status) ||
+        errorMessage !== undefined;
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -747,8 +781,10 @@ export class CodexEventParser {
           tool: "Bash",
           toolUseId: itemId,
           input: command ? { command } : {},
-          result: output || (isFailedStatus(status) ? `Command ${status}` : ""),
-          isError: isError || isFailedStatus(status),
+          result:
+            combineResultWithError(output, errorMessage) ??
+            (isFailedStatus(status) ? `Command ${status}` : ""),
+          isError,
         },
       };
     }
@@ -781,6 +817,7 @@ export class CodexEventParser {
     if (eventType === "item.completed") {
       const status = getItemStatus(item);
       const tool = getItemType(item) === "file_edit" ? "Edit" : "Write";
+      const errorMessage = getItemErrorMessage(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -789,11 +826,14 @@ export class CodexEventParser {
           toolUseId: itemId,
           input: path ? { file_path: path } : {},
           result:
-            nonEmptyStringValue(item.diff) ??
+            combineResultWithError(
+              nonEmptyStringValue(item.diff),
+              errorMessage,
+            ) ??
             (isFailedStatus(status)
               ? `File operation ${status}`
               : "File operation completed"),
-          isError: isFailedStatus(status),
+          isError: isFailedStatus(status) || errorMessage !== undefined,
         },
       };
     }
@@ -826,6 +866,7 @@ export class CodexEventParser {
     if (eventType === "item.completed") {
       const status = getItemStatus(item);
       const output = nonEmptyStringValue(item.output);
+      const errorMessage = getItemErrorMessage(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
@@ -834,11 +875,11 @@ export class CodexEventParser {
           toolUseId: itemId,
           input: path ? { file_path: path } : {},
           result:
-            output ??
+            combineResultWithError(output, errorMessage) ??
             (isFailedStatus(status)
               ? `File read ${status}`
               : "File read completed"),
-          isError: isFailedStatus(status),
+          isError: isFailedStatus(status) || errorMessage !== undefined,
         },
       };
     }
@@ -848,6 +889,7 @@ export class CodexEventParser {
 
   private static parseFileChange(item: JsonRecord): ParsedEvent | null {
     const status = getItemStatus(item);
+    const errorMessage = getItemErrorMessage(item);
     const lines = Array.isArray(item.changes)
       ? item.changes
           .map((change) => {
@@ -869,16 +911,17 @@ export class CodexEventParser {
           })
       : [];
 
-    if (lines.length === 0 && !isFailedStatus(status)) {
+    if (lines.length === 0 && !isFailedStatus(status) && !errorMessage) {
       return null;
     }
 
     const statusLine = isFailedStatus(status) ? `Status: ${status}` : undefined;
+    const errorLine = errorMessage ? `Error: ${errorMessage}` : undefined;
     return {
       type: "text",
       timestamp: new Date(),
       data: {
-        text: ["[files]", statusLine, ...lines]
+        text: ["[files]", statusLine, errorLine, ...lines]
           .filter((line): line is string => {
             return line !== undefined && line.length > 0;
           })
