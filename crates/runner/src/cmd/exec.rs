@@ -528,6 +528,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn expansion_and_redirection_syntax_in_args_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(
+            make_args_vec(vec!["printf", "$(id)", "`id`", "*", "x > out"]),
+            &control,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'printf' '$(id)' '`id`' '*' 'x > out'".to_string()],
+        );
+    }
+
+    #[tokio::test]
     async fn empty_arg_is_quoted() {
         let control = MockSandboxControl::new("/tmp");
         run_exec(make_args_vec(vec!["echo", ""]), &control)

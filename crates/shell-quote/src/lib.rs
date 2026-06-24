@@ -55,8 +55,21 @@ mod tests {
     }
 
     #[test]
+    fn quotes_expansion_and_redirection_syntax() {
+        assert_eq!(quote_shell_arg("$(uname)"), "'$(uname)'");
+        assert_eq!(quote_shell_arg("`uname`"), "'`uname`'");
+        assert_eq!(quote_shell_arg("*"), "'*'");
+        assert_eq!(quote_shell_arg("x > out"), "'x > out'");
+    }
+
+    #[test]
     fn preserves_newlines_inside_quoted_word() {
         assert_eq!(quote_shell_arg("line1\nline2"), "'line1\nline2'");
+    }
+
+    #[test]
+    fn quotes_unicode_text() {
+        assert_eq!(quote_shell_arg("hello 世界"), "'hello 世界'");
     }
 
     #[test]
