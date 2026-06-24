@@ -918,6 +918,7 @@ describe("logs command", () => {
                       id: "edit_1",
                       type: "file_edit",
                       path: "/workspace/src/main.ts",
+                      diff: "-old\n+new",
                     },
                   },
                 },
@@ -986,8 +987,11 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Edit");
       expect(logCalls).toContain("/workspace/src/main.ts");
+      expect(logCalls).toContain("-old");
+      expect(logCalls).toContain("+new");
       expect(logCalls).toContain("Write");
       expect(logCalls).toContain("/workspace/README.md");
+      expect(logCalls).toContain("File operation completed");
       expect(logCalls).toContain("Read");
       expect(logCalls).toContain("/workspace/package.json");
     });

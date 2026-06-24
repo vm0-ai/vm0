@@ -100,32 +100,15 @@ export function formatToolResult(
   const { result: resultText, isError } = result;
   const lines: string[] = [];
 
-  // Special handling for Read - strip line numbers and filter system content
-  if (tool === "Read" && !isError && resultText) {
-    const readLines = formatReadContent(resultText, verbose);
-    lines.push(...readLines);
-    return lines;
-  }
-
-  // Special handling for TodoWrite - show the task list
-  if (tool === "TodoWrite" && !isError) {
-    const todoLines = formatTodoList(input);
-    lines.push(...todoLines);
-    return lines;
-  }
-
-  // Special handling for Edit - show diff format
-  if (tool === "Edit" && !isError) {
-    const editLines = formatEditDiff(input, verbose);
-    lines.push(...editLines);
-    return lines;
-  }
-
-  // Special handling for Write - show content preview
-  if (tool === "Write" && !isError) {
-    const writeLines = formatWritePreview(input, verbose);
-    lines.push(...writeLines);
-    return lines;
+  const specialLines = formatSpecialToolResult(
+    tool,
+    input,
+    resultText,
+    isError,
+    verbose,
+  );
+  if (specialLines) {
+    return specialLines;
   }
 
   // Error case: show error message
@@ -164,6 +147,42 @@ export function formatToolResult(
   }
 
   return lines;
+}
+
+function formatSpecialToolResult(
+  tool: string,
+  input: Record<string, unknown>,
+  resultText: string,
+  isError: boolean,
+  verbose: boolean,
+): string[] | null {
+  if (isError) {
+    return null;
+  }
+
+  if (tool === "Read" && resultText) {
+    return formatReadContent(resultText, verbose);
+  }
+  if (tool === "TodoWrite") {
+    return formatTodoList(input);
+  }
+  if (tool === "Edit" && hasClaudeEditInput(input)) {
+    return formatEditDiff(input, verbose);
+  }
+  if (tool === "Write" && hasClaudeWriteInput(input)) {
+    return formatWritePreview(input, verbose);
+  }
+  return null;
+}
+
+function hasClaudeEditInput(input: Record<string, unknown>): boolean {
+  return (
+    typeof input.old_string === "string" || typeof input.new_string === "string"
+  );
+}
+
+function hasClaudeWriteInput(input: Record<string, unknown>): boolean {
+  return typeof input.content === "string";
 }
 
 /**
