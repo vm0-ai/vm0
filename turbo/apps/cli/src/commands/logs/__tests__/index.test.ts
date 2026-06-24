@@ -2403,6 +2403,57 @@ describe("logs command", () => {
       expect(logCalls).toContain("Rate limit exceeded");
     });
 
+    it("should not collapse Codex failures when only the pending error has a turn id", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:29:59Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-1",
+                    message: "First turn failed",
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Unattributed terminal failure",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Unattributed terminal failure");
+    });
+
     it("should keep the more detailed Codex error when one message contains another", async () => {
       server.use(
         http.get(
