@@ -46,8 +46,8 @@ export const ZERO_CAPABILITIES = [
   "automation:write",
   "automation:delete",
   "goal:read",
-  "goal:write",
-  "goal-objective:write",
+  "goal:agent-result:write",
+  "goal:user-control:write",
   "github:read",
   "github:write",
   "slack:write",
@@ -99,10 +99,13 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Delete automations",
     },
     "goal:read": { group: "Goals", label: "Read thread goals" },
-    "goal:write": { group: "Goals", label: "Create and update thread goals" },
-    "goal-objective:write": {
+    "goal:agent-result:write": {
       group: "Goals",
-      label: "Edit a thread goal's objective",
+      label: "Complete or block thread goals",
+    },
+    "goal:user-control:write": {
+      group: "Goals",
+      label: "Create and manage thread goals",
     },
     "github:read": {
       group: "Integrations",

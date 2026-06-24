@@ -1,110 +1,89 @@
-import { randomBytes } from "node:crypto";
-
-import {
-  zeroGoalPreferenceSchema,
-  type ZeroGoalPreference,
-  type ZeroGoalResponse,
-  type ZeroGoalStopReason,
+import { type ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type {
+  ZeroGoalResponse,
+  ZeroGoalStatus,
 } from "@vm0/api-contracts/contracts/zero-goals";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals, type ThreadGoalStatus } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { and, eq, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
-  publishChatThreadAutomationsChangedSafely,
-  publishChatThreadMessageCreatedSafely,
-} from "../external/realtime";
-import {
-  GOAL_TRIGGER_ACTIVE_EVENT_ID,
-  GOAL_TRIGGER_INACTIVE_EVENT_ID,
-  GOAL_WORKFLOW_ACTIVE_EVENT_ID,
-  GOAL_WORKFLOW_INACTIVE_EVENT_ID,
-  appendGoalCreatedMarkers,
-  appendGoalStateMarker,
+  activeGoalEvent,
+  appendGoalEventMarker,
+  clearedGoalEvent,
+  hiddenGoalStateEvent,
 } from "./zero-chat-goal-marker.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
-import type { TriggerRow } from "./zero-workflow-trigger-run.service";
+
+export interface GoalBootstrap {
+  readonly goalId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly objective: string;
+  readonly objectiveBrief: string;
+}
 
 export type GoalResult =
   | {
       readonly kind: "ok";
       readonly goal: ZeroGoalResponse;
-      // Set only when goal creation had to spin up a fresh chat thread (the
-      // current run was not linked to one, e.g. slack/telegram/email). The
-      // caller must kick off the first run so the goal starts progressing,
-      // since the thread-idle trigger only fires after a run terminates.
-      readonly bootstrapTrigger?: TriggerRow;
+      readonly bootstrapGoal?: GoalBootstrap;
     }
   | { readonly kind: "not-found" }
   | { readonly kind: "bad-request"; readonly message: string }
   | { readonly kind: "conflict"; readonly message: string };
 
+export type ClearGoalResult =
+  | { readonly kind: "ok"; readonly cleared: true }
+  | Exclude<GoalResult, { readonly kind: "ok" }>;
+
+type GoalRow = typeof threadGoals.$inferSelect;
+
 type GoalRowResult =
   | {
       readonly kind: "ok";
-      readonly row: ActiveGoalRow;
+      readonly row: GoalRow;
       readonly threadId: string;
+      readonly context: CurrentGoalContext;
     }
   | Exclude<GoalResult, { readonly kind: "ok" }>;
 
 interface CurrentGoalContext {
-  // Null when the current run is not linked to a web chat thread (e.g. slack,
-  // telegram, email triggers). Goal creation then provisions a new thread.
+  // Null when the current run is not linked to a web chat thread.
   readonly threadId: string | null;
   readonly agentId: string;
-}
-
-interface ActiveGoalRow {
-  readonly workflowId: string;
-  readonly triggerId: string;
-  readonly workflowActive: boolean;
-  readonly triggerEnabled: boolean;
-  readonly preference: unknown;
+  readonly runGoalId: string | null;
 }
 
 interface GoalAuth {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
+  readonly capabilities: readonly ZeroCapability[];
 }
 
-function generatedGoalName(): string {
-  return `goal-${randomBytes(8).toString("hex")}`;
+function hasUserControlCapability(auth: GoalAuth): boolean {
+  return auth.capabilities.some((capability) => {
+    return capability === "goal:user-control:write";
+  });
 }
 
-function goalResponse(row: ActiveGoalRow): ZeroGoalResponse {
-  const preference = zeroGoalPreferenceSchema.parse(row.preference);
-  const status = row.workflowActive
-    ? row.triggerEnabled
-      ? "active"
-      : "blocked"
-    : "complete";
+function goalResponse(row: GoalRow): ZeroGoalResponse {
   return {
-    active: row.workflowActive,
-    objective: preference.objective,
-    status,
-    ...(preference.tokenBudget ? { tokenBudget: preference.tokenBudget } : {}),
-    // stopReason is only meaningful while the goal is stopped (trigger
-    // disabled with the workflow still active); otherwise it is omitted.
-    ...(status === "blocked" && preference.stopReason
-      ? { stopReason: preference.stopReason }
-      : {}),
+    objective: row.objective,
+    objectiveBrief: row.objectiveBrief,
+    status: row.status as ZeroGoalStatus,
   };
 }
 
-/**
- * Serialize all state writes for a goal on a chat thread. Every goal mutation
- * (create, complete, block, resume, edit) acquires this transaction-scoped
- * advisory lock first so concurrent writers cannot interleave.
- */
 async function lockGoalThread(
   tx: Pick<Db, "execute">,
   threadId: string,
@@ -114,53 +93,15 @@ async function lockGoalThread(
   );
 }
 
-/**
- * Merge a partial update into the goal workflow's preference jsonb, preserving
- * the existing objective/tokenBudget unless overridden. `stopReason: null`
- * clears the field. Keeps `version: 1`.
- */
-function mergeGoalPreference(
-  current: unknown,
-  update: {
-    readonly objective?: string;
-    readonly objectiveBrief?: string;
-    readonly tokenBudget?: number;
-    readonly stopReason?: ZeroGoalStopReason | null;
-  },
-): ZeroGoalPreference {
-  const preference = zeroGoalPreferenceSchema.parse(current);
-  const merged: ZeroGoalPreference = {
-    version: 1,
-    objective: update.objective ?? preference.objective,
-  };
-  const objectiveBrief = update.objectiveBrief ?? preference.objectiveBrief;
-  if (objectiveBrief !== undefined) {
-    merged.objectiveBrief = objectiveBrief;
-  }
-  const tokenBudget = update.tokenBudget ?? preference.tokenBudget;
-  if (tokenBudget !== undefined) {
-    merged.tokenBudget = tokenBudget;
-  }
-  const stopReason =
-    update.stopReason === undefined ? preference.stopReason : update.stopReason;
-  if (stopReason !== null && stopReason !== undefined) {
-    merged.stopReason = stopReason;
-  }
-  return merged;
-}
-
 async function currentGoalContext(
   db: ReadonlyDb,
-  auth: GoalAuth,
+  auth: Pick<GoalAuth, "orgId" | "userId" | "runId">,
 ): Promise<CurrentGoalContext | null> {
-  // Resolve the agent directly from the run's compose version so we still know
-  // which agent to bind even when the run has no chat thread. zeroAgents.id,
-  // chatThreads.agentComposeId and agentComposeVersions.composeId are all the
-  // same compose UUID.
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
       agentId: agentComposeVersions.composeId,
+      runGoalId: zeroRuns.goalId,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -177,37 +118,20 @@ async function currentGoalContext(
     )
     .limit(1);
 
-  if (!row) {
-    return null;
-  }
-  return { threadId: row.threadId, agentId: row.agentId };
+  return row ?? null;
 }
 
-export async function loadActiveGoalForThread(
+export async function loadGoalForThread(
   db: ReadonlyDb,
   args: { readonly orgId: string; readonly threadId: string },
-): Promise<ActiveGoalRow | null> {
+): Promise<GoalRow | null> {
   const [row] = await db
-    .select({
-      workflowId: zeroWorkflows.id,
-      triggerId: zeroWorkflowTriggers.id,
-      workflowActive: zeroWorkflows.active,
-      triggerEnabled: zeroWorkflowTriggers.enabled,
-      preference: zeroWorkflows.preference,
-    })
-    .from(zeroWorkflowTriggers)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-    )
+    .select()
+    .from(threadGoals)
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.chatThreadId, args.threadId),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.eventType, "thread-idle"),
-        eq(zeroWorkflows.type, "goal"),
-        eq(zeroWorkflows.active, true),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.chatThreadId, args.threadId),
       ),
     )
     .limit(1);
@@ -215,36 +139,30 @@ export async function loadActiveGoalForThread(
   return row ?? null;
 }
 
-async function loadOwnedActiveGoalForThread(
+export async function loadActiveGoalForThread(
+  db: ReadonlyDb,
+  args: { readonly orgId: string; readonly threadId: string },
+): Promise<GoalRow | null> {
+  const goal = await loadGoalForThread(db, args);
+  return goal?.status === "active" ? goal : null;
+}
+
+async function loadOwnedGoalForThread(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly threadId: string;
   },
-): Promise<ActiveGoalRow | null> {
+): Promise<GoalRow | null> {
   const [row] = await db
-    .select({
-      workflowId: zeroWorkflows.id,
-      triggerId: zeroWorkflowTriggers.id,
-      workflowActive: zeroWorkflows.active,
-      triggerEnabled: zeroWorkflowTriggers.enabled,
-      preference: zeroWorkflows.preference,
-    })
-    .from(zeroWorkflowTriggers)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-    )
+    .select()
+    .from(threadGoals)
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.chatThreadId, args.threadId),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.eventType, "thread-idle"),
-        eq(zeroWorkflows.type, "goal"),
-        eq(zeroWorkflows.active, true),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.ownerUserId, args.userId),
+        eq(threadGoals.chatThreadId, args.threadId),
       ),
     )
     .limit(1);
@@ -252,11 +170,112 @@ async function loadOwnedActiveGoalForThread(
   return row ?? null;
 }
 
+async function insertGoal(
+  tx: Pick<Db, "insert">,
+  args: {
+    readonly orgId: string;
+    readonly ownerUserId: string;
+    readonly agentId: string;
+    readonly chatThreadId: string;
+    readonly objective: string;
+    readonly objectiveBrief: string;
+    readonly createdAt: Date;
+  },
+): Promise<GoalRow> {
+  const [goal] = await tx
+    .insert(threadGoals)
+    .values({
+      orgId: args.orgId,
+      ownerUserId: args.ownerUserId,
+      agentId: args.agentId,
+      chatThreadId: args.chatThreadId,
+      status: "active",
+      objective: args.objective,
+      objectiveBrief: args.objectiveBrief,
+      createdAt: args.createdAt,
+      updatedAt: args.createdAt,
+    })
+    .returning();
+  if (!goal) {
+    throw new Error("Failed to create thread goal");
+  }
+  return goal;
+}
+
+async function createGoalThread(
+  tx: Pick<Db, "insert">,
+  args: {
+    readonly userId: string;
+    readonly agentId: string;
+    readonly objective: string;
+    readonly createdAt: Date;
+  },
+): Promise<string> {
+  const [thread] = await tx
+    .insert(chatThreads)
+    .values({
+      userId: args.userId,
+      agentComposeId: args.agentId,
+      title: args.objective,
+      lastMessageAt: args.createdAt,
+      createdAt: args.createdAt,
+      updatedAt: args.createdAt,
+    })
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error("Failed to create goal chat thread");
+  }
+  return thread.id;
+}
+
+async function setGoalStatus(
+  tx: Pick<Db, "update">,
+  args: {
+    readonly goalId: string;
+    readonly status: ThreadGoalStatus;
+    readonly updatedAt: Date;
+  },
+): Promise<GoalRow> {
+  const [goal] = await tx
+    .update(threadGoals)
+    .set({ status: args.status, updatedAt: args.updatedAt })
+    .where(eq(threadGoals.id, args.goalId))
+    .returning();
+  if (!goal) {
+    throw new Error("Failed to update thread goal");
+  }
+  return goal;
+}
+
+async function loadLockedOwnedGoal(
+  tx: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly ownerUserId: string;
+    readonly threadId: string;
+  },
+): Promise<GoalRow | null> {
+  const current = await loadGoalForThread(tx, {
+    orgId: args.orgId,
+    threadId: args.threadId,
+  });
+  if (!current || current.ownerUserId !== args.ownerUserId) {
+    return null;
+  }
+  return current;
+}
+
+async function publishGoalMarker(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishChatThreadMessageCreatedSafely(userId, threadId);
+}
+
 export async function createGoalForCurrentThread(
   db: Db,
   args: GoalAuth & {
     readonly objective: string;
-    readonly tokenBudget?: number;
   },
 ): Promise<GoalResult> {
   const context = await currentGoalContext(db, args);
@@ -269,135 +288,72 @@ export async function createGoalForCurrentThread(
 
   const createdAt = nowDate();
   const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
-  const preference = {
-    version: 1 as const,
-    objective: args.objective,
-    objectiveBrief,
-    ...(args.tokenBudget ? { tokenBudget: args.tokenBudget } : {}),
-  };
   const isNewThread = context.threadId === null;
 
   const created = await db.transaction(async (tx) => {
-    let threadId = context.threadId;
-    if (threadId === null) {
-      // Mirror the schedule-trigger path: when the current run has no chat
-      // thread, provision one so the goal has a home to render its runs in.
-      const [thread] = await tx
-        .insert(chatThreads)
-        .values({
-          userId: args.userId,
-          agentComposeId: context.agentId,
-          title: args.objective,
-          lastMessageAt: createdAt,
-          createdAt,
-          updatedAt: createdAt,
-        })
-        .returning({ id: chatThreads.id });
-      if (!thread) {
-        throw new Error("Failed to create goal chat thread");
-      }
-      threadId = thread.id;
-    }
+    const threadId =
+      context.threadId ??
+      (await createGoalThread(tx, {
+        userId: args.userId,
+        agentId: context.agentId,
+        objective: args.objective,
+        createdAt,
+      }));
 
     await lockGoalThread(tx, threadId);
 
-    const existing = await loadActiveGoalForThread(tx, {
+    const existing = await loadGoalForThread(tx, {
       orgId: args.orgId,
       threadId,
     });
-    if (existing) {
+    if (existing && existing.status !== "complete") {
       return null;
     }
-
-    const [workflow] = await tx
-      .insert(zeroWorkflows)
-      .values({
-        orgId: args.orgId,
-        agentId: context.agentId,
-        name: generatedGoalName(),
-        visibility: "private",
-        type: "goal",
-        active: true,
-        preference,
-        ownerUserId: args.userId,
-        displayName: "Goal",
-        description: null,
-        createdBy: args.userId,
-        createdAt,
-        updatedAt: createdAt,
-      })
-      .returning({
-        id: zeroWorkflows.id,
-        active: zeroWorkflows.active,
-        preference: zeroWorkflows.preference,
-      });
-    if (!workflow) {
-      throw new Error("Failed to create goal workflow");
+    if (existing) {
+      await tx.delete(threadGoals).where(eq(threadGoals.id, existing.id));
     }
 
-    const [trigger] = await tx
-      .insert(zeroWorkflowTriggers)
-      .values({
-        orgId: args.orgId,
-        workflowId: workflow.id,
-        ownerUserId: args.userId,
-        kind: "event",
-        eventType: "thread-idle",
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: true,
-        chatThreadId: threadId,
-        nextRunAt: null,
-        createdAt,
-        updatedAt: createdAt,
-      })
-      .returning();
-    if (!trigger) {
-      throw new Error("Failed to create goal trigger");
-    }
-
-    // Publish the new goal's state so the composer can fold it from the message
-    // stream (active workflow carrying the objective brief + enabled trigger).
-    await appendGoalCreatedMarkers(tx, threadId, objectiveBrief, trigger.id);
-
-    return {
-      row: {
-        workflowId: workflow.id,
-        triggerId: trigger.id,
-        workflowActive: workflow.active,
-        triggerEnabled: trigger.enabled,
-        preference: workflow.preference,
-      } satisfies ActiveGoalRow,
-      trigger,
-      threadId,
-    };
+    const goal = await insertGoal(tx, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      agentId: context.agentId,
+      chatThreadId: threadId,
+      objective: args.objective,
+      objectiveBrief,
+      createdAt,
+    });
+    await appendGoalEventMarker(tx, {
+      chatThreadId: threadId,
+      event: activeGoalEvent(objectiveBrief),
+    });
+    return { goal, threadId };
   });
 
   if (!created) {
     return {
       kind: "conflict",
-      message: "Complete the existing goal before creating a new one",
+      message: "Clear or complete the existing goal before creating a new one",
     };
   }
 
-  // Refresh any client viewing the thread's automation sidebar so the new goal
-  // shows up live (same realtime signal automations use).
-  await publishChatThreadAutomationsChangedSafely(
-    args.userId,
-    created.threadId,
-  );
-  await publishChatThreadMessageCreatedSafely(args.userId, created.threadId);
+  await publishGoalMarker(args.userId, created.threadId);
 
   return {
     kind: "ok",
-    goal: goalResponse(created.row),
-    // A pre-existing thread already has an in-flight run that drives the first
-    // continuation on completion; a freshly provisioned thread does not, so the
-    // caller must bootstrap its first run.
-    ...(isNewThread ? { bootstrapTrigger: created.trigger } : {}),
+    goal: goalResponse(created.goal),
+    ...(isNewThread
+      ? {
+          bootstrapGoal: {
+            goalId: created.goal.id,
+            orgId: args.orgId,
+            userId: args.userId,
+            threadId: created.threadId,
+            agentId: context.agentId,
+            objective: created.goal.objective,
+            objectiveBrief: created.goal.objectiveBrief,
+          },
+        }
+      : {}),
   };
 }
 
@@ -413,7 +369,7 @@ export async function getCurrentGoal(
     };
   }
 
-  const goal = await loadActiveGoalForThread(db, {
+  const goal = await loadGoalForThread(db, {
     orgId: args.orgId,
     threadId: context.threadId,
   });
@@ -428,78 +384,87 @@ export async function completeCurrentGoal(
   db: Db,
   args: GoalAuth,
 ): Promise<GoalResult> {
-  const goal = await loadGoalForAuth(db, args);
-  if (goal.kind !== "ok") {
-    return goal;
-  }
-
-  const completedAt = nowDate();
-  await db.transaction(async (tx) => {
-    await lockGoalThread(tx, goal.threadId);
-    await tx
-      .update(zeroWorkflows)
-      .set({
-        active: false,
-        preference: mergeGoalPreference(goal.row.preference, {
-          stopReason: null,
-        }),
-        updatedAt: completedAt,
-      })
-      .where(eq(zeroWorkflows.id, goal.row.workflowId));
-    await tx
-      .update(zeroWorkflowTriggers)
-      .set({
-        enabled: false,
-        chatThreadId: null,
-        nextRunAt: null,
-        updatedAt: completedAt,
-      })
-      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
-    // The goal is done: workflow inactive (+ trigger disabled) folds to
-    // "complete", so the composer drops the goal row.
-    await appendGoalStateMarker(tx, {
-      chatThreadId: goal.threadId,
-      eventId: GOAL_WORKFLOW_INACTIVE_EVENT_ID,
-      content: null,
-    });
-    await appendGoalStateMarker(tx, {
-      chatThreadId: goal.threadId,
-      eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-      content: null,
-    });
-  });
-  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
-  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
-
-  return {
-    kind: "ok",
-    goal: goalResponse({
-      ...goal.row,
-      workflowActive: false,
-      preference: mergeGoalPreference(goal.row.preference, {
-        stopReason: null,
-      }),
-    }),
-  };
+  return await setCurrentGoalTerminalState(db, args, "complete");
 }
 
 export async function blockCurrentGoal(
   db: Db,
   args: GoalAuth,
 ): Promise<GoalResult> {
-  const goal = await loadGoalForAuth(db, args);
+  return await setCurrentGoalTerminalState(db, args, "blocked");
+}
+
+async function setCurrentGoalTerminalState(
+  db: Db,
+  args: GoalAuth,
+  status: "blocked" | "complete",
+): Promise<GoalResult> {
+  const goal = await loadGoalForAuth(db, args, { requireFreshRunGoalId: true });
   if (goal.kind !== "ok") {
     return goal;
   }
 
-  return await blockGoalRow(db, {
+  const updatedAt = nowDate();
+  const updated = await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
+    const current = await loadGoalForThread(tx, {
+      orgId: args.orgId,
+      threadId: goal.threadId,
+    });
+    if (!current) {
+      return null;
+    }
+    if (
+      !hasUserControlCapability(args) &&
+      goal.context.runGoalId !== null &&
+      current.id !== goal.context.runGoalId
+    ) {
+      return "stale" as const;
+    }
+    const row = await setGoalStatus(tx, {
+      goalId: current.id,
+      status,
+      updatedAt,
+    });
+    await appendGoalEventMarker(tx, {
+      chatThreadId: goal.threadId,
+      event: hiddenGoalStateEvent(status),
+    });
+    return row;
+  });
+  if (updated === null) {
+    return { kind: "not-found" };
+  }
+  if (updated === "stale") {
+    return {
+      kind: "conflict",
+      message: "The goal changed after this run started",
+    };
+  }
+
+  await publishGoalMarker(args.userId, goal.threadId);
+  return { kind: "ok", goal: goalResponse(updated) };
+}
+
+export async function pauseCurrentGoal(
+  db: Db,
+  args: GoalAuth,
+): Promise<GoalResult> {
+  const goal = await loadGoalForAuth(db, args, {
+    requireFreshRunGoalId: false,
+  });
+  if (goal.kind !== "ok") {
+    return goal;
+  }
+  return await pauseGoalRow(db, {
+    orgId: args.orgId,
     userId: args.userId,
     threadId: goal.threadId,
-    row: goal.row,
+    requireActive: false,
   });
 }
 
-export async function blockGoalForChatThread(
+export async function pauseGoalForChatThread(
   db: Db,
   args: {
     readonly orgId: string;
@@ -507,182 +472,254 @@ export async function blockGoalForChatThread(
     readonly threadId: string;
   },
 ): Promise<GoalResult> {
-  const goal = await loadOwnedActiveGoalForThread(db, args);
+  const goal = await loadOwnedGoalForThread(db, args);
   if (!goal) {
     return { kind: "not-found" };
   }
-
-  return await blockGoalRow(db, {
+  return await pauseGoalRow(db, {
+    orgId: args.orgId,
     userId: args.userId,
     threadId: args.threadId,
-    row: goal,
+    requireActive: false,
   });
 }
 
-async function blockGoalRow(
+async function pauseGoalRow(
   db: Db,
   args: {
+    readonly orgId: string;
     readonly userId: string;
     readonly threadId: string;
-    readonly row: ActiveGoalRow;
+    readonly requireActive: boolean;
   },
 ): Promise<GoalResult> {
-  const blockedAt = nowDate();
-  await db.transaction(async (tx) => {
+  const pausedAt = nowDate();
+  const updated = await db.transaction(async (tx) => {
     await lockGoalThread(tx, args.threadId);
-    await tx
-      .update(zeroWorkflows)
-      .set({
-        preference: mergeGoalPreference(args.row.preference, {
-          stopReason: "blocked",
-        }),
-        updatedAt: blockedAt,
-      })
-      .where(eq(zeroWorkflows.id, args.row.workflowId));
-    await tx
-      .update(zeroWorkflowTriggers)
-      .set({ enabled: false, updatedAt: blockedAt })
-      .where(eq(zeroWorkflowTriggers.id, args.row.triggerId));
-    // Trigger disabled while the workflow stays active folds to "blocked".
-    await appendGoalStateMarker(tx, {
-      chatThreadId: args.threadId,
-      eventId: GOAL_TRIGGER_INACTIVE_EVENT_ID,
-      content: null,
+    const current = await loadLockedOwnedGoal(tx, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      threadId: args.threadId,
     });
+    if (!current) {
+      return null;
+    }
+    if (current.status === "complete") {
+      return "complete" as const;
+    }
+    if (args.requireActive && current.status !== "active") {
+      return null;
+    }
+    const row = await setGoalStatus(tx, {
+      goalId: current.id,
+      status: "paused",
+      updatedAt: pausedAt,
+    });
+    await appendGoalEventMarker(tx, {
+      chatThreadId: args.threadId,
+      event: hiddenGoalStateEvent("paused"),
+    });
+    return row;
   });
-  await publishChatThreadAutomationsChangedSafely(args.userId, args.threadId);
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-
-  return {
-    kind: "ok",
-    goal: goalResponse({
-      ...args.row,
-      triggerEnabled: false,
-      preference: mergeGoalPreference(args.row.preference, {
-        stopReason: "blocked",
-      }),
-    }),
-  };
+  if (updated === null) {
+    return { kind: "not-found" };
+  }
+  if (updated === "complete") {
+    return {
+      kind: "conflict",
+      message: "Completed goals cannot be paused",
+    };
+  }
+  await publishGoalMarker(args.userId, args.threadId);
+  return { kind: "ok", goal: goalResponse(updated) };
 }
 
 export async function resumeCurrentGoal(
   db: Db,
   args: GoalAuth,
 ): Promise<GoalResult> {
-  const goal = await loadGoalForAuth(db, args);
+  const goal = await loadGoalForAuth(db, args, {
+    requireFreshRunGoalId: false,
+  });
   if (goal.kind !== "ok") {
     return goal;
   }
+  if (goal.row.status === "complete") {
+    return {
+      kind: "conflict",
+      message: "Completed goals cannot be resumed",
+    };
+  }
 
   const resumedAt = nowDate();
-  await db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     await lockGoalThread(tx, goal.threadId);
-    await tx
-      .update(zeroWorkflows)
-      .set({
-        preference: mergeGoalPreference(goal.row.preference, {
-          stopReason: null,
-        }),
-        updatedAt: resumedAt,
-      })
-      .where(eq(zeroWorkflows.id, goal.row.workflowId));
-    await tx
-      .update(zeroWorkflowTriggers)
-      .set({ enabled: true, consecutiveFailures: 0, updatedAt: resumedAt })
-      .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
-    // Trigger re-enabled while the workflow is active folds back to "active".
-    await appendGoalStateMarker(tx, {
-      chatThreadId: goal.threadId,
-      eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
-      content: goal.row.triggerId,
+    const current = await loadLockedOwnedGoal(tx, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      threadId: goal.threadId,
     });
+    if (!current) {
+      return null;
+    }
+    if (current.status === "complete") {
+      return "complete" as const;
+    }
+    const row = await setGoalStatus(tx, {
+      goalId: current.id,
+      status: "active",
+      updatedAt: resumedAt,
+    });
+    await appendGoalEventMarker(tx, {
+      chatThreadId: goal.threadId,
+      event: activeGoalEvent(current.objectiveBrief),
+    });
+    return row;
   });
-  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
-  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
-
-  return {
-    kind: "ok",
-    goal: goalResponse({
-      ...goal.row,
-      triggerEnabled: true,
-      preference: mergeGoalPreference(goal.row.preference, {
-        stopReason: null,
-      }),
-    }),
-  };
+  if (updated === null) {
+    return { kind: "not-found" };
+  }
+  if (updated === "complete") {
+    return {
+      kind: "conflict",
+      message: "Completed goals cannot be resumed",
+    };
+  }
+  await publishGoalMarker(args.userId, goal.threadId);
+  return { kind: "ok", goal: goalResponse(updated) };
 }
 
 export async function editCurrentGoal(
   db: Db,
   args: GoalAuth & {
-    readonly objective?: string;
-    readonly tokenBudget?: number;
+    readonly objective: string;
   },
 ): Promise<GoalResult> {
-  const goal = await loadGoalForAuth(db, args);
+  const goal = await loadGoalForAuth(db, args, {
+    requireFreshRunGoalId: false,
+  });
   if (goal.kind !== "ok") {
     return goal;
   }
 
-  // Editing a blocked goal (trigger disabled, workflow active) auto-resumes it:
-  // re-enable the trigger, reset the failure counter, and clear stopReason.
-  const autoResume = !goal.row.triggerEnabled;
   const editedAt = nowDate();
-  const objectiveBrief =
-    args.objective === undefined
-      ? null
-      : await generateGoalObjectiveBrief(args.objective);
-  const nextPreference = mergeGoalPreference(goal.row.preference, {
-    ...(args.objective !== undefined ? { objective: args.objective } : {}),
-    ...(objectiveBrief !== null ? { objectiveBrief } : {}),
-    ...(args.tokenBudget !== undefined
-      ? { tokenBudget: args.tokenBudget }
-      : {}),
-    ...(autoResume ? { stopReason: null } : {}),
-  });
-
-  await db.transaction(async (tx) => {
+  const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
+  const updated = await db.transaction(async (tx) => {
     await lockGoalThread(tx, goal.threadId);
-    await tx
-      .update(zeroWorkflows)
-      .set({ preference: nextPreference, updatedAt: editedAt })
-      .where(eq(zeroWorkflows.id, goal.row.workflowId));
-    if (objectiveBrief !== null) {
-      await appendGoalStateMarker(tx, {
-        chatThreadId: goal.threadId,
-        eventId: GOAL_WORKFLOW_ACTIVE_EVENT_ID,
-        content: objectiveBrief,
-      });
+    const current = await loadLockedOwnedGoal(tx, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      threadId: goal.threadId,
+    });
+    if (!current) {
+      return null;
     }
-    if (autoResume) {
-      await tx
-        .update(zeroWorkflowTriggers)
-        .set({ enabled: true, consecutiveFailures: 0, updatedAt: editedAt })
-        .where(eq(zeroWorkflowTriggers.id, goal.row.triggerId));
-      // Trigger re-enabled while the workflow is active folds back to "active".
-      await appendGoalStateMarker(tx, {
+    if (current.status === "complete") {
+      await tx.delete(threadGoals).where(eq(threadGoals.id, current.id));
+      const replacement = await insertGoal(tx, {
+        orgId: args.orgId,
+        ownerUserId: args.userId,
+        agentId: current.agentId,
         chatThreadId: goal.threadId,
-        eventId: GOAL_TRIGGER_ACTIVE_EVENT_ID,
-        content: goal.row.triggerId,
+        objective: args.objective,
+        objectiveBrief,
+        createdAt: editedAt,
       });
+      await appendGoalEventMarker(tx, {
+        chatThreadId: goal.threadId,
+        event: activeGoalEvent(objectiveBrief),
+      });
+      return replacement;
     }
-  });
-  await publishChatThreadAutomationsChangedSafely(args.userId, goal.threadId);
-  await publishChatThreadMessageCreatedSafely(args.userId, goal.threadId);
 
-  return {
-    kind: "ok",
-    goal: goalResponse({
-      ...goal.row,
-      preference: nextPreference,
-      triggerEnabled: goal.row.triggerEnabled || autoResume,
-    }),
-  };
+    const [row] = await tx
+      .update(threadGoals)
+      .set({
+        objective: args.objective,
+        objectiveBrief,
+        status: "active",
+        updatedAt: editedAt,
+      })
+      .where(eq(threadGoals.id, current.id))
+      .returning();
+    if (!row) {
+      throw new Error("Failed to edit thread goal");
+    }
+    await appendGoalEventMarker(tx, {
+      chatThreadId: goal.threadId,
+      event: activeGoalEvent(objectiveBrief),
+    });
+    return row;
+  });
+  if (!updated) {
+    return { kind: "not-found" };
+  }
+  await publishGoalMarker(args.userId, goal.threadId);
+  return { kind: "ok", goal: goalResponse(updated) };
+}
+
+export async function clearCurrentGoal(
+  db: Db,
+  args: GoalAuth,
+): Promise<ClearGoalResult> {
+  const goal = await loadGoalForAuth(db, args, {
+    requireFreshRunGoalId: false,
+  });
+  if (goal.kind !== "ok") {
+    return goal;
+  }
+
+  const cleared = await db.transaction(async (tx) => {
+    await lockGoalThread(tx, goal.threadId);
+    const current = await loadLockedOwnedGoal(tx, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      threadId: goal.threadId,
+    });
+    if (!current) {
+      return false;
+    }
+    await tx.delete(threadGoals).where(eq(threadGoals.id, current.id));
+    await appendGoalEventMarker(tx, {
+      chatThreadId: goal.threadId,
+      event: clearedGoalEvent(),
+    });
+    return true;
+  });
+  if (!cleared) {
+    return { kind: "not-found" };
+  }
+  await publishGoalMarker(args.userId, goal.threadId);
+  return { kind: "ok", cleared: true };
+}
+
+export async function pauseActiveGoalForThread(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<GoalResult> {
+  const goal = await loadActiveGoalForThread(db, {
+    orgId: args.orgId,
+    threadId: args.threadId,
+  });
+  if (!goal) {
+    return { kind: "not-found" };
+  }
+  return await pauseGoalRow(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    threadId: args.threadId,
+    requireActive: true,
+  });
 }
 
 async function loadGoalForAuth(
   db: ReadonlyDb,
   args: GoalAuth,
+  options: { readonly requireFreshRunGoalId: boolean },
 ): Promise<GoalRowResult> {
   const context = await currentGoalContext(db, args);
   if (!context || context.threadId === null) {
@@ -692,12 +729,22 @@ async function loadGoalForAuth(
     };
   }
 
-  const row = await loadActiveGoalForThread(db, {
+  const row = await loadGoalForThread(db, {
     orgId: args.orgId,
     threadId: context.threadId,
   });
   if (!row) {
     return { kind: "not-found" };
   }
-  return { kind: "ok", row, threadId: context.threadId };
+  if (
+    options.requireFreshRunGoalId &&
+    !hasUserControlCapability(args) &&
+    context.runGoalId !== row.id
+  ) {
+    return {
+      kind: "conflict",
+      message: "The goal changed after this run started",
+    };
+  }
+  return { kind: "ok", row, threadId: context.threadId, context };
 }

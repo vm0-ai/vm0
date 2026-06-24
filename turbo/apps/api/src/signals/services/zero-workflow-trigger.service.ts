@@ -324,9 +324,7 @@ export async function loadWorkflowTriggers(
 
 /**
  * List workflow triggers the caller owns that are bound to a chat thread,
- * joined with the workflow identity needed by the chat sidebar. Goal
- * `thread-idle` triggers stay behind the goal API and are intentionally
- * excluded here.
+ * joined with the workflow identity needed by the chat sidebar.
  */
 export async function listThreadBoundWorkflowTriggers(
   db: ReadonlyDb,
@@ -348,7 +346,6 @@ export async function listThreadBoundWorkflowTriggers(
         eq(zeroWorkflowTriggers.orgId, args.orgId),
         eq(zeroWorkflowTriggers.ownerUserId, args.userId),
         eq(zeroWorkflowTriggers.chatThreadId, args.threadId),
-        eq(zeroWorkflows.type, "workflow"),
       ),
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));

@@ -12,6 +12,7 @@ import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
 import { automations, automationTriggers } from "./automation";
 import { zeroWorkflowTriggers } from "./zero-workflow";
+import { threadGoals } from "./thread-goal";
 
 /**
  * Zero Runs table
@@ -54,6 +55,13 @@ export const zeroRuns = pgTable(
     // Stable grouping key copied from automations / workflow triggers for
     // chat rendering of repeated automated runs.
     runGroupId: uuid("run_group_id"),
+    // Run provenance for autonomous thread-goal continuation.
+    goalId: uuid("goal_id").references(
+      (): AnyPgColumn => {
+        return threadGoals.id;
+      },
+      { onDelete: "set null" },
+    ),
     // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
     triggerAgentId: uuid("trigger_agent_id").references(
       () => {
@@ -95,6 +103,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_run_group")
         .on(table.runGroupId)
         .where(sql`run_group_id IS NOT NULL`),
+      index("idx_zero_runs_goal")
+        .on(table.goalId)
+        .where(sql`goal_id IS NOT NULL`),
     ];
   },
 );

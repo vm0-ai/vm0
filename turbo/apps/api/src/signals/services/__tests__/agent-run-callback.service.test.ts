@@ -19,13 +19,10 @@ import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflows,
-  zeroWorkflowTriggers,
-} from "@vm0/db/schema/zero-workflow";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-helpers";
@@ -1673,33 +1670,17 @@ async function seedGoalForThread(args: {
   readonly threadId: string;
   readonly agentId: string;
   readonly objective: string;
-  readonly workflowActive: boolean;
-  readonly triggerEnabled: boolean;
-  readonly consecutiveFailures?: number;
+  readonly status: "active" | "paused" | "blocked" | "complete";
 }): Promise<void> {
   const db = store.set(writeDb$);
-  const [workflow] = await db
-    .insert(zeroWorkflows)
-    .values({
-      orgId: args.orgId,
-      agentId: args.agentId,
-      name: `goal-${randomUUID().slice(0, 8)}`,
-      type: "goal",
-      active: args.workflowActive,
-      preference: { version: 1, objective: args.objective },
-      ownerUserId: args.userId,
-      createdBy: args.userId,
-    })
-    .returning({ id: zeroWorkflows.id });
-  await db.insert(zeroWorkflowTriggers).values({
+  await db.insert(threadGoals).values({
     orgId: args.orgId,
-    workflowId: workflow!.id,
     ownerUserId: args.userId,
-    kind: "event",
-    eventType: "thread-idle",
-    enabled: args.triggerEnabled,
+    agentId: args.agentId,
     chatThreadId: args.threadId,
-    consecutiveFailures: args.consecutiveFailures ?? 0,
+    status: args.status,
+    objective: args.objective,
+    objectiveBrief: args.objective,
   });
   // Goal continuation only runs when the GoalWorkflows feature is enabled.
   await db.insert(userFeatureSwitches).values({
@@ -1724,8 +1705,7 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
       threadId: fixture.threadId,
       agentId: fixture.agentId,
       objective: "Keep the changelog up to date",
-      workflowActive: true,
-      triggerEnabled: true,
+      status: "active",
     });
     mockChatOutput("Made progress this turn.");
     mockChatOpenRouterCompletions();
@@ -1757,16 +1737,15 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
   it("sends the push once the goal reaches a terminal state", async () => {
     const fixture = await seedChatCallbackRun({ status: "completed" });
     await enablePushDelivery(fixture.userId);
-    // completeCurrentGoal runs during the run and deactivates the workflow, so
-    // by the callback the goal is already terminal.
+    // completeCurrentGoal runs during the run, so by the callback the goal is
+    // already terminal.
     await seedGoalForThread({
       orgId: fixture.orgId,
       userId: fixture.userId,
       threadId: fixture.threadId,
       agentId: fixture.agentId,
       objective: "Ship the onboarding revamp",
-      workflowActive: false,
-      triggerEnabled: false,
+      status: "complete",
     });
     mockChatOutput("Goal objective achieved.");
     mockChatOpenRouterCompletions();
@@ -1802,7 +1781,7 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
     ).toMatchObject({ url: `/chats/${fixture.threadId}` });
   });
 
-  it("stays silent on a transient goal failure that will retry", async () => {
+  it("sends the push when a failed goal run pauses the goal", async () => {
     const fixture = await seedChatCallbackRun({
       status: "failed",
       error: "Run failed",
@@ -1814,51 +1793,7 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
       threadId: fixture.threadId,
       agentId: fixture.agentId,
       objective: "Triage the inbox",
-      workflowActive: true,
-      triggerEnabled: true,
-      consecutiveFailures: 0,
-    });
-    await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: fixture.runId,
-        internalKind: "chat",
-        payload: {
-          threadId: fixture.threadId,
-          agentId: fixture.agentId,
-          isGoalRun: true,
-        },
-      },
-      context.signal,
-    );
-    const db = store.set(writeDb$);
-
-    await store.set(
-      dispatchRunCallbacks$,
-      { db, runId: fixture.runId, status: "failed" },
-      context.signal,
-    );
-    await flushWaitUntilForTest();
-
-    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
-  });
-
-  it("sends an auto-stop push when repeated failures stop the goal", async () => {
-    const fixture = await seedChatCallbackRun({
-      status: "failed",
-      error: "Run failed",
-    });
-    await enablePushDelivery(fixture.userId);
-    // Two prior failures: this terminal failure crosses the auto-stop threshold.
-    await seedGoalForThread({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      threadId: fixture.threadId,
-      agentId: fixture.agentId,
-      objective: "Reconcile the ledger",
-      workflowActive: true,
-      triggerEnabled: true,
-      consecutiveFailures: 2,
+      status: "active",
     });
     await store.set(
       seedAgentRunCallback$,
@@ -1890,10 +1825,17 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
     ).toMatchObject({
-      title: "Reconcile the ledger",
-      body: "Goal stopped automatically after repeated failures",
+      title: "Summarize the chat callback.",
+      body: "Task failed: Run failed",
       url: `/chats/${fixture.threadId}`,
     });
+
+    const [goal] = await db
+      .select({ status: threadGoals.status })
+      .from(threadGoals)
+      .where(eq(threadGoals.chatThreadId, fixture.threadId))
+      .limit(1);
+    expect(goal?.status).toBe("paused");
   });
 });
 

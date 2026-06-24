@@ -26,8 +26,8 @@ const PAT_TOKEN_PREFIX = "vm0_pat_";
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["goal:read", FeatureSwitchKey.GoalWorkflows],
-  ["goal:write", FeatureSwitchKey.GoalWorkflows],
-  ["goal-objective:write", FeatureSwitchKey.GoalWorkflows],
+  ["goal:agent-result:write", FeatureSwitchKey.GoalWorkflows],
+  ["goal:user-control:write", FeatureSwitchKey.GoalWorkflows],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -265,10 +265,10 @@ export function generateZeroToken(
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
       continue;
     }
-    // Goal continuation runs are autonomous and must not edit their own
-    // objective; goal-objective:write is user-driven only.
+    // Workflow-event runs are autonomous and must not create, edit, pause,
+    // resume, or clear goals. They can still report terminal agent results.
     if (
-      capability === "goal-objective:write" &&
+      capability === "goal:user-control:write" &&
       options?.triggerSource === "workflow-event"
     ) {
       continue;

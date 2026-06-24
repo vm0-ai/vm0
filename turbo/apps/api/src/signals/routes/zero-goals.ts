@@ -14,17 +14,20 @@ import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.servi
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
 import {
-  blockGoalForChatThread,
   blockCurrentGoal,
+  clearCurrentGoal,
   completeCurrentGoal,
   createGoalForCurrentThread,
   editCurrentGoal,
   getCurrentGoal,
+  pauseCurrentGoal,
+  pauseGoalForChatThread,
   resumeCurrentGoal,
   type GoalResult,
 } from "../services/zero-goal.service";
 import type { RouteEntry } from "../route";
 import type { AuthContext } from "../../types/auth";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
 const log = logger("ZeroGoals");
 
@@ -35,31 +38,37 @@ const goalReadAuth = {
   accept: ["zero"],
 } as const;
 
-const goalWriteAuth = {
+const goalAgentResultWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
-  requiredCapability: "goal:write",
+  requiredCapability: "goal:agent-result:write",
   accept: ["zero"],
 } as const;
 
-const sessionGoalWriteAuth = {
+const goalUserControlWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
-  requiredCapability: "goal:write",
+  requiredCapability: "goal:user-control:write",
+  accept: ["zero"],
+} as const;
+
+const sessionGoalUserControlWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "goal:user-control:write",
   accept: ["session"],
-} as const;
-
-const goalEditAuth = {
-  requireOrganization: true,
-  missingOrganizationStatus: 401,
-  requiredCapability: "goal-objective:write",
-  accept: ["zero"],
 } as const;
 
 interface GoalAuth {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}
+
+interface SessionGoalAuth {
+  readonly orgId: string;
+  readonly userId: string;
 }
 
 function forbidden(message: string) {
@@ -73,12 +82,26 @@ function goalAuth(auth: AuthContext & { readonly orgId: string }): GoalAuth {
   if (auth.tokenType !== "zero") {
     throw new Error("Goal routes require zero token auth");
   }
-  return { orgId: auth.orgId, userId: auth.userId, runId: auth.runId };
+  return {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    runId: auth.runId,
+    capabilities: auth.capabilities,
+  };
+}
+
+function sessionGoalAuth(
+  auth: AuthContext & { readonly orgId: string },
+): SessionGoalAuth {
+  if (auth.tokenType !== "session") {
+    throw new Error("Session goal routes require session auth");
+  }
+  return { orgId: auth.orgId, userId: auth.userId };
 }
 
 async function goalFeatureEnabled(
   db: ReadonlyDb,
-  auth: GoalAuth,
+  auth: Pick<GoalAuth, "orgId" | "userId">,
 ): Promise<boolean> {
   const context = await loadUserFeatureSwitchContext(
     db,
@@ -88,7 +111,9 @@ async function goalFeatureEnabled(
   return isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, context);
 }
 
-function goalErrorResponse(result: GoalResult) {
+function goalErrorResponse(
+  result: Exclude<GoalResult, { readonly kind: "ok" }>,
+) {
   switch (result.kind) {
     case "not-found": {
       return notFound("Goal not found");
@@ -98,9 +123,6 @@ function goalErrorResponse(result: GoalResult) {
     }
     case "conflict": {
       return conflict(result.message);
-    }
-    default: {
-      throw new Error(`Unexpected goal result: ${result.kind}`);
     }
   }
 }
@@ -124,22 +146,15 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = await createGoalForCurrentThread(db, {
     ...auth,
     objective: bodyResult.data.objective,
-    ...(bodyResult.data.tokenBudget
-      ? { tokenBudget: bodyResult.data.tokenBudget }
-      : {}),
   });
   signal.throwIfAborted();
   if (result.kind === "ok") {
-    // A freshly provisioned thread has no in-flight run to drive the first
-    // goal turn, so enqueue it here. Existing threads continue from their
-    // current run's terminal callback. Best-effort: a failed first enqueue
-    // must not roll back the created goal, which can still be resumed later.
-    if (result.bootstrapTrigger) {
+    if (result.bootstrapGoal) {
       const bootstrap = await settle(
         set(
           bootstrapGoalRun$,
           {
-            trigger: result.bootstrapTrigger,
+            goal: result.bootstrapGoal,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
           signal,
@@ -148,7 +163,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       );
       if (!bootstrap.ok) {
         log.warn("Failed to bootstrap goal run for provisioned thread", {
-          triggerId: result.bootstrapTrigger.id,
+          goalId: result.bootstrapGoal.goalId,
           error:
             bootstrap.error instanceof Error
               ? bootstrap.error.message
@@ -156,7 +171,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         });
       } else if (bootstrap.value.kind !== "ok") {
         log.warn("Goal bootstrap run was not enqueued", {
-          triggerId: result.bootstrapTrigger.id,
+          goalId: result.bootstrapGoal.goalId,
           reason: bootstrap.value.kind,
         });
       }
@@ -184,12 +199,7 @@ const editGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const result = await editCurrentGoal(db, {
     ...auth,
-    ...(bodyResult.data.objective !== undefined
-      ? { objective: bodyResult.data.objective }
-      : {}),
-    ...(bodyResult.data.tokenBudget !== undefined
-      ? { tokenBudget: bodyResult.data.tokenBudget }
-      : {}),
+    objective: bodyResult.data.objective,
   });
   signal.throwIfAborted();
   if (result.kind === "ok") {
@@ -248,11 +258,33 @@ const blockGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
-const blockChatThreadGoalInner$ = command(
+const pauseGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = goalAuth(get(organizationAuthContext$));
+  const db = set(writeDb$);
+  if (!(await goalFeatureEnabled(db, auth))) {
+    return forbidden("Goal workflows are not enabled");
+  }
+  signal.throwIfAborted();
+
+  const result = await pauseCurrentGoal(db, auth);
+  signal.throwIfAborted();
+  if (result.kind === "ok") {
+    return { status: 200 as const, body: result.goal };
+  }
+  return goalErrorResponse(result);
+});
+
+const pauseChatThreadGoalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroGoalsContract.blockForChatThread));
-    const result = await blockGoalForChatThread(set(writeDb$), {
+    const auth = sessionGoalAuth(get(organizationAuthContext$));
+    const params = get(pathParamsOf(zeroGoalsContract.pauseForChatThread));
+    const db = set(writeDb$);
+    if (!(await goalFeatureEnabled(db, auth))) {
+      return forbidden("Goal workflows are not enabled");
+    }
+    signal.throwIfAborted();
+
+    const result = await pauseGoalForChatThread(db, {
       orgId: auth.orgId,
       userId: auth.userId,
       threadId: params.threadId,
@@ -281,14 +313,30 @@ const resumeGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
+const clearGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = goalAuth(get(organizationAuthContext$));
+  const db = set(writeDb$);
+  if (!(await goalFeatureEnabled(db, auth))) {
+    return forbidden("Goal workflows are not enabled");
+  }
+  signal.throwIfAborted();
+
+  const result = await clearCurrentGoal(db, auth);
+  signal.throwIfAborted();
+  if (result.kind === "ok") {
+    return { status: 200 as const, body: { cleared: true as const } };
+  }
+  return goalErrorResponse(result);
+});
+
 export const zeroGoalsRoutes: readonly RouteEntry[] = [
   {
     route: zeroGoalsContract.create,
-    handler: authRoute(goalWriteAuth, createGoalInner$),
+    handler: authRoute(goalUserControlWriteAuth, createGoalInner$),
   },
   {
     route: zeroGoalsContract.edit,
-    handler: authRoute(goalEditAuth, editGoalInner$),
+    handler: authRoute(goalUserControlWriteAuth, editGoalInner$),
   },
   {
     route: zeroGoalsContract.get,
@@ -296,18 +344,29 @@ export const zeroGoalsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroGoalsContract.complete,
-    handler: authRoute(goalWriteAuth, completeGoalInner$),
+    handler: authRoute(goalAgentResultWriteAuth, completeGoalInner$),
   },
   {
     route: zeroGoalsContract.block,
-    handler: authRoute(goalWriteAuth, blockGoalInner$),
+    handler: authRoute(goalAgentResultWriteAuth, blockGoalInner$),
   },
   {
-    route: zeroGoalsContract.blockForChatThread,
-    handler: authRoute(sessionGoalWriteAuth, blockChatThreadGoalInner$),
+    route: zeroGoalsContract.pause,
+    handler: authRoute(goalUserControlWriteAuth, pauseGoalInner$),
+  },
+  {
+    route: zeroGoalsContract.pauseForChatThread,
+    handler: authRoute(
+      sessionGoalUserControlWriteAuth,
+      pauseChatThreadGoalInner$,
+    ),
   },
   {
     route: zeroGoalsContract.resume,
-    handler: authRoute(goalWriteAuth, resumeGoalInner$),
+    handler: authRoute(goalUserControlWriteAuth, resumeGoalInner$),
+  },
+  {
+    route: zeroGoalsContract.clear,
+    handler: authRoute(goalUserControlWriteAuth, clearGoalInner$),
   },
 ];

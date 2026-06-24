@@ -46,7 +46,7 @@ describe("ZERO_CAPABILITIES", () => {
 
   it("should follow {resource}:{action} naming pattern", () => {
     for (const cap of ZERO_CAPABILITIES) {
-      expect(cap).toMatch(/^[a-z-]+:(read|write|delete)$/);
+      expect(cap).toMatch(/^[a-z-]+(?::[a-z-]+)?:(read|write|delete)$/);
     }
   });
 
@@ -100,8 +100,8 @@ describe("ZERO_CAPABILITIES", () => {
 
   it("should include goal read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("goal:read");
-    expect(ZERO_CAPABILITIES).toContain("goal:write");
-    expect(ZERO_CAPABILITIES).toContain("goal-objective:write");
+    expect(ZERO_CAPABILITIES).toContain("goal:agent-result:write");
+    expect(ZERO_CAPABILITIES).toContain("goal:user-control:write");
   });
 });
 

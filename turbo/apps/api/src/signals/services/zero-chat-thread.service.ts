@@ -24,6 +24,7 @@ import {
   type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
   type ChatMessageAutomationSnapshot,
+  type ChatMessageGoalEvent,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -71,6 +72,7 @@ type ChatMessageRow = {
   readonly runGroupId: string | null;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
+  readonly goalEvent: ChatMessageGoalEvent | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
@@ -135,6 +137,7 @@ const messageColumns = {
   runGroupId: chatMessages.runGroupId,
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
+  goalEvent: chatMessages.goalEvent,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -410,6 +413,7 @@ function toPagedMessage(
       runGroupId: row.runGroupId ?? undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
+      goalEvent: row.goalEvent ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,

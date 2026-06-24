@@ -3487,6 +3487,13 @@
       "when": 1782277469004,
       "tag": "0497_backfill_chat_run_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1782280304785,
+      "tag": "0498_thread_goals",
+      "breakpoints": true
     }
   ]
 }

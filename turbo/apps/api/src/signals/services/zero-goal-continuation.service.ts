@@ -1,36 +1,35 @@
-import {
-  zeroGoalPreferenceSchema,
-  type ZeroGoalPreference,
-  type ZeroGoalStopReason,
-} from "@vm0/api-contracts/contracts/zero-goals";
+import { randomBytes } from "node:crypto";
+
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { sendUserPushNotifications } from "./zero-push-notifications.service";
+import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type RunFailure,
-  type RunWorkflowTriggerResult,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
+  postAutomationUserMessage,
+  resolveAutomationChatThreadModelPin,
+} from "./zero-chat-automation-message.service";
+import {
+  pauseActiveGoalForThread,
+  loadActiveGoalForThread,
+  type GoalBootstrap,
+} from "./zero-goal.service";
+import {
+  resolveModelFirstProviderAdmission,
+  type ModelFirstPin,
+} from "./zero-model-selection.service";
+import { createZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-continuation");
 
-const MAX_CONSECUTIVE_FAILURES = 3;
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
@@ -46,22 +45,45 @@ interface TerminatingRunContext {
 type GoalContinuationResult =
   | { readonly kind: "skipped"; readonly reason: string }
   | { readonly kind: "continued"; readonly runId: string }
-  | { readonly kind: "paused"; readonly triggerId: string }
-  | {
-      readonly kind: "auto-stopped";
-      readonly triggerId: string;
-      readonly consecutiveFailures: number;
-    }
+  | { readonly kind: "paused"; readonly goalId: string }
   | {
       readonly kind: "failed-to-enqueue";
-      readonly triggerId: string;
-      readonly consecutiveFailures: number;
+      readonly goalId: string;
       readonly error: string;
     };
 
-interface FailureUpdateResult {
-  readonly disabled: boolean;
-  readonly consecutiveFailures: number;
+export type RunGoalResult =
+  | { readonly kind: "ok"; readonly runId: string }
+  | { readonly kind: "conflict"; readonly message: string }
+  | {
+      readonly kind: "run_error";
+      readonly response: {
+        readonly status: number;
+        readonly body: {
+          readonly error: { readonly message: string; readonly code: string };
+        };
+      };
+    };
+
+interface InternalRunCallbackInput {
+  readonly internalKind: InternalRunCallbackKind;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+type ModelContext =
+  | {
+      readonly ok: true;
+      readonly modelPin: ModelFirstPin;
+      readonly effectiveModelProvider: string | null | undefined;
+    }
+  | {
+      readonly ok: false;
+      readonly failure: Exclude<RunGoalResult, { kind: "ok" }>;
+    };
+
+function generateCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
 }
 
 function isTerminalStatus(status: string): status is TerminalRunStatus {
@@ -85,28 +107,20 @@ function agentSessionIdFromResult(result: unknown): string | null {
   return typeof agentSessionId === "string" ? agentSessionId : null;
 }
 
-function isRunFailure(error: unknown): error is RunFailure {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    (error.kind === "conflict" || error.kind === "run_error")
-  );
-}
-
-function failureMessage(error: unknown): string {
-  if (!isRunFailure(error)) {
-    return error instanceof Error ? error.message : String(error);
+function failureMessage(error: RunGoalResult): string {
+  if (error.kind === "conflict") {
+    return error.message;
   }
   if (error.kind === "run_error") {
     return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
   }
-  return error.message;
+  return `Unexpected successful run result: ${error.runId}`;
 }
 
-function buildGoalContinuationSystemPrompt(
-  preference: ZeroGoalPreference,
-): string {
+function buildGoalContinuationSystemPrompt(goal: {
+  readonly objective: string;
+  readonly objectiveBrief: string;
+}): string {
   const lines = [
     "# Current context",
     "You are autonomously continuing a persistent goal on this web chat thread.",
@@ -114,26 +128,10 @@ function buildGoalContinuationSystemPrompt(
     "",
     "# Active thread goal",
     "",
-    preference.objective,
+    goal.objective,
   ];
-  if (
-    preference.objectiveBrief &&
-    preference.objectiveBrief !== preference.objective
-  ) {
-    lines.push(
-      "",
-      "# User-visible objective brief",
-      "",
-      preference.objectiveBrief,
-    );
-  }
-  if (preference.tokenBudget) {
-    lines.push(
-      "",
-      "# Token budget",
-      "",
-      `Soft budget: about ${preference.tokenBudget} tokens across the whole goal. Be economical; if you have clearly exhausted it without completing, run \`zero goal block\` and explain.`,
-    );
+  if (goal.objectiveBrief !== goal.objective) {
+    lines.push("", "# User-visible objective brief", "", goal.objectiveBrief);
   }
   lines.push(
     "",
@@ -141,21 +139,19 @@ function buildGoalContinuationSystemPrompt(
     "",
     "- Make concrete progress this turn, then end the turn. The goal automatically continues on the next idle.",
     "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors).",
-    "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state (not your assumptions); only then run `zero goal complete`.",
+    "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `zero goal complete`.",
     "- If the same blocker stops you for 3 consecutive turns, run `zero goal block` and explain why.",
     "- Inspect goal state anytime with `zero goal get`.",
-    "- Do not stop to ask the user and wait — this is an autonomous continuation; act on the best available information.",
+    "- Do not create, edit, pause, resume, or clear goals from an autonomous goal continuation run.",
+    "- Do not stop to ask the user and wait; act on the best available information.",
   );
   return lines.join("\n");
 }
 
-/**
- * The continuation user prompt shown in the chat. Keep it short and focused on
- * what the goal is trying to accomplish; the full objective and operating rules
- * are carried in the appended system prompt.
- */
-function buildGoalContinuationPrompt(preference: ZeroGoalPreference): string {
-  return preference.objectiveBrief ?? preference.objective;
+function buildGoalContinuationPrompt(goal: {
+  readonly objectiveBrief: string;
+}): string {
+  return goal.objectiveBrief;
 }
 
 async function loadTerminatingRun(
@@ -176,85 +172,6 @@ async function loadTerminatingRun(
     .limit(1);
 
   return row ?? null;
-}
-
-interface EnabledGoal {
-  readonly trigger: TriggerRow;
-  // Derived from the workflow row under hard 1:N; the trigger no longer carries
-  // an agentId column.
-  readonly agentId: string;
-  readonly preference: ZeroGoalPreference;
-}
-
-async function loadEnabledGoalTrigger(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly chatThreadId: string;
-  },
-): Promise<EnabledGoal | null> {
-  const [row] = await db
-    .select({
-      trigger: zeroWorkflowTriggers,
-      agentId: zeroWorkflows.agentId,
-      preference: zeroWorkflows.preference,
-    })
-    .from(zeroWorkflowTriggers)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-    )
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.chatThreadId, args.chatThreadId),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.eventType, "thread-idle"),
-        eq(zeroWorkflowTriggers.enabled, true),
-        isNotNull(zeroWorkflowTriggers.chatThreadId),
-        eq(zeroWorkflows.type, "goal"),
-        eq(zeroWorkflows.active, true),
-      ),
-    )
-    .limit(1);
-
-  if (!row) {
-    return null;
-  }
-  return {
-    trigger: row.trigger,
-    agentId: row.agentId,
-    preference: zeroGoalPreferenceSchema.parse(row.preference),
-  };
-}
-
-async function loadGoalPreference(
-  db: Db,
-  workflowId: string,
-): Promise<{
-  readonly agentId: string;
-  readonly preference: ZeroGoalPreference;
-} | null> {
-  const [row] = await db
-    .select({
-      agentId: zeroWorkflows.agentId,
-      preference: zeroWorkflows.preference,
-    })
-    .from(zeroWorkflows)
-    .where(
-      and(eq(zeroWorkflows.id, workflowId), eq(zeroWorkflows.type, "goal")),
-    )
-    .limit(1);
-
-  if (!row) {
-    return null;
-  }
-  return {
-    agentId: row.agentId,
-    preference: zeroGoalPreferenceSchema.parse(row.preference),
-  };
 }
 
 async function featureEnabledForRun(
@@ -308,142 +225,160 @@ async function latestSessionIdForThread(
   return undefined;
 }
 
-/**
- * Notify the user that a goal stopped on its own after repeated failures.
- *
- * Goal-triggered runs suppress their per-iteration push in the chat callback;
- * the only failure worth surfacing is the terminal auto-stop, which is decided
- * here (after the chat callback), so this is where that push is sent.
- */
-async function notifyGoalAutoStopped(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly chatThreadId: string;
-    readonly objective: string;
-  },
-): Promise<void> {
-  await sendUserPushNotifications({
-    db,
-    userId: args.userId,
-    notification: {
-      title: args.objective.slice(0, 60),
-      body: "Goal stopped automatically after repeated failures",
-      url: `/chats/${args.chatThreadId}`,
+function buildGoalChatCallbacks(args: {
+  readonly threadId: string;
+  readonly agentId: string;
+}): readonly InternalRunCallbackInput[] {
+  return [
+    {
+      internalKind: "chat",
+      secret: generateCallbackSecret(),
+      payload: {
+        threadId: args.threadId,
+        agentId: args.agentId,
+        isGoalRun: true,
+      },
     },
-  });
+  ];
 }
 
-// Disables a goal trigger after a user cancel, recording the "paused" stop
-// reason so the goal surfaces as paused rather than agent-blocked.
-async function disableGoalTrigger(
-  db: Db,
-  trigger: { readonly id: string; readonly workflowId: string },
-): Promise<void> {
-  const currentTime = nowDate();
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-    .where(eq(zeroWorkflowTriggers.id, trigger.id));
-  await setGoalStopReason(db, trigger.workflowId, "paused");
-}
-
-/**
- * Record why a goal stopped in the workflow's preference jsonb. The status enum
- * stays "blocked"; stopReason is an additional field that distinguishes a manual
- * cancel ("paused") from a repeated-failure auto-stop ("failed").
- */
-async function setGoalStopReason(
-  db: Db,
-  workflowId: string,
-  stopReason: ZeroGoalStopReason,
-): Promise<void> {
-  const goal = await loadGoalPreference(db, workflowId);
-  if (!goal) {
-    return;
-  }
-  await db
-    .update(zeroWorkflows)
-    .set({
-      preference: { ...goal.preference, stopReason },
-      updatedAt: nowDate(),
-    })
-    .where(eq(zeroWorkflows.id, workflowId));
-}
-
-async function resetGoalTriggerFailures(
-  db: Db,
-  triggerId: string,
-): Promise<void> {
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ consecutiveFailures: 0, updatedAt: nowDate() })
-    .where(eq(zeroWorkflowTriggers.id, triggerId));
-}
-
-// Increments the failure counter and, once the threshold disables the trigger,
-// records the "failed" stop reason so the goal surfaces the auto-stop cause.
-async function incrementGoalTriggerFailures(
-  db: Db,
-  trigger: { readonly id: string; readonly workflowId: string },
-): Promise<FailureUpdateResult> {
-  const currentTime = nowDate();
-  const [updated] = await db
-    .update(zeroWorkflowTriggers)
-    .set({
-      consecutiveFailures: sql<number>`${zeroWorkflowTriggers.consecutiveFailures} + 1`,
-      enabled: sql<boolean>`(${zeroWorkflowTriggers.consecutiveFailures} + 1) < ${MAX_CONSECUTIVE_FAILURES}`,
-      nextRunAt: null,
-      updatedAt: currentTime,
-    })
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.id, trigger.id),
-        eq(zeroWorkflowTriggers.enabled, true),
-      ),
-    )
-    .returning({
-      consecutiveFailures: zeroWorkflowTriggers.consecutiveFailures,
-      enabled: zeroWorkflowTriggers.enabled,
-    });
-
-  const result: FailureUpdateResult = updated
-    ? {
-        disabled: !updated.enabled,
-        consecutiveFailures: updated.consecutiveFailures,
-      }
-    : { disabled: true, consecutiveFailures: MAX_CONSECUTIVE_FAILURES };
-  if (result.disabled) {
-    await setGoalStopReason(db, trigger.workflowId, "failed");
-  }
-  return result;
-}
-
-/**
- * Notify the user and produce the `auto-stopped` continuation result, shared by
- * the run-failure and enqueue-failure paths.
- */
-async function autoStopGoalAndNotify(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly chatThreadId: string;
-    readonly objective: string;
-    readonly triggerId: string;
-    readonly consecutiveFailures: number;
-  },
-): Promise<GoalContinuationResult> {
-  await notifyGoalAutoStopped(db, {
+async function resolveModelContext(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly signal: AbortSignal;
+}): Promise<ModelContext> {
+  const threadModelPin = await resolveAutomationChatThreadModelPin({
+    db: args.db,
+    orgId: args.orgId,
     userId: args.userId,
-    chatThreadId: args.chatThreadId,
-    objective: args.objective,
+    threadId: args.chatThreadId,
   });
+  args.signal.throwIfAborted();
+  if ("status" in threadModelPin) {
+    return {
+      ok: false,
+      failure: {
+        kind: "run_error",
+        response: { status: 400, body: threadModelPin.body },
+      },
+    };
+  }
+
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    modelPin: threadModelPin,
+    requestedModelProvider: undefined,
+  });
+  args.signal.throwIfAborted();
+  if (providerAdmission.error) {
+    return {
+      ok: false,
+      failure: { kind: "run_error", response: providerAdmission.error },
+    };
+  }
+
   return {
-    kind: "auto-stopped",
-    triggerId: args.triggerId,
-    consecutiveFailures: args.consecutiveFailures,
+    ok: true,
+    modelPin: threadModelPin,
+    effectiveModelProvider: providerAdmission.effectiveModelProvider,
   };
 }
+
+export const runGoalNow$ = command(
+  async (
+    { set },
+    args: {
+      readonly goal: GoalBootstrap;
+      readonly sessionId?: string;
+      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+    },
+    signal: AbortSignal,
+  ): Promise<RunGoalResult> => {
+    const db = set(writeDb$);
+    const goal = args.goal;
+
+    const modelContext = await resolveModelContext({
+      db,
+      orgId: goal.orgId,
+      userId: goal.userId,
+      chatThreadId: goal.threadId,
+      signal,
+    });
+    if (!modelContext.ok) {
+      return modelContext.failure;
+    }
+    const { modelPin, effectiveModelProvider } = modelContext;
+
+    const prompt = buildGoalContinuationPrompt(goal);
+    const result = await set(
+      createZeroRun$,
+      {
+        auth: {
+          orgId: goal.orgId,
+          orgRole: "member",
+          userId: goal.userId,
+          tokenType: "session",
+        },
+        body: {
+          prompt,
+          agentId: goal.agentId,
+          ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+          ...(effectiveModelProvider
+            ? { modelProvider: effectiveModelProvider }
+            : {}),
+        },
+        apiStartTime: now(),
+        triggerSource: "workflow-event",
+        chatThreadId: goal.threadId,
+        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
+        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal),
+        callbacks: buildGoalChatCallbacks({
+          threadId: goal.threadId,
+          agentId: goal.agentId,
+        }),
+        zeroRunMetadata: { goalId: goal.goalId, runGroupId: goal.goalId },
+        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status !== 201) {
+      return { kind: "run_error", response: result };
+    }
+
+    await postAutomationUserMessage({
+      db,
+      threadId: goal.threadId,
+      userId: goal.userId,
+      runId: result.body.runId,
+      prompt,
+      appendQueueMarker: result.body.status === "queued",
+      runGroupId: goal.goalId,
+    });
+    signal.throwIfAborted();
+
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: effectiveModelProvider,
+        modelProviderId: modelPin.modelProviderId,
+        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+        selectedModel: modelPin.selectedModel,
+      })
+      .where(eq(zeroRuns.id, result.body.runId));
+    signal.throwIfAborted();
+
+    return { kind: "ok", runId: result.body.runId };
+  },
+);
 
 export const continueGoalIfIdle$ = command(
   async (
@@ -469,44 +404,30 @@ export const continueGoalIfIdle$ = command(
     }
     signal.throwIfAborted();
 
-    const goal = await loadEnabledGoalTrigger(db, {
+    const goal = await loadActiveGoalForThread(db, {
       orgId: run.orgId,
-      userId: run.userId,
-      chatThreadId: run.chatThreadId,
+      threadId: run.chatThreadId,
     });
     signal.throwIfAborted();
     if (!goal) {
-      return { kind: "skipped", reason: "no-enabled-active-goal" };
-    }
-    const trigger = goal.trigger;
-
-    if (run.status === "cancelled") {
-      await disableGoalTrigger(db, trigger);
-      signal.throwIfAborted();
-      return { kind: "paused", triggerId: trigger.id };
+      return { kind: "skipped", reason: "no-active-goal" };
     }
 
-    if (run.status === "failed" || run.status === "timeout") {
-      const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
+    if (
+      run.status === "cancelled" ||
+      run.status === "failed" ||
+      run.status === "timeout"
+    ) {
+      const paused = await pauseActiveGoalForThread(db, {
+        orgId: run.orgId,
+        userId: run.userId,
+        threadId: run.chatThreadId,
+      });
       signal.throwIfAborted();
-      if (failureUpdate.disabled) {
-        log.warn("Goal continuation auto-stopped after run failures", {
-          triggerId: trigger.id,
-          runId: run.runId,
-          consecutiveFailures: failureUpdate.consecutiveFailures,
-        });
-        signal.throwIfAborted();
-        return autoStopGoalAndNotify(db, {
-          userId: run.userId,
-          chatThreadId: run.chatThreadId,
-          objective: goal.preference.objective,
-          triggerId: trigger.id,
-          consecutiveFailures: failureUpdate.consecutiveFailures,
-        });
+      if (paused.kind !== "ok") {
+        return { kind: "skipped", reason: `pause-${paused.kind}` };
       }
-    } else {
-      await resetGoalTriggerFailures(db, trigger.id);
-      signal.throwIfAborted();
+      return { kind: "paused", goalId: goal.id };
     }
 
     if (!(await threadIsIdle(db, run.chatThreadId))) {
@@ -517,22 +438,18 @@ export const continueGoalIfIdle$ = command(
     const sessionId = await latestSessionIdForThread(db, run.chatThreadId);
     signal.throwIfAborted();
     const runResult = await set(
-      runWorkflowTriggerNow$,
+      runGoalNow$,
       {
-        due: { trigger, agentId: goal.agentId, workflowName: "goal" },
-        apiStartTime: now(),
+        goal: {
+          goalId: goal.id,
+          orgId: goal.orgId,
+          userId: goal.ownerUserId,
+          threadId: goal.chatThreadId,
+          agentId: goal.agentId,
+          objective: goal.objective,
+          objectiveBrief: goal.objectiveBrief,
+        },
         ...(sessionId ? { sessionId } : {}),
-        prompt: buildGoalContinuationPrompt(goal.preference),
-        triggerSource: "workflow-event",
-        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal.preference),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          trigger,
-          goal.agentId,
-          {
-            isGoalRun: true,
-          },
-        ),
-        recordLastRunAt: true,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
@@ -546,92 +463,40 @@ export const continueGoalIfIdle$ = command(
       return { kind: "skipped", reason: "previous-run-active" };
     }
 
-    const failureUpdate = await incrementGoalTriggerFailures(db, trigger);
+    const paused = await pauseActiveGoalForThread(db, {
+      orgId: run.orgId,
+      userId: run.userId,
+      threadId: run.chatThreadId,
+    });
     signal.throwIfAborted();
     const error = failureMessage(runResult);
-    if (failureUpdate.disabled) {
-      log.warn("Goal continuation auto-stopped after enqueue failures", {
-        triggerId: trigger.id,
-        runId: run.runId,
-        consecutiveFailures: failureUpdate.consecutiveFailures,
-        error,
-      });
-      signal.throwIfAborted();
-      return autoStopGoalAndNotify(db, {
-        userId: run.userId,
-        chatThreadId: run.chatThreadId,
-        objective: goal.preference.objective,
-        triggerId: trigger.id,
-        consecutiveFailures: failureUpdate.consecutiveFailures,
-      });
-    }
-
-    log.warn("Goal continuation enqueue failed", {
-      triggerId: trigger.id,
+    log.warn("Goal continuation enqueue failed; goal paused", {
+      goalId: goal.id,
       runId: run.runId,
-      consecutiveFailures: failureUpdate.consecutiveFailures,
       error,
+      pauseResult: paused.kind,
     });
     return {
       kind: "failed-to-enqueue",
-      triggerId: trigger.id,
-      consecutiveFailures: failureUpdate.consecutiveFailures,
+      goalId: goal.id,
       error,
     };
   },
 );
 
-/**
- * Kick off the very first run of a goal whose thread was just provisioned by
- * goal creation. A normal goal continues itself off the thread-idle event when
- * an in-flight run terminates, but a brand-new empty thread has no such run, so
- * the first turn must be enqueued explicitly. Subsequent turns continue through
- * `continueGoalIfIdle$` like any other goal.
- */
 export const bootstrapGoalRun$ = command(
   async (
     { set },
     args: {
-      readonly trigger: TriggerRow;
+      readonly goal: GoalBootstrap;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
-  ): Promise<RunWorkflowTriggerResult> => {
-    const db = set(writeDb$);
-    const goal = await loadGoalPreference(db, args.trigger.workflowId);
-    signal.throwIfAborted();
-    if (!goal) {
-      return {
-        kind: "run_error",
-        response: {
-          status: 400,
-          body: {
-            error: {
-              message: "Goal workflow not found for bootstrap",
-              code: "INVALID_TRIGGER",
-            },
-          },
-        },
-      };
-    }
-    return set(
-      runWorkflowTriggerNow$,
+  ): Promise<RunGoalResult> => {
+    return await set(
+      runGoalNow$,
       {
-        due: {
-          trigger: args.trigger,
-          agentId: goal.agentId,
-          workflowName: "goal",
-        },
-        apiStartTime: now(),
-        prompt: buildGoalContinuationPrompt(goal.preference),
-        triggerSource: "workflow-event",
-        appendSystemPrompt: buildGoalContinuationSystemPrompt(goal.preference),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          args.trigger,
-          goal.agentId,
-          { isGoalRun: true },
-        ),
-        recordLastRunAt: true,
+        goal: args.goal,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

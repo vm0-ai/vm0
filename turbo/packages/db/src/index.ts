@@ -66,6 +66,7 @@ import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroAgentDraftSchema from "./schema/zero-agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as zeroRunSchema from "./schema/zero-run";
+import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
@@ -155,6 +156,7 @@ export const schema = {
   ...zeroAgentDraftSchema,
   ...userPermissionGrantSchema,
   ...zeroRunSchema,
+  ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,

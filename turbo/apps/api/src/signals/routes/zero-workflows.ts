@@ -130,7 +130,6 @@ async function publicWorkflowSlugExists(
         eq(zeroWorkflows.agentId, args.agentId),
         eq(zeroWorkflows.name, args.name),
         eq(zeroWorkflows.visibility, "public"),
-        eq(zeroWorkflows.type, "workflow"),
         args.excludeWorkflowId
           ? ne(zeroWorkflows.id, args.excludeWorkflowId)
           : undefined,
@@ -234,7 +233,6 @@ const createWorkflowInner$ = command(
         agentId: agent.id,
         name: body.name,
         visibility,
-        type: "workflow",
         instruction: body.instruction ?? null,
         ownerUserId: auth.userId,
         displayName: body.displayName ?? null,
@@ -448,7 +446,6 @@ const copyWorkflowInner$ = command(
         agentId: targetAgent.id,
         name: source.workflow.name,
         visibility: "private",
-        type: "workflow",
         instruction: source.workflow.instruction,
         ownerUserId: auth.userId,
         displayName: source.workflow.displayName,

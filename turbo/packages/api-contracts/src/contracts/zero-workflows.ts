@@ -98,10 +98,7 @@ export type ZeroWorkflowTriggerKind = z.infer<
   typeof zeroWorkflowTriggerKindSchema
 >;
 
-export const zeroWorkflowEventTypeSchema = z.enum([
-  "thread-idle",
-  "gmail-new-message",
-]);
+export const zeroWorkflowEventTypeSchema = z.enum(["gmail-new-message"]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
 
 const gmailTextMatchSchema = z

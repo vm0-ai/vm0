@@ -10,6 +10,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db$ } from "../external/db";
+import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 
@@ -117,7 +118,10 @@ export function chatThreadMessagesV1(
       return null;
     }
 
-    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const threadFilter = and(
+      eq(chatMessages.chatThreadId, args.threadId),
+      excludeGoalMarkerCondition(),
+    );
 
     if (args.sinceId === undefined && args.beforeId === undefined) {
       const rows = await db

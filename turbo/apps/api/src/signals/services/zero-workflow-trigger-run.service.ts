@@ -126,7 +126,6 @@ function buildAppendSystemPrompt(workflowName: string): string {
 export function buildChatOnlyWorkflowTriggerCallbacks(
   trigger: TriggerRow,
   agentId: string,
-  options?: { readonly isGoalRun?: boolean },
 ): InternalRunCallbackInput[] {
   if (!trigger.chatThreadId) {
     return [];
@@ -138,9 +137,6 @@ export function buildChatOnlyWorkflowTriggerCallbacks(
       payload: {
         threadId: trigger.chatThreadId,
         agentId,
-        // Goal runs self-continue on idle; the flag lets the chat callback
-        // gate terminal push notifications to terminal goal states only.
-        ...(options?.isGoalRun ? { isGoalRun: true } : {}),
       },
     },
   ];
@@ -199,10 +195,7 @@ export const runWorkflowTriggerNow$ = command(
       readonly due: DueWorkflowTrigger;
       readonly apiStartTime: number;
       readonly sessionId?: string;
-      // Overrides the default `/<workflowName>` slash-command prompt. Goals pass
-      // a rendered continuation template here so the turn is plain instruction
-      // text — a bare `/goal` would collide with the harness's built-in `/goal`
-      // slash command and no-op.
+      // Overrides the default `/<workflowName>` slash-command prompt.
       readonly prompt?: string;
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
