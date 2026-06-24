@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 const VALID_CODEX_THREAD_ID: &str = "0193abcd-ef01-7234-89ab-cdef01234567";
 const UNKNOWN_CODEX_THREAD_ID: &str = "ffffffff-ffff-7fff-bfff-ffffffffffff";
+const CODEX_SESSION_LOOKUP_BUDGET_TEST_FILES: usize = 17_000;
 
 /// Build a `YYYY/MM/DD/` style nested path under `root` and write a file.
 ///
@@ -323,6 +324,92 @@ fn read_session_history_codex_marker_with_no_match_fails_fast() {
 }
 
 #[test]
+fn read_session_history_codex_marker_ignores_deep_non_layout_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let mut deep_dir = sessions_dir.join("not-a-year");
+    for index in 0..80 {
+        deep_dir.push(format!("level-{index}"));
+    }
+    std::fs::create_dir_all(&deep_dir).unwrap();
+    std::fs::write(
+        deep_dir.join(format!("{VALID_CODEX_THREAD_ID}.jsonl")),
+        b"deep-history\n",
+    )
+    .unwrap();
+
+    let path_file =
+        write_codex_marker_path_file(tmp.path(), &sessions_dir, VALID_CODEX_THREAD_ID).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must not recurse into non-layout directories");
+    assert_error_contains_without_secret(
+        err,
+        "Codex session file not found",
+        VALID_CODEX_THREAD_ID,
+    );
+}
+
+#[test]
+fn read_session_history_codex_marker_ignores_non_layout_date_components() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    for sub in [
+        ["abcd", "06", "09"],
+        ["2026", "xx", "09"],
+        ["2026", "13", "09"],
+        ["2026", "06", "99"],
+        ["2026", "06", "00"],
+    ] {
+        write_session_file(
+            &sessions_dir,
+            &sub,
+            &format!("{VALID_CODEX_THREAD_ID}.jsonl"),
+            b"invalid-layout-history\n",
+        )
+        .unwrap();
+    }
+
+    let path_file =
+        write_codex_marker_path_file(tmp.path(), &sessions_dir, VALID_CODEX_THREAD_ID).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must ignore non-layout date components");
+    assert_error_contains_without_secret(
+        err,
+        "Codex session file not found",
+        VALID_CODEX_THREAD_ID,
+    );
+}
+
+#[test]
+fn read_session_history_codex_marker_scan_budget_fails_closed_with_candidate_present() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let day_dir = sessions_dir.join("2026/04/28");
+    std::fs::create_dir_all(&day_dir).unwrap();
+    std::fs::write(
+        day_dir.join(format!("{VALID_CODEX_THREAD_ID}.jsonl")),
+        b"history that must not be returned after budget exhaustion\n",
+    )
+    .unwrap();
+    for index in 0..CODEX_SESSION_LOOKUP_BUDGET_TEST_FILES {
+        std::fs::write(day_dir.join(format!("noise-{index:05}.txt")), b"").unwrap();
+    }
+
+    let path_file =
+        write_codex_marker_path_file(tmp.path(), &sessions_dir, VALID_CODEX_THREAD_ID).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("budget exhaustion must fail even when a candidate exists");
+    assert_error_contains_without_secret(
+        err,
+        "Codex session lookup exceeded scan budget",
+        VALID_CODEX_THREAD_ID,
+    );
+}
+
+#[test]
 fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
     let tmp = tempfile::tempdir().unwrap();
     let sessions_dir = tmp.path().join("sessions");
@@ -573,7 +660,7 @@ fn read_session_history_codex_marker_reports_unreadable_directory() {
 
     let tmp = tempfile::tempdir().unwrap();
     let sessions_dir = tmp.path().join("sessions");
-    let blocked_dir = sessions_dir.join("blocked");
+    let blocked_dir = sessions_dir.join("2026/04/28");
     std::fs::create_dir_all(&blocked_dir).unwrap();
     std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
 
