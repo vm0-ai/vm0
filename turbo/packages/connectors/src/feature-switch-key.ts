@@ -56,4 +56,5 @@ export enum FeatureSwitchKey {
   GoalWorkflows = "goalWorkflows",
   MobileSingleLineComposer = "mobileSingleLineComposer",
   CustomConnectorProposals = "customConnectorProposals",
+  ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
 }

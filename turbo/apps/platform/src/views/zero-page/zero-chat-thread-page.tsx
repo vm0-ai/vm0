@@ -31,6 +31,7 @@ import {
   IconPlayerPlay,
   IconVideo,
   IconCopy,
+  IconDeviceDesktop,
   IconCheck,
   IconArrowDown,
   IconArrowUpRight,
@@ -132,6 +133,7 @@ import {
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
+import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -4617,6 +4619,10 @@ function BodyContentBlocks({
           return <PermissionActionCard key={block.id} block={block} />;
         }
 
+        if (block.type === "computer-use-authorization") {
+          return <ComputerUseAuthorizationCard key={block.id} block={block} />;
+        }
+
         if (block.preview.kind === "image") {
           return (
             <ChatImagePreviewLink
@@ -4755,6 +4761,50 @@ function CustomConnectorActionCard({
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
         Configure
+        <IconArrowUpRight size={15} />
+      </a>
+    </div>
+  );
+}
+
+function ComputerUseAuthorizationCard({
+  block,
+}: {
+  block: ComputerUseAuthorizationBlock;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const enabled =
+    features?.[FeatureSwitchKey.ComputerUseDelegatedAuthorization] ?? false;
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="computer-use-authorization-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <IconDeviceDesktop size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            Computer Use authorization
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            Select a Desktop host for future runs in this thread.
+          </div>
+        </div>
+      </div>
+      <a
+        href={block.href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        Authorize
         <IconArrowUpRight size={15} />
       </a>
     </div>

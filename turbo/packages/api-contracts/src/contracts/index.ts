@@ -1278,6 +1278,7 @@ export {
 } from "./zero-report-error";
 export {
   zeroComputerUseAuditEventsContract,
+  zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
@@ -1293,6 +1294,10 @@ export {
   type ClientScreenshotPointer,
   type ComputerUseAuditEvent,
   type ComputerUseAuditEventListResponse,
+  type ComputerUseAuthorizationRequestApplyResponse,
+  type ComputerUseAuthorizationRequestCreateResponse,
+  type ComputerUseAuthorizationRequestResponse,
+  type ComputerUseAuthorizationSource,
   type ComputerUseCommandCreateResponse,
   type ComputerUseCommandError,
   type ComputerUseCommandKind,
@@ -1305,6 +1310,7 @@ export {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
   type ZeroComputerUseAuditEventsContract,
+  type ZeroComputerUseAuthorizationRequestsContract,
   type ZeroComputerUseCommandContract,
   type ZeroComputerUseHeartbeatContract,
   type ZeroComputerUseHostCommandsContract,

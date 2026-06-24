@@ -326,6 +326,16 @@ const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/unregister";
 const ZERO_COMPUTER_USE_AUDIT_EVENTS_REWRITE_SOURCE =
   "/api/zero/computer-use/audit-events";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUESTS_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests/:requestToken";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_PATH_RE =
+  /^\/api\/zero\/computer-use\/authorization-requests\/[^/]+$/;
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests/:requestToken/apply";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_PATH_RE =
+  /^\/api\/zero\/computer-use\/authorization-requests\/[^/]+\/apply$/;
 const ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE =
   "/api/zero/computer-use/commands";
 const ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE = `/api/zero/computer-use/commands/:commandId(${UUID_PATH_SEGMENT_PATTERN})`;
@@ -1038,6 +1048,20 @@ export const API_BACKEND_REWRITES = [
   [
     ZERO_COMPUTER_USE_AUDIT_EVENTS_REWRITE_SOURCE,
     "/api/zero/computer-use/audit-events",
+  ],
+  [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUESTS_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_PATH_RE,
   ],
   [
     ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE,

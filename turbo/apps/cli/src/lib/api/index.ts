@@ -235,6 +235,7 @@ export {
 
 // Domain modules - Zero Computer Use
 export {
+  createComputerUseAuthorizationRequest,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
   fetchComputerUseScreenshot,

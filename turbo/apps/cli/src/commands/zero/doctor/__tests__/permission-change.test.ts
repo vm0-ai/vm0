@@ -5,7 +5,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { server } from "../../../../mocks/server";
 import { permissionChangeCommand } from "../permission-change";
 
 describe("zero doctor permission-change command", () => {
@@ -296,6 +298,50 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
     expect(logCalls).toContain("zero whoami");
     expect(logCalls).not.toContain("[Manage");
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
+  it("outputs a delegated authorization link for computer-use enable when authenticated", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "zero-run-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/authorization-requests",
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer zero-run-token",
+          );
+          return HttpResponse.json({
+            authorizationUrl:
+              "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
+            source: "chat",
+            expiresAt: "2026-06-24T13:00:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "computer-use",
+      "--permission",
+      "computer-use:write",
+      "--enable",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "Computer Use needs a Zero Desktop host selected before a run starts.",
+    );
+    expect(logCalls).toContain(
+      "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
+    );
+    expect(logCalls).toContain("This link expires at 2026-06-24T13:00:00.000Z");
+    expect(logCalls).not.toContain(
+      "Computer Use authorization link unavailable",
+    );
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
 

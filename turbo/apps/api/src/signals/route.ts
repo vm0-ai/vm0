@@ -80,6 +80,7 @@ import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatMessagesRoutes } from "./routes/zero-chat-messages";
 import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
+import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
@@ -264,6 +265,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroChatMessagesRoutes,
   ...zeroClaudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
+  ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
   ...zeroConnectorsExternalCodeRoutes,
