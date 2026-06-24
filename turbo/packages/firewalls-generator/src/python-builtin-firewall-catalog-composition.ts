@@ -32,15 +32,15 @@ export interface PythonBuiltinFirewallSourceFirewall {
   readonly apis: readonly PythonBuiltinFirewallSourceApi[];
 }
 
-export interface PythonBuiltinFirewallCatalog {
+interface PythonBuiltinFirewallCatalog {
   readonly firewalls: Record<string, BuiltinFirewallRuntimeFirewall>;
 }
 
-export interface ComposePythonBuiltinFirewallCatalogOptions {
+interface ComposePythonBuiltinFirewallCatalogOptions {
   readonly modelProviderFirewalls: readonly PythonBuiltinFirewallSourceFirewall[];
 }
 
-export interface RenderComposedPythonBuiltinFirewallCatalogOptions extends ComposePythonBuiltinFirewallCatalogOptions {
+interface RenderComposedPythonBuiltinFirewallCatalogOptions extends ComposePythonBuiltinFirewallCatalogOptions {
   readonly generatedHeader: readonly string[];
   readonly maxJsonChunkLength?: number;
 }
@@ -118,7 +118,7 @@ function modelProviderFirewallEntries(
   });
 }
 
-export async function buildPythonBuiltinFirewallCatalogEntries({
+async function buildPythonBuiltinFirewallCatalogEntries({
   modelProviderFirewalls,
 }: ComposePythonBuiltinFirewallCatalogOptions): Promise<
   readonly PythonBuiltinFirewallCatalogEntry[]

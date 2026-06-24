@@ -66,6 +66,7 @@ jobs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
       api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
+      python-firewalls-changed: ${{ steps.detect.outputs.python-firewalls-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
@@ -140,24 +141,40 @@ jobs:
           fi
 
           # The api-contracts Rust bindings are generated from selected
-          # TypeScript contract files, but the checked artifacts live under
-          # crates/api-contracts and the runner mitm-addon generated package.
+          # TypeScript contract files, and the checked artifacts live under
+          # crates/api-contracts.
           # Keep this output separate from any-changed so a TS-only contract
           # edit runs the drift check without forcing every Rust crate job to
-          # run. Connector firewall sources are included because the generator
-          # materializes shared TS connector data into Rust and Python
-          # generated artifacts.
+          # run.
           api_contracts_rust_bindings_changed=false
           changed_files="$(mktemp)"
           git diff --name-only "$BASE_REF" HEAD > "$changed_files"
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
-              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
               turbo/packages/api-contracts/src/contracts/* | \
               turbo/packages/api-contracts/src/rust-bindings/* | \
+              turbo/pnpm-lock.yaml)
+                api_contracts_rust_bindings_changed=true
+                break
+                ;;
+            esac
+          done < "$changed_files"
+          echo "api-contracts-rust-bindings-changed=$api_contracts_rust_bindings_changed" >> "$GITHUB_OUTPUT"
+
+          # The firewall generator materializes connector and model-provider
+          # firewall data into the runner mitm-addon Python builtin firewall
+          # package. The TypeScript firewall metadata outputs are ignored, so
+          # this drift check only validates the tracked Python generated package.
+          python_firewalls_changed=false
+          while IFS= read -r changed_file; do
+            case "$changed_file" in
+              crates/runner/mitm-addon/src/generated/* | \
+              turbo/package.json | \
+              turbo/packages/api-contracts/package.json | \
+              turbo/packages/api-contracts/src/contracts/* | \
               turbo/packages/connectors/package.json | \
               turbo/packages/connectors/src/connector-utils.ts | \
               turbo/packages/connectors/src/connectors.ts | \
@@ -173,13 +190,13 @@ jobs:
               turbo/packages/connectors/src/segment-parser.ts | \
               turbo/packages/firewalls-generator/* | \
               turbo/pnpm-lock.yaml)
-                api_contracts_rust_bindings_changed=true
+                python_firewalls_changed=true
                 break
                 ;;
             esac
           done < "$changed_files"
           rm -f "$changed_files"
-          echo "api-contracts-rust-bindings-changed=$api_contracts_rust_bindings_changed" >> "$GITHUB_OUTPUT"
+          echo "python-firewalls-changed=$python_firewalls_changed" >> "$GITHUB_OUTPUT"
 
           # test_x_billing.py checks X connector usage buckets against the
           # API pricing seed. Keep this separate from any-changed so a
@@ -391,7 +408,25 @@ jobs:
         working-directory: turbo
         run: |
           pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated ../crates/runner/mitm-addon/src/generated
+          git diff --exit-code -- ../crates/api-contracts/src/generated
+
+  python-firewalls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.python-firewalls-changed == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/toolchain-init
+      - name: Check Python Firewalls
+        working-directory: turbo
+        run: |
+          pnpm -F @vm0/firewalls-generator generate
+          git diff --exit-code -- ../crates/runner/mitm-addon/src/generated
 
   mitm-addon-test:
     runs-on: ubuntu-latest
@@ -1936,6 +1971,7 @@ jobs:
       - detect
       - check
       - api-contracts-rust-bindings
+      - python-firewalls
       - mitm-addon-test
       - runner-host-groups
       - runner-build
@@ -1988,6 +2024,7 @@ jobs:
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
+          check_result "python-firewalls" "${{ needs.python-firewalls.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"

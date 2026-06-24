@@ -1,11 +1,15 @@
 import { z } from "zod";
 
-import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_CREDIT_MULTIPLIER,
   type SupportedRunModel,
 } from "./model-credit-multipliers";
+export {
+  getModelProviderFirewall,
+  MODEL_PROVIDER_ENV_PLACEHOLDERS,
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
+} from "./model-provider-firewalls";
 
 export {
   SUPPORTED_RUN_MODELS,
@@ -892,48 +896,10 @@ export function getProviderRuntimeModel(
  * solution is implemented; existing configurations continue to work.
  */
 const HIDDEN_PROVIDER_LIST = ["aws-bedrock", "azure-foundry"] as const;
-type HiddenProviderType = (typeof HIDDEN_PROVIDER_LIST)[number];
 
 const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
   HIDDEN_PROVIDER_LIST,
 );
-
-/**
- * Provider type that supports firewall (has a static base URL and secretName).
- * Excludes hidden providers (dynamic URLs / SigV4) and vm0 (meta-provider).
- * Adding a new provider without a firewall config entry will cause a compile error.
- */
-type FirewallSupportedProvider = Exclude<
-  ModelProviderType,
-  HiddenProviderType | "vm0"
->;
-
-export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
-  // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
-  // Source: Semgrep regex \Bsk-ant-api03-[\w\-]{93}AA\B
-  //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
-  ANTHROPIC_API_KEY:
-    "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
-  // Placeholder: sk-ant-oat01-{93 word/hyphen chars}AA (108 chars total)
-  // Source: same structure as API key; prefix from claude setup-token output
-  //   https://github.com/anthropics/claude-code/issues/18340
-  //   Example: sk-ant-oat01-xxxxx...xxxxx (1-year OAuth token)
-  CLAUDE_CODE_OAUTH_TOKEN:
-    "sk-ant-oat01-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
-  // Generic bearer-token marker for Claude-compatible gateways that map
-  // provider-specific secrets into ANTHROPIC_AUTH_TOKEN.
-  ANTHROPIC_AUTH_TOKEN: "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
-  // Placeholder: sk-proj-{chars}T3BlbkFJ{chars} (typical project key shape)
-  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
-  OPENAI_API_KEY:
-    "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
-  // Opaque fake marker, not a JWT. Codex ChatGPT mode reads auth.json, while
-  // firewall auth substitutes this marker at egress.
-  CHATGPT_ACCESS_TOKEN:
-    "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
-  CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
-  CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
-} as const;
 
 /**
  * Get provider types available for user selection.
@@ -945,240 +911,6 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
       return !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
-}
-
-/**
- * Firewall gateway configs for model providers with static base URLs.
- * Used to auto-generate firewall entries that protect API tokens from sandbox exposure.
- * Excluded: aws-bedrock (dynamic region URLs + SigV4), azure-foundry (dynamic resource URLs).
- *
- * getFirewallBaseUrl() appends /v1/messages to every provider's base URL so the
- * vm0-managed API key is only injected on LLM inference paths — not on vendor admin
- * endpoints (/v1/organizations, /v1/credits, etc.). The prefix covers every endpoint
- * Claude Code actually hits per Anthropic's LLM gateway requirements (/v1/messages
- * and /v1/messages/count_tokens). See #9560.
- */
-const ANTHROPIC_API_BASE = "https://api.anthropic.com";
-
-function getFirewallBaseUrl(type: ModelProviderType): string {
-  // codex-oauth-token targets ChatGPT's backend, not the public OpenAI API.
-  if (type === "codex-oauth-token") {
-    return "https://chatgpt.com/backend-api/codex";
-  }
-  // Codex framework providers split into two shapes:
-  //   1. OpenAI direct (no OPENAI_BASE_URL override) — codex hits /v1/responses
-  //      exclusively, so we scope the firewall tightly to that path. Admin
-  //      endpoints like /v1/files stay outside the token-replacement surface.
-  //   2. OpenAI-compatible gateways (openrouter-codex, vercel-ai-gateway-codex)
-  //      set OPENAI_BASE_URL — these can serve /v1/chat/completions and
-  //      /v1/responses interchangeably under the same /v1 prefix. We scope
-  //      to that base directly so codex can use either path the gateway
-  //      supports without re-listing endpoints here.
-  if (getFrameworkForType(type) === "codex") {
-    const overrideBase = getModelProviderEnvBindings(type)?.OPENAI_BASE_URL;
-    if (overrideBase) {
-      return overrideBase.replace(/\/+$/, "");
-    }
-    return "https://api.openai.com/v1/responses";
-  }
-  const base = (
-    getModelProviderEnvBindings(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE
-  ).replace(/\/+$/, "");
-  return `${base}/v1/messages`;
-}
-
-/**
- * Build a firewall config for a model provider.
- *
- * The secret name is derived from MODEL_PROVIDER_TYPES[type].secretName
- * (single source of truth), so callers never specify it — eliminating
- * any possibility of mismatch between auth header templates and placeholders.
- */
-// Helper accepts only single-secret providers — multi-auth firewall configs
-// (e.g., codex-oauth-token) declare their entries inline because they need
-// multiple headers and/or multiple API entries.
-type LegacySingleSecretProvider = {
-  [K in FirewallSupportedProvider]: (typeof MODEL_PROVIDER_TYPES)[K] extends {
-    secretName: string;
-  }
-    ? K
-    : never;
-}[FirewallSupportedProvider];
-
-function mpFirewall(
-  type: LegacySingleSecretProvider,
-  authHeader: { name: string; valuePrefix?: string },
-  placeholderValue: string,
-): ExpandedFirewallConfig {
-  const secretName = MODEL_PROVIDER_TYPES[type].secretName;
-  const secretRef = `\${{ secrets.${secretName} }}`;
-  const headerValue = authHeader.valuePrefix
-    ? `${authHeader.valuePrefix} ${secretRef}`
-    : secretRef;
-  return {
-    name: `model-provider:${type}`,
-    apis: [
-      {
-        base: getFirewallBaseUrl(type),
-        auth: { headers: { [authHeader.name]: headerValue } },
-        permissions: [],
-      },
-    ],
-    placeholders: { [secretName]: placeholderValue },
-  };
-}
-
-/**
- * Every FirewallSupportedProvider must have an entry here.
- * Adding a new provider without a firewall config will cause a type error.
- */
-export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
-  FirewallSupportedProvider,
-  ExpandedFirewallConfig
-> = {
-  "anthropic-api-key": mpFirewall(
-    "anthropic-api-key",
-    { name: "x-api-key" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY,
-  ),
-  "claude-code-oauth-token": mpFirewall(
-    "claude-code-oauth-token",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN,
-  ),
-  "openrouter-api-key": mpFirewall(
-    "openrouter-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "moonshot-api-key": mpFirewall(
-    "moonshot-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "minimax-api-key": mpFirewall(
-    "minimax-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "deepseek-api-key": mpFirewall(
-    "deepseek-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "zai-api-key": mpFirewall(
-    "zai-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "vercel-ai-gateway": mpFirewall(
-    "vercel-ai-gateway",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  // Codex-framework twin of openrouter-api-key. It reuses the same stored
-  // OpenRouter secret, but the sandbox env name is OPENAI_API_KEY because codex
-  // SDK hits OpenAI-compatible paths (/chat/completions, /responses) under
-  // https://openrouter.ai/api/v1, derived from the OPENAI_BASE_URL mapping by
-  // getFirewallBaseUrl.
-  "openrouter-codex": mpFirewall(
-    "openrouter-codex",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-  ),
-  // Codex-framework twin of vercel-ai-gateway. It reuses the same stored Vercel
-  // secret, but the sandbox env name is OPENAI_API_KEY. Base URL is scoped to
-  // the /v1 prefix by getFirewallBaseUrl so codex can use either
-  // /chat/completions or /responses paths the gateway exposes.
-  "vercel-ai-gateway-codex": mpFirewall(
-    "vercel-ai-gateway-codex",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-  ),
-  "openai-api-key": mpFirewall(
-    "openai-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-  ),
-  // ChatGPT OAuth provider — multi-header injection + auth.openai.com deny.
-  // Sandbox holds placeholder strings; firewall replaces them with real
-  // tokens at egress. The auth.openai.com entry is defense-in-depth: codex's
-  // CODEX_REFRESH_TOKEN_URL_OVERRIDE already prevents in-sandbox refreshes,
-  // but if codex ever ignores it, this firewall denies the egress at the
-  // proxy layer.
-  //
-  // Placeholder values are opaque markers, NOT JWTs — codex doesn't read
-  // CHATGPT_ACCESS_TOKEN from env in ChatGPT mode; it reads the real JWT
-  // from ~/.codex/auth.json built by guest-agent (#11877). The placeholder
-  // here only needs to be a stable, non-empty string the firewall can match
-  // and substitute. Account-id placeholder still equals #11877's literal
-  // since the architectural relationship across the two surfaces matters.
-  "codex-oauth-token": {
-    name: "model-provider:codex-oauth-token",
-    apis: [
-      {
-        base: "https://chatgpt.com/backend-api/codex",
-        auth: {
-          headers: {
-            Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
-            "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
-          },
-        },
-        permissions: [
-          {
-            name: "codex:api",
-            // Subtree-wildcard the codex backend: codex's path surface keeps
-            // growing (#12099 added /responses, then /responses/compact 403'd
-            // again). Method narrowing to GET/POST is the actual safety net —
-            // it blocks accidental DELETE/PUT/PATCH on the user's ChatGPT
-            // account if codex is ever prompt-injected. Base is already
-            // locked to /backend-api/codex, so the blast radius is just
-            // codex's own surface area.
-            rules: ["GET /{path*}", "POST /{path*}"],
-          },
-        ],
-      },
-      {
-        base: "https://auth.openai.com",
-        auth: { headers: {} },
-        permissions: [{ name: "denied", rules: ["ANY /*"] }],
-      },
-    ],
-    defaultPolicies: {
-      deny: ["denied"],
-      unknownPolicy: "deny",
-    },
-    placeholders: {
-      CHATGPT_ACCESS_TOKEN:
-        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
-      CHATGPT_ACCOUNT_ID: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
-      // refresh_token written by guest-agent into ~/.codex/auth.json (#12077).
-      // Kept in this map so the firewall can substitute it on egress if codex
-      // ever tries to use it directly — defense-in-depth alongside
-      // CODEX_REFRESH_TOKEN_URL_OVERRIDE which redirects refresh attempts to
-      // localhost. The sandbox never gets the real refresh_token (#7365).
-      CHATGPT_REFRESH_TOKEN:
-        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN,
-    },
-  },
-};
-
-/**
- * Get firewall gateway config for a model provider type.
- * Returns undefined for providers without static base URLs (aws-bedrock, azure-foundry).
- */
-function isFirewallSupported(
-  type: ModelProviderType,
-): type is FirewallSupportedProvider {
-  return type in MODEL_PROVIDER_FIREWALL_CONFIGS;
-}
-
-export function getModelProviderFirewall(
-  type: ModelProviderType,
-): ExpandedFirewallConfig | undefined {
-  return isFirewallSupported(type)
-    ? MODEL_PROVIDER_FIREWALL_CONFIGS[type]
-    : undefined;
 }
 
 export const modelProviderTypeSchema = z.enum([

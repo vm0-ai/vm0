@@ -21,6 +21,7 @@ import {
   isSupportedRunModel,
   normalizeRunModelId,
   getAuthMethodsForType,
+  getSecretNameForType,
   getSecretsForAuthMethod,
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
@@ -691,6 +692,29 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       expect(config.apis[0]!.base).toBe(expectedBase);
     },
   );
+
+  it("keeps single-secret firewall base URLs aligned with provider env bindings", () => {
+    for (const type of Object.keys(MODEL_PROVIDER_FIREWALL_CONFIGS) as Array<
+      keyof typeof MODEL_PROVIDER_FIREWALL_CONFIGS
+    >) {
+      if (getSecretNameForType(type) === undefined) {
+        continue;
+      }
+
+      const envBindings = getModelProviderEnvBindings(type);
+      const actualBase = MODEL_PROVIDER_FIREWALL_CONFIGS[type].apis[0]!.base;
+      if (getFrameworkForType(type) === "codex") {
+        const expectedBase =
+          envBindings?.OPENAI_BASE_URL?.replace(/\/+$/, "") ??
+          "https://api.openai.com/v1/responses";
+        expect(actualBase).toBe(expectedBase);
+        continue;
+      }
+
+      const expectedBase = `${(envBindings?.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, "")}/v1/messages`;
+      expect(actualBase).toBe(expectedBase);
+    }
+  });
 });
 
 describe("model provider firewall placeholders", () => {
@@ -759,6 +783,20 @@ describe("model provider firewall placeholders", () => {
       });
     },
   );
+
+  it("keeps single-secret firewall placeholders aligned with provider secret names", () => {
+    for (const type of Object.keys(MODEL_PROVIDER_FIREWALL_CONFIGS) as Array<
+      keyof typeof MODEL_PROVIDER_FIREWALL_CONFIGS
+    >) {
+      const secretName = getSecretNameForType(type);
+      if (secretName === undefined) {
+        continue;
+      }
+      expect(MODEL_PROVIDER_FIREWALL_CONFIGS[type].placeholders).toHaveProperty(
+        secretName,
+      );
+    }
+  });
 });
 
 describe("codex-oauth-token codex provider", () => {

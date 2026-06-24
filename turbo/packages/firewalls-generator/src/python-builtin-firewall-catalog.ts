@@ -43,7 +43,7 @@ export interface PythonBuiltinFirewallCatalogFile {
   readonly content: string;
 }
 
-export interface RenderPythonBuiltinFirewallCatalogOptions {
+interface RenderPythonBuiltinFirewallCatalogOptions {
   readonly entries: readonly PythonBuiltinFirewallCatalogEntry[];
   readonly generatedHeader: readonly string[];
   readonly maxJsonChunkLength?: number;
