@@ -3,16 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./python-builtin-firewall-catalog": {
-      "import": "./src/python-builtin-firewall-catalog.ts",
-      "types": "./src/python-builtin-firewall-catalog.ts"
-    },
-    "./python-builtin-firewall-catalog-composition": {
-      "import": "./src/python-builtin-firewall-catalog-composition.ts",
-      "types": "./src/python-builtin-firewall-catalog-composition.ts"
-    }
-  },
   "scripts": {
     "check-types": "tsc --noEmit",
     "update-specs": "tsx src/update-specs.ts",
@@ -283,6 +273,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@vm0/api-contracts": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "tsx": "^4.19.4",
     "typescript": "6.0.3",
