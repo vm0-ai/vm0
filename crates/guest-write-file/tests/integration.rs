@@ -387,6 +387,22 @@ fn private_mode_rejects_trailing_separator_without_creating_target() {
 
 #[cfg(unix)]
 #[test]
+fn private_mode_rejects_trailing_current_dir_without_creating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/session-id");
+    let path_with_trailing_current_dir = path.join(".");
+    let path_str = path_with_trailing_current_dir.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no file name"));
+    assert!(!dir.path().join("run").exists());
+    assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn private_mode_rejects_fifo_with_reader() {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 

@@ -538,7 +538,10 @@ fn open_or_create_private_dir(path: &Path) -> io::Result<OwnedFd> {
 fn validate_dir_path_components(path: &Path) -> io::Result<()> {
     for component in path.components() {
         match component {
-            Component::RootDir | Component::CurDir | Component::Normal(_) => {}
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(name) => {
+                component_cstring(name, path)?;
+            }
             Component::ParentDir => {
                 return Err(permission_denied(format!(
                     "{} contains a parent directory segment",
@@ -615,13 +618,22 @@ fn set_file_private(_file: &File) -> io::Result<()> {
 
 #[cfg(unix)]
 fn file_name(path: &Path) -> io::Result<&OsStr> {
-    if path.as_os_str().as_bytes().last() == Some(&b'/') {
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.last() == Some(&b'/') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "runtime path must not end with a directory separator: {}",
                 path.display()
             ),
+        ));
+    }
+
+    let last_raw_component = bytes.rsplit(|byte| *byte == b'/').next().unwrap_or(bytes);
+    if matches!(last_raw_component, b"." | b"..") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("runtime path has no file name: {}", path.display()),
         ));
     }
 
@@ -650,9 +662,9 @@ fn parent_dir(path: &Path) -> io::Result<&Path> {
 #[cfg(unix)]
 fn open_private_file(path: &Path, append: bool) -> io::Result<File> {
     let name = file_name(path)?;
+    let name_c = component_cstring(name, path)?;
     let parent = parent_dir(path)?;
     let parent = open_or_create_private_dir(parent)?;
-    let name_c = component_cstring(name, path)?;
     let mut flags =
         libc::O_WRONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK;
     if append {
@@ -786,7 +798,7 @@ mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
     use std::os::fd::FromRawFd;
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     use std::os::unix::ffi::OsStrExt;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -1052,6 +1064,40 @@ mod tests {
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
             assert!(!temp.path().join("run").exists());
             assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn create_private_rejects_trailing_current_dir_without_touching_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("run").join("session-id");
+        let path_with_trailing_current_dir = path.join(".");
+
+        #[cfg(unix)]
+        {
+            let error = create_private(&path_with_trailing_current_dir).unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(!temp.path().join("run").exists());
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn create_private_rejects_nul_file_name_without_creating_parent() {
+        let temp = tempfile::tempdir().unwrap();
+
+        #[cfg(unix)]
+        {
+            let path = temp
+                .path()
+                .join("run")
+                .join(Path::new(OsStr::from_bytes(b"bad\0name")));
+
+            let error = create_private(&path).unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(!temp.path().join("run").exists());
         }
     }
 
