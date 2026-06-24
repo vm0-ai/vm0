@@ -196,6 +196,117 @@ const BATCH_PRESENTATION_PICKER_ITEMS = [
   },
 ] as const;
 
+const REFERENCE_PRESENTATION_PICKER_ITEMS = [
+  {
+    slug: "bloom-pitch",
+    designSystemId: "design-system:bloom-pitch",
+    templateId: "template:html-ppt-bloom-pitch",
+    colorSystemId: "color-system:carnival",
+    defaultThemeId: "carnival",
+    designSourcePath: "presentation-design-system/bloom-pitch",
+    templateSourcePath: "presentation-template/bloom-pitch",
+  },
+  {
+    slug: "blueprint-academy",
+    designSystemId: "design-system:blueprint-academy",
+    templateId: "template:html-ppt-blueprint-academy",
+    colorSystemId: "color-system:forest-editorial",
+    defaultThemeId: "forest-editorial",
+    designSourcePath: "presentation-design-system/blueprint-academy",
+    templateSourcePath: "presentation-template/blueprint-academy",
+  },
+  {
+    slug: "meridian",
+    designSystemId: "design-system:meridian",
+    templateId: "template:html-ppt-meridian",
+    colorSystemId: "color-system:slate-corporate",
+    defaultThemeId: "slate-corporate",
+    designSourcePath: "presentation-design-system/meridian",
+    templateSourcePath: "presentation-template/meridian",
+  },
+  {
+    slug: "neo-brutalism",
+    designSystemId: "design-system:neo-brutalism",
+    templateId: "template:html-ppt-neo-brutalism",
+    colorSystemId: "color-system:mono-ink",
+    defaultThemeId: "mono-ink",
+    designSourcePath: "presentation-design-system/neo-brutalism",
+    templateSourcePath: "presentation-template/neo-brutalism",
+  },
+  {
+    slug: "nocturne",
+    designSystemId: "design-system:nocturne",
+    templateId: "template:html-ppt-nocturne",
+    colorSystemId: "color-system:midnight-mono",
+    defaultThemeId: "midnight-mono",
+    designSourcePath: "presentation-design-system/nocturne",
+    templateSourcePath: "presentation-template/nocturne",
+  },
+  {
+    slug: "pixel-glitch",
+    designSystemId: "design-system:pixel-glitch",
+    templateId: "template:html-ppt-pixel-glitch",
+    colorSystemId: "color-system:bauhaus-primary",
+    defaultThemeId: "bauhaus-primary",
+    designSourcePath: "presentation-design-system/pixel-glitch",
+    templateSourcePath: "presentation-template/pixel-glitch",
+  },
+  {
+    slug: "prospectus",
+    designSystemId: "design-system:prospectus",
+    templateId: "template:html-ppt-prospectus",
+    colorSystemId: "color-system:slate-corporate",
+    defaultThemeId: "slate-corporate",
+    designSourcePath: "presentation-design-system/prospectus",
+    templateSourcePath: "presentation-template/prospectus",
+  },
+  {
+    slug: "schoolhouse",
+    designSystemId: "design-system:schoolhouse",
+    templateId: "template:html-ppt-schoolhouse",
+    colorSystemId: "color-system:bauhaus-primary",
+    defaultThemeId: "bauhaus-primary",
+    designSourcePath: "presentation-design-system/schoolhouse",
+    templateSourcePath: "presentation-template/schoolhouse",
+  },
+  {
+    slug: "sticker-scrapbook",
+    designSystemId: "design-system:sticker-scrapbook",
+    templateId: "template:html-ppt-sticker-scrapbook",
+    colorSystemId: "color-system:prism",
+    defaultThemeId: "prism",
+    designSourcePath: "presentation-design-system/sticker-scrapbook",
+    templateSourcePath: "presentation-template/sticker-scrapbook",
+  },
+  {
+    slug: "strata",
+    designSystemId: "design-system:strata",
+    templateId: "template:html-ppt-strata",
+    colorSystemId: "color-system:mono-ink",
+    defaultThemeId: "mono-ink",
+    designSourcePath: "presentation-design-system/strata",
+    templateSourcePath: "presentation-template/strata",
+  },
+  {
+    slug: "taped-consulting",
+    designSystemId: "design-system:taped-consulting",
+    templateId: "template:html-ppt-taped-consulting",
+    colorSystemId: "color-system:slate-corporate",
+    defaultThemeId: "slate-corporate",
+    designSourcePath: "presentation-design-system/taped-consulting",
+    templateSourcePath: "presentation-template/taped-consulting",
+  },
+  {
+    slug: "vantage",
+    designSystemId: "design-system:vantage",
+    templateId: "template:html-ppt-vantage",
+    colorSystemId: "color-system:slate-corporate",
+    defaultThemeId: "slate-corporate",
+    designSourcePath: "presentation-design-system/vantage",
+    templateSourcePath: "presentation-template/vantage",
+  },
+] as const;
+
 const PICKER_PROMPT_SCENARIOS = [
   {
     slug: "playful-launch-presentation",
@@ -503,6 +614,37 @@ describe("presentation template items", () => {
       );
       expectCdnPreviewImages(item);
       expectCdnPreviewHtmls(item);
+      expect(findDesignSystem(item.designSystemId)).toBeDefined();
+      expect(findTemplate(item.templateId)?.targets).toContain("presentation");
+      expectR2ArchiveSource(item.designSystemId, expected.designSourcePath);
+      expectR2ArchiveSource(item.templateId, expected.templateSourcePath);
+    }
+  });
+
+  it("keeps the reference picker items aligned with CDN assets and private R2 sources", () => {
+    for (const expected of REFERENCE_PRESENTATION_PICKER_ITEMS) {
+      const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+        return candidate.slug === expected.slug;
+      });
+
+      expect(item, expected.slug).toBeDefined();
+      if (!item) {
+        throw new Error(`missing ${expected.slug} picker item`);
+      }
+
+      expect(item.designSystemId).toBe(expected.designSystemId);
+      expect(item.templateId).toBe(expected.templateId);
+      expectColorSystem(item.colorSystemId, expected.colorSystemId);
+      expect(item.previewImages.length).toBe(1);
+      expect(item.previewImage).toBe(item.previewImages[0]);
+      expect(item.previewHtmls).toBeUndefined();
+      expect(item.embedUrl).toMatch(
+        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\/[^/]+\.html$/,
+      );
+      expectCdnPreviewImages(item);
+      expect(item.cardPreviewImage).toBe(
+        item.cardPreviewImagesByTheme?.[expected.defaultThemeId],
+      );
       expect(findDesignSystem(item.designSystemId)).toBeDefined();
       expect(findTemplate(item.templateId)?.targets).toContain("presentation");
       expectR2ArchiveSource(item.designSystemId, expected.designSourcePath);
