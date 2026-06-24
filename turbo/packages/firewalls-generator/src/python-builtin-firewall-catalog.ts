@@ -336,6 +336,9 @@ function sortJson(
   }
 
   const sorted: Record<string, JsonValue> = {};
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new Error("unsupported JSON catalog object symbol key");
+  }
   if (ancestors.has(value)) {
     throw new Error("unsupported circular JSON catalog value");
   }
@@ -343,9 +346,10 @@ function sortJson(
   try {
     for (const key of Object.keys(value).sort()) {
       const nested = value[key];
-      if (nested !== undefined) {
-        sorted[key] = sortJson(nested, ancestors);
+      if (nested === undefined) {
+        throw new Error("unsupported JSON catalog value: undefined");
       }
+      sorted[key] = sortJson(nested, ancestors);
     }
   } finally {
     ancestors.delete(value);

@@ -611,6 +611,24 @@ describe("Python builtin firewall catalog renderer", () => {
         }),
       ]);
     }).toThrow("unsupported JSON catalog object: Date");
+
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          ...testFirewall("undefined"),
+          observedAt: undefined,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog value: undefined");
+
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          ...testFirewall("symbol-key"),
+          [Symbol("internal")]: "hidden",
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog object symbol key");
   });
 
   it("rejects circular JSON catalog values without rejecting shared objects", () => {
