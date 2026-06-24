@@ -14,8 +14,8 @@
 # Test 3 (settings): --settings with PreToolUse hook
 #   Verifies the full pipeline: API → claim route → runner → sandbox → hook fires
 #   Regression test for #5832 (claim route omitted settings from response)
-# Test 4 (slash command): real Claude local zero-turn flow fails with the
-#   structured no-history error instead of a checkpoint read failure.
+# Test 4 (slash command): real Claude local slash-command flow completes and
+#   checkpoints without regressing to the old no-history failure.
 
 load '../../helpers/setup'
 
@@ -218,9 +218,10 @@ ensure_anthropic_model_provider() {
     assert_output --partial "SETTINGS_HOOK_OK"
 }
 
-# Test 4: real Claude slash-command local flow — verify zero-turn/no-history
-# finalization is explicit and does not degrade into a checkpoint read error.
-@test "t27-4: slash command no-history failure is structured" {
+# Test 4: real Claude slash-command local flow — verify the current Claude CLI
+# behavior still produces resumable session history and never degrades into the
+# old checkpoint read error.
+@test "t27-4: status slash command completes with session history" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set"
     fi
@@ -232,9 +233,12 @@ ensure_anthropic_model_provider() {
         --debug-no-mock-claude \
         "/status"
 
-    assert_failure
-    assert_output --partial "Run failed"
-    assert_output --partial "Claude Code emitted a zero-turn result without creating session history"
+    assert_success
+    assert_output --partial "/status"
+    assert_output --partial "Run completed successfully"
+    refute_output --partial "Claude Code emitted a zero-turn result without creating session history"
+    refute_output --partial "Checkpoint failed:"
+    refute_output --partial "Failed to read session history"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
@@ -244,9 +248,11 @@ ensure_anthropic_model_provider() {
     }
 
     wait_for_log "$RUN_ID" --system -- \
-        "Claude Code emitted a zero-turn result without creating session history" \
-        "Skipping recovery checkpoint because no session history was created"
+        "Session history loaded" \
+        "checkpoint created successfully"
 
+    refute_output --partial "Claude Code emitted a zero-turn result without creating session history"
+    refute_output --partial "Skipping recovery checkpoint because no session history was created"
     refute_output --partial "Checkpoint failed:"
     refute_output --partial "Failed to read session history"
 }
