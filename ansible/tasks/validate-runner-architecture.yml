@@ -1,20 +1,31 @@
-- name: Validate runner target
-  assert:
-    that:
-      - (runner_target | default('')) in ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
-    fail_msg: >-
-      Missing or invalid runner target. Required: `runner_target`
-      (aarch64-unknown-linux-musl | x86_64-unknown-linux-musl). Got
-      runner_target='{{ runner_target | default('<undefined>') }}'.
-
 - name: Derive runner architecture metadata
+  command:
+    argv:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        . "$1"
+        runner_image_asset_suffix "$2"
+        runner_image_expected_uname_m "$2"
+      - bash
+      - "{{ playbook_dir }}/../../.github/scripts/runner-image-target.sh"
+      - "{{ runner_target | default('') }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: runner_architecture_metadata
+
+- name: Store runner architecture metadata
   set_fact:
-    derived_runner_asset_suffix: "{{ 'aarch64-linux' if runner_target == 'aarch64-unknown-linux-musl' else 'x86_64-linux' }}"
-    derived_expected_runner_uname_m: "{{ 'aarch64' if runner_target == 'aarch64-unknown-linux-musl' else 'x86_64' }}"
+    derived_runner_asset_suffix: "{{ runner_architecture_metadata.stdout_lines[0] }}"
+    derived_expected_runner_uname_m: "{{ runner_architecture_metadata.stdout_lines[1] }}"
 
 - name: Probe remote architecture
   command: uname -m
   register: remote_uname_m
+  check_mode: false
   changed_when: false
 
 - name: Assert remote architecture matches runner target
