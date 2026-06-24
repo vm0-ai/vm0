@@ -21,7 +21,7 @@ import { db, uniqueId } from "../test-db";
 
 const migrationSql = readFileSync(
   new URL(
-    "../../migrations/0496_backfill_chat_run_groups.sql",
+    "../../migrations/0497_backfill_chat_run_groups.sql",
     import.meta.url,
   ),
   "utf8",
@@ -78,7 +78,7 @@ async function insertRun(
   return run!.id;
 }
 
-describe("migration 0496 backfill chat run groups", () => {
+describe("migration 0497 backfill chat run groups", () => {
   it("backfills historical run groups from automation and workflow provenance", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");

@@ -11,15 +11,10 @@ import {
   SheetTitle,
   SheetFooter,
   Button,
-  cn,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
 } from "@vm0/ui";
 import {
   CONNECTOR_TYPES,
@@ -45,10 +40,7 @@ import {
   explicitGrantStateKey,
   hasAnyPermissionDraftChange,
   hasPermissionDraftDefaultDifference,
-  hasPermissionDraftGroupChange,
-  hasPermissionDraftPermissionChange,
   hasPermissionDraftResetPersistedEffect,
-  hasPermissionDraftUnknownChange,
   isPermissionDraftPristine,
   permissionDraftInitialPolicyKey,
   permissionDraftMetadataKey,
@@ -57,9 +49,6 @@ import {
   resolvePermissionDraftListPolicy,
   resolvePermissionDraftPolicy,
   resolvePermissionDraftUnknownPolicy,
-  restorePermissionDraftGroup,
-  restorePermissionDraftPermission,
-  restorePermissionDraftUnknown,
   setPermissionDraftConnectorPolicy,
   setPermissionDraftExpiration,
   setPermissionDraftGroupAllowExpiration,
@@ -89,9 +78,9 @@ import {
   IconCheck,
   IconBan,
   IconChevronRight,
+  IconCircleHalf2,
   IconClock,
   IconChevronDown,
-  IconArrowBackUp,
   IconLoader2,
   IconSearch,
   IconX,
@@ -405,31 +394,17 @@ function UnknownEndpointsToggle({
   );
 }
 
-function GrantExpirationStatus({
+function permissionDurationLabel({
   expiresAt,
   selected,
 }: {
   expiresAt: string | null;
   selected: UserPermissionGrantExpiresIn | undefined;
-}) {
-  const selectedStatus = allowDurationStatusLabel(selected);
-  const expiryText =
-    selectedStatus ?? compactGrantExpirationText(expiresAt) ?? "Always";
-  const hasExpiringGrant =
-    selected === undefined ? Boolean(expiresAt) : selected !== "always";
-
+}): string {
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 max-w-[150px] items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium",
-        hasExpiringGrant
-          ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-          : "border-border bg-muted/40 text-muted-foreground",
-      )}
-    >
-      <IconClock size={12} className="shrink-0" />
-      <span className="truncate">{expiryText}</span>
-    </span>
+    allowDurationStatusLabel(selected) ??
+    compactGrantExpirationText(expiresAt) ??
+    "Always"
   );
 }
 
@@ -514,43 +489,83 @@ function isDurationMenuOptionActive({
   return value === "always" && allowAlwaysActive;
 }
 
-function PermissionGrantResetButton({
-  disabled,
+function PermissionAllowDurationDropdown({
   permission,
-  visible,
-  onReset,
+  label,
+  selected,
+  allowAlwaysActive,
+  saving,
+  onSelect,
 }: {
-  disabled?: boolean;
   permission: string;
-  visible: boolean;
-  onReset: () => void;
+  label: string;
+  selected: UserPermissionGrantExpiresIn | undefined;
+  allowAlwaysActive: boolean;
+  saving: boolean;
+  onSelect: (expiresIn: UserPermissionGrantExpiresIn) => void;
 }) {
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-      {visible && (
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                disabled={disabled}
-                aria-label={`Undo ${permission} changes`}
-                onClick={() => {
-                  onReset();
-                }}
-                className={`flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors ${
-                  disabled
-                    ? "cursor-default text-muted-foreground/50"
-                    : "hover:bg-muted/50 hover:text-foreground"
-                }`}
-              >
-                <IconArrowBackUp size={13} stroke={2.2} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Undo changes</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={saving}
+          aria-label={`${permission} allow options`}
+          className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium zero-border transition-colors ${
+            saving
+              ? "cursor-default text-muted-foreground/50"
+              : "cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          }`}
+        >
+          <IconClock size={12} className="shrink-0" />
+          <span className="max-w-[90px] truncate">{label}</span>
+          <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-40">
+        {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
+          return (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => {
+                onSelect(option.value);
+              }}
+              className="flex items-center justify-between gap-4"
+            >
+              {option.label}
+              <MenuItemCheck
+                active={isDurationMenuOptionActive({
+                  allowAlwaysActive,
+                  selected,
+                  value: option.value,
+                })}
+              />
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function PermissionAllowDurationStatic({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-6 max-w-[150px] shrink-0 items-center gap-1.5 rounded-md border zero-border bg-muted/40 px-2 text-[11px] font-medium text-muted-foreground">
+      <IconClock size={12} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+// Non-interactive state read-out shown in the leading slot when a group's
+// permissions resolve to a mix of allow and deny. It occupies the same slot as
+// the duration dropdown (they are mutually exclusive), so the Allow / Deny
+// controls stay aligned in their columns across the header and the rows.
+function PermissionGroupMixedBadge() {
+  return (
+    <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
+      <IconCircleHalf2 size={12} className="shrink-0" />
+      <span>Mixed</span>
     </span>
   );
 }
@@ -560,7 +575,6 @@ function PermissionGrantPolicyControl({
   policy,
   grant,
   selected,
-  hasPendingChange,
   allowAlwaysActive,
   expirationStatusExpiresAt,
   readOnly,
@@ -570,13 +584,11 @@ function PermissionGrantPolicyControl({
   onClearExpiration,
   onAllowDurationChange,
   onPolicyChange,
-  onReset,
 }: {
   permission: string;
   policy: FirewallPolicyValue | "mixed";
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
-  hasPendingChange: boolean;
   allowAlwaysActive: boolean;
   expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
@@ -586,7 +598,6 @@ function PermissionGrantPolicyControl({
   onClearExpiration: () => void;
   onAllowDurationChange: (expiresIn: UserPermissionGrantExpiresIn) => void;
   onPolicyChange: (policy: PermissionPolicy) => void;
-  onReset: () => void;
 }) {
   const allowGrant = grant?.action === "allow" ? grant : undefined;
   const showExpirationStatus =
@@ -594,129 +605,85 @@ function PermissionGrantPolicyControl({
   const expirationStatusValue =
     expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
   const showSplitPolicy = !readOnly;
+  const durationLabel = permissionDurationLabel({
+    expiresAt: expirationStatusValue,
+    selected,
+  });
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {showExpirationStatus && (
-        <GrantExpirationStatus
-          expiresAt={expirationStatusValue}
-          selected={selected}
-        />
-      )}
       {!showSplitPolicy ? (
-        <PolicyPill
-          policy={policy}
-          disabled={readOnly}
-          onChange={(nextPolicy) => {
-            onPolicyChange(nextPolicy);
-          }}
-        />
+        <>
+          {showExpirationStatus && (
+            <PermissionAllowDurationStatic label={durationLabel} />
+          )}
+          <PolicyPill
+            policy={policy}
+            disabled={readOnly}
+            onChange={(nextPolicy) => {
+              onPolicyChange(nextPolicy);
+            }}
+          />
+        </>
       ) : (
-        <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
-          <button
-            type="button"
-            disabled={saving}
-            aria-pressed={policy === "allow"}
-            onClick={() => {
-              if (onAllowClick) {
-                onAllowClick();
-                return;
-              }
-              onPolicyChange("allow");
-            }}
-            className={permissionPolicyButtonClass({
-              active: policy === "allow",
-              disabled: saving,
-              tone: "allow",
-            })}
-          >
-            <IconCheck size={12} stroke={2.5} />
-            Allow
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={saving}
-                aria-label={`${permission} allow options`}
-                className={`flex h-7 items-center border-l border-[hsl(var(--gray-400))] px-1.5 transition-colors ${
-                  policy === "allow"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : saving
-                      ? "text-muted-foreground/50"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                } ${saving ? "cursor-default" : "cursor-pointer"}`}
-              >
-                <IconChevronDown size={13} stroke={2.5} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
-                return (
-                  <DropdownMenuItem
-                    key={option.value}
-                    onSelect={() => {
-                      onPolicyChange("allow");
-                      onAllowDurationChange(option.value);
-                    }}
-                  >
-                    <MenuItemCheck
-                      active={isDurationMenuOptionActive({
-                        allowAlwaysActive,
-                        selected,
-                        value: option.value,
-                      })}
-                    />
-                    {option.label}
-                  </DropdownMenuItem>
-                );
+        <>
+          {policy === "allow" && (
+            <PermissionAllowDurationDropdown
+              permission={permission}
+              label={durationLabel}
+              selected={selected}
+              allowAlwaysActive={allowAlwaysActive}
+              saving={saving}
+              onSelect={(expiresIn) => {
+                onAllowDurationChange(expiresIn);
+              }}
+            />
+          )}
+          {policy === "mixed" && <PermissionGroupMixedBadge />}
+          <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
+            <button
+              type="button"
+              disabled={saving}
+              aria-pressed={policy === "allow"}
+              onClick={() => {
+                if (onAllowClick) {
+                  onAllowClick();
+                  return;
+                }
+                onPolicyChange("allow");
+              }}
+              className={permissionPolicyButtonClass({
+                active: policy === "allow",
+                disabled: saving,
+                tone: "allow",
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            type="button"
-            disabled={saving}
-            aria-pressed={policy === "deny"}
-            style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
-            onClick={() => {
-              onPolicyChange("deny");
-              onClearExpiration();
-            }}
-            className={permissionPolicyButtonClass({
-              active: policy === "deny",
-              disabled: saving,
-              tone: "deny",
-            })}
-          >
-            <IconBan size={12} stroke={2.5} />
-            Deny
-          </button>
-        </span>
-      )}
-      {showSplitPolicy && (
-        <PermissionGrantResetButton
-          disabled={saving}
-          permission={permission}
-          visible={hasPendingChange}
-          onReset={onReset}
-        />
+            >
+              <IconCheck size={12} stroke={2.5} />
+              Allow
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              aria-pressed={policy === "deny"}
+              style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
+              onClick={() => {
+                onPolicyChange("deny");
+                onClearExpiration();
+              }}
+              className={permissionPolicyButtonClass({
+                active: policy === "deny",
+                disabled: saving,
+                tone: "deny",
+              })}
+            >
+              <IconBan size={12} stroke={2.5} />
+              Deny
+            </button>
+          </span>
+        </>
       )}
     </div>
   );
-}
-
-function groupExpirationSelection(
-  context: PermissionDraftContext,
-  draft: PermissionDraftIntent,
-  category: string,
-  permissions: readonly ConnectorPermission[],
-): UserPermissionGrantExpiresIn | undefined {
-  return resolvePermissionDraftGroupExpiration({
-    context,
-    draft,
-    category,
-    permissions,
-  });
 }
 
 function hasAllowAlwaysPolicy(
@@ -724,91 +691,6 @@ function hasAllowAlwaysPolicy(
   policy: FirewallPolicyValue,
 ): boolean {
   return policy === "allow" && !(grant?.action === "allow" && grant.expiresAt);
-}
-
-function hasGroupAllowAlwaysPolicy({
-  context,
-  draft,
-  explicitGrants,
-  permissions,
-}: {
-  context: PermissionDraftContext;
-  draft: PermissionDraftIntent;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
-  permissions: readonly ConnectorPermission[];
-}): boolean {
-  return permissions.every((permission) => {
-    const name = permission.name;
-    const selected = resolvePermissionDraftExpiration({
-      context,
-      draft,
-      permissionName: name,
-    });
-    if (selected !== undefined && selected !== "always") {
-      return false;
-    }
-    return hasAllowAlwaysPolicy(
-      explicitGrants.get(name),
-      resolvePermissionDraftPolicy({ context, draft, permissionName: name }),
-    );
-  });
-}
-
-function groupExpirationStatusExpiresAt({
-  context,
-  draft,
-  explicitGrants,
-  permissions,
-}: {
-  context: PermissionDraftContext;
-  draft: PermissionDraftIntent;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
-  permissions: readonly ConnectorPermission[];
-}): string | null | undefined {
-  if (permissions.length === 0) {
-    return null;
-  }
-
-  let firstExpiresAt: string | null | undefined;
-  let firstSelected: UserPermissionGrantExpiresIn | undefined;
-  let hasFirstSelected = false;
-  for (const permission of permissions) {
-    const name = permission.name;
-    if (
-      resolvePermissionDraftPolicy({ context, draft, permissionName: name }) !==
-      "allow"
-    ) {
-      return undefined;
-    }
-
-    const selected = resolvePermissionDraftExpiration({
-      context,
-      draft,
-      permissionName: name,
-    });
-    if (!hasFirstSelected) {
-      firstSelected = selected;
-      hasFirstSelected = true;
-    } else if (firstSelected !== selected) {
-      return undefined;
-    }
-    if (selected !== undefined) {
-      continue;
-    }
-
-    const grant = explicitGrants.get(name);
-    const expiresAt =
-      grant?.action === "allow" && grant.expiresAt ? grant.expiresAt : null;
-    if (firstExpiresAt === undefined) {
-      firstExpiresAt = expiresAt;
-      continue;
-    }
-    if (firstExpiresAt !== expiresAt) {
-      return undefined;
-    }
-  }
-
-  return firstSelected !== undefined ? null : (firstExpiresAt ?? null);
 }
 
 function ShowMorePermissions({
@@ -827,6 +709,85 @@ function ShowMorePermissions({
   );
 }
 
+function PermissionGroupHeader({
+  context,
+  draft,
+  category,
+  permissions,
+  expanded,
+  readOnly,
+  saving,
+  onToggle,
+  onGroupAllow,
+  onGroupDeny,
+  onGroupAllowDuration,
+}: {
+  context: PermissionDraftContext;
+  draft: PermissionDraftIntent;
+  category: string;
+  permissions: ConnectorPermission[];
+  expanded: boolean;
+  readOnly?: boolean;
+  saving: boolean;
+  onToggle: () => void;
+  onGroupAllow: () => void;
+  onGroupDeny: () => void;
+  onGroupAllowDuration: (expiresIn: UserPermissionGrantExpiresIn) => void;
+}) {
+  const policy = resolvePermissionDraftListPolicy({
+    context,
+    draft,
+    permissions,
+  });
+  const selected = resolvePermissionDraftGroupExpiration({
+    context,
+    draft,
+    category,
+    permissions,
+  });
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
+      >
+        <IconChevronRight
+          size={14}
+          stroke={2}
+          className={`transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+        {category} ({permissions.length})
+      </button>
+      {!readOnly && (
+        <div className="ml-auto">
+          <PermissionGrantPolicyControl
+            permission={category}
+            policy={policy}
+            grant={undefined}
+            selected={selected}
+            allowAlwaysActive={selected === undefined}
+            showCurrentExpirationStatus={false}
+            saving={saving}
+            onAllowClick={onGroupAllow}
+            onClearExpiration={() => {
+              // Denying a group already clears its own expiration.
+            }}
+            onAllowDurationChange={onGroupAllowDuration}
+            onPolicyChange={(nextPolicy) => {
+              if (nextPolicy === "deny") {
+                onGroupDeny();
+                return;
+              }
+              onGroupAllow();
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PermissionRows({
   context,
   draft,
@@ -838,13 +799,12 @@ function PermissionRows({
   readOnly,
   saving,
   onToggleGroup,
-  onSetGroupAll,
+  onGroupAllow,
+  onGroupDeny,
+  onGroupAllowDuration,
   onPolicyChange,
   onGrantExpirationChange,
   onClearInheritedExpiration,
-  onGroupGrantExpirationChange,
-  onResetPermission,
-  onResetGroup,
   onShowMore,
 }: {
   context: PermissionDraftContext;
@@ -857,10 +817,12 @@ function PermissionRows({
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
-  onSetGroupAll: (
+  onGroupAllow: (category: string, permissions: ConnectorPermission[]) => void;
+  onGroupDeny: (category: string, permissions: ConnectorPermission[]) => void;
+  onGroupAllowDuration: (
     category: string,
-    groupPerms: ConnectorPermission[],
-    policy: PermissionPolicy,
+    permissions: ConnectorPermission[],
+    expiresIn: UserPermissionGrantExpiresIn,
   ) => void;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
   onGrantExpirationChange: (
@@ -868,43 +830,11 @@ function PermissionRows({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
   onClearInheritedExpiration: (permission: string) => void;
-  onGroupGrantExpirationChange: (
-    category: string,
-    groupPerms: ConnectorPermission[],
-    expiresIn: UserPermissionGrantExpiresIn | null,
-  ) => void;
-  onResetPermission: (name: string) => void;
-  onResetGroup: (category: string, groupPerms: ConnectorPermission[]) => void;
   onShowMore: (key: string) => void;
 }) {
   if (groups) {
     return groups.map((group, groupIdx) => {
       const expanded = expandedGroups.has(group.category);
-      const groupPolicy = getGroupPolicy(context, draft, group.permissions);
-      const groupSelectedExpiration = groupExpirationSelection(
-        context,
-        draft,
-        group.category,
-        group.permissions,
-      );
-      const groupHasPendingChange = hasPermissionDraftGroupChange({
-        context,
-        draft,
-        explicitGrants,
-        permissions: group.permissions,
-      });
-      const groupAllowAlwaysActive = hasGroupAllowAlwaysPolicy({
-        context,
-        draft,
-        explicitGrants,
-        permissions: group.permissions,
-      });
-      const groupExpirationStatus = groupExpirationStatusExpiresAt({
-        context,
-        draft,
-        explicitGrants,
-        permissions: group.permissions,
-      });
       const groupListKey = `group:${group.category}`;
       const groupVisibleCount =
         visibleCounts[groupListKey] ?? PERMISSION_PAGE_SIZE;
@@ -915,57 +845,31 @@ function PermissionRows({
           {groupIdx > 0 && (
             <div className="mx-3 border-t border-border/40 my-1" />
           )}
-          <div className="flex items-center justify-between px-3 py-2">
-            <button
-              type="button"
-              onClick={() => {
-                onToggleGroup(group.category);
-              }}
-              className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
-            >
-              <IconChevronRight
-                size={14}
-                stroke={2}
-                className={`transition-transform ${expanded ? "rotate-90" : ""}`}
-              />
-              {group.category} ({group.permissions.length})
-            </button>
-            <PermissionGrantPolicyControl
-              permission={group.category}
-              policy={groupPolicy}
-              grant={undefined}
-              selected={groupSelectedExpiration}
-              hasPendingChange={groupHasPendingChange}
-              allowAlwaysActive={groupAllowAlwaysActive}
-              expirationStatusExpiresAt={groupExpirationStatus ?? null}
-              readOnly={readOnly}
-              saving={saving}
-              showCurrentExpirationStatus={groupExpirationStatus !== undefined}
-              onAllowClick={() => {
-                onSetGroupAll(group.category, group.permissions, "allow");
-              }}
-              onClearExpiration={() => {
-                onGroupGrantExpirationChange(
-                  group.category,
-                  group.permissions,
-                  null,
-                );
-              }}
-              onAllowDurationChange={(expiresIn) => {
-                onGroupGrantExpirationChange(
-                  group.category,
-                  group.permissions,
-                  expiresIn,
-                );
-              }}
-              onPolicyChange={(p) => {
-                onSetGroupAll(group.category, group.permissions, p);
-              }}
-              onReset={() => {
-                onResetGroup(group.category, group.permissions);
-              }}
-            />
-          </div>
+          <PermissionGroupHeader
+            context={context}
+            draft={draft}
+            category={group.category}
+            permissions={group.permissions}
+            expanded={expanded}
+            readOnly={readOnly}
+            saving={saving}
+            onToggle={() => {
+              onToggleGroup(group.category);
+            }}
+            onGroupAllow={() => {
+              onGroupAllow(group.category, group.permissions);
+            }}
+            onGroupDeny={() => {
+              onGroupDeny(group.category, group.permissions);
+            }}
+            onGroupAllowDuration={(expiresIn) => {
+              onGroupAllowDuration(
+                group.category,
+                group.permissions,
+                expiresIn,
+              );
+            }}
+          />
           {expanded &&
             visiblePermissions.map((perm, idx) => {
               return (
@@ -982,7 +886,6 @@ function PermissionRows({
                   onPolicyChange={onPolicyChange}
                   onGrantExpirationChange={onGrantExpirationChange}
                   onClearInheritedExpiration={onClearInheritedExpiration}
-                  onResetPermission={onResetPermission}
                 />
               );
             })}
@@ -1017,7 +920,6 @@ function PermissionRows({
             onPolicyChange={onPolicyChange}
             onGrantExpirationChange={onGrantExpirationChange}
             onClearInheritedExpiration={onClearInheritedExpiration}
-            onResetPermission={onResetPermission}
           />
         );
       })}
@@ -1045,7 +947,6 @@ function PermissionRow({
   onPolicyChange,
   onGrantExpirationChange,
   onClearInheritedExpiration,
-  onResetPermission,
 }: {
   context: PermissionDraftContext;
   draft: PermissionDraftIntent;
@@ -1061,7 +962,6 @@ function PermissionRow({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
   onClearInheritedExpiration: (permission: string) => void;
-  onResetPermission: (name: string) => void;
 }) {
   const policy = resolvePermissionDraftPolicy({
     context,
@@ -1078,13 +978,6 @@ function PermissionRow({
   const hasGroupExpiration =
     category !== undefined && draft.groupExpirations[category] !== undefined;
   const allowGrant = grant?.action === "allow" ? grant : undefined;
-  const hasPendingChange = hasPermissionDraftPermissionChange({
-    context,
-    draft,
-    permissionName: permission.name,
-    selected,
-    grant,
-  });
   return (
     <div>
       {showSeparator && <div className="mx-3 border-t border-border/40" />}
@@ -1106,7 +999,6 @@ function PermissionRow({
           policy={policy}
           grant={grant}
           selected={selected}
-          hasPendingChange={hasPendingChange}
           allowAlwaysActive={hasAllowAlwaysPolicy(grant, policy)}
           readOnly={readOnly}
           saving={saving}
@@ -1134,9 +1026,6 @@ function PermissionRow({
           }}
           onPolicyChange={(p) => {
             onPolicyChange(permission.name, p);
-          }}
-          onReset={() => {
-            onResetPermission(permission.name);
           }}
         />
       </div>
@@ -1301,53 +1190,46 @@ function LoadedPermissionsDrawerContent({
     });
   };
 
-  const handleSetGroupAll = (
+  const handleGroupAllow = (
     category: string,
-    groupPerms: ConnectorPermission[],
-    policy: PermissionPolicy,
+    groupPermissions: ConnectorPermission[],
   ) => {
     setDraft(stateKey, (current) => {
-      if (policy === "allow") {
-        return setPermissionDraftGroupAllowPolicy({
-          draft: current,
-          category,
-          permissions: groupPerms,
-        });
-      }
+      return setPermissionDraftGroupAllowPolicy({
+        draft: current,
+        category,
+        permissions: groupPermissions,
+      });
+    });
+  };
+
+  const handleGroupDeny = (
+    category: string,
+    groupPermissions: ConnectorPermission[],
+  ) => {
+    setDraft(stateKey, (current) => {
       return setPermissionDraftGroupPolicy({
         draft: current,
         category,
-        permissions: groupPerms,
-        policy,
+        permissions: groupPermissions,
+        policy: "deny",
       });
     });
   };
 
-  const handleResetPermission = (name: string) => {
-    setDraft(stateKey, (current) => {
-      return restorePermissionDraftPermission({
-        draft: current,
-        permissionName: name,
-      });
-    });
-  };
-
-  const handleResetGroup = (
+  const handleGroupAllowDuration = (
     category: string,
-    groupPerms: ConnectorPermission[],
+    groupPermissions: ConnectorPermission[],
+    expiresIn: UserPermissionGrantExpiresIn,
   ) => {
     setDraft(stateKey, (current) => {
-      return restorePermissionDraftGroup({
+      return setPermissionDraftGroupAllowExpiration({
         draft: current,
         category,
-        permissions: groupPerms,
+        permissions: groupPermissions,
+        explicitGrants: effectiveExplicitGrants,
+        expiresIn,
       });
-    });
-  };
-
-  const handleResetUnknownPermission = () => {
-    setDraft(stateKey, (current) => {
-      return restorePermissionDraftUnknown({ context, draft: current });
     });
   };
 
@@ -1384,22 +1266,6 @@ function LoadedPermissionsDrawerContent({
       return clearPermissionDraftInheritedExpiration({
         draft: current,
         permissionName: permission,
-      });
-    });
-  };
-
-  const handleGroupGrantExpirationChange = (
-    category: string,
-    groupPerms: ConnectorPermission[],
-    expiresIn: UserPermissionGrantExpiresIn | null,
-  ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftGroupAllowExpiration({
-        draft: current,
-        category,
-        permissions: groupPerms,
-        explicitGrants: effectiveExplicitGrants,
-        expiresIn,
       });
     });
   };
@@ -1442,13 +1308,13 @@ function LoadedPermissionsDrawerContent({
     <>
       <div className="flex flex-1 flex-col min-h-0">
         <div
-          className={`flex items-center gap-2 pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+          className={`flex flex-col gap-2 pb-3 -mx-6 px-6 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
         >
-          <div className="relative flex-1">
+          <div className="relative w-full">
             <IconSearch
-              size={14}
-              stroke={1.7}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={15}
+              stroke={1.5}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
             />
             <input
               value={search}
@@ -1457,7 +1323,7 @@ function LoadedPermissionsDrawerContent({
               }}
               aria-label="Find permissions"
               placeholder="Find permissions..."
-              className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/30"
+              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
             />
             {search && (
               <button
@@ -1473,15 +1339,17 @@ function LoadedPermissionsDrawerContent({
             )}
           </div>
           {!groups && !searchActive && (
-            <span className="text-xs font-medium text-foreground">
-              {readOnly ? "Permissions" : "Select all"} ({permissions.length})
-            </span>
-          )}
-          {!groups && !searchActive && !readOnly && (
-            <PolicyPill
-              policy={getGroupPolicy(context, draft, permissions)}
-              onChange={handleSetAll}
-            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-foreground">
+                {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+              </span>
+              {!readOnly && (
+                <PolicyPill
+                  policy={getGroupPolicy(context, draft, permissions)}
+                  onChange={handleSetAll}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -1508,13 +1376,12 @@ function LoadedPermissionsDrawerContent({
               readOnly={readOnly}
               saving={saving}
               onToggleGroup={handleToggleGroup}
-              onSetGroupAll={handleSetGroupAll}
+              onGroupAllow={handleGroupAllow}
+              onGroupDeny={handleGroupDeny}
+              onGroupAllowDuration={handleGroupAllowDuration}
               onPolicyChange={handlePolicyChange}
               onGrantExpirationChange={handleGrantExpirationChange}
               onClearInheritedExpiration={handleClearInheritedExpiration}
-              onGroupGrantExpirationChange={handleGroupGrantExpirationChange}
-              onResetPermission={handleResetPermission}
-              onResetGroup={handleResetGroup}
               onShowMore={handleShowMore}
             />
           )}
@@ -1527,12 +1394,6 @@ function LoadedPermissionsDrawerContent({
               policy={unknownPolicy}
               grant={unknownGrant}
               selected={unknownSelectedExpiration}
-              hasPendingChange={hasPermissionDraftUnknownChange({
-                context,
-                draft,
-                selected: unknownSelectedExpiration,
-                grant: unknownGrant,
-              })}
               allowAlwaysActive={hasAllowAlwaysPolicy(
                 unknownGrant,
                 unknownPolicy,
@@ -1566,7 +1427,6 @@ function LoadedPermissionsDrawerContent({
                   });
                 });
               }}
-              onReset={handleResetUnknownPermission}
             />
           }
         />

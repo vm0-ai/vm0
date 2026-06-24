@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
@@ -40,6 +41,10 @@ function collectionClient() {
 
 function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
+}
+
+function visibilityClient() {
+  return setupApp({ context })(zeroWorkflowVisibilityContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -220,6 +225,92 @@ describe("zero workflows", () => {
     );
   });
 
+  it("enforces public workflow slug uniqueness per agent while allowing private overrides", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Unique Slug Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const otherAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Other Unique Slug Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: agent.agentId,
+          name: "shared-workflow",
+          visibility: "public",
+          instruction: "# shared workflow",
+        },
+      }),
+      [201],
+    );
+
+    await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: agent.agentId,
+          name: "shared-workflow",
+          instruction: "# private override",
+        },
+      }),
+      [201],
+    );
+
+    await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: otherAgent.agentId,
+          name: "shared-workflow",
+          visibility: "public",
+          instruction: "# other agent workflow",
+        },
+      }),
+      [201],
+    );
+
+    const duplicate = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: agent.agentId,
+          name: "shared-workflow",
+          visibility: "public",
+          instruction: "# duplicate public workflow",
+        },
+      }),
+      [409],
+    );
+    expect(duplicate.body).toStrictEqual({
+      error: {
+        message:
+          'A public workflow named "/shared-workflow" already exists on this agent. Rename this workflow or keep it private.',
+        code: "CONFLICT",
+      },
+    });
+  });
+
   it("marks same-slug workflows as shadowed by the runtime priority winner", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
@@ -295,6 +386,122 @@ describe("zero workflows", () => {
       id: privateWorkflowId,
       name: "daily-brief",
       displayName: "Private Brief",
+    });
+  });
+
+  it("rejects direct publish when a public workflow already uses the slug", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Publish Conflict Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "publish-conflict",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const privateWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "publish-conflict",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      visibilityClient().requestPublish({
+        headers: authHeaders(),
+        params: { workflowId: privateWorkflowId },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          'A public workflow named "/publish-conflict" already exists on this agent. Rename this workflow or keep it private.',
+        code: "CONFLICT",
+      },
+    });
+  });
+
+  it("rejects publish approval when a public workflow already uses the slug", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agentOwnerId = `user_${randomUUID()}`;
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: agentOwnerId,
+        displayName: "Review Conflict Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: agentOwnerId,
+        agentId: agent.agentId,
+        name: "review-conflict",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const privateWorkflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "review-conflict",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(zeroWorkflows)
+      .set({ requestToPublish: true })
+      .where(eq(zeroWorkflows.id, privateWorkflowId));
+    mocks.clerk.session(agentOwnerId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      visibilityClient().approvePublish({
+        headers: authHeaders(),
+        params: { workflowId: privateWorkflowId },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          'A public workflow named "/review-conflict" already exists on this agent. Rename this workflow or keep it private.',
+        code: "CONFLICT",
+      },
     });
   });
 
