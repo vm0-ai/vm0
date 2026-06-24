@@ -182,6 +182,7 @@ pub(super) async fn download_storages(
     let download_cmd = if use_stdin {
         guest_download_stdin_command()
     } else {
+        remove_fallback_storage_manifest(sandbox).await?;
         if let Err(error) = sandbox
             .write_file(guest::STORAGE_MANIFEST, &manifest_json)
             .await
@@ -235,8 +236,21 @@ async fn cleanup_fallback_storage_manifest_after_failure(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
 ) {
+    match remove_fallback_storage_manifest(sandbox).await {
+        Ok(()) => {}
+        Err(error) => {
+            warn!(
+                run_id = %context.run_id,
+                error = %error,
+                "failed to remove fallback storage manifest after fallback failure"
+            );
+        }
+    }
+}
+
+async fn remove_fallback_storage_manifest(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let cleanup_cmd = guest_storage_manifest_cleanup_command();
-    let cleanup_result = sandbox
+    let result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
                 cmd: &cleanup_cmd,
@@ -248,25 +262,16 @@ async fn cleanup_fallback_storage_manifest_after_failure(
             },
             "storage-manifest-cleanup",
         )
-        .await;
+        .await?;
 
-    match cleanup_result {
-        Ok(result) if helper_exec_succeeded(&result) => {}
-        Ok(result) => {
-            warn!(
-                run_id = %context.run_id,
-                error = %format_helper_exec_failure("storage manifest cleanup", &result),
-                "failed to remove fallback storage manifest after fallback failure"
-            );
-        }
-        Err(error) => {
-            warn!(
-                run_id = %context.run_id,
-                error = %error,
-                "failed to remove fallback storage manifest after fallback failure"
-            );
-        }
+    if !helper_exec_succeeded(&result) {
+        return Err(RunnerError::Internal(format_helper_exec_failure(
+            "storage manifest cleanup",
+            &result,
+        )));
     }
+
+    Ok(())
 }
 
 pub(super) fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {

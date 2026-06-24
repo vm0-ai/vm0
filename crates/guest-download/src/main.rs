@@ -50,7 +50,7 @@ fn run(input: ManifestInput) -> bool {
     match input {
         ManifestInput::Path(manifest_path) => run_path(&manifest_path),
         ManifestInput::Stdin => {
-            if !remove_manifest_file(LEGACY_MANIFEST_PATH) {
+            if !remove_stale_manifest_file(LEGACY_MANIFEST_PATH) {
                 return false;
             }
 
@@ -100,9 +100,27 @@ fn remove_manifest_file(path: &str) -> bool {
     }
 }
 
+fn remove_stale_manifest_file(path: &str) -> bool {
+    match std::fs::remove_file(path) {
+        Ok(()) => true,
+        Err(e) if e.kind() == ErrorKind::NotFound => true,
+        Err(e) if e.kind() == ErrorKind::IsADirectory => {
+            log_info!(
+                LOG_TAG,
+                "Skipping stale storage manifest cleanup because {path} is a directory"
+            );
+            true
+        }
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to remove storage manifest {path}: {e}");
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{remove_manifest_file, run_manifest_file_and_remove};
+    use super::{remove_manifest_file, remove_stale_manifest_file, run_manifest_file_and_remove};
 
     #[test]
     fn remove_manifest_file_removes_existing_file() {
@@ -130,6 +148,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         assert!(!remove_manifest_file(dir.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn remove_stale_manifest_file_allows_directory_without_removing_it() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(remove_stale_manifest_file(dir.path().to_str().unwrap()));
+
+        assert!(dir.path().is_dir());
     }
 
     #[test]
