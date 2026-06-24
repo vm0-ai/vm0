@@ -605,6 +605,91 @@ describe("logs command", () => {
       expect(logCalls).toContain("File content here");
     });
 
+    it("should preserve falsy primitive event values in rendered output", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Bash",
+                          id: 0,
+                          input: { command: "printf false" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: 0,
+                          content: false,
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [{ type: "text", text: 0 }],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "result",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "result",
+                    is_error: true,
+                    result: false,
+                    duration_ms: 0,
+                    num_turns: 1,
+                    total_cost_usd: 0,
+                    usage: {},
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("printf false");
+      expect(logCalls).toContain("false");
+      expect(logCalls).toContain("● 0");
+      expect(logCalls).toContain("Error: false");
+      expect(logCalls).not.toContain("Done");
+    });
+
     it("should not pair malformed tool results with tool uses that lack ids", async () => {
       server.use(
         http.get(
@@ -959,6 +1044,21 @@ describe("logs command", () => {
                     },
                   },
                 },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read_blank",
+                      type: "file_read",
+                      path: "/workspace/blank.txt",
+                      status: "completed",
+                      output: "   ",
+                    },
+                  },
+                },
               ],
               framework: "codex",
               hasMore: false,
@@ -980,6 +1080,8 @@ describe("logs command", () => {
       expect(logCalls).toContain("Read");
       expect(logCalls).toContain("/workspace/package.json");
       expect(logCalls).toContain("  file body  ");
+      expect(logCalls).toContain("/workspace/blank.txt");
+      expect(logCalls).not.toContain("(empty)");
     });
 
     it("should mark command_execution with non-zero exit_code as error", async () => {

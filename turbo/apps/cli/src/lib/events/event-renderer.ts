@@ -49,6 +49,10 @@ function recordData(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function displayString(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
 /**
  * Stateful event renderer that buffers tool_use events
  * and displays them grouped with their tool_result
@@ -204,8 +208,8 @@ export class EventRenderer {
    * or render immediately (when not buffered, e.g., historical log viewing)
    */
   private handleToolUse(event: ParsedEvent, prefix: string): void {
-    const toolUseId = String(event.data.toolUseId || "");
-    const tool = String(event.data.tool || "");
+    const toolUseId = displayString(event.data.toolUseId);
+    const tool = displayString(event.data.tool);
     const input = recordData(event.data.input);
     const toolUseData: ToolUseData = { tool, input };
 
@@ -255,8 +259,8 @@ export class EventRenderer {
    * Handle tool_result event - lookup buffered tool_use and render grouped
    */
   private handleToolResult(event: ParsedEvent, prefix: string): void {
-    const toolUseId = String(event.data.toolUseId || "");
-    const result = String(event.data.result || "");
+    const toolUseId = displayString(event.data.toolUseId);
+    const result = displayString(event.data.result);
     const isError = Boolean(event.data.isError);
 
     const pending = this.pendingToolUse.get(toolUseId);
@@ -358,13 +362,13 @@ export class EventRenderer {
   }
 
   private renderInit(event: ParsedEvent, prefix: string): void {
-    const frameworkStr = String(event.data.framework || "claude-code");
+    const frameworkStr = displayString(event.data.framework) || "claude-code";
     const displayName = isSupportedFramework(frameworkStr)
       ? getFrameworkDisplayName(frameworkStr)
       : frameworkStr;
     this.frameworkDisplayName = displayName;
     console.log(prefix + chalk.bold(`▷ ${displayName} Started`));
-    console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
+    console.log(`  Session: ${chalk.dim(displayString(event.data.sessionId))}`);
     if (event.data.model) {
       console.log(`  Model: ${chalk.dim(String(event.data.model))}`);
     }
@@ -380,7 +384,7 @@ export class EventRenderer {
   }
 
   private renderText(event: ParsedEvent, prefix: string): void {
-    const text = String(event.data.text || "");
+    const text = displayString(event.data.text);
     // Text events get a bullet prefix
     console.log(prefix + "● " + text);
     this.lastEventType = "text";
@@ -396,7 +400,7 @@ export class EventRenderer {
       );
     } else {
       console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
-      const result = String(event.data.result || "").trim();
+      const result = displayString(event.data.result).trim();
       if (result.length > 0) {
         const [firstLine, ...restLines] = result.split("\n");
         console.log(`  Error: ${chalk.red(firstLine)}`);

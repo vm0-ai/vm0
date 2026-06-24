@@ -205,13 +205,9 @@ function formatReadContent(resultText: string, verbose: boolean): string[] {
     }
   }
 
-  // If no line numbers found, use raw content (fallback for plain text results)
-  const displayLines =
-    contentLines.length > 0
-      ? contentLines
-      : rawLines.filter((line) => {
-          return line.trim().length > 0;
-        });
+  // If no line numbers found, use raw content so whitespace-only files are not
+  // misreported as empty.
+  const displayLines = contentLines.length > 0 ? contentLines : rawLines;
   const totalLines = displayLines.length;
 
   if (totalLines === 0) {
