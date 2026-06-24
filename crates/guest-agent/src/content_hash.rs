@@ -45,31 +45,32 @@ pub(crate) fn compute_content_hash<'a, I>(storage_id: &str, files: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
-    let entries: Vec<ContentHashEntry<'a>> = files
-        .into_iter()
-        .map(|(path, hash)| ContentHashEntry { path, hash })
-        .collect();
-
     let mut hasher = Sha256::new();
     hasher.update(b"storage:");
     hasher.update(storage_id.as_bytes());
     hasher.update(b"\n");
 
-    if entries.len() > 1 {
-        let mut sortable_entries: Vec<SortableContentHashEntry<'a>> = entries
-            .into_iter()
-            .map(SortableContentHashEntry::new)
-            .collect();
-        // Equal sort keys are identical formatted `path:hash` lines, so
-        // stability cannot affect the final hash byte stream.
-        sortable_entries.sort_unstable_by(|left, right| left.sort_key.cmp(&right.sort_key));
-        for (index, entry) in sortable_entries.iter().enumerate() {
-            update_hash_for_entry(&mut hasher, index, entry.entry);
-        }
-    } else {
-        for (index, entry) in entries.iter().enumerate() {
-            update_hash_for_entry(&mut hasher, index, *entry);
-        }
+    let mut entries = files
+        .into_iter()
+        .map(|(path, hash)| ContentHashEntry { path, hash });
+    let Some(first_entry) = entries.next() else {
+        return hex::encode(hasher.finalize());
+    };
+    let Some(second_entry) = entries.next() else {
+        update_hash_for_entry(&mut hasher, 0, first_entry);
+        return hex::encode(hasher.finalize());
+    };
+
+    let (remaining_lower_bound, _) = entries.size_hint();
+    let mut sortable_entries = Vec::with_capacity(remaining_lower_bound.saturating_add(2));
+    sortable_entries.push(SortableContentHashEntry::new(first_entry));
+    sortable_entries.push(SortableContentHashEntry::new(second_entry));
+    sortable_entries.extend(entries.map(SortableContentHashEntry::new));
+    // Equal sort keys are identical formatted `path:hash` lines, so stability
+    // cannot affect the final hash byte stream.
+    sortable_entries.sort_unstable_by(|left, right| left.sort_key.cmp(&right.sort_key));
+    for (index, entry) in sortable_entries.iter().enumerate() {
+        update_hash_for_entry(&mut hasher, index, entry.entry);
     }
 
     hex::encode(hasher.finalize())
