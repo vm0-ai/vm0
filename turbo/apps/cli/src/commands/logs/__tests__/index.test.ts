@@ -2245,6 +2245,62 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("turn.started");
     });
 
+    it("should collapse Codex failures when only the terminal event has a turn id", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:29:59Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "error",
+                    message: "API connection failed",
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      error: {
+                        message: "Rate limit exceeded",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(logCalls).toContain("API connection failed");
+      expect(logCalls).toContain("Rate limit exceeded");
+    });
+
     it("should keep the more detailed Codex error when one message contains another", async () => {
       server.use(
         http.get(

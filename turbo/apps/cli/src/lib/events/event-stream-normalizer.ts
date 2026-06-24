@@ -137,9 +137,7 @@ export class EventStreamNormalizer {
         const pendingTurnId = getParsedTurnId(this.pendingCodexError);
         const terminalTurnId = getParsedTurnId(parsed);
         const shouldCollapse =
-          pendingTurnId && terminalTurnId
-            ? pendingTurnId === terminalTurnId
-            : !pendingTurnId && !terminalTurnId;
+          !pendingTurnId || !terminalTurnId || pendingTurnId === terminalTurnId;
 
         if (shouldCollapse) {
           const mergedResult = combineDistinctMessages(
