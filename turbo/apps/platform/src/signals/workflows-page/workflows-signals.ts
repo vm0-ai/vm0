@@ -33,6 +33,7 @@ const internalWorkflowReload$ = state(0);
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowSearch$ = state("");
+const internalEditingGmailTriggerId$ = state<string | null>(null);
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
@@ -41,6 +42,16 @@ export const workflowSearch$ = computed((get) => {
 export const setWorkflowSearch$ = command(({ set }, value: string) => {
   set(internalWorkflowSearch$, value);
 });
+
+export const editingGmailTriggerId$ = computed((get) => {
+  return get(internalEditingGmailTriggerId$);
+});
+
+export const setEditingGmailTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(internalEditingGmailTriggerId$, triggerId);
+  },
+);
 
 function matchesWorkflowSearch(
   workflow: ZeroWorkflowSummary,
@@ -353,6 +364,29 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
+export const updateWorkflowGmailNewMessageTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const setWorkflowTriggerEnabled$ = command(
   async (
     { get, set },
@@ -375,7 +409,7 @@ export const setWorkflowTriggerEnabled$ = command(
   },
 );
 
-export const deleteWorkflowScheduleTrigger$ = command(
+export const deleteWorkflowTrigger$ = command(
   async ({ get, set }, triggerId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(
@@ -387,7 +421,7 @@ export const deleteWorkflowScheduleTrigger$ = command(
   },
 );
 
-export const runWorkflowScheduleTrigger$ = command(
+export const runWorkflowTrigger$ = command(
   async ({ get }, triggerId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(
