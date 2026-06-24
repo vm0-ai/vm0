@@ -24,12 +24,10 @@ struct ContentHashEntry<'a> {
 /// Format matches the TS reference:
 /// - empty files: `sha256("storage:<id>\n")`
 /// - non-empty: `sha256("storage:<id>\n<path>:<hash>\n<path>:<hash>…")`
-///   with entries sorted lexicographically.
+///   with formatted entries sorted like JS's default `Array.sort()`.
 ///
-/// The Rust byte-wise sort agrees with JS's default `Array.sort()` for any
-/// BMP code points (UTF-8 byte order and UTF-16 code-unit order coincide
-/// there). Non-BMP characters in a file path are the only theoretical
-/// divergence and are not present in current VAS-backed workloads.
+/// JS default string sorting compares UTF-16 code units. Rust must mirror that
+/// rule exactly, then still hash the selected formatted entries as UTF-8 bytes.
 pub(crate) fn compute_content_hash<'a, I>(storage_id: &str, files: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
@@ -60,11 +58,11 @@ where
 }
 
 fn compare_formatted_entries(left: ContentHashEntry<'_>, right: ContentHashEntry<'_>) -> Ordering {
-    let mut left_bytes = formatted_entry_bytes(left);
-    let mut right_bytes = formatted_entry_bytes(right);
+    let mut left_code_units = formatted_entry_code_units(left);
+    let mut right_code_units = formatted_entry_code_units(right);
 
     loop {
-        match (left_bytes.next(), right_bytes.next()) {
+        match (left_code_units.next(), right_code_units.next()) {
             (Some(left), Some(right)) => match left.cmp(&right) {
                 Ordering::Equal => {}
                 ordering => return ordering,
@@ -76,12 +74,12 @@ fn compare_formatted_entries(left: ContentHashEntry<'_>, right: ContentHashEntry
     }
 }
 
-fn formatted_entry_bytes<'a>(entry: ContentHashEntry<'a>) -> impl Iterator<Item = u8> + 'a {
+fn formatted_entry_code_units<'a>(entry: ContentHashEntry<'a>) -> impl Iterator<Item = u16> + 'a {
     entry
         .path
-        .bytes()
-        .chain(std::iter::once(b':'))
-        .chain(entry.hash.bytes())
+        .encode_utf16()
+        .chain(std::iter::once(u16::from(b':')))
+        .chain(entry.hash.encode_utf16())
 }
 
 #[cfg(test)]
@@ -159,6 +157,23 @@ mod tests {
         assert_ne!(
             got,
             sha256_hex(&format!("storage:{STORAGE_A}\na:b:1\na:b:0"))
+        );
+    }
+
+    #[test]
+    fn non_bmp_paths_sort_like_javascript_default_string_sort() {
+        let got = compute_content_hash(
+            STORAGE_A,
+            [("\u{E000}.txt", "222"), ("\u{1F4A9}.txt", "111")],
+        );
+
+        assert_eq!(
+            got,
+            "537ee6d2902093ce26bea40719e1236c99f1d5394e26445cfe9cd6d9ae228f61"
+        );
+        assert_ne!(
+            got,
+            "ca324bd07923a77d854946f3977a7fe57c5078d64f393a98e0c6e2b5dc4a30f0"
         );
     }
 
