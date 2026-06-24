@@ -507,7 +507,8 @@ def _is_browser_user_agent(user_agent: str | None) -> bool:
 def _is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
     # Short-term business passthrough heuristic for browser-originated traffic.
     # This is not trusted browser provenance: any sandbox client can set this
-    # header. Issue #18024 tracks replacing it with a runner-owned signal.
+    # header. The spoofable User-Agent heuristic is currently accepted as a
+    # known tradeoff until runner-owned browser provenance is prioritized again.
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
 
 
