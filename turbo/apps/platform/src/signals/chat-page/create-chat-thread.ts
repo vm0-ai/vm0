@@ -73,6 +73,10 @@ import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
 } from "./parse-body-blocks.ts";
+import {
+  previousRunGroupVisualWindowStartIndex,
+  runGroupVisualWindowStartIndex,
+} from "./run-group-folding.ts";
 import { clerk$ } from "../auth.ts";
 import {
   patchThreadMeta$,
@@ -2097,15 +2101,11 @@ function renderWindowStartIndex(
   groups: readonly GroupedChatMessageGroup[],
   cursorGroupId: string | null,
 ): number {
-  if (cursorGroupId === null) {
-    return Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
-  }
-  const cursorIndex = groups.findIndex((group) => {
-    return group.beginMessageId === cursorGroupId;
-  });
-  return cursorIndex !== -1
-    ? cursorIndex
-    : Math.max(0, groups.length - INITIAL_RENDER_GROUP_COUNT);
+  return runGroupVisualWindowStartIndex(
+    groups,
+    cursorGroupId,
+    INITIAL_RENDER_GROUP_COUNT,
+  );
 }
 
 function renderWindowStateForThread(
@@ -2154,9 +2154,10 @@ function createChatRenderWindow({
       const groups = await get(groupedChatMessages$);
       signal.throwIfAborted();
       const startIndex = renderWindowStartIndex(groups, current.cursorGroupId);
-      const nextStartIndex = Math.max(
-        0,
-        startIndex - RENDER_GROUP_LOAD_INCREMENT,
+      const nextStartIndex = previousRunGroupVisualWindowStartIndex(
+        groups,
+        startIndex,
+        RENDER_GROUP_LOAD_INCREMENT,
       );
       if (nextStartIndex === startIndex) {
         return false;
