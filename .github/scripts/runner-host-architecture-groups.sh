@@ -116,7 +116,7 @@ validate_hosts_csv() {
 host_uname_m() {
   local host=$1
   local remote_arch
-  remote_arch=$(ssh "${METAL_USER}@${host}" uname -m)
+  remote_arch=$(ssh -n "${METAL_USER}@${host}" uname -m)
   printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r'
 }
 

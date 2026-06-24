@@ -18,6 +18,12 @@ cat > "${FAKE_BIN}/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${1:-}" = "-n" ]; then
+  shift
+else
+  cat >/dev/null
+fi
+
 remote=$1
 shift
 host=${remote#*@}
