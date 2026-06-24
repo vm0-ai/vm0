@@ -1,5 +1,5 @@
 //! Session-history reader — abstracts over Claude (literal jsonl path) and
-//! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → recursive scan +
+//! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → bounded layout scan +
 //! optional zstd decode).
 //!
 //! The event metadata capture path writes one of two payloads to
@@ -21,10 +21,12 @@
 //! The codex sessions layout is `${CODEX_HOME}/sessions/YYYY/MM/DD/<file>.jsonl[.zst]`.
 //! Filenames are not stably keyed to thread_id in the real codex CLI
 //! (the `rollout-` prefix mangles dashes), so we match by dash-stripped
-//! UUID substring. If no filename matches, we fail fast — silently picking
-//! "the most recent file in the tree" would risk uploading an unrelated
-//! session as the resume context, which is a multi-tenant correctness
-//! hazard. The descriptive `Codex session file not found` error from
+//! UUID substring. Lookup only scans the expected `YYYY/MM/DD` layout and is
+//! budgeted so user-controlled session trees cannot make checkpoint perform an
+//! unbounded filesystem walk. If no filename matches, we fail fast — silently
+//! picking "the most recent file in the tree" would risk uploading an unrelated
+//! session as the resume context, which is a multi-tenant correctness hazard.
+//! The descriptive `Codex session file not found` error from
 //! `read_session_history` surfaces the failure without logging the session id.
 
 use crate::error::AgentError;
@@ -39,6 +41,12 @@ use std::path::{Path, PathBuf};
 use std::{fs::File, io::Read};
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
+// Checkpoint must resolve Codex history from user-controlled guest-home state.
+// Keep the budget comfortably above normal date-partitioned histories while
+// preventing layout-shaped trees from turning session lookup into an
+// unbounded synchronous walk.
+const CODEX_SESSION_LOOKUP_SCAN_BUDGET: usize = 16_384;
+const CODEX_SESSION_LOOKUP_SCAN_BUDGET_ERROR: &str = "Codex session lookup exceeded scan budget";
 
 /// Build the persisted Codex session-history marker payload.
 pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
@@ -154,49 +162,159 @@ fn read_codex_session_history_impl(
     }
 
     let mut found = None;
-    find_codex_session_file_recursive(sessions_dir, sessions_dir, id_norm, &mut found)?;
+    let mut budget = CodexSessionLookupBudget::new();
+    scan_codex_session_year_dirs(sessions_dir, sessions_dir, id_norm, &mut found, &mut budget)?;
     found
         .map(|session| read_history_bytes(&session.path))
         .transpose()
 }
 
 #[cfg(not(target_os = "linux"))]
-/// DFS walk of `dir`, recording a single matching real file. Symlinks
-/// are skipped because the Codex sessions tree is user-controlled
-/// filesystem state and checkpoint lookup must not follow it outside the
-/// expected history directory.
-fn find_codex_session_file_recursive(
-    root: &Path,
-    dir: &Path,
+fn scan_codex_session_year_dirs(
+    root_path: &Path,
+    sessions_dir: &Path,
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
 ) -> Result<(), AgentError> {
-    let entries = match std::fs::read_dir(dir) {
+    let entries = match std::fs::read_dir(sessions_dir) {
         Ok(entries) => entries,
         Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
-        Err(err) => return Err(read_history_error(dir, err)),
+        Err(err) => return Err(read_history_error(sessions_dir, err)),
     };
+
     for entry in entries {
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) if should_skip_unusable_codex_entry(&err) => continue,
-            Err(err) => return Err(read_history_error(dir, err)),
+            Err(err) => return Err(read_history_error(sessions_dir, err)),
         };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
         let path = entry.path();
         let file_type = match entry.file_type() {
             Ok(file_type) => file_type,
             Err(err) if should_skip_unusable_codex_entry(&err) => continue,
             Err(err) => return Err(read_history_error(&path, err)),
         };
-        if file_type.is_dir() {
-            find_codex_session_file_recursive(root, &path, id_norm, found)?;
-        } else if file_type.is_file()
+        if file_type.is_dir() && is_codex_session_year_dir_name(&name) {
+            scan_codex_session_month_dirs(root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn scan_codex_session_month_dirs(
+    root_path: &Path,
+    year_dir: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match std::fs::read_dir(year_dir) {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(year_dir, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(year_dir, err)),
+        };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() && is_codex_session_month_dir_name(&name) {
+            scan_codex_session_day_dirs(root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn scan_codex_session_day_dirs(
+    root_path: &Path,
+    month_dir: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match std::fs::read_dir(month_dir) {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(month_dir, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(month_dir, err)),
+        };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() && is_codex_session_day_dir_name(&name) {
+            scan_codex_session_leaf_files(root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn scan_codex_session_leaf_files(
+    root_path: &Path,
+    day_dir: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match std::fs::read_dir(day_dir) {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(day_dir, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(day_dir, err)),
+        };
+        budget.inspect_entry()?;
+
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_file()
             && path
                 .file_name()
                 .is_some_and(|name| codex_session_filename_matches(name, id_norm))
         {
             if found.is_some() {
-                return Err(duplicate_codex_session_error(root));
+                return Err(duplicate_codex_session_error(root_path));
             }
             *found = Some(ResolvedCodexSession { path });
         }
@@ -216,12 +334,14 @@ fn read_codex_session_history_impl(
         Err(err) => return Err(read_history_error(sessions_dir, err)),
     };
     let mut found = None;
-    find_and_read_codex_session_file_recursive(
+    let mut budget = CodexSessionLookupBudget::new();
+    scan_codex_session_year_dirs(
         &root,
         sessions_dir,
         sessions_dir,
         id_norm,
         &mut found,
+        &mut budget,
     )?;
     found
         .map(|session| read_history_bytes_from_file(&session.path, session.file))
@@ -229,12 +349,13 @@ fn read_codex_session_history_impl(
 }
 
 #[cfg(target_os = "linux")]
-fn find_and_read_codex_session_file_recursive(
+fn scan_codex_session_year_dirs(
     dir: &Dir,
     root_path: &Path,
     dir_path: &Path,
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
 ) -> Result<(), AgentError> {
     let entries = match dir.read_dir() {
         Ok(entries) => entries,
@@ -248,6 +369,8 @@ fn find_and_read_codex_session_file_recursive(
             Err(err) if should_skip_unusable_codex_entry(&err) => continue,
             Err(err) => return Err(read_history_error(dir_path, err)),
         };
+        budget.inspect_entry()?;
+
         let name = entry.file_name();
         let path = dir_path.join(&name);
         let file_type = match entry.file_type() {
@@ -255,14 +378,136 @@ fn find_and_read_codex_session_file_recursive(
             Err(err) if should_skip_unusable_codex_entry(&err) => continue,
             Err(err) => return Err(read_history_error(&path, err)),
         };
-        if file_type.is_dir() {
+        if file_type.is_dir() && is_codex_session_year_dir_name(&name) {
             let child = match dir.open_child_dir(&name) {
                 Ok(child) => child,
                 Err(err) if should_skip_unusable_codex_entry(&err) => continue,
                 Err(err) => return Err(read_history_error(&path, err)),
             };
-            find_and_read_codex_session_file_recursive(&child, root_path, &path, id_norm, found)?;
-        } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
+            scan_codex_session_month_dirs(&child, root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn scan_codex_session_month_dirs(
+    dir: &Dir,
+    root_path: &Path,
+    dir_path: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match dir.read_dir() {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir_path, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir_path, err)),
+        };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
+        let path = dir_path.join(&name);
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() && is_codex_session_month_dir_name(&name) {
+            let child = match dir.open_child_dir(&name) {
+                Ok(child) => child,
+                Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+                Err(err) => return Err(read_history_error(&path, err)),
+            };
+            scan_codex_session_day_dirs(&child, root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn scan_codex_session_day_dirs(
+    dir: &Dir,
+    root_path: &Path,
+    dir_path: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match dir.read_dir() {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir_path, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir_path, err)),
+        };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
+        let path = dir_path.join(&name);
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() && is_codex_session_day_dir_name(&name) {
+            let child = match dir.open_child_dir(&name) {
+                Ok(child) => child,
+                Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+                Err(err) => return Err(read_history_error(&path, err)),
+            };
+            scan_codex_session_leaf_files(&child, root_path, &path, id_norm, found, budget)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn scan_codex_session_leaf_files(
+    dir: &Dir,
+    root_path: &Path,
+    dir_path: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+    budget: &mut CodexSessionLookupBudget,
+) -> Result<(), AgentError> {
+    let entries = match dir.read_dir() {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir_path, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir_path, err)),
+        };
+        budget.inspect_entry()?;
+
+        let name = entry.file_name();
+        let path = dir_path.join(&name);
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
             let file = match dir.open_child_file(&name) {
                 Ok(file) => file,
                 Err(e) if should_skip_unusable_codex_entry(&e) => continue,
@@ -290,6 +535,28 @@ struct ResolvedCodexSession {
     file: File,
 }
 
+struct CodexSessionLookupBudget {
+    inspected_entries: usize,
+}
+
+impl CodexSessionLookupBudget {
+    fn new() -> Self {
+        Self {
+            inspected_entries: 0,
+        }
+    }
+
+    fn inspect_entry(&mut self) -> Result<(), AgentError> {
+        self.inspected_entries += 1;
+        if self.inspected_entries > CODEX_SESSION_LOOKUP_SCAN_BUDGET {
+            return Err(AgentError::Checkpoint(
+                CODEX_SESSION_LOOKUP_SCAN_BUDGET_ERROR.to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn duplicate_codex_session_error(root: &Path) -> AgentError {
     AgentError::Checkpoint(format!(
         "Multiple Codex session files found under {}",
@@ -305,6 +572,34 @@ fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
 
     let name_norm = name.replace('-', "").to_ascii_lowercase();
     name_norm.contains(id_norm)
+}
+
+fn is_codex_session_year_dir_name(name: &OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    name.len() == 4 && name.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_codex_session_month_dir_name(name: &OsStr) -> bool {
+    is_numeric_codex_session_date_component(name, 2, 1, 12)
+}
+
+fn is_codex_session_day_dir_name(name: &OsStr) -> bool {
+    is_numeric_codex_session_date_component(name, 2, 1, 31)
+}
+
+fn is_numeric_codex_session_date_component(name: &OsStr, len: usize, min: u8, max: u8) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    if name.len() != len || !name.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    let Ok(value) = name.parse::<u8>() else {
+        return false;
+    };
+    (min..=max).contains(&value)
 }
 
 fn should_skip_unusable_codex_entry(err: &io::Error) -> bool {
@@ -356,7 +651,7 @@ fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError
 }
 
 // Note: integration coverage for the public `read_session_history` entry
-// (both Claude literal-path and codex marker -> recursive scan + zstd
+// (both Claude literal-path and codex marker -> bounded layout scan + zstd
 // decode) lives in `crates/guest-agent/tests/session_history_read.rs`.
 // The internal helpers
 // (`read_codex_session_history`, `codex_session_filename_matches`,
