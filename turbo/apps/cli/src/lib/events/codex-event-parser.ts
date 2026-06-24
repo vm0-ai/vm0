@@ -157,7 +157,7 @@ function formatDetailSuffix(details: readonly string[]): string {
 }
 
 function extractErrorMessage(value: unknown): string | undefined {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === false) {
     return undefined;
   }
 
