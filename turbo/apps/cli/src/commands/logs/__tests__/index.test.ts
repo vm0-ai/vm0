@@ -1361,6 +1361,37 @@ describe("logs command", () => {
       expect(logCalls).toContain("Codex Failed");
     });
 
+    it("should render truncated Codex result events with the Codex label", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Rate limit exceeded",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "1"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).not.toContain("Agent Failed");
+    });
+
     it("should render top-level error event as a failure result", async () => {
       server.use(
         http.get(
@@ -1546,6 +1577,53 @@ describe("logs command", () => {
       expect(logCalls).toContain("selected model is at capacity");
       expect(logCalls).toContain("retry later");
       expect(logCalls).not.toContain("[object Object]");
+    });
+
+    it("should ignore null turn errors when rendering failed turn.completed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    thread_id: "thread-x",
+                    message: "request aborted before shutdown",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      error: null,
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("request aborted before shutdown");
+      expect(logCalls).not.toContain("Error: null");
     });
 
     it("should collapse same-turn Codex error and failed turn.completed while preserving details", async () => {

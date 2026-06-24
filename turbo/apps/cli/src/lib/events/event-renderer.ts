@@ -393,13 +393,17 @@ export class EventRenderer {
   private renderResult(event: ParsedEvent, prefix: string): void {
     console.log(); // Spacing before result
     const success = Boolean(event.data.success);
+    const eventFramework = displayString(event.data.framework);
+    const displayName =
+      eventFramework && isSupportedFramework(eventFramework)
+        ? getFrameworkDisplayName(eventFramework)
+        : eventFramework || this.frameworkDisplayName;
+    this.frameworkDisplayName = displayName;
 
     if (success) {
-      console.log(
-        prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Completed`),
-      );
+      console.log(prefix + chalk.bold(`◆ ${displayName} Completed`));
     } else {
-      console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
+      console.log(prefix + chalk.bold(`◆ ${displayName} Failed`));
       const result = displayString(event.data.result).trim();
       if (result.length > 0) {
         const [firstLine, ...restLines] = result.split("\n");

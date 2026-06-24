@@ -71,6 +71,22 @@ function combineDistinctMessages(
   return messages.length > 0 ? messages.join("\n") : undefined;
 }
 
+function attachFramework(
+  parsed: ParsedEvent | null,
+  framework: string | undefined,
+): ParsedEvent | null {
+  if (!parsed || !framework || parsed.data.framework !== undefined) {
+    return parsed;
+  }
+  return {
+    ...parsed,
+    data: {
+      ...parsed.data,
+      framework,
+    },
+  };
+}
+
 /**
  * Preserves single-event parser behavior while applying stream-aware
  * presentation fixes that require one-event lookahead.
@@ -86,7 +102,10 @@ export class EventStreamNormalizer {
     const isCodex = framework === "codex";
     const rawRecord = asRecord(rawEvent);
     const eventType = getEventType(rawRecord);
-    const parsed = rawRecord ? parseEvent(rawRecord, framework) : null;
+    const parsed = attachFramework(
+      rawRecord ? parseEvent(rawRecord, framework) : null,
+      framework,
+    );
     if (parsed && timestamp) {
       parsed.timestamp = timestamp;
     }

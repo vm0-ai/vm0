@@ -157,6 +157,10 @@ function formatDetailSuffix(details: readonly string[]): string {
 }
 
 function extractErrorMessage(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
   const direct = trimmedStringValue(value);
   if (direct) {
     return direct;

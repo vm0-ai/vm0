@@ -1211,7 +1211,7 @@ describe("run command", () => {
         return call[0];
       });
       const resultIndex = logMessages.findIndex((message) => {
-        return String(message).includes("Agent Completed");
+        return String(message).includes("Claude Code Completed");
       });
       const completionIndex = logMessages.findIndex((message) => {
         return String(message).includes("Run completed successfully");
@@ -1274,7 +1274,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1325,7 +1325,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(1);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1421,7 +1421,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("terminal watermark"),
@@ -1482,7 +1482,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Codex Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1553,7 +1553,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(4);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
