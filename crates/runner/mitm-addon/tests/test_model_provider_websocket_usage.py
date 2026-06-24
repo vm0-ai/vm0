@@ -12,6 +12,7 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import response_streaming
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_websocket_helpers import (
@@ -81,6 +82,21 @@ def _sum_quantities_by_category(events: list[dict]) -> dict[str, int]:
         category = event["category"]
         quantities[category] = quantities.get(category, 0) + event["quantity"]
     return quantities
+
+
+def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = "gpt-5.5") -> bytes:
+    response: dict = {
+        "id": response_id,
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+    }
+    if model is not None:
+        response["model"] = model
+    return json.dumps(
+        {
+            "type": "response.completed",
+            "response": response,
+        }
+    ).encode()
 
 
 class TestModelProviderWebSocketUsage:
@@ -396,6 +412,106 @@ class TestModelProviderWebSocketUsage:
         } == {
             ("gpt-5.5", "tokens.input"): 20,
             ("gpt-5.5", "tokens.output"): 12,
+        }
+
+    def test_model_websocket_zero_frame_without_model_releases_source(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_zero_usage_frame("resp_ws_zero_no_model", model=None),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        assert _model_websocket_usage_sources(flow) == {}
+
+    def test_model_websocket_zero_frame_with_flow_model_releases_source(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-flow-model"
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_zero_usage_frame(
+                    "resp_ws_zero_flow_model", model="gpt-frame-model"
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        assert _model_websocket_usage_sources(flow) == {}
+
+    def test_model_websocket_zero_frames_are_bounded(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            for index in range(70):
+                _feed_websocket_server_message(
+                    flow,
+                    _openai_websocket_zero_usage_frame(
+                        f"resp_ws_zero_{index}", model=f"gpt-zero-{index}"
+                    ),
+                )
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        usage_sources = _model_websocket_usage_sources(flow)
+        assert len(usage_sources) <= response_streaming._MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT
+        assert "resp_ws_zero_0" not in usage_sources
+        assert "resp_ws_zero_69" in usage_sources
+
+    def test_model_websocket_evicted_zero_hint_still_reports_later_positive_usage(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            for index in range(70):
+                _feed_websocket_server_message(
+                    flow,
+                    _openai_websocket_zero_usage_frame(
+                        f"resp_ws_zero_{index}", model=f"gpt-zero-{index}"
+                    ),
+                )
+
+            assert "resp_ws_zero_0" not in _model_websocket_usage_sources(flow)
+
+            _feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.done",
+                        "response": {
+                            "id": "resp_ws_zero_0",
+                            "usage": {"input_tokens": 20, "output_tokens": 12},
+                        },
+                    }
+                ).encode(),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        usage_sources = _model_websocket_usage_sources(flow)
+        assert "resp_ws_zero_0" not in usage_sources
+        assert len(usage_sources) <= response_streaming._MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT
+        assert {
+            (event["provider"], event["category"]): event["quantity"]
+            for event in webhook.usage_events()
+        } == {
+            ("unknown", "tokens.input"): 20,
+            ("unknown", "tokens.output"): 12,
+        }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            ("unknown", "tokens.input"): 20,
+            ("unknown", "tokens.output"): 12,
         }
 
     def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):

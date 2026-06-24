@@ -125,7 +125,8 @@ Model-provider usage
   usage extraction and read by model usage-event and observation reporters.
   Entries may be removed before ``websocket_end()`` once a terminal WebSocket
   usage frame is accepted into the source-preserving usage buffer or the source
-  has no future reporting path.
+  has no future reporting path. Zero-only entries that only preserve model hints
+  for a later same-response-id frame are retained with a small per-flow bound.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
   Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization

@@ -65,6 +65,11 @@ def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
     )
 
 
+def has_positive_model_provider_usage(source_usage: dict) -> bool:
+    """Return whether normalized model-provider usage contains billable quantity."""
+    return any(_is_positive_int(source_usage.get(category)) for category in MODEL_USAGE_CATEGORIES)
+
+
 def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     """Buffer billable token usage for model-provider responses if available.
 
