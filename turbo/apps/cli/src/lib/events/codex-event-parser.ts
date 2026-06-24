@@ -201,6 +201,25 @@ function formatUnknownValue(value: unknown, depth = 0): string | undefined {
   return fields.length > 0 ? `{${fields.join(", ")}}` : undefined;
 }
 
+function formatSignalValue(
+  value: unknown,
+  includeBoundedPlaceholder = false,
+): string | undefined {
+  if (value === null || value === undefined || value === false) {
+    return undefined;
+  }
+  const formatted = formatUnknownValue(value);
+  if (!formatted) {
+    return undefined;
+  }
+  if (hasSignalValue(value)) {
+    return formatted;
+  }
+  return includeBoundedPlaceholder && formatted.includes("...")
+    ? formatted
+    : undefined;
+}
+
 function combineDistinctMessages(
   first: string | undefined,
   second: string | undefined,
@@ -228,7 +247,7 @@ function formatDetailSuffix(details: readonly string[]): string {
 }
 
 function extractErrorMessage(value: unknown, depth = 0): string | undefined {
-  if (!hasSignalValue(value, depth)) {
+  if (value === null || value === undefined || value === false) {
     return undefined;
   }
 
@@ -239,7 +258,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
 
   const record = asRecord(value);
   if (!record) {
-    return formatUnknownValue(value);
+    return hasSignalValue(value, depth) ? formatUnknownValue(value) : undefined;
   }
 
   const message =
@@ -248,7 +267,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
   const details = [
     getFirstString(record, ["additional_details", "additionalDetails"]),
     getFirstString(record, ["codex_error_info", "codexErrorInfo"]),
-    formatUnknownValue(record.connectors),
+    formatSignalValue(record.connectors, message !== undefined),
   ].filter((detail): detail is string => {
     return detail !== undefined && detail.length > 0;
   });
@@ -260,8 +279,12 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
     return `${message}${formatDetailSuffix(uniqueDetails)}`;
   }
 
+  if (details.length > 0) {
+    return details.join("; ");
+  }
+
   if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
-    return formatUnknownValue(record);
+    return undefined;
   }
 
   const nested = extractErrorMessage(record.error, depth + 1);
@@ -269,7 +292,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
     return nested;
   }
 
-  return formatUnknownValue(record);
+  return hasSignalValue(record, depth) ? formatUnknownValue(record) : undefined;
 }
 
 function extractEventErrorMessage(event: JsonRecord): string | undefined {

@@ -48,6 +48,14 @@ function makeWideNestedObject(fieldCount: number): Record<string, unknown> {
   return value;
 }
 
+function makeWideEmptyObject(fieldCount: number): Record<string, unknown> {
+  const value: Record<string, unknown> = {};
+  for (let index = 0; index < fieldCount; index += 1) {
+    value[`empty_${index}`] = null;
+  }
+  return value;
+}
+
 function makeNestedErrorObject(depth: number): Record<string, unknown> {
   let value: Record<string, unknown> = { message: "deep failure" };
   for (let index = 0; index < depth; index += 1) {
@@ -2004,6 +2012,7 @@ describe("logs command", () => {
                         message: null,
                         error: false,
                         additional_details: "   ",
+                        connectors: null,
                       },
                     },
                   },
@@ -2022,6 +2031,54 @@ describe("logs command", () => {
       expect(logCalls).toContain("Codex Completed");
       expect(logCalls).not.toContain("Codex Failed");
       expect(logCalls).not.toContain("message=null");
+    });
+
+    it("should read known Codex error fields past bounded fallback fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "completed",
+                      error: {
+                        ...makeWideEmptyObject(40),
+                        message: "late standard error",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("late standard error");
+      expect(logCalls).not.toContain("Codex Completed");
     });
 
     it("should bound deeply nested object turn errors when rendering successful turn.completed", async () => {
