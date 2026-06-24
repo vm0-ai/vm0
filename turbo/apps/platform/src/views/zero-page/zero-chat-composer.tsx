@@ -5256,7 +5256,9 @@ function ComputerUseConnectorMenuSection({
                 key={host.id}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked ? "bg-primary/5" : "hover:bg-background/70",
+                  checked
+                    ? "bg-primary/5"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
                 )}
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
@@ -5298,7 +5300,7 @@ function ComputerUseConnectorMenuSection({
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-background/70"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
           onClick={onOpenDownloadDialog}
         >
           <IconPlug
