@@ -55,7 +55,6 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
             .await
             .unwrap()
     );
-    drop(lease);
 
     let cache_key = scoped_session_workspace_cache_key(
         "",

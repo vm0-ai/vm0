@@ -193,7 +193,6 @@ impl ExecutorInvocation {
                         source_ip: String::new(),
                         network_log_session: None,
                         workspace_image: None,
-                        workspace_promotable: false,
                         discovered_cli_agent_session_id: None,
                     },
                     exit_code,
@@ -273,7 +272,6 @@ impl FinalizationPhase {
             source_ip,
             network_log_session,
             workspace_image,
-            workspace_promotable,
             discovered_cli_agent_session_id,
         } = outcome;
 
@@ -302,7 +300,6 @@ impl FinalizationPhase {
                 network_log_session,
                 workspace_image,
                 workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
-                workspace_promotable,
                 storage_fingerprints,
                 device_rate_limits,
                 factory,

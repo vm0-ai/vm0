@@ -108,7 +108,6 @@ pub(crate) struct WorkspaceImagePromotionRequest<'a> {
     pub(crate) terminal_status: WorkspaceCacheTerminalStatus,
     pub(crate) completed_at: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
-    pub(crate) promotable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

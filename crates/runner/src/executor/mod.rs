@@ -43,7 +43,6 @@ use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
-    workspace_image_promotable,
 };
 use telemetry::{record_api_latency, record_reuse_result};
 
@@ -211,7 +210,6 @@ pub struct ExecuteOutcome {
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
     pub workspace_image: Option<WorkspaceImageLease>,
-    pub workspace_promotable: bool,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub discovered_cli_agent_session_id: Option<String>,
@@ -436,7 +434,6 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             source_ip: String::new(),
             network_log_session: None,
             workspace_image: None,
-            workspace_promotable: false,
             discovered_cli_agent_session_id: None,
         }
     } else {
@@ -461,7 +458,6 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 source_ip: String::new(),
                 network_log_session: None,
                 workspace_image: None,
-                workspace_promotable: false,
                 discovered_cli_agent_session_id: None,
             },
         }
@@ -547,7 +543,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                                 source_ip,
                                 network_log_session: None,
                                 workspace_image: None,
-                                workspace_promotable: false,
                                 discovered_cli_agent_session_id: None,
                             },
                             telemetry,
@@ -572,7 +567,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                             source_ip,
                             network_log_session: None,
                             workspace_image: None,
-                            workspace_promotable: false,
                             discovered_cli_agent_session_id: None,
                         },
                         telemetry,
@@ -581,9 +575,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                 None
             }
         };
-        let workspace_promotable = workspace_image.as_ref().is_some_and(|image| {
-            image.can_attempt_promotion(Some(idle_cli_agent_session_id.as_str()))
-        });
         return (
             ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(error)),
@@ -591,7 +582,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                 source_ip,
                 network_log_session: None,
                 workspace_image,
-                workspace_promotable,
                 discovered_cli_agent_session_id: None,
             },
             telemetry,
@@ -636,7 +626,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                                 source_ip,
                                 network_log_session: None,
                                 workspace_image: None,
-                                workspace_promotable: false,
                                 discovered_cli_agent_session_id: None,
                             },
                             telemetry,
@@ -676,7 +665,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
                         source_ip,
                         network_log_session: None,
                         workspace_image: None,
-                        workspace_promotable: false,
                         discovered_cli_agent_session_id: None,
                     },
                     telemetry,
@@ -700,11 +688,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
-            workspace_promotable: workspace_image_promotable(
-                workspace_image.as_ref(),
-                &context,
-                None,
-            ),
             workspace_image,
             discovered_cli_agent_session_id: None,
         }
@@ -719,11 +702,6 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
             RunControls::new(cancel, active_input_source),
         )
         .await;
-        outcome.workspace_promotable = workspace_image_promotable(
-            workspace_image.as_ref(),
-            &context,
-            outcome.discovered_cli_agent_session_id.as_deref(),
-        );
         outcome.workspace_image = workspace_image;
         outcome
     };

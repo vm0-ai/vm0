@@ -280,7 +280,6 @@ mod tests {
                 .await
                 .unwrap()
         );
-        drop(lease);
     }
 
     async fn capture_heartbeat_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

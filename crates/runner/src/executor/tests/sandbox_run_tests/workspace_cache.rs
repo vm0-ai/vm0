@@ -40,7 +40,6 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_none());
-    assert!(!outcome.workspace_promotable);
     let configs = overrides.create_configs();
     assert_eq!(configs.len(), 2);
     assert_eq!(
@@ -104,7 +103,6 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_some());
-    assert!(outcome.workspace_promotable);
     let configs = overrides.create_configs();
     assert_eq!(configs.len(), 1);
     assert_eq!(
@@ -220,7 +218,6 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.workspace_image.is_some());
-    assert!(reuse_outcome.workspace_promotable);
 
     let checkout = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -275,7 +272,6 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
     assert_eq!(reuse_outcome.exit_code(), 1);
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.workspace_image.is_none());
-    assert!(!reuse_outcome.workspace_promotable);
     let error = reuse_outcome.error().expect("error should be set");
     assert!(error.contains("workspace promotion identity mismatch"));
     assert!(!error.contains(session_id));
@@ -499,7 +495,6 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
 
     assert_eq!(reuse_outcome.exit_code(), 1);
     assert!(reuse_outcome.sandbox.is_some());
-    assert!(reuse_outcome.workspace_promotable);
     assert!(reuse_outcome.workspace_image.is_some());
     assert!(
         overrides.start_process_calls().is_empty(),
@@ -558,7 +553,6 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(raw_session_id));
     assert!(reuse_outcome.sandbox.is_some());
-    assert!(reuse_outcome.workspace_promotable);
     assert!(reuse_outcome.workspace_image.is_some());
     assert!(
         overrides.start_process_calls().is_empty(),
@@ -629,7 +623,6 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
-                promotable: true,
             },
         )
         .unwrap();
@@ -735,7 +728,6 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
-                promotable: true,
             },
         )
         .unwrap();

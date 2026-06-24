@@ -68,7 +68,6 @@ pub(super) struct FinalizeContext {
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
     pub(super) workspace_image_size_bytes: u64,
-    pub(super) workspace_promotable: bool,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
@@ -106,7 +105,6 @@ pub(super) async fn finalize_sandbox_for_completion(
         mut network_log_session,
         workspace_image,
         workspace_image_size_bytes,
-        workspace_promotable,
         storage_fingerprints,
         device_rate_limits,
         factory,
@@ -150,7 +148,6 @@ pub(super) async fn finalize_sandbox_for_completion(
             terminal_status,
             completed_at: completed_at.clone(),
             storage_fingerprints: storage_fingerprints.clone(),
-            promotable: workspace_promotable,
         })
     });
 
@@ -679,7 +676,6 @@ mod tests {
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
                 workspace_image_size_bytes: 0,
-                workspace_promotable: false,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
@@ -742,7 +738,6 @@ mod tests {
                 terminal_status,
                 completed_at: local_completed_at(),
                 storage_fingerprints,
-                promotable: true,
             })
             .expect("test workspace image should be promotable")
     }
@@ -1072,7 +1067,6 @@ mod tests {
                 workspace_drive_required: true,
             })
             .await;
-        assert!(workspace_image.can_attempt_promotion(Some("sess-guest")));
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
             .unwrap();
@@ -1090,7 +1084,6 @@ mod tests {
         context.discovered_cli_agent_session_id = Some("sess-guest".into());
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("guest-session-promotion"))),
@@ -1159,7 +1152,6 @@ mod tests {
         context.factory = factory;
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64 + 1;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(sandbox),
@@ -1246,7 +1238,6 @@ mod tests {
         );
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
-        context.workspace_promotable = true;
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("rejected-workspace-promotion"))),
