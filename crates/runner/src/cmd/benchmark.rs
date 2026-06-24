@@ -403,7 +403,7 @@ async fn run_sandbox(
     (result, timing)
 }
 
-/// Images always contain a snapshot — fix guest clock drift and reseed entropy.
+/// Images always contain a snapshot — restore guest state before the benchmark command.
 async fn setup_guest(sandbox: &dyn sandbox::Sandbox, timezone: &str) -> RunnerResult<()> {
     executor::restore_guest_state_with_timezone(sandbox, timezone).await?;
     Ok(())

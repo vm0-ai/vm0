@@ -129,8 +129,10 @@ fn log_embedded_timezone_failure(run_id: Option<RunId>, tz: &str, result: &sandb
 /// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
 /// same snapshot share identical CRNG state, producing identical random output.
 ///
-/// This syncs the frozen guest clock and injects fresh host entropy so each VM
-/// produces unique random numbers from the first `getrandom()` call.
+/// This syncs the frozen guest clock, injects fresh host entropy, and folds in
+/// best-effort system timezone sync when a user timezone is configured. The
+/// entropy step ensures each VM produces unique random numbers from the first
+/// `getrandom()` call.
 pub(crate) async fn restore_guest_state(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
