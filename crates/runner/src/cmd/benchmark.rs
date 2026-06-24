@@ -390,12 +390,11 @@ async fn run_sandbox(
 
 /// Images always contain a snapshot — fix guest clock drift and reseed entropy.
 async fn setup_guest(sandbox: &dyn sandbox::Sandbox) -> RunnerResult<()> {
-    executor::fix_guest_clock(sandbox).await?;
-    executor::reseed_guest_entropy(sandbox).await?;
+    executor::restore_guest_state(sandbox).await?;
     Ok(())
 }
 
-/// Start sandbox, fix clock, exec command. Returns result + timing.
+/// Start sandbox, restore guest state, exec command. Returns result + timing.
 async fn run_in_sandbox(
     args: &BenchmarkArgs,
     env_pairs: &[(String, String)],

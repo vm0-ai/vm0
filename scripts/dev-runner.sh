@@ -9,10 +9,14 @@ set -euo pipefail
 # Usage:
 #   scripts/dev-runner.sh deploy   Build, upload, and start the runner
 #   scripts/dev-runner.sh remove   Stop and uninstall the runner
+#
+# Set RUNNER_TARGET_TRIPLE to force a supported runner target. When unset,
+# deploy derives the target from the remote host architecture.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATES_DIR="$PROJECT_ROOT/crates"
+. "$PROJECT_ROOT/.github/scripts/runner-image-target.sh"
 
 log() { echo "[runner] $1" >&2; }
 
@@ -63,11 +67,46 @@ if [[ ! -f "$SSH_KEY" ]]; then
 fi
 ssh_cmd() { "$CF_SSH" "$HOST" -l "$SSH_USER" -i "$SSH_KEY" "$@"; }
 
+remote_uname_m() {
+  local remote_arch
+  remote_arch=$(ssh_cmd "uname -m")
+  printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r'
+}
+
+select_runner_target() {
+  local remote_arch derived_target selected_target expected_arch
+
+  if [[ -n "${RUNNER_TARGET_TRIPLE:-}" ]]; then
+    runner_image_validate_target "$RUNNER_TARGET_TRIPLE" || return $?
+    expected_arch=$(runner_image_expected_uname_m "$RUNNER_TARGET_TRIPLE") || return $?
+  fi
+
+  remote_arch=$(remote_uname_m)
+  if ! derived_target=$(runner_image_target_for_uname_m "$remote_arch" 2>/dev/null); then
+    log "Error: unsupported remote architecture for $HOST: $remote_arch"
+    return 2
+  fi
+
+  if [[ -n "${RUNNER_TARGET_TRIPLE:-}" ]]; then
+    if [[ "$expected_arch" != "$remote_arch" ]]; then
+      log "Error: RUNNER_TARGET_TRIPLE=$RUNNER_TARGET_TRIPLE expects remote architecture $expected_arch, but $HOST reported $remote_arch"
+      return 2
+    fi
+    selected_target="$RUNNER_TARGET_TRIPLE"
+  else
+    selected_target="$derived_target"
+  fi
+
+  log "Remote architecture: $remote_arch"
+  log "Runner target: $selected_target"
+  printf '%s\n' "$selected_target"
+}
+
 # --- Commands ---
 
 cmd_deploy() {
   RUNNER_SECRET="${OFFICIAL_RUNNER_SECRET:?OFFICIAL_RUNNER_SECRET not set in $ENV_FILE}"
-  TARGET="aarch64-unknown-linux-musl"
+  TARGET=$(select_runner_target)
   # alice-macbook -> https://tunnel-alice-macbook-www.vm7.ai
   API_URL="https://tunnel-${RUNNER_NAME#local-}-www.vm7.ai"
   log "Runner: $RUNNER_NAME (group: $RUNNER_GROUP, api: $API_URL)"

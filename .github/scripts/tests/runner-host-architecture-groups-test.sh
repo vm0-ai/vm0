@@ -64,6 +64,22 @@ assert_no_hosts_field() {
   jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
 }
 
+out=$(bash -c '. "$1"; runner_image_target_for_uname_m aarch64' bash "$TARGET")
+[ "$out" = "aarch64-unknown-linux-musl" ] || fail "expected aarch64 target, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_target_for_uname_m x86_64' bash "$TARGET")
+[ "$out" = "x86_64-unknown-linux-musl" ] || fail "expected x86_64 target, got: ${out}"
+
+if bash -c '. "$1"; runner_image_target_for_uname_m ""' bash "$TARGET" >"${TMPDIR}/uname-empty.out" 2>"${TMPDIR}/uname-empty.err"; then
+  fail "expected empty uname target lookup to fail"
+fi
+grep -q "missing runner host architecture" "${TMPDIR}/uname-empty.err" || fail "expected empty uname message"
+
+if bash -c '. "$1"; runner_image_target_for_uname_m powerpc' bash "$TARGET" >"${TMPDIR}/uname-unsupported.out" 2>"${TMPDIR}/uname-unsupported.err"; then
+  fail "expected unsupported uname target lookup to fail"
+fi
+grep -q "unsupported runner host architecture: powerpc" "${TMPDIR}/uname-unsupported.err" || fail "expected unsupported uname message"
+
 HOST_ARCHES='arm-1=aarch64 arm-2=aarch64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS")
