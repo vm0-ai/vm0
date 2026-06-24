@@ -48,9 +48,9 @@ fn manifest_input_from_args() -> Option<ManifestInput> {
 
 fn run(input: ManifestInput) -> bool {
     match input {
-        ManifestInput::Path(manifest_path) => guest_download::run(&manifest_path),
+        ManifestInput::Path(manifest_path) => run_path(&manifest_path),
         ManifestInput::Stdin => {
-            if !remove_legacy_manifest_file(LEGACY_MANIFEST_PATH) {
+            if !remove_manifest_file(LEGACY_MANIFEST_PATH) {
                 return false;
             }
 
@@ -64,12 +64,36 @@ fn run(input: ManifestInput) -> bool {
     }
 }
 
-fn remove_legacy_manifest_file(path: &str) -> bool {
+fn run_path(manifest_path: &str) -> bool {
+    if manifest_path == LEGACY_MANIFEST_PATH {
+        run_manifest_file_and_remove(manifest_path)
+    } else {
+        guest_download::run(manifest_path)
+    }
+}
+
+fn run_manifest_file_and_remove(manifest_path: &str) -> bool {
+    let manifest_json = match std::fs::read(manifest_path) {
+        Ok(manifest_json) => manifest_json,
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to read manifest: {e}");
+            return false;
+        }
+    };
+
+    if !remove_manifest_file(manifest_path) {
+        return false;
+    }
+
+    guest_download::run_manifest_bytes(&manifest_json)
+}
+
+fn remove_manifest_file(path: &str) -> bool {
     match std::fs::remove_file(path) {
         Ok(()) => true,
         Err(e) if e.kind() == ErrorKind::NotFound => true,
         Err(e) => {
-            log_error!(LOG_TAG, "Failed to remove stale manifest {path}: {e}");
+            log_error!(LOG_TAG, "Failed to remove storage manifest {path}: {e}");
             false
         }
     }
@@ -77,33 +101,55 @@ fn remove_legacy_manifest_file(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_legacy_manifest_file;
+    use super::{remove_manifest_file, run_manifest_file_and_remove};
 
     #[test]
-    fn remove_legacy_manifest_file_removes_existing_file() {
+    fn remove_manifest_file_removes_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("storage-manifest.json");
         std::fs::write(&path, br#"{"secret":"old"}"#).unwrap();
 
-        assert!(remove_legacy_manifest_file(path.to_str().unwrap()));
+        assert!(remove_manifest_file(path.to_str().unwrap()));
 
         assert!(!path.exists());
     }
 
     #[test]
-    fn remove_legacy_manifest_file_allows_missing_file() {
+    fn remove_manifest_file_allows_missing_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing-storage-manifest.json");
 
-        assert!(remove_legacy_manifest_file(path.to_str().unwrap()));
+        assert!(remove_manifest_file(path.to_str().unwrap()));
 
         assert!(!path.exists());
     }
 
     #[test]
-    fn remove_legacy_manifest_file_fails_for_non_removable_path() {
+    fn remove_manifest_file_fails_for_non_removable_path() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert!(!remove_legacy_manifest_file(dir.path().to_str().unwrap()));
+        assert!(!remove_manifest_file(dir.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn run_manifest_file_and_remove_removes_file_on_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage-manifest.json");
+        std::fs::write(&path, br#"{"storages":[],"artifacts":[]}"#).unwrap();
+
+        assert!(run_manifest_file_and_remove(path.to_str().unwrap()));
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn run_manifest_file_and_remove_removes_file_on_parse_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("storage-manifest.json");
+        std::fs::write(&path, br#"{{not valid json secret-body"#).unwrap();
+
+        assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));
+
+        assert!(!path.exists());
     }
 }
