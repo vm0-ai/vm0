@@ -7,13 +7,11 @@ Flow-terminal reporters aggregate usage stored in
 response-id sources can also be buffered incrementally with their source
 idempotency keys preserved.
 
-Model-provider usage reporting is separate from platform billing. New run
-contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the
-canonical model id the proxy should report for model token usage. Billable rows
-go to ``/api/webhooks/agent/usage-event``; model usage statistics go to
-``/api/webhooks/agent/model-usage-observation``. ``FIREWALL_BILLABLE`` remains
-as a legacy/billing signal so in-flight Built-in runs created before the context
-field existed can still report usage.
+Model-provider usage reporting is separate from platform billing. Run contexts
+set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
+id the proxy should report for model token usage. Billable rows go to
+``/api/webhooks/agent/usage-event``; model usage statistics go to
+``/api/webhooks/agent/model-usage-observation``.
 """
 
 import uuid
@@ -53,16 +51,11 @@ def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
     reporting. It is not a billing gate: BYOK/non-billable model providers can
     be observable when the run context supplies a non-empty
     ``MODEL_USAGE_PROVIDER``.
-    ``FIREWALL_BILLABLE`` is also accepted as a legacy model-provider
-    observability signal for older billable contexts.
     """
     firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
-    return bool(
-        _string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER))
-        or flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
-    )
+    return bool(_string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER)))
 
 
 def has_positive_model_provider_usage(source_usage: dict) -> bool:
@@ -134,7 +127,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     - ``run_id`` is non-empty.
     - ``firewall_name`` starts with ``model-provider:``.
     - The flow is model-provider observable: ``MODEL_USAGE_PROVIDER`` is a
-      non-empty string, or legacy ``FIREWALL_BILLABLE`` is truthy.
+      non-empty string.
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.

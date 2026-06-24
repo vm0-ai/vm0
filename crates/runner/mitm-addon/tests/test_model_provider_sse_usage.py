@@ -28,6 +28,7 @@ def _model_provider_sse_flow(
     original_url: str,
     firewall_name: str,
     cli_agent_type: str | None = None,
+    model_usage_provider: str | None = "claude-sonnet-4-6",
 ) -> http.HTTPFlow:
     return make_model_provider_sse_flow(
         real_flow,
@@ -36,6 +37,7 @@ def _model_provider_sse_flow(
         original_url=original_url,
         firewall_name=firewall_name,
         cli_agent_type=cli_agent_type,
+        model_usage_provider=model_usage_provider,
     )
 
 
@@ -49,6 +51,7 @@ def _openai_responses_sse_flow(
         original_url="https://api.openai.com/v1/responses",
         firewall_name="model-provider:openai-api-key",
         cli_agent_type="codex",
+        model_usage_provider="gpt-5.5",
     )
 
 

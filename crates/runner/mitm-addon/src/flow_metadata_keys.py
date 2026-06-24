@@ -62,8 +62,8 @@ Firewall and auth context
   network-log firewall metadata when it has the expected shape.
 - ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
   context for matched auth flows, or forced ``False`` for browser passthrough.
-  Gates connector billing and connector response parser setup; model usage
-  reporting still checks model-provider-specific gates.
+  Gates connector billing, model-provider billing, and connector response parser
+  setup; model usage observation still checks model-provider-specific gates.
 - ``FIREWALL_ACTION``: ``str`` firewall decision such as ``ALLOW``, ``DENY``,
   or ``BLOCK``. Read by response/error network logging.
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
@@ -125,10 +125,10 @@ Model-provider usage
   usage extraction and read by model usage-event and observation reporters.
   Entries may be removed before ``websocket_end()`` once a terminal WebSocket
   usage frame is accepted into the source-preserving usage buffer or the source
-  has no future reporting path. Zero-only entries that only preserve model hints
-  for a later same-response-id frame are retained with a small per-flow bound.
-- ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
-  Read by model-provider usage observability and reported-model selection.
+  has no future reporting path. Zero-only entries are released immediately
+  because observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
+- ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
+  info. Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
 

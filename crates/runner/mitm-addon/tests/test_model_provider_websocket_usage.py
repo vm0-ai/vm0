@@ -12,7 +12,6 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-import response_streaming
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_websocket_helpers import (
@@ -59,7 +58,10 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name],
-            vm_fields={"cliAgentType": "codex"},
+            vm_fields={
+                "cliAgentType": "codex",
+                "modelUsageProvider": "gpt-5.5",
+            },
         ),
     )
 
@@ -81,6 +83,16 @@ def _sum_quantities_by_category(events: list[dict]) -> dict[str, int]:
     for event in events:
         category = event["category"]
         quantities[category] = quantities.get(category, 0) + event["quantity"]
+    return quantities
+
+
+def _sum_quantities_by_field_and_category(
+    events: list[dict], field: str
+) -> dict[tuple[str, str], int]:
+    quantities: dict[tuple[str, str], int] = {}
+    for event in events:
+        key = (event[field], event["category"])
+        quantities[key] = quantities.get(key, 0) + event["quantity"]
     return quantities
 
 
@@ -461,11 +473,9 @@ class TestModelProviderWebSocketUsage:
 
         assert webhook.request_count == 0
         usage_sources = _model_websocket_usage_sources(flow)
-        assert len(usage_sources) <= response_streaming._MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT
-        assert "resp_ws_zero_0" not in usage_sources
-        assert "resp_ws_zero_69" in usage_sources
+        assert usage_sources == {}
 
-    def test_model_websocket_evicted_zero_hint_still_reports_later_positive_usage(
+    def test_model_websocket_flow_model_reports_later_positive_usage_without_zero_hint(
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
@@ -498,20 +508,20 @@ class TestModelProviderWebSocketUsage:
 
         usage_sources = _model_websocket_usage_sources(flow)
         assert "resp_ws_zero_0" not in usage_sources
-        assert len(usage_sources) <= response_streaming._MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT
+        assert usage_sources == {}
         assert {
             (event["provider"], event["category"]): event["quantity"]
             for event in webhook.usage_events()
         } == {
-            ("unknown", "tokens.input"): 20,
-            ("unknown", "tokens.output"): 12,
+            ("gpt-5.5", "tokens.input"): 20,
+            ("gpt-5.5", "tokens.output"): 12,
         }
         assert {
             (event["model"], event["category"]): event["quantity"]
             for event in webhook.model_usage_observation_events()
         } == {
-            ("unknown", "tokens.input"): 20,
-            ("unknown", "tokens.output"): 12,
+            ("gpt-5.5", "tokens.input"): 20,
+            ("gpt-5.5", "tokens.output"): 12,
         }
 
     def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):
@@ -539,15 +549,15 @@ class TestModelProviderWebSocketUsage:
             (event["provider"], event["category"]): event["quantity"]
             for event in webhook.usage_events()
         } == {
-            ("gpt-5.4", "tokens.input"): 3,
-            ("gpt-5.4", "tokens.output"): 2,
+            ("gpt-5.5", "tokens.input"): 3,
+            ("gpt-5.5", "tokens.output"): 2,
         }
         assert {
             (event["model"], event["category"]): event["quantity"]
             for event in webhook.model_usage_observation_events()
         } == {
-            ("gpt-5.4", "tokens.input"): 3,
-            ("gpt-5.4", "tokens.output"): 2,
+            ("gpt-5.5", "tokens.input"): 3,
+            ("gpt-5.5", "tokens.output"): 2,
         }
 
     def test_model_websocket_valid_frame_replaces_invalid_usage_sources_metadata(
@@ -609,7 +619,9 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 12,
         }
 
-    def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
+    def test_full_pipeline_model_websocket_uses_context_model_for_response_ids(
+        self, tmp_path, real_flow
+    ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
 
@@ -630,23 +642,15 @@ class TestModelProviderWebSocketUsage:
         )
 
         assert _model_websocket_usage_sources(flow) == {}
-        assert {
-            (event["provider"], event["category"]): event["quantity"]
-            for event in webhook.usage_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 10,
-            ("gpt-5.5", "tokens.output"): 4,
-            ("gpt-5.4", "tokens.input"): 3,
-            ("gpt-5.4", "tokens.output"): 2,
+        assert _sum_quantities_by_field_and_category(webhook.usage_events(), "provider") == {
+            ("gpt-5.5", "tokens.input"): 13,
+            ("gpt-5.5", "tokens.output"): 6,
         }
-        assert {
-            (event["model"], event["category"]): event["quantity"]
-            for event in webhook.model_usage_observation_events()
-        } == {
-            ("gpt-5.5", "tokens.input"): 10,
-            ("gpt-5.5", "tokens.output"): 4,
-            ("gpt-5.4", "tokens.input"): 3,
-            ("gpt-5.4", "tokens.output"): 2,
+        assert _sum_quantities_by_field_and_category(
+            webhook.model_usage_observation_events(), "model"
+        ) == {
+            ("gpt-5.5", "tokens.input"): 13,
+            ("gpt-5.5", "tokens.output"): 6,
         }
 
     def test_full_pipeline_model_websocket_reports_id_and_missing_id_usage(
