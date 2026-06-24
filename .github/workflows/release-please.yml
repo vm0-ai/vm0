@@ -2132,6 +2132,7 @@ jobs:
           set -euo pipefail
           TAG="runner-rs-v${VERSION}"
           ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
+          ASSET_NAME_ENCODED=$(jq -rn --arg value "$ASSET_NAME" '$value|@uri')
           ASSET_PATH="crates/target/${TARGET_TRIPLE}/release/runner"
 
           if [ ! -x "$ASSET_PATH" ]; then
@@ -2167,16 +2168,24 @@ jobs:
             | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id') || true
           for aid in $EXISTING; do
             curl -sfL -X DELETE \
+              --retry 5 \
+              --retry-delay 2 \
+              --retry-max-time 60 \
+              --retry-all-errors \
               -H "Authorization: token ${GH_TOKEN}" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${aid}"
           done
 
           # Upload binary.
           curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Content-Type: application/octet-stream" \
             --data-binary "@${ASSET_PATH}" \
-            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME_ENCODED}"
 
   # Build runner: compile binary and stage it on
   # metal hosts (provision OS + monitoring + `runner build`
