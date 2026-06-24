@@ -2179,35 +2179,16 @@ jobs:
           fi
 
           # Delete existing asset with the same name (--clobber equivalent).
-          # The toolchain-rust image does not ship `gh`, so paginate the REST
-          # API directly instead of using `gh release upload --clobber`.
-          existing_asset_ids=()
-          page=1
-          while true; do
-            assets_page=$(curl -sfL \
-              --retry 5 \
-              --retry-delay 2 \
-              --retry-max-time 60 \
-              --retry-all-errors \
-              -H "Authorization: token ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100&page=${page}")
-            jq -e 'type == "array"' <<<"$assets_page" >/dev/null
-            matching_ids=$(jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id' <<<"$assets_page")
-            while IFS= read -r aid; do
-              if [ -n "$aid" ]; then
-                existing_asset_ids+=("$aid")
-              fi
-            done <<<"$matching_ids"
-
-            asset_count=$(jq 'length' <<<"$assets_page")
-            if [ "$asset_count" -lt 100 ]; then
-              break
-            fi
-            page=$((page + 1))
-          done
-
-          for aid in "${existing_asset_ids[@]}"; do
+          EXISTING=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id')
+          for aid in $EXISTING; do
             curl -sfL -X DELETE \
               --retry 5 \
               --retry-delay 2 \
