@@ -20,6 +20,7 @@ import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -474,6 +475,34 @@ describe("zero workflow triggers", () => {
     expect(rejected.body.error.message).toBe(
       "Connect Gmail before adding a Gmail event trigger",
     );
+  });
+
+  it("rejects removed Gmail event trigger match fields", async () => {
+    const { workflowId } = await setupFixture();
+
+    const response = await createApp({ signal: context.signal }).request(
+      `/api/zero/workflows/${workflowId}/triggers`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: { hasAttachment: true },
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe("BAD_REQUEST");
   });
 
   it("creates Gmail event triggers with a watch and agent connector grant", async () => {

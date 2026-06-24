@@ -125,7 +125,6 @@ const gmailMessageSchema = z.object({
   id: z.string(),
   threadId: z.string().optional(),
   labelIds: z.array(z.string()).optional(),
-  snippet: z.string().optional(),
   payload: gmailMessagePartSchema.optional(),
 });
 
@@ -203,9 +202,7 @@ interface GmailMessageContext {
   readonly to: readonly string[];
   readonly cc: readonly string[];
   readonly subject: string | null;
-  readonly snippet: string | null;
   readonly bodyText: string | null;
-  readonly hasAttachment: boolean;
 }
 
 type GmailHistoryResult =
@@ -735,18 +732,6 @@ function collectBodyText(part: GmailMessagePart | undefined): string {
     .join("\n");
 }
 
-function partHasAttachment(part: GmailMessagePart | undefined): boolean {
-  if (!part) {
-    return false;
-  }
-  if ((part.filename?.length ?? 0) > 0 || part.body?.attachmentId) {
-    return true;
-  }
-  return (part.parts ?? []).some((child) => {
-    return partHasAttachment(child);
-  });
-}
-
 function messageIsInbound(message: GmailMessageContext): boolean {
   const labels = new Set(message.labelIds);
   if (!labels.has("INBOX")) {
@@ -798,9 +783,7 @@ async function fetchGmailMessageContext(args: {
     to: headerValues(headers, "To"),
     cc: headerValues(headers, "Cc"),
     subject: firstHeaderValue(headers, "Subject"),
-    snippet: result.value.snippet ?? null,
     bodyText: bodyText.length > 0 ? bodyText : null,
-    hasAttachment: partHasAttachment(result.value.payload),
   };
 }
 
@@ -837,29 +820,6 @@ function textMatches(value: string | null, matcher: GmailTextMatch): boolean {
   return true;
 }
 
-function labelsMatch(
-  labels: readonly string[],
-  matcher: NonNullable<GmailMatchRules["labels"]>,
-): boolean {
-  const labelSet = new Set(labels);
-  if (
-    matcher.includeAny &&
-    !matcher.includeAny.some((label) => {
-      return labelSet.has(label);
-    })
-  ) {
-    return false;
-  }
-  if (
-    matcher.excludeAny?.some((label) => {
-      return labelSet.has(label);
-    })
-  ) {
-    return false;
-  }
-  return true;
-}
-
 function gmailMessageMatchesConfig(
   message: GmailMessageContext,
   config: GmailNewMessageEventConfig,
@@ -874,9 +834,6 @@ function gmailMessageMatchesConfig(
   if (match.subject && !textMatches(message.subject, match.subject)) {
     return false;
   }
-  if (match.snippet && !textMatches(message.snippet, match.snippet)) {
-    return false;
-  }
   if (match.body && !textMatches(message.bodyText, match.body)) {
     return false;
   }
@@ -884,15 +841,6 @@ function gmailMessageMatchesConfig(
     return false;
   }
   if (match.cc && !textMatches(message.cc.join(", "), match.cc)) {
-    return false;
-  }
-  if (match.labels && !labelsMatch(message.labelIds, match.labels)) {
-    return false;
-  }
-  if (
-    match.hasAttachment !== undefined &&
-    match.hasAttachment !== message.hasAttachment
-  ) {
     return false;
   }
   return true;
@@ -1232,10 +1180,7 @@ function buildGmailWorkflowEventSystemPrompt(args: {
         to: args.message.to,
         cc: args.message.cc,
         subject: args.message.subject,
-        snippet: args.message.snippet,
         bodyText: args.message.bodyText,
-        labelIds: args.message.labelIds,
-        hasAttachment: args.message.hasAttachment,
       },
       null,
       2,

@@ -399,7 +399,6 @@ describe("workflow detail page", () => {
             match: {
               from: { containsAny: ["@vip.example"] },
               subject: { doesNotContain: "newsletter" },
-              hasAttachment: true,
             },
           },
         } satisfies WorkflowGmailNewMessageTriggerSummary,
@@ -449,7 +448,6 @@ describe("workflow detail page", () => {
               },
               subject: { doesNotContain: "newsletter" },
               body: { contains: "invoice" },
-              hasAttachment: true,
             },
           },
         },

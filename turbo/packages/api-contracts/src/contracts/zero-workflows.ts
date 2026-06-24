@@ -111,6 +111,7 @@ const gmailTextMatchSchema = z
     doesNotContain: z.string().min(1).optional(),
     doesNotContainAny: z.array(z.string().min(1)).min(1).optional(),
   })
+  .strict()
   .refine(
     (value) => {
       return (
@@ -123,34 +124,22 @@ const gmailTextMatchSchema = z
     { message: "At least one text matcher is required" },
   );
 
-const gmailLabelMatchSchema = z
+export const gmailNewMessageEventConfigSchema = z
   .object({
-    includeAny: z.array(z.string().min(1)).min(1).optional(),
-    excludeAny: z.array(z.string().min(1)).min(1).optional(),
+    provider: z.literal("gmail"),
+    event: z.literal("new_message"),
+    match: z
+      .object({
+        from: gmailTextMatchSchema.optional(),
+        subject: gmailTextMatchSchema.optional(),
+        body: gmailTextMatchSchema.optional(),
+        to: gmailTextMatchSchema.optional(),
+        cc: gmailTextMatchSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
-  .refine(
-    (value) => {
-      return value.includeAny !== undefined || value.excludeAny !== undefined;
-    },
-    { message: "At least one label matcher is required" },
-  );
-
-export const gmailNewMessageEventConfigSchema = z.object({
-  provider: z.literal("gmail"),
-  event: z.literal("new_message"),
-  match: z
-    .object({
-      from: gmailTextMatchSchema.optional(),
-      subject: gmailTextMatchSchema.optional(),
-      snippet: gmailTextMatchSchema.optional(),
-      body: gmailTextMatchSchema.optional(),
-      to: gmailTextMatchSchema.optional(),
-      cc: gmailTextMatchSchema.optional(),
-      labels: gmailLabelMatchSchema.optional(),
-      hasAttachment: z.boolean().optional(),
-    })
-    .optional(),
-});
+  .strict();
 export type GmailNewMessageEventConfig = z.infer<
   typeof gmailNewMessageEventConfigSchema
 >;
