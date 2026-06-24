@@ -81,9 +81,15 @@ export const zeroWorkflows = pgTable(
   },
   (table) => {
     return {
-      // slug (name) is intentionally NOT unique: duplicates are allowed across
-      // and within an agent; run-time picks a winner by a fixed priority rule.
       agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
+      // Public workflow slugs are the shared namespace for an agent. Private
+      // workflows may still duplicate public or private slugs as user-specific
+      // forks/overrides; run-time picks the caller's private workflow first.
+      publicAgentNameIdx: uniqueIndex(
+        "idx_zero_workflows_public_agent_name_unique",
+      )
+        .on(table.orgId, table.agentId, table.name)
+        .where(sql`visibility = 'public' AND type = 'workflow'`),
       orgIdx: index("idx_zero_workflows_org").on(table.orgId),
       ownerIdx: index("idx_zero_workflows_org_owner").on(
         table.orgId,
