@@ -195,6 +195,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
       chatThreadId: row.chatThreadId,
       nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
       lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+      unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
     };
   }
   const schedule = rowToSchedule(row);
@@ -208,6 +209,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+    unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
   };
 }
 

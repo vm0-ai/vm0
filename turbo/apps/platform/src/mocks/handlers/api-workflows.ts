@@ -57,6 +57,7 @@ function triggerSummary(
       eventConfig: { provider: "gmail", event: "new_message" },
       schedule: null,
       scheduleSummary: null,
+      unattendedPermissionPolicy: null,
     };
   }
 
@@ -70,6 +71,7 @@ function triggerSummary(
     kind: "schedule",
     schedule: { type: "loop", intervalSeconds: 60 },
     scheduleSummary: trigger.scheduleSummary ?? "Every 60s",
+    unattendedPermissionPolicy: null,
   };
 }
 

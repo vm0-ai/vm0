@@ -54,6 +54,7 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
+    unattendedPermissionPolicy: null,
   };
 }
 
@@ -77,6 +78,7 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
     chatThreadId: "thread_gmail_new_message",
     nextRunAt: null,
     lastRunAt: null,
+    unattendedPermissionPolicy: null,
   };
 }
 
