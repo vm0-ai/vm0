@@ -208,7 +208,7 @@ jobs:
       - name: Select runner job refs
         id: runner-job-ref
         env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
@@ -297,7 +297,7 @@ jobs:
       - name: Resolve runner host architecture groups
         id: groups
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         run: |
           MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix)
@@ -466,7 +466,7 @@ jobs:
       - name: Select metal host
         id: selected-host
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
@@ -524,7 +524,7 @@ jobs:
       - name: Select representative metal host
         id: selected-host
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ needs.runner-host-groups.outputs.representative-group-id }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
@@ -585,7 +585,7 @@ jobs:
       - name: Resolve metal hosts
         id: hosts
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         run: |
