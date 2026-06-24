@@ -829,10 +829,12 @@ describe("logs command", () => {
                   createdAt: "2024-01-15T10:30:02Z",
                   eventData: {
                     type: "turn.completed",
-                    usage: {
-                      input_tokens: 24763,
-                      cached_input_tokens: 24448,
-                      output_tokens: 122,
+                    turn: {
+                      usage: {
+                        input_tokens: 24763,
+                        cached_input_tokens: 24448,
+                        output_tokens: 122,
+                      },
                     },
                   },
                 },
@@ -851,6 +853,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("0199a213-81c0-7800-8aa1-bbab2a035a53");
       expect(logCalls).toContain("Codex says hello");
       expect(logCalls).toContain("Codex Completed");
+      expect(logCalls).toContain("input=24k output=122");
     });
 
     it("should render command_execution as Bash tool with output", async () => {
@@ -903,6 +906,79 @@ describe("logs command", () => {
       expect(logCalls).toContain("Bash");
       expect(logCalls).toContain("bash -lc ls");
       expect(logCalls).toContain("README.md");
+    });
+
+    it("should render completed-only Codex tool events", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd_only",
+                      type: "command_execution",
+                      command: "echo completed-only",
+                      exit_code: 0,
+                      aggregated_output: "completed output\n",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "edit_only",
+                      type: "file_edit",
+                      path: "/workspace/src/edge.ts",
+                      diff: "-before\n+after",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read_only",
+                      type: "file_read",
+                      path: "/workspace/package.json",
+                      status: "completed",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Bash");
+      expect(logCalls).toContain("echo completed-only");
+      expect(logCalls).toContain("completed output");
+      expect(logCalls).toContain("Edit");
+      expect(logCalls).toContain("/workspace/src/edge.ts");
+      expect(logCalls).toContain("-before");
+      expect(logCalls).toContain("+after");
+      expect(logCalls).toContain("Read");
+      expect(logCalls).toContain("/workspace/package.json");
+      expect(logCalls).toContain("File read completed");
     });
 
     it("should mark command_execution with non-zero exit_code as error", async () => {

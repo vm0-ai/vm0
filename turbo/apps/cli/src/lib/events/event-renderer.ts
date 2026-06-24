@@ -42,6 +42,13 @@ interface EventRendererOptions {
   buffered?: boolean;
 }
 
+function recordData(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
 /**
  * Stateful event renderer that buffers tool_use events
  * and displays them grouped with their tool_result
@@ -199,7 +206,7 @@ export class EventRenderer {
   private handleToolUse(event: ParsedEvent, prefix: string): void {
     const toolUseId = String(event.data.toolUseId || "");
     const tool = String(event.data.tool || "");
-    const input = (event.data.input as Record<string, unknown>) || {};
+    const input = recordData(event.data.input);
     const toolUseData: ToolUseData = { tool, input };
 
     // When buffered (default), store for later grouping
@@ -262,8 +269,26 @@ export class EventRenderer {
         this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
       }
       this.pendingToolUse.delete(toolUseId);
+      return;
     }
-    // Skip orphan tool_results (no matching tool_use in buffer)
+
+    const orphanToolUse = this.getToolUseFromResultEvent(event);
+    if (orphanToolUse) {
+      this.renderGroupedTool(orphanToolUse, { result, isError }, prefix);
+    }
+    // Skip orphan tool_results without enough tool metadata to render.
+  }
+
+  private getToolUseFromResultEvent(event: ParsedEvent): ToolUseData | null {
+    const tool = event.data.tool;
+    if (typeof tool !== "string" || tool.length === 0) {
+      return null;
+    }
+
+    return {
+      tool,
+      input: recordData(event.data.input),
+    };
   }
 
   /**

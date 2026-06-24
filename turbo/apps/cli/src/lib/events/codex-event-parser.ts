@@ -225,7 +225,8 @@ function isTerminalFailedTurnStatus(status: string | undefined): boolean {
 }
 
 function getUsage(event: JsonRecord): JsonRecord {
-  return asRecord(event.usage) ?? {};
+  const turn = getTurnRecord(event);
+  return asRecord(event.usage) ?? (turn ? asRecord(turn.usage) : null) ?? {};
 }
 
 function getItem(event: JsonRecord): JsonRecord | null {
@@ -570,7 +571,9 @@ export class CodexEventParser {
         type: "tool_result",
         timestamp: new Date(),
         data: {
+          tool: "Bash",
           toolUseId: itemId,
+          input: command ? { command } : {},
           result: output || (isFailedStatus(status) ? `Command ${status}` : ""),
           isError: isError || isFailedStatus(status),
         },
@@ -604,11 +607,14 @@ export class CodexEventParser {
 
     if (eventType === "item.completed") {
       const status = getItemStatus(item);
+      const tool = getItemType(item) === "file_edit" ? "Edit" : "Write";
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
+          tool,
           toolUseId: itemId,
+          input: path ? { file_path: path } : {},
           result:
             trimmedStringValue(item.diff) ??
             (isFailedStatus(status)
@@ -650,7 +656,9 @@ export class CodexEventParser {
         type: "tool_result",
         timestamp: new Date(),
         data: {
+          tool: "Read",
           toolUseId: itemId,
+          input: path ? { file_path: path } : {},
           result: isFailedStatus(status)
             ? `File read ${status}`
             : "File read completed",
