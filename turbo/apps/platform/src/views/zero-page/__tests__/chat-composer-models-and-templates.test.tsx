@@ -2132,7 +2132,10 @@ describe("chat composer templates", () => {
       ),
     ).toHaveAttribute(
       "src",
-      r2ImageTransformUrl(prismCardPreview, { width: 480, height: 270 }),
+      r2ImageTransformUrl(template.previewImages[0]!, {
+        width: 480,
+        height: 270,
+      }),
     );
 
     await user.click(
@@ -2617,6 +2620,10 @@ describe("chat composer templates", () => {
       `${template.title} detail HTML preview`,
     );
     expect(detailPreviewFrame).toHaveAttribute("tabindex", "-1");
+    expect(detailPreviewFrame).toHaveAttribute(
+      "src",
+      expect.stringMatching(/^blob:/),
+    );
     expect(screen.queryByText("1 of 15")).not.toBeInTheDocument();
     const firstSlidePreviewButton =
       within(templateDialog).getByLabelText("Preview slide 1");
@@ -2638,13 +2645,7 @@ describe("chat composer templates", () => {
     fireEvent.keyDown(firstSlidePreviewButton, { key: "Tab" });
     expect(document.activeElement).toBe(secondSlidePreviewButton);
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
-    expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
-      "src",
-      r2ImageTransformUrl(template.previewImages[0]!, {
-        width: 480,
-        height: 270,
-      }),
-    );
+    expect(firstSlidePreviewButton.querySelector("img")).toBeNull();
     expect(
       firstSlidePreviewButton.querySelector(
         `[aria-label="${template.title} slide 1 preview"]`,
