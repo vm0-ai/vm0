@@ -1,15 +1,11 @@
 import {
-  type PythonBuiltinFirewallCatalogEntry,
+  type PythonBuiltinFirewallCatalog,
   type PythonBuiltinFirewallCatalogFile,
-  renderPythonBuiltinFirewallCatalogFiles as renderGeneratorPythonBuiltinFirewallCatalogFiles,
-} from "@vm0/firewalls-generator/python-builtin-firewall-catalog";
-import type { Firewall, FirewallApi } from "@vm0/connectors/firewall-types";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+  type PythonBuiltinFirewallSourceFirewall,
+  buildPythonBuiltinFirewallCatalog as buildGeneratorPythonBuiltinFirewallCatalog,
+  renderComposedPythonBuiltinFirewallCatalogFiles,
+} from "@vm0/firewalls-generator/python-builtin-firewall-catalog-composition";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "../contracts/model-providers";
-
-interface BuiltinFirewallCatalog {
-  readonly firewalls: Record<string, Firewall>;
-}
 
 interface RenderPythonBuiltinFirewallCatalogOptions {
   readonly maxJsonChunkLength?: number;
@@ -22,79 +18,21 @@ const pythonGeneratedHeader = [
   "# ruff: noqa",
 ] as const;
 
-function runtimeApi(api: FirewallApi): FirewallApi {
-  return {
-    base: api.base,
-    auth: api.auth,
-    ...(api.permissions !== undefined ? { permissions: api.permissions } : {}),
-  };
+function modelProviderFirewalls(): readonly PythonBuiltinFirewallSourceFirewall[] {
+  return Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS);
 }
 
-function runtimeFirewall(firewall: Firewall): Firewall {
-  return {
-    name: firewall.name,
-    apis: firewall.apis.map(runtimeApi),
-  };
-}
-
-function connectorRuntimeFirewalls(): readonly Firewall[] {
-  return Object.values(getAllConnectorFirewalls()).map((firewall) => {
-    return runtimeFirewall(firewall);
+export async function buildBuiltinFirewallCatalog(): Promise<PythonBuiltinFirewallCatalog> {
+  return await buildGeneratorPythonBuiltinFirewallCatalog({
+    modelProviderFirewalls: modelProviderFirewalls(),
   });
 }
 
-function modelProviderRuntimeFirewalls(): readonly Firewall[] {
-  return Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS).map((firewall) => {
-    return runtimeFirewall(firewall);
-  });
-}
-
-function connectorFirewallEntries(): readonly PythonBuiltinFirewallCatalogEntry[] {
-  return connectorRuntimeFirewalls().map((firewall) => {
-    return {
-      firewall,
-      diagnosticKind: "connector",
-    };
-  });
-}
-
-function modelProviderFirewallEntries(): readonly PythonBuiltinFirewallCatalogEntry[] {
-  return modelProviderRuntimeFirewalls().map((firewall) => {
-    return {
-      firewall,
-      diagnosticKind: "modelProvider",
-    };
-  });
-}
-
-function buildBuiltinFirewallCatalogEntries(): readonly PythonBuiltinFirewallCatalogEntry[] {
-  return [...connectorFirewallEntries(), ...modelProviderFirewallEntries()];
-}
-
-export function buildBuiltinFirewallCatalog(): BuiltinFirewallCatalog {
-  const firewalls: Record<string, Firewall> = {};
-  for (const firewall of [
-    ...connectorRuntimeFirewalls(),
-    ...modelProviderRuntimeFirewalls(),
-  ]) {
-    if (firewall.name in firewalls) {
-      throw new Error(
-        `duplicate built-in firewall catalog name: ${firewall.name}`,
-      );
-    }
-    firewalls[firewall.name] = firewall;
-  }
-
-  return {
-    firewalls,
-  };
-}
-
-export function renderPythonBuiltinFirewallCatalogFiles(
+export async function renderPythonBuiltinFirewallCatalogFiles(
   options: RenderPythonBuiltinFirewallCatalogOptions = {},
-): readonly PythonBuiltinFirewallCatalogFile[] {
-  return renderGeneratorPythonBuiltinFirewallCatalogFiles({
-    entries: buildBuiltinFirewallCatalogEntries(),
+): Promise<readonly PythonBuiltinFirewallCatalogFile[]> {
+  return await renderComposedPythonBuiltinFirewallCatalogFiles({
+    modelProviderFirewalls: modelProviderFirewalls(),
     generatedHeader: pythonGeneratedHeader,
     maxJsonChunkLength: options.maxJsonChunkLength,
   });

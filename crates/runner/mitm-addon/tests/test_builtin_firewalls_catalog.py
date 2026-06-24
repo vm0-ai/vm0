@@ -19,6 +19,23 @@ def test_get_existing_builtin_firewall():
     assert firewall["apis"][0]["base"] == "https://api.github.com"
 
 
+def test_model_provider_builtin_firewalls_are_available():
+    openai_firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("model-provider:openai-api-key")
+    codex_firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("model-provider:codex-oauth-token")
+
+    assert openai_firewall is not None
+    assert openai_firewall["apis"][0]["base"] == "https://api.openai.com/v1/responses"
+    assert codex_firewall is not None
+    assert any(
+        api["base"] == "https://chatgpt.com/backend-api/codex" for api in codex_firewall["apis"]
+    )
+    assert any(
+        api["base"] == "https://auth.openai.com"
+        and api.get("permissions") == [{"name": "denied", "rules": ["ANY /*"]}]
+        for api in codex_firewall["apis"]
+    )
+
+
 def test_unknown_builtin_firewall_does_not_import(monkeypatch):
     def fail_load(_name: str) -> tuple[str, ...]:
         raise AssertionError("unknown builtin lookup should not load JSON parts")

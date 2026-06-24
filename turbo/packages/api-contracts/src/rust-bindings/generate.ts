@@ -419,7 +419,7 @@ export async function generatePythonBuiltinFirewallCatalogFile(
   await rm(legacyOutputPath, { force: true });
   await mkdir(outputPath, { recursive: true });
 
-  for (const file of renderPythonBuiltinFirewallCatalogFiles()) {
+  for (const file of await renderPythonBuiltinFirewallCatalogFiles()) {
     const filePath = join(outputPath, file.path);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, file.content);
