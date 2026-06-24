@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 type JsonValue =
   | string
   | number
@@ -77,6 +79,8 @@ interface BuiltinFirewallDiagnosticManifest {
 
 const DEFAULT_FIREWALL_JSON_CHUNK_LENGTH = 200_000;
 const MAX_GENERATED_PYTHON_LINE_LENGTH = 512;
+const MAX_PYTHON_MODULE_BASE_LENGTH = 96;
+const PYTHON_MODULE_HASH_LENGTH = 12;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
 const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
   "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
@@ -414,19 +418,39 @@ function pythonJsonChunkLiteral(value: string): string {
   return pythonEscapedStringLiteral(value);
 }
 
+function hashPythonModuleBase(name: string): string {
+  return createHash("sha256")
+    .update(name)
+    .digest("hex")
+    .slice(0, PYTHON_MODULE_HASH_LENGTH);
+}
+
+function boundPythonModuleBase(name: string, base: string): string {
+  if (base.length <= MAX_PYTHON_MODULE_BASE_LENGTH) {
+    return base;
+  }
+
+  const hash = hashPythonModuleBase(name);
+  const prefixLength = MAX_PYTHON_MODULE_BASE_LENGTH - hash.length - "_".length;
+  const prefix = base.slice(0, prefixLength).replace(/_+$/g, "");
+  return `${prefix.length > 0 ? prefix : "firewall"}_${hash}`;
+}
+
 function sanitizePythonModuleBase(name: string): string {
   const sanitized = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .replace(/_+/g, "_");
+  let base: string;
   if (sanitized.length === 0) {
-    return "firewall";
+    base = "firewall";
+  } else if (/^[a-z_]/.test(sanitized)) {
+    base = sanitized;
+  } else {
+    base = `firewall_${sanitized}`;
   }
-  if (/^[a-z_]/.test(sanitized)) {
-    return sanitized;
-  }
-  return `firewall_${sanitized}`;
+  return boundPythonModuleBase(name, base);
 }
 
 function uniqueModuleBaseNames(

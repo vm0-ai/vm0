@@ -386,6 +386,32 @@ describe("Python builtin firewall catalog renderer", () => {
     expect(paths).toContain("firewall_123_special_0.py");
   });
 
+  it("bounds generated module names for very long firewall names", () => {
+    const longPrefix = `very-long-${"connector-".repeat(80)}`;
+    const firstName = `${longPrefix}alpha`;
+    const secondName = `${longPrefix}beta`;
+    const files = renderEntries([
+      connectorEntry(testFirewall(firstName)),
+      connectorEntry(testFirewall(secondName)),
+    ]);
+    const manifest = findGeneratedFile(files, "manifest.py").content;
+    const partPaths = files
+      .map((file) => {
+        return file.path;
+      })
+      .filter((path) => {
+        return path.endsWith("_0.py");
+      });
+
+    expect(partPaths).toHaveLength(2);
+    expect(new Set(partPaths).size).toBe(2);
+    for (const path of partPaths) {
+      expect(path.length).toBeLessThanOrEqual(120);
+    }
+    expect(manifest).toContain(JSON.stringify(firstName));
+    expect(manifest).toContain(JSON.stringify(secondName));
+  });
+
   it("deduplicates sanitized module-name collisions", () => {
     const files = renderEntries([
       connectorEntry(testFirewall("a-b")),
