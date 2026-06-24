@@ -49,7 +49,7 @@ interface EventRendererOptions {
 export class EventRenderer {
   private pendingToolUse = new Map<
     string,
-    { toolUse: ToolUseData; prefix: string }
+    { toolUse: ToolUseData; prefix: string; rendered: boolean }
   >();
   private options: EventRendererOptions;
   private lastEventType: string | null = null;
@@ -90,11 +90,11 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
-        this.flushPendingToolUses();
+        this.renderPendingToolUses();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
-        this.flushPendingToolUses();
+        this.renderPendingToolUses();
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
@@ -104,7 +104,7 @@ export class EventRenderer {
         this.handleToolResult(event, timestampPrefix);
         break;
       case "result":
-        this.flushPendingToolUses();
+        this.renderPendingToolUses();
         this.renderResult(event, timestampPrefix);
         break;
     }
@@ -114,14 +114,18 @@ export class EventRenderer {
    * Render any buffered display state that cannot wait for a future event.
    */
   flush(): void {
-    this.flushPendingToolUses();
+    this.renderPendingToolUses();
+    this.pendingToolUse.clear();
   }
 
-  private flushPendingToolUses(): void {
-    const pending = Array.from(this.pendingToolUse.values());
-    this.pendingToolUse.clear();
-    for (const { toolUse, prefix } of pending) {
+  private renderPendingToolUses(): void {
+    for (const pending of this.pendingToolUse.values()) {
+      if (pending.rendered) {
+        continue;
+      }
+      const { toolUse, prefix } = pending;
       this.renderToolUseOnly(toolUse, prefix);
+      pending.rendered = true;
     }
   }
 
@@ -202,10 +206,14 @@ export class EventRenderer {
     // When not buffered, render immediately
     if (this.options.buffered !== false) {
       const existing = this.pendingToolUse.get(toolUseId);
-      if (existing) {
+      if (existing && !existing.rendered) {
         this.renderToolUseOnly(existing.toolUse, existing.prefix);
       }
-      this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
+      this.pendingToolUse.set(toolUseId, {
+        toolUse: toolUseData,
+        prefix,
+        rendered: false,
+      });
     } else {
       // Non-buffered: render tool_use header immediately
       this.renderToolUseOnly(toolUseData, prefix);
@@ -247,8 +255,12 @@ export class EventRenderer {
     const pending = this.pendingToolUse.get(toolUseId);
 
     if (pending) {
-      // Render grouped output
-      this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
+      if (pending.rendered) {
+        this.renderToolResultOnly(pending.toolUse, { result, isError }, prefix);
+      } else {
+        // Render grouped output
+        this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
+      }
       this.pendingToolUse.delete(toolUseId);
     }
     // Skip orphan tool_results (no matching tool_use in buffer)
@@ -292,6 +304,31 @@ export class EventRenderer {
       console.log(cont + line);
     }
     console.log(); // Empty line after each group
+    this.lastEventType = "tool";
+  }
+
+  private renderToolResultOnly(
+    toolUse: ToolUseData,
+    result: ToolResultData,
+    prefix: string,
+  ): void {
+    if (this.lastEventType === "text") {
+      console.log();
+    }
+
+    const verbose = this.options.verbose ?? false;
+    const cont = this.getContinuationPrefix();
+    const resultLines = formatToolResult(toolUse, result, verbose);
+
+    for (let i = 0; i < resultLines.length; i++) {
+      const line = resultLines[i];
+      if (i === 0) {
+        console.log(prefix + cont + line);
+      } else {
+        console.log(cont + line);
+      }
+    }
+    console.log();
     this.lastEventType = "tool";
   }
 

@@ -1578,6 +1578,72 @@ describe("logs command", () => {
       expect(countOccurrences(logCalls, "✗")).toBeGreaterThanOrEqual(2);
     });
 
+    it("should keep delayed Codex tool results after intervening text", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd-delayed",
+                      type: "command_execution",
+                      command: "printf delayed",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "message-1",
+                      type: "agent_message",
+                      text: "continuing while command runs",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd-delayed",
+                      type: "command_execution",
+                      status: "completed",
+                      aggregated_output: "delayed output",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const commandIndex = logCalls.indexOf("printf delayed");
+      const textIndex = logCalls.indexOf("continuing while command runs");
+      const outputIndex = logCalls.indexOf("delayed output");
+      expect(commandIndex).toBeGreaterThan(-1);
+      expect(textIndex).toBeGreaterThan(commandIndex);
+      expect(outputIndex).toBeGreaterThan(textIndex);
+    });
+
     it("should tolerate malformed optional Codex payload fields", async () => {
       server.use(
         http.get(
