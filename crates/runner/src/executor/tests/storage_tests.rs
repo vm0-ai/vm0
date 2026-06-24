@@ -159,6 +159,55 @@ async fn download_storages_stdin_manifest_does_not_cleanup_on_exec_error() {
 }
 
 #[tokio::test]
+async fn download_storages_oversized_manifest_cleans_file_on_helper_failure() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        127,
+        Vec::new(),
+        b"/usr/local/bin/guest-download: not found".to_vec(),
+    )));
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("storage download failed"),
+        "got: {err}"
+    );
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 2);
+    assert_eq!(exec_calls[0].cmd, guest_download_command());
+    assert_eq!(exec_calls[1].cmd, guest_storage_manifest_cleanup_command());
+}
+
+#[tokio::test]
+async fn download_storages_stdin_manifest_does_not_cleanup_on_helper_failure() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        127,
+        Vec::new(),
+        b"/usr/local/bin/guest-download: not found".to_vec(),
+    )));
+    let ctx = minimal_context();
+    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES);
+
+    let err = download_storages(&sandbox, &ctx, &manifest)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("storage download failed"),
+        "got: {err}"
+    );
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_download_stdin_command());
+}
+
+#[tokio::test]
 async fn download_storages_nonzero_exit_code() {
     let sandbox = MockSandbox::new("test");
     // Exec returns non-zero so failure formatting includes helper output.

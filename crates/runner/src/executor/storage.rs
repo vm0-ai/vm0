@@ -217,6 +217,9 @@ pub(super) async fn download_storages(
     };
 
     if !helper_exec_succeeded(&result) {
+        if !use_stdin {
+            cleanup_fallback_storage_manifest_after_exec_error(sandbox, context).await;
+        }
         return Err(RunnerError::Internal(format_guest_download_failure(
             &result,
         )));
