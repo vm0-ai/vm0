@@ -35,7 +35,7 @@ mod session_restore;
 mod storage;
 mod telemetry;
 
-pub(crate) use guest_state::restore_guest_state;
+pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};

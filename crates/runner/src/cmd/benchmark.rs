@@ -24,9 +24,11 @@ use crate::workspace_mount::ensure_workspace_drive_mounted;
 struct Timing {
     boot_ms: Option<u128>,
     workspace_mount_ms: Option<u128>,
-    clock_ms: Option<u128>,
+    guest_restore_ms: Option<u128>,
     exec_ms: Option<u128>,
 }
+
+const DEFAULT_BENCHMARK_TIMEZONE: &str = "UTC";
 
 /// Reject malformed entries so typos fail loud before benchmark startup.
 fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
@@ -50,6 +52,15 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
         .collect()
 }
 
+fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
+    if !timezone.is_empty() && executor::is_valid_guest_timezone_name(timezone) {
+        return Ok(());
+    }
+    Err(RunnerError::Config(format!(
+        "invalid --timezone {timezone:?}: expected a non-empty IANA timezone name"
+    )))
+}
+
 #[derive(Args)]
 pub struct BenchmarkArgs {
     /// The bash command to execute in the VM
@@ -63,6 +74,9 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
+    /// System timezone to configure in the VM before running the command
+    #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
+    timezone: String,
     /// Run the command as root (sudo)
     #[arg(long)]
     sudo: bool,
@@ -79,6 +93,7 @@ pub async fn run_benchmark(
 
     // Validate --env up front so typos fail before proxy/sandbox startup.
     let env_pairs = parse_env_args(&args.env)?;
+    validate_timezone_arg(&args.timezone)?;
 
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
@@ -218,7 +233,7 @@ pub async fn run_benchmark(
     let Timing {
         boot_ms,
         workspace_mount_ms,
-        clock_ms,
+        guest_restore_ms,
         exec_ms,
     } = timing;
     match &result {
@@ -229,7 +244,7 @@ pub async fn run_benchmark(
                 factory_ms,
                 boot_ms = ?boot_ms,
                 workspace_mount_ms = ?workspace_mount_ms,
-                clock_ms = ?clock_ms,
+                guest_restore_ms = ?guest_restore_ms,
                 exec_ms = ?exec_ms,
                 total_ms,
                 termination = ?exec_result.termination,
@@ -238,7 +253,7 @@ pub async fn run_benchmark(
             );
         }
         Err(e) => {
-            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, clock_ms = ?clock_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, guest_restore_ms = ?guest_restore_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
@@ -388,9 +403,9 @@ async fn run_sandbox(
     (result, timing)
 }
 
-/// Images always contain a snapshot — fix guest clock drift and reseed entropy.
-async fn setup_guest(sandbox: &dyn sandbox::Sandbox) -> RunnerResult<()> {
-    executor::restore_guest_state(sandbox).await?;
+/// Images always contain a snapshot — restore guest state before the benchmark command.
+async fn setup_guest(sandbox: &dyn sandbox::Sandbox, timezone: &str) -> RunnerResult<()> {
+    executor::restore_guest_state_with_timezone(sandbox, timezone).await?;
     Ok(())
 }
 
@@ -416,10 +431,10 @@ async fn run_in_sandbox(
         return (Err(e), timing);
     }
 
-    let t_clock = Instant::now();
-    let clock_result = setup_guest(sandbox).await;
-    timing.clock_ms = Some(t_clock.elapsed().as_millis());
-    if let Err(e) = clock_result {
+    let t_guest_restore = Instant::now();
+    let guest_restore_result = setup_guest(sandbox, &args.timezone).await;
+    timing.guest_restore_ms = Some(t_guest_restore.elapsed().as_millis());
+    if let Err(e) = guest_restore_result {
         return (Err(e), timing);
     }
 
@@ -530,6 +545,29 @@ mod tests {
             );
             assert!(!err.to_string().contains("secret-value"), "got: {err}");
             assert!(!err.to_string().contains(value), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_accepts_default_and_common_names() {
+        for timezone in [
+            DEFAULT_BENCHMARK_TIMEZONE,
+            "Asia/Shanghai",
+            "Etc/GMT+1",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            validate_timezone_arg(timezone).unwrap();
+        }
+    }
+
+    #[test]
+    fn validate_timezone_arg_rejects_empty_and_shell_metacharacters() {
+        for timezone in ["", "UTC;id", "America/New York", "UTC'", "$(date)"] {
+            let err = validate_timezone_arg(timezone).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid --timezone"),
+                "timezone {timezone:?} produced unexpected error: {err}"
+            );
         }
     }
 

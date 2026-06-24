@@ -7,9 +7,17 @@ use crate::helper_exec::{
     format_command_output_excerpt, format_helper_exec_failure, helper_exec_succeeded,
     helper_exec_termination_label,
 };
+use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 const ENTROPY_SIZE: usize = 256;
+const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
+
+#[derive(Clone, Copy)]
+struct GuestTimezone<'a> {
+    name: &'a str,
+    run_id: Option<RunId>,
+}
 
 fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
     match result.termination {
@@ -41,21 +49,134 @@ fn read_host_entropy() -> RunnerResult<Vec<u8>> {
     Ok(entropy)
 }
 
+pub(crate) fn is_valid_guest_timezone_name(tz: &str) -> bool {
+    tz.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
+}
+
+fn user_timezone(context: &ExecutionContext) -> Option<&str> {
+    let tz = match context.user_timezone.as_deref() {
+        Some(tz) if !tz.is_empty() => tz,
+        _ => return None,
+    };
+    // Strict validation: timezone names are like "Asia/Shanghai" or "UTC".
+    // Only allow alphanumeric, '/', '_', '-', '+'.  This prevents shell
+    // injection since the value is interpolated into a sudo shell command.
+    if !is_valid_guest_timezone_name(tz) {
+        tracing::warn!(tz = %tz, "rejected invalid timezone name");
+        return None;
+    }
+    Some(tz)
+}
+
+fn timezone_sync_body(tz: &str) -> String {
+    format!(
+        "echo '{tz}' > /etc/timezone && \
+         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime && \
+         sed -i '/^TZ=/d' /etc/environment && \
+         echo 'TZ={tz}' >> /etc/environment"
+    )
+}
+
+fn timezone_sync_command(tz: &str) -> String {
+    let body = timezone_sync_body(tz);
+    format!("if test -f /usr/share/zoneinfo/{tz}; then {body}; fi")
+}
+
+fn timezone_sync_best_effort_command(tz: &str) -> String {
+    let body = timezone_sync_body(tz);
+    format!(
+        "if test -f /usr/share/zoneinfo/{tz}; then {{ {body}; }} || echo \"{TIMEZONE_SYNC_FAILED_MARKER}\" >&2; fi"
+    )
+}
+
+fn log_embedded_timezone_failure(run_id: Option<RunId>, tz: &str, result: &sandbox::ExecResult) {
+    if !result
+        .stderr
+        .windows(TIMEZONE_SYNC_FAILED_MARKER.len())
+        .any(|window| window == TIMEZONE_SYNC_FAILED_MARKER.as_bytes())
+    {
+        return;
+    }
+
+    let stderr_excerpt =
+        format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
+    let stdout_excerpt =
+        format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
+    if let Some(run_id) = run_id {
+        tracing::warn!(
+            run_id = %run_id,
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    } else {
+        tracing::warn!(
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    }
+}
+
 /// Restores snapshot-sensitive guest state in one exec before the agent starts.
 ///
 /// On ARM64 with kernel 6.1, VMGenID does not work (the driver only supports
 /// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
 /// same snapshot share identical CRNG state, producing identical random output.
 ///
-/// This syncs the frozen guest clock and injects fresh host entropy so each VM
-/// produces unique random numbers from the first `getrandom()` call.
-pub(crate) async fn restore_guest_state(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+/// This syncs the frozen guest clock, injects fresh host entropy, and folds in
+/// best-effort system timezone sync when a user timezone is configured. The
+/// entropy step ensures each VM produces unique random numbers from the first
+/// `getrandom()` call.
+pub(crate) async fn restore_guest_state(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+) -> RunnerResult<()> {
+    let timezone = user_timezone(context).map(|name| GuestTimezone {
+        name,
+        run_id: Some(context.run_id),
+    });
+    restore_guest_state_inner(sandbox, timezone).await
+}
+
+pub(crate) async fn restore_guest_state_with_timezone(
+    sandbox: &dyn Sandbox,
+    timezone: &str,
+) -> RunnerResult<()> {
+    if timezone.is_empty() || !is_valid_guest_timezone_name(timezone) {
+        return Err(RunnerError::Config(format!(
+            "invalid timezone {timezone:?}: expected a non-empty IANA timezone name"
+        )));
+    }
+    restore_guest_state_inner(
+        sandbox,
+        Some(GuestTimezone {
+            name: timezone,
+            run_id: None,
+        }),
+    )
+    .await
+}
+
+async fn restore_guest_state_inner(
+    sandbox: &dyn Sandbox,
+    timezone: Option<GuestTimezone<'_>>,
+) -> RunnerResult<()> {
     let timestamp = host_unix_timestamp_secs();
     let entropy = read_host_entropy()?;
-    let cmd = format!(
+    let mut cmd = format!(
         r#"date -s "@{timestamp}" || {{ status=$?; echo "guest clock sync failed" >&2; exit "$status"; }}
 guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}"#
     );
+    if let Some(timezone) = timezone {
+        cmd.push('\n');
+        cmd.push_str(&timezone_sync_best_effort_command(timezone.name));
+    }
     let result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
@@ -76,6 +197,9 @@ guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}
             &result,
         )));
     }
+    if let Some(timezone) = timezone {
+        log_embedded_timezone_failure(timezone.run_id, timezone.name, &result);
+    }
 
     Ok(())
 }
@@ -90,28 +214,10 @@ guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}
 /// The agent process also receives `TZ` via the env vars in step 6.
 /// Skipped when no user timezone is configured (falls back to image default UTC).
 pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) {
-    let tz = match &context.user_timezone {
-        Some(tz) if !tz.is_empty() => tz,
-        _ => return,
-    };
-    // Strict validation: timezone names are like "Asia/Shanghai" or "UTC".
-    // Only allow alphanumeric, '/', '_', '-', '+'.  This prevents shell
-    // injection since the value is interpolated into a sudo shell command.
-    if !tz
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
-    {
-        tracing::warn!(tz = %tz, "rejected invalid timezone name");
+    let Some(tz) = user_timezone(context) else {
         return;
-    }
-    let cmd = format!(
-        "if test -f /usr/share/zoneinfo/{tz}; then \
-         echo '{tz}' > /etc/timezone && \
-         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime && \
-         sed -i '/^TZ=/d' /etc/environment && \
-         echo 'TZ={tz}' >> /etc/environment; \
-         fi"
-    );
+    };
+    let cmd = timezone_sync_command(tz);
     // Best-effort: don't fail the run if timezone setup fails.
     match sandbox
         .exec_with_diagnostic_label(
