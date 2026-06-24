@@ -350,7 +350,9 @@ async fn download_storages_fails_on_write_file_error() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("vsock write failed"), "got: {err}");
-    assert!(sandbox.exec_calls().is_empty());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(exec_calls[0].cmd, guest_storage_manifest_cleanup_command());
 }
 
 // -----------------------------------------------------------------------

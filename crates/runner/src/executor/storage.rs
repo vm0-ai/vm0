@@ -182,9 +182,13 @@ pub(super) async fn download_storages(
     let download_cmd = if use_stdin {
         guest_download_stdin_command()
     } else {
-        sandbox
+        if let Err(error) = sandbox
             .write_file(guest::STORAGE_MANIFEST, &manifest_json)
-            .await?;
+            .await
+        {
+            cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
+            return Err(error.into());
+        }
         guest_download_command()
     };
     let stdin_bytes = use_stdin.then_some(manifest_json.as_slice());
@@ -210,7 +214,7 @@ pub(super) async fn download_storages(
         Ok(result) => result,
         Err(e) => {
             if !use_stdin {
-                cleanup_fallback_storage_manifest_after_exec_error(sandbox, context).await;
+                cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
             }
             return Err(e.into());
         }
@@ -218,7 +222,7 @@ pub(super) async fn download_storages(
 
     if !helper_exec_succeeded(&result) {
         if !use_stdin {
-            cleanup_fallback_storage_manifest_after_exec_error(sandbox, context).await;
+            cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
         }
         return Err(RunnerError::Internal(format_guest_download_failure(
             &result,
@@ -227,7 +231,7 @@ pub(super) async fn download_storages(
     Ok(())
 }
 
-async fn cleanup_fallback_storage_manifest_after_exec_error(
+async fn cleanup_fallback_storage_manifest_after_failure(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
 ) {
@@ -252,14 +256,14 @@ async fn cleanup_fallback_storage_manifest_after_exec_error(
             warn!(
                 run_id = %context.run_id,
                 error = %format_helper_exec_failure("storage manifest cleanup", &result),
-                "failed to remove fallback storage manifest after exec error"
+                "failed to remove fallback storage manifest after fallback failure"
             );
         }
         Err(error) => {
             warn!(
                 run_id = %context.run_id,
                 error = %error,
-                "failed to remove fallback storage manifest after exec error"
+                "failed to remove fallback storage manifest after fallback failure"
             );
         }
     }
