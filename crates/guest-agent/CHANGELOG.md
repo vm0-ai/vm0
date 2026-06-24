@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.41.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.0...guest-agent-v0.41.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* align storage hash sort with javascript ([#18783](https://github.com/vm0-ai/vm0/issues/18783)) ([1864d86](https://github.com/vm0-ai/vm0/commit/1864d86dd39340fab24b85855ea659fe61597b59))
+* **guest-agent:** bound codex session lookup ([#18780](https://github.com/vm0-ai/vm0/issues/18780)) ([96c2142](https://github.com/vm0-ai/vm0/commit/96c214200019bcc99ace849def5af2d3fea036b2))
+* **runner:** classify Claude provider server errors ([#18781](https://github.com/vm0-ai/vm0/issues/18781)) ([c150950](https://github.com/vm0-ai/vm0/commit/c150950445346a61c63cb696adfa71b184c1e297))
+
+
+### Documentation
+
+* document guest-agent active input contract ([#18779](https://github.com/vm0-ai/vm0/issues/18779)) ([9c2d65b](https://github.com/vm0-ai/vm0/commit/9c2d65bce9df85faee0e2fe50c8f82df8c5f2b0d))
+
+
+### Refactoring
+
+* **guest-agent:** centralize forced cli termination ([#18782](https://github.com/vm0-ai/vm0/issues/18782)) ([93bdd96](https://github.com/vm0-ai/vm0/commit/93bdd9675b598e02ca043f780d2172ddc9b0398b))
+
 ## [0.41.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.6...guest-agent-v0.41.0) (2026-06-24)
 
 

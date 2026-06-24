@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.175.0](https://github.com/vm0-ai/vm0/compare/api-v1.174.1...api-v1.175.0) (2026-06-24)
+
+
+### Features
+
+* add presentation R2 template resources ([#18792](https://github.com/vm0-ai/vm0/issues/18792)) ([9907b5e](https://github.com/vm0-ai/vm0/commit/9907b5ee9c8f8101156f359ffe4e8dc89cddfa3a))
+
+
+### Bug Fixes
+
+* align storage hash sort with javascript ([#18783](https://github.com/vm0-ai/vm0/issues/18783)) ([1864d86](https://github.com/vm0-ai/vm0/commit/1864d86dd39340fab24b85855ea659fe61597b59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.2
+    * @vm0/connectors bumped to 1.106.1
+    * @vm0/core bumped to 8.367.0
+    * @vm0/db bumped to 1.69.2
+
 ## [1.174.1](https://github.com/vm0-ai/vm0/compare/api-v1.174.0...api-v1.174.1) (2026-06-24)
 
 
