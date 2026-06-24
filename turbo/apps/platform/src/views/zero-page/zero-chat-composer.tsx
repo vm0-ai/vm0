@@ -2679,14 +2679,10 @@ function TemplatePreview({
 
         cache.drafts.set(item.embedUrl, result.value);
         if (cache.activeTokens.get(item.embedUrl) === activeToken) {
-          const nextIndex =
-            cache.pendingSlideIndexes.get(item.embedUrl) ??
-            cache.activeIndexes.get(item.embedUrl) ??
-            0;
           setHtmlPreview(
             createPresentationTemplateCardHtmlPreviewState({
               draft: result.value,
-              index: nextIndex,
+              index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
               theme: previewTheme,
@@ -2718,6 +2714,9 @@ function TemplatePreview({
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     const cache = presentationTemplateHtmlPreviewCache();
+    if (!cache.drafts.has(item.embedUrl)) {
+      return;
+    }
     if (scrubSlideCount < 2) {
       return;
     }

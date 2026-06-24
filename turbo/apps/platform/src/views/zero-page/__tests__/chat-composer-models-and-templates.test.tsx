@@ -1990,7 +1990,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("keeps the pending presentation card slide while the hover preview is loading", async () => {
+  it("scrubs presentation card slides by slide count after the hover preview loads", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug === "bloom-pitch";
     });
@@ -2069,11 +2069,6 @@ describe("chat composer templates", () => {
     });
 
     try {
-      fireEvent.mouseEnter(preview);
-      await waitFor(() => {
-        expect(previewFetchCount).toBe(1);
-      });
-      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
       previewFetch.resolve(
         new Response(
           `<!doctype html><html><body>${Array.from(
@@ -2086,8 +2081,13 @@ describe("chat composer templates", () => {
           { headers: { "Content-Type": "text/html" } },
         ),
       );
+      fireEvent.mouseEnter(preview);
+      await waitFor(() => {
+        expect(previewFetchCount).toBe(1);
+      });
 
       await waitFor(async () => {
+        fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
         await expect(
           htmlForFrame(
             screen.getByTestId(`${template.title} card HTML preview`),
