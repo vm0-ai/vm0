@@ -184,9 +184,17 @@ do_provision() {
   ssh "$remote" bash -s -- "$version" <<'INSTALL_SCRIPT'
 set -euo pipefail
 VERSION="$1"
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in
+  amd64|arm64) ;;
+  *)
+    echo "Unsupported cloudflared Debian architecture: ${ARCH}" >&2
+    exit 1
+    ;;
+esac
 if ! cloudflared --version 2>/dev/null | grep -q "$VERSION"; then
   echo "Downloading cloudflared ${VERSION}..."
-  curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${VERSION}/cloudflared-linux-arm64.deb" \
+  curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${VERSION}/cloudflared-linux-${ARCH}.deb" \
     -o "/tmp/cloudflared-${VERSION}.deb"
   sudo dpkg -i "/tmp/cloudflared-${VERSION}.deb"
 else
