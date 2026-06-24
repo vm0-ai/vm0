@@ -285,14 +285,28 @@ fn chmod_created_dir_component(
         )
     };
     if result == 0 {
-        Ok(())
-    } else {
-        Err(wrap_last_os_error(format!(
-            "chmod newly-created runtime directory component {} for {}",
+        return Ok(());
+    }
+
+    let error = io::Error::last_os_error();
+    if matches!(
+        error.raw_os_error(),
+        Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP)
+    ) {
+        // Older kernels may not support fchmodat(AT_EMPTY_PATH). The regular
+        // openat + fchmod path below still fixes modes when the umask left owner
+        // access intact, which is the common guest case.
+        return Ok(());
+    }
+
+    Err(io::Error::new(
+        error.kind(),
+        format!(
+            "chmod newly-created runtime directory component {} for {}: {error}",
             name.to_string_lossy(),
             full_path.display()
-        )))
-    }
+        ),
+    ))
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]

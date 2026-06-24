@@ -393,6 +393,44 @@ async fn write_private_file_chunked_writes_final_path_without_rename() {
 }
 
 #[tokio::test]
+async fn write_private_file_chunked_guest_failure_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content = vec![0xCD; chunk_limit + 100];
+    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-fail.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-fail.env");
+    assert!(!first.sudo);
+    assert!(!first.append);
+    assert!(first.private);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-fail.env");
+    assert!(!second.sudo);
+    assert!(second.append);
+    assert!(second.private);
+    send_write_file_failure(&mut guest, second.seq(), "disk full").await;
+
+    let err = tokio::time::timeout(Duration::from_secs(1), write_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn write_file_chunked_quotes_target_path_with_single_quote() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big'quote.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
