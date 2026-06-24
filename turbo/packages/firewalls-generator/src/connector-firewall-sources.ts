@@ -42,7 +42,7 @@ interface RegisteredFirewallSource {
   readonly firewallExportName: string;
 }
 
-interface ConnectorFirewallSourceSetOptions {
+export interface ConnectorFirewallSourceSetOptions {
   readonly firewallsDir: string;
   readonly connectorsDir: string;
   readonly firewallsIndexFile: string;

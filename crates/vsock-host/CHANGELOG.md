@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.41](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.40...vsock-host-v0.17.41) (2026-06-24)
+
+
+### Refactoring
+
+* **vsock-host:** collapse exec request assembly ([#18820](https://github.com/vm0-ai/vm0/issues/18820)) ([19f0757](https://github.com/vm0-ai/vm0/commit/19f0757e62a55ce3a1eb368c8f8179d4a3ed199a))
+
 ## [0.17.40](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.39...vsock-host-v0.17.40) (2026-06-23)
 
 

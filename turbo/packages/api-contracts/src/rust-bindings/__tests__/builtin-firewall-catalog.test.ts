@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -19,8 +21,8 @@ function findGeneratedContent(
 }
 
 describe("builtin firewall catalog", () => {
-  it("includes connector and model-provider firewalls", () => {
-    const catalog = buildBuiltinFirewallCatalog();
+  it("includes connector and model-provider firewalls", async () => {
+    const catalog = await buildBuiltinFirewallCatalog();
 
     expect(catalog.firewalls.github?.apis[0]?.base).toBe(
       "https://api.github.com",
@@ -31,28 +33,36 @@ describe("builtin firewall catalog", () => {
     ).toBe("https://api.openai.com/v1/responses");
   });
 
-  it("preserves connector auth templates", () => {
-    const catalog = buildBuiltinFirewallCatalog();
+  it("preserves connector auth templates", async () => {
+    const catalog = await buildBuiltinFirewallCatalog();
 
-    expect(catalog.firewalls.cloudflare?.apis[0]?.auth.headers).toStrictEqual({
-      Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
+    expect(catalog.firewalls.cloudflare?.apis[0]?.auth).toStrictEqual({
+      headers: {
+        Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
+      },
     });
-    expect(catalog.firewalls.slock?.apis[0]?.auth.headers).toStrictEqual({
-      Authorization: "Bearer ${{ secrets.SLOCK_TOKEN }}",
-      "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
+    expect(catalog.firewalls.slock?.apis[0]?.auth).toStrictEqual({
+      headers: {
+        Authorization: "Bearer ${{ secrets.SLOCK_TOKEN }}",
+        "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
+      },
     });
-    expect(catalog.firewalls.serpapi?.apis[0]?.auth.query).toStrictEqual({
-      api_key: "${{ secrets.SERPAPI_TOKEN }}",
+    expect(catalog.firewalls.serpapi?.apis[0]?.auth).toStrictEqual({
+      query: {
+        api_key: "${{ secrets.SERPAPI_TOKEN }}",
+      },
     });
-    expect(catalog.firewalls.aws?.apis[0]?.auth.awsSigv4).toStrictEqual({
-      accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
-      secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-      sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+    expect(catalog.firewalls.aws?.apis[0]?.auth).toStrictEqual({
+      awsSigv4: {
+        accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+        secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+        sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+      },
     });
   });
 
-  it("keeps the transitional Python renderer wrapper wired to the current catalog", () => {
-    const files = renderPythonBuiltinFirewallCatalogFiles();
+  it("keeps the transitional Python renderer wrapper wired to the current catalog", async () => {
+    const files = await renderPythonBuiltinFirewallCatalogFiles();
     const paths = files.map((file) => {
       return file.path;
     });
@@ -75,5 +85,14 @@ describe("builtin firewall catalog", () => {
     expect(findGeneratedContent(files, "manifest.py")).toContain(
       '"github": ("github_0",),',
     );
+  });
+
+  it("does not import the eager connector all-catalog", () => {
+    const source = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../builtin-firewall-catalog.ts"),
+      "utf-8",
+    );
+
+    expect(source).not.toContain("@vm0/connectors/firewalls/all");
   });
 });

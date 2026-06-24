@@ -1,15 +1,21 @@
+import { randomUUID } from "node:crypto";
+
 import { createStore } from "ccstate";
 import { WebClient } from "@slack/web-api";
 import type { TestSlackDispatchProbeResponse } from "@vm0/api-contracts/contracts/test-slack-dispatch-probe";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { verifyZeroToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
@@ -17,9 +23,11 @@ import {
   seedSlackWebhookFixture$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
 const store = createStore();
+const runnerApi = createRunsAutomationsApi(context);
 const ROUTE = "/api/test/slack-dispatch-probe";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
 const TEST_VM0_DEEPSEEK_KEY = "vm0-key-slack-dispatch-probe-deepseek-v4-pro";
@@ -155,6 +163,65 @@ async function readZeroRunTriggerSource(
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return zeroRun?.triggerSource;
+}
+
+async function createComputerUseHost(
+  fixture: SlackWebhookFixture,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [host] = await db
+    .insert(computerUseHosts)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      displayName: "Slack authorized host",
+      tokenHash: `test-computer-use-host-${randomUUID()}`,
+      appVersion: "1.0.0",
+      osVersion: "macOS test",
+      supportedCapabilities: ["computer-use"],
+      permissions: { accessibility: true, screenRecording: true },
+    })
+    .returning({ id: computerUseHosts.id });
+  if (!host) {
+    throw new Error("Computer use host insert returned no row");
+  }
+  return host.id;
+}
+
+async function readSlackConnectionId(
+  fixture: SlackWebhookFixture,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [connection] = await db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, fixture.slackWorkspaceId),
+        eq(slackOrgConnections.slackUserId, fixture.slackUserId),
+        eq(slackOrgConnections.vm0UserId, fixture.userId),
+      ),
+    )
+    .limit(1);
+  if (!connection) {
+    throw new Error("Slack connection fixture was not created");
+  }
+  return connection.id;
+}
+
+async function bindComputerUseHostToSlackThread(args: {
+  readonly connectionId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly computerUseHostId: string;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(slackOrgThreadSessions).values({
+    connectionId: args.connectionId,
+    slackChannelId: args.channelId,
+    slackThreadTs: args.threadTs,
+    computerUseHostId: args.computerUseHostId,
+  });
 }
 
 describe("POST /api/test/slack-dispatch-probe", () => {
@@ -338,6 +405,51 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         thread_ts: "1710000001.000000",
       }),
     );
+  });
+
+  it("includes Slack thread computer use host bindings in queued zero tokens", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    const channelId = "C-test";
+    const threadTs = "1710000004.000000";
+    const computerUseHostId = await createComputerUseHost(fixture);
+    const connectionId = await readSlackConnectionId(fixture);
+    await bindComputerUseHostToSlackThread({
+      connectionId,
+      channelId,
+      threadTs,
+      computerUseHostId,
+    });
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: channelId,
+      user_id: fixture.slackUserId,
+      message_text: "use the browser",
+      message_ts: threadTs,
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readJson<TestSlackDispatchProbeResponse>(response),
+    ).resolves.toStrictEqual({ ok: true });
+
+    const run = await readSingleRunForUser(fixture.userId);
+    await runnerApi.heartbeatRunner();
+    const claim = await runnerApi.claimRunnerJob(run.id);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Claimed runner job did not include ZERO_TOKEN");
+    }
+    const zeroAuth = verifyZeroToken(zeroToken);
+    expect(zeroAuth).toMatchObject({ computerUseHostId });
+    expect(zeroAuth?.capabilities).toContain("computer-use:write");
   });
 
   it("serializes synchronous dispatch errors as diagnostic 200 responses", async () => {

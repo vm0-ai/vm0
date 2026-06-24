@@ -7,9 +7,13 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import type { UnattendedTriggerPermissionPolicy } from "@vm0/api-contracts/contracts/zero-workflows";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type {
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -21,6 +25,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -431,6 +436,62 @@ async function loadAllowedCustomConnectorIds(
   });
 }
 
+/**
+ * For an unattended trigger run, `ask` has no approver, so any resolved `ask`
+ * (always a connector metadata default, never a stored trigger value) is
+ * enforced as `deny`. Unknown-endpoint handling stays at the connector metadata
+ * default, which is `deny` for every connector.
+ */
+function coerceUnattendedPolicyAsks(
+  policies: FirewallPolicies | null,
+): FirewallPolicies | null {
+  if (!policies) {
+    return policies;
+  }
+  const askToDeny = (value: FirewallPolicyValue): FirewallPolicyValue => {
+    return value === "ask" ? "deny" : value;
+  };
+  const result: FirewallPolicies = {};
+  for (const [connector, policy] of Object.entries(policies)) {
+    const coerced: Record<string, FirewallPolicyValue> = {};
+    for (const [permission, value] of Object.entries(policy.policies)) {
+      coerced[permission] = askToDeny(value);
+    }
+    result[connector] = {
+      policies: coerced,
+      ...(policy.unknownPolicy !== undefined
+        ? { unknownPolicy: askToDeny(policy.unknownPolicy) }
+        : {}),
+    };
+  }
+  return result;
+}
+
+async function loadTriggerUnattendedPolicy(
+  db: Db,
+  args: { readonly orgId: string; readonly triggerId: string },
+): Promise<UnattendedTriggerPermissionPolicy | null> {
+  const [row] = await db
+    .select({ policy: zeroWorkflowTriggers.unattendedPermissionPolicy })
+    .from(zeroWorkflowTriggers)
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.id, args.triggerId),
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  return row?.policy ?? null;
+}
+
+/**
+ * Resolves the firewall policies for a run.
+ *
+ * Interactive (chat/agent) runs resolve from the caller's user permission
+ * grants. Trigger-fired runs (`args.unattended` present) are isolated: they
+ * resolve from the trigger's own policy overlaid on connector metadata
+ * defaults, never inherit agent/user grants, and have `ask` coerced to `deny`.
+ */
 async function resolveZeroRunPermissionPolicies(
   db: Db,
   args: {
@@ -439,9 +500,21 @@ async function resolveZeroRunPermissionPolicies(
     readonly agent: ZeroAgentRunRecord;
     readonly allowedConnectorTypes: readonly ConnectorType[];
     readonly checkedAt: Date;
+    readonly unattended?: {
+      readonly policy: UnattendedTriggerPermissionPolicy | null;
+    };
   },
   signal: AbortSignal,
 ): Promise<FirewallPolicies | null> {
+  if (args.unattended) {
+    const stored: FirewallPolicies = args.unattended.policy ?? {};
+    const resolved = await resolveFirewallServerMetadataPolicies(stored, [
+      ...args.allowedConnectorTypes,
+    ]);
+    signal.throwIfAborted();
+    return coerceUnattendedPolicyAsks(resolved);
+  }
+
   const grants = await loadActiveUserPermissionGrants(
     db,
     {
@@ -759,6 +832,18 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
+    // Trigger-fired runs carry a workflowTriggerId; they resolve from the
+    // trigger's own isolated unattended policy instead of the caller's grants.
+    const workflowTriggerId = args.zeroRunMetadata?.workflowTriggerId;
+    const unattended = workflowTriggerId
+      ? {
+          policy: await loadTriggerUnattendedPolicy(db, {
+            orgId: args.auth.orgId,
+            triggerId: workflowTriggerId,
+          }),
+        }
+      : undefined;
+    signal.throwIfAborted();
     const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
@@ -767,6 +852,7 @@ export const createZeroRun$ = command(
         agent,
         allowedConnectorTypes,
         checkedAt: new Date(args.apiStartTime),
+        unattended,
       },
       signal,
     );

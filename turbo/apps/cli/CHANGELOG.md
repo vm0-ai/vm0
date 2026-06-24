@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.207.0](https://github.com/vm0-ai/vm0/compare/cli-v9.206.3...cli-v9.207.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+
 ## [9.206.3](https://github.com/vm0-ai/vm0/compare/cli-v9.206.2...cli-v9.206.3) (2026-06-24)
 
 

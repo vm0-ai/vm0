@@ -8,6 +8,7 @@ const SO_FRONTEND_EXACT_PATHS = [
   "/illustration",
   "/web-design",
   "/presentation",
+  "/video",
   "/report",
   "/sprite",
   "/terms-of-use",

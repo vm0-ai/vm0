@@ -12,6 +12,11 @@ import {
   parsePermissionActionUrl,
   type PermissionActionBlock,
 } from "./permission-action-block.ts";
+import {
+  createComputerUseAuthorizationBlock,
+  parseComputerUseAuthorizationUrl,
+  type ComputerUseAuthorizationBlock,
+} from "./computer-use-authorization-block.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,7 +52,8 @@ export type BodyRenderBlock =
     }
   | ConnectorActionBlock
   | CustomConnectorActionBlock
-  | PermissionActionBlock;
+  | PermissionActionBlock
+  | ComputerUseAuthorizationBlock;
 
 type ChatAttachmentKind = BodyPreviewKind;
 
@@ -696,6 +702,7 @@ function createActionBlockFromLine(
   | ConnectorActionBlock
   | CustomConnectorActionBlock
   | PermissionActionBlock
+  | ComputerUseAuthorizationBlock
   | null {
   const url = extractActionUrlFromLine(line);
   if (!url) {
@@ -720,6 +727,14 @@ function createActionBlockFromLine(
     return createPermissionActionBlock(
       id("permission-action"),
       permissionAction,
+    );
+  }
+
+  const computerUseAuthorization = parseComputerUseAuthorizationUrl(url);
+  if (computerUseAuthorization) {
+    return createComputerUseAuthorizationBlock(
+      id("computer-use-authorization"),
+      computerUseAuthorization,
     );
   }
 

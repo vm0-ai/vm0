@@ -136,6 +136,10 @@ const ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE = `/api/zero/workflow-triggers/:i
 const ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/run$`,
 );
+const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/permission-policy`;
+const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE = new RegExp(
+  `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/permission-policy$`,
+);
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
@@ -326,6 +330,16 @@ const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/unregister";
 const ZERO_COMPUTER_USE_AUDIT_EVENTS_REWRITE_SOURCE =
   "/api/zero/computer-use/audit-events";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUESTS_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests/:requestToken";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_PATH_RE =
+  /^\/api\/zero\/computer-use\/authorization-requests\/[^/]+$/;
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_REWRITE_SOURCE =
+  "/api/zero/computer-use/authorization-requests/:requestToken/apply";
+const ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_PATH_RE =
+  /^\/api\/zero\/computer-use\/authorization-requests\/[^/]+\/apply$/;
 const ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE =
   "/api/zero/computer-use/commands";
 const ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE = `/api/zero/computer-use/commands/:commandId(${UUID_PATH_SEGMENT_PATTERN})`;
@@ -1040,6 +1054,20 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/computer-use/audit-events",
   ],
   [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUESTS_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_BY_TOKEN_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_REWRITE_SOURCE,
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+    ZERO_COMPUTER_USE_AUTHORIZATION_REQUEST_APPLY_PATH_RE,
+  ],
+  [
     ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE,
     "/api/zero/computer-use/commands",
   ],
@@ -1388,6 +1416,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE,
     "/api/zero/workflow-triggers/:id/run",
     ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE,
+    "/api/zero/workflow-triggers/:id/permission-policy",
+    ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_BY_ID_REWRITE_SOURCE,

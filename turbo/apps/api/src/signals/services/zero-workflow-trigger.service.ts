@@ -3,9 +3,11 @@ import {
   gmailNewMessageEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailNewMessageEventConfig,
+  type UnattendedTriggerPermissionPolicy,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -795,6 +797,79 @@ export const updateWorkflowTrigger$ = command(
     signal.throwIfAborted();
     if (!row) {
       throw new Error("Failed to update workflow trigger");
+    }
+    return { kind: "ok", summary: rowToSummary(row) };
+  },
+);
+
+interface SetTriggerPermissionPolicyInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly triggerId: string;
+  readonly policy: UnattendedTriggerPermissionPolicy | null;
+}
+
+/**
+ * Validates connector refs and permission names against the generated firewall
+ * metadata (the same source the user-permission-grants apply path validates
+ * against). `ask` is already rejected by the contract schema, and the unknown
+ * pseudo-permission is intentionally not accepted: a trigger's unknown-endpoint
+ * policy is not configurable and always resolves to `deny`.
+ */
+async function validateUnattendedPermissionPolicy(
+  policy: UnattendedTriggerPermissionPolicy,
+): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
+  for (const [connectorRef, entry] of Object.entries(policy)) {
+    const index = await loadFirewallPermissionIndex(connectorRef);
+    if (!index) {
+      return {
+        kind: "bad-request",
+        message: `Unknown connector ref: ${connectorRef}`,
+      };
+    }
+    for (const permission of Object.keys(entry.policies)) {
+      if (!index.hasPermission(permission)) {
+        return {
+          kind: "bad-request",
+          message: `Unknown permission "${permission}" for connector "${connectorRef}"`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+export const setWorkflowTriggerPermissionPolicy$ = command(
+  async (
+    { set },
+    args: SetTriggerPermissionPolicyInput,
+    signal: AbortSignal,
+  ): Promise<TriggerResult> => {
+    if (args.policy !== null) {
+      const policyError = await validateUnattendedPermissionPolicy(args.policy);
+      signal.throwIfAborted();
+      if (policyError) {
+        return policyError;
+      }
+    }
+    const writeDb = set(writeDb$);
+    const owned = await loadOwnedTrigger(writeDb, {
+      orgId: args.orgId,
+      member: args.member,
+      triggerId: args.triggerId,
+    });
+    signal.throwIfAborted();
+    if ("kind" in owned) {
+      return owned;
+    }
+    const [row] = await writeDb
+      .update(zeroWorkflowTriggers)
+      .set({ unattendedPermissionPolicy: args.policy, updatedAt: nowDate() })
+      .where(eq(zeroWorkflowTriggers.id, owned.trigger.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!row) {
+      throw new Error("Failed to update workflow trigger permission policy");
     }
     return { kind: "ok", summary: rowToSummary(row) };
   },

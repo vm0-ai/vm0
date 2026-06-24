@@ -7,6 +7,10 @@
     "./python-builtin-firewall-catalog": {
       "import": "./src/python-builtin-firewall-catalog.ts",
       "types": "./src/python-builtin-firewall-catalog.ts"
+    },
+    "./python-builtin-firewall-catalog-composition": {
+      "import": "./src/python-builtin-firewall-catalog-composition.ts",
+      "types": "./src/python-builtin-firewall-catalog-composition.ts"
     }
   },
   "scripts": {

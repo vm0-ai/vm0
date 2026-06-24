@@ -1195,6 +1195,12 @@ function presentationTemplateSlideImages(
   return item.previewImages;
 }
 
+function presentationTemplateSlideCount(
+  item: PresentationTemplateItem,
+): number {
+  return Math.max(item.slideCount ?? item.previewImages.length, 1);
+}
+
 function presentationTemplateThemedCardPreviewSource(
   item: PresentationTemplateItem,
   theme: PresentationTemplateThemeOption | undefined,
@@ -2131,7 +2137,6 @@ function presentationTemplateThemeVariables(
 
 interface PresentationTemplateThumbnailCache {
   readonly htmlByHost: WeakMap<HTMLDivElement, string>;
-  readonly pendingRenderKeysByHost: WeakMap<HTMLDivElement, string>;
   readonly previewHtmlsByDraft: WeakMap<
     PresentationEditDraft,
     Map<string, string>
@@ -2153,7 +2158,6 @@ function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCach
 
   const cache: PresentationTemplateThumbnailCache = {
     htmlByHost: new WeakMap<HTMLDivElement, string>(),
-    pendingRenderKeysByHost: new WeakMap<HTMLDivElement, string>(),
     previewHtmlsByDraft: new WeakMap<
       PresentationEditDraft,
       Map<string, string>
@@ -2295,51 +2299,6 @@ function renderPresentationTemplateShadowThumbnail(
   applyPresentationTemplateThumbnailTheme(host, themeVariables);
 }
 
-function schedulePresentationTemplateShadowThumbnailRender({
-  draft,
-  host,
-  slideId,
-  themeVariables,
-}: {
-  readonly draft: PresentationEditDraft;
-  readonly host: HTMLDivElement;
-  readonly slideId: string;
-  readonly themeVariables: PresentationTemplateThemeVariables;
-}): void {
-  const cache = presentationTemplateThumbnailCache();
-  const render = () => {
-    renderPresentationTemplateShadowThumbnail(
-      host,
-      getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
-      themeVariables,
-    );
-  };
-  if (cache.htmlByHost.has(host)) {
-    render();
-    return;
-  }
-
-  const renderKey = `${slideId}:${Object.values(themeVariables).join("|")}`;
-  cache.pendingRenderKeysByHost.set(host, renderKey);
-  const renderWhenCurrent = () => {
-    if (
-      !host.isConnected ||
-      cache.pendingRenderKeysByHost.get(host) !== renderKey
-    ) {
-      return;
-    }
-    cache.pendingRenderKeysByHost.delete(host);
-    render();
-  };
-
-  if (window.requestIdleCallback !== undefined) {
-    window.requestIdleCallback(renderWhenCurrent, { timeout: 250 });
-    return;
-  }
-
-  window.setTimeout(renderWhenCurrent, 0);
-}
-
 function PresentationTemplateShadowThumbnail({
   draft,
   fallbackImage,
@@ -2353,24 +2312,26 @@ function PresentationTemplateShadowThumbnail({
   readonly themeVariables: PresentationTemplateThemeVariables;
   readonly title: string;
 }) {
+  const hasHtmlThumbnail = draft !== undefined && slideId !== null;
   return (
     <>
-      <img
-        src={fallbackImage}
-        alt=""
-        loading="lazy"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-      {draft !== undefined && slideId !== null ? (
+      {hasHtmlThumbnail ? null : (
+        <img
+          src={fallbackImage}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      {hasHtmlThumbnail ? (
         <div
           ref={(node) => {
             if (node !== null) {
-              schedulePresentationTemplateShadowThumbnailRender({
-                draft,
-                host: node,
-                slideId,
+              renderPresentationTemplateShadowThumbnail(
+                node,
+                getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
                 themeVariables,
-              });
+              );
             }
           }}
           aria-label={title}
@@ -2589,8 +2550,7 @@ function TemplatePreview({
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
-  const slideImages = presentationTemplateSlideImages(item);
-  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
     Math.min(
@@ -2980,7 +2940,6 @@ function TemplatePreviewPage({
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item);
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
@@ -2999,7 +2958,7 @@ function TemplatePreviewPage({
     detailPreview.index === activeSlideIndex
       ? detailPreview
       : null;
-  const fallbackSlideCount = Math.max(slideImages.length, 1);
+  const fallbackSlideCount = presentationTemplateSlideCount(item);
   const detailSlideCount =
     visibleDetailPreview?.slideCount ?? fallbackSlideCount;
   const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
@@ -3007,10 +2966,9 @@ function TemplatePreviewPage({
   );
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
-  const detailFallbackImage = presentationTemplateCardSlideImage(
+  const detailFallbackImage = presentationTemplateFallbackSlideImage(
     item,
     activeSlideIndex,
-    selectedTheme,
   );
 
   const setLoadedDetailPreview = (params: {
@@ -4397,11 +4355,25 @@ function TemplatePickerDialog({
   };
 
   const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
-    setDetailThemeId(
-      item.slug,
+    const selectedTheme = findPresentationTemplateTheme(
       cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
     );
-    setDetailSlideIndex(item.slug, Math.max(0, Math.floor(slideIndex)));
+    const selectedSlideIndex = Math.max(0, Math.floor(slideIndex));
+    setDetailThemeId(item.slug, selectedTheme.id);
+    setDetailSlideIndex(item.slug, selectedSlideIndex);
+    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
+      item.embedUrl,
+    );
+    if (cachedDraft !== undefined) {
+      setLoadedPresentationTemplateDetailPreview({
+        draft: cachedDraft,
+        index: selectedSlideIndex,
+        item,
+        previousFrameUrl: detailPreview?.frameUrl ?? null,
+        selectedTheme,
+        setDetailPreview,
+      });
+    }
     setPreviewSlug(item.slug);
   };
 
@@ -5256,7 +5228,9 @@ function ComputerUseConnectorMenuSection({
                 key={host.id}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked ? "bg-primary/5" : "hover:bg-background/70",
+                  checked
+                    ? "bg-primary/5"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
                 )}
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
@@ -5298,7 +5272,7 @@ function ComputerUseConnectorMenuSection({
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-background/70"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
           onClick={onOpenDownloadDialog}
         >
           <IconPlug

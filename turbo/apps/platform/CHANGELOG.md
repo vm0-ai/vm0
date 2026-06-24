@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.488.0](https://github.com/vm0-ai/vm0/compare/app-v0.487.3...app-v0.488.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+* **triggers:** add unattendedPermissionPolicy column and contract type ([#18806](https://github.com/vm0-ai/vm0/issues/18806)) ([e452d86](https://github.com/vm0-ai/vm0/commit/e452d8677c93183c64d5139dca0a8c7d72e09c56))
+
+
+### Bug Fixes
+
+* deepen computer-use menu hover from white overlay to gray step ([#18825](https://github.com/vm0-ai/vm0/issues/18825)) ([3b0eb6e](https://github.com/vm0-ai/vm0/commit/3b0eb6e9b511fe0112827e94d86eba6a259d9262))
+* preserve presentation template picker scroll ([#18818](https://github.com/vm0-ai/vm0/issues/18818)) ([daa7816](https://github.com/vm0-ai/vm0/commit/daa78162bd0022749b28909a7a9c27654f7261c0))
+* render presentation detail thumbnails from html ([#18826](https://github.com/vm0-ai/vm0/issues/18826)) ([f571c28](https://github.com/vm0-ai/vm0/commit/f571c28a375a6b88ee32b150717366c82e41af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+
 ## [0.487.3](https://github.com/vm0-ai/vm0/compare/app-v0.487.2...app-v0.487.3) (2026-06-24)
 
 

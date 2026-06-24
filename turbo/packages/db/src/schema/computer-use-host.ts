@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -140,6 +141,58 @@ export const computerUseCommandAuditEvents = pgTable(
         table.userId,
       ),
       index("idx_computer_use_command_audit_created").on(table.createdAt),
+    ];
+  },
+);
+
+export const computerUseAuthorizationRequests = pgTable(
+  "computer_use_authorization_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestTokenHash: text("request_token_hash").notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    source: text("source").notNull(),
+    chatThreadId: uuid("chat_thread_id"),
+    slackConnectionId: uuid("slack_connection_id"),
+    slackChannelId: text("slack_channel_id"),
+    slackThreadTs: text("slack_thread_ts"),
+    expiresAt: timestamp("expires_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_computer_use_auth_requests_token_hash").on(
+        table.requestTokenHash,
+      ),
+      index("idx_computer_use_auth_requests_org_user").on(
+        table.orgId,
+        table.userId,
+      ),
+      index("idx_computer_use_auth_requests_expires").on(table.expiresAt),
+      check(
+        "computer_use_auth_requests_source_check",
+        sql`source IN ('chat', 'slack')`,
+      ),
+      check(
+        "computer_use_auth_requests_scope_check",
+        sql`(
+          source = 'chat'
+          AND chat_thread_id IS NOT NULL
+          AND slack_connection_id IS NULL
+          AND slack_channel_id IS NULL
+          AND slack_thread_ts IS NULL
+        ) OR (
+          source = 'slack'
+          AND chat_thread_id IS NULL
+          AND slack_connection_id IS NOT NULL
+          AND slack_channel_id IS NOT NULL
+          AND slack_thread_ts IS NOT NULL
+        )`,
+      ),
     ];
   },
 );
