@@ -306,27 +306,13 @@ pub(crate) async fn exec_operation_capture_on_shared(
     shared: &Arc<Shared>,
     request: ExecCaptureRequest<'_>,
 ) -> io::Result<ExecOperationResult> {
-    let handle = start_exec_operation_on_shared(
+    exec_operation_capture_on_shared_with_tracking(
         shared,
-        ExecOperationRequest {
-            timeout_ms: request.timeout_ms,
-            command: request.command,
-            env: request.env,
-            sudo: request.sudo,
-            label: request.label,
-            stdout: ExecOutputPolicy::Capture {
-                limit_bytes: request.stdout_limit_bytes,
-            },
-            stderr: ExecOutputPolicy::Capture {
-                limit_bytes: request.stderr_limit_bytes,
-            },
-            expected_exit_codes: request.expected_exit_codes,
-            stdin_bytes: request.stdin_bytes,
-            stream_queue_capacity: None,
-        },
+        request,
+        ExecOperationTracking::Tracked,
+        FrameWriteObserver::default(),
     )
-    .await?;
-    handle.wait(request.wait_timeout).await
+    .await
 }
 
 pub(crate) async fn exec_operation_capture_on_shared_with_write_observer(
@@ -443,33 +429,25 @@ pub(crate) async fn exec_operation_cleanup_untracked_on_shared_with_write_observ
     sudo: bool,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
-    exec_operation_capture_on_shared_with_tracking(
+    exec_operation_cleanup_on_shared_with_tracking(
         shared,
-        ExecCaptureRequest {
-            timeout_ms,
-            command,
-            env,
-            sudo,
-            label: "exec-cleanup",
-            stdout_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            wait_timeout: Duration::from_millis(timeout_ms as u64),
-        },
+        command,
+        timeout_ms,
+        env,
+        sudo,
         ExecOperationTracking::Untracked,
         write_observer,
     )
     .await
 }
 
-pub(crate) async fn exec_operation_cleanup_with_composite_on_shared_and_observer(
+async fn exec_operation_cleanup_on_shared_with_tracking(
     shared: &Arc<Shared>,
     command: &str,
     timeout_ms: u32,
     env: &[(&str, &str)],
     sudo: bool,
-    normal_operation: &mut CompositeNormalOperation,
+    tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
     exec_operation_capture_on_shared_with_tracking(
@@ -486,6 +464,27 @@ pub(crate) async fn exec_operation_cleanup_with_composite_on_shared_and_observer
             stdin_bytes: None,
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
+        tracking,
+        write_observer,
+    )
+    .await
+}
+
+pub(crate) async fn exec_operation_cleanup_with_composite_on_shared_and_observer(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+    normal_operation: &mut CompositeNormalOperation,
+    write_observer: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    exec_operation_cleanup_on_shared_with_tracking(
+        shared,
+        command,
+        timeout_ms,
+        env,
+        sudo,
         ExecOperationTracking::Composite(normal_operation),
         write_observer,
     )
