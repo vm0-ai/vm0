@@ -792,6 +792,72 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("orphan output");
     });
 
+    it("should tolerate malformed TodoWrite todo items", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "TodoWrite",
+                          id: "todo-1",
+                          input: {
+                            todos: [
+                              null,
+                              "not-an-object",
+                              { content: 0, status: "in_progress" },
+                              { content: "finished", status: "completed" },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "todo-1",
+                          content: "ok",
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("TodoWrite");
+      expect(countOccurrences(logCalls, "Unknown task")).toBe(2);
+      expect(logCalls).toContain("0");
+      expect(logCalls).toContain("finished");
+    });
+
     it("should handle tool_result events", async () => {
       server.use(
         http.get(

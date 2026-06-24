@@ -30,6 +30,22 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
+function displayValue(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function nonEmptyDisplayValue(value: unknown): string | undefined {
+  const display = displayValue(value);
+  return display.length > 0 ? display : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 /**
  * Format the header line for a tool (e.g., "Read src/lib/api.ts")
  */
@@ -49,31 +65,31 @@ const toolHeadlineFormatters: Record<
   (input: Record<string, unknown>) => string
 > = {
   Read: (input) => {
-    return `Read${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Read${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Edit: (input) => {
-    return `Edit${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Edit${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Write: (input) => {
-    return `Write${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Write${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Bash: (input) => {
-    return `Bash${chalk.dim(`(${truncate(String(input.command || ""), 60)})`)}`;
+    return `Bash${chalk.dim(`(${truncate(displayValue(input.command), 60)})`)}`;
   },
   Glob: (input) => {
-    return `Glob${chalk.dim(`(${String(input.pattern || "")})`)}`;
+    return `Glob${chalk.dim(`(${displayValue(input.pattern)})`)}`;
   },
   Grep: (input) => {
-    return `Grep${chalk.dim(`(${String(input.pattern || "")})`)}`;
+    return `Grep${chalk.dim(`(${displayValue(input.pattern)})`)}`;
   },
   Task: (input) => {
-    return `Task${chalk.dim(`(${truncate(String(input.description || ""), 60)})`)}`;
+    return `Task${chalk.dim(`(${truncate(displayValue(input.description), 60)})`)}`;
   },
   WebFetch: (input) => {
-    return `WebFetch${chalk.dim(`(${truncate(String(input.url || ""), 60)})`)}`;
+    return `WebFetch${chalk.dim(`(${truncate(displayValue(input.url), 60)})`)}`;
   },
   WebSearch: (input) => {
-    return `WebSearch${chalk.dim(`(${truncate(String(input.query || ""), 60)})`)}`;
+    return `WebSearch${chalk.dim(`(${truncate(displayValue(input.query), 60)})`)}`;
   },
   TodoWrite: () => {
     return "TodoWrite";
@@ -246,7 +262,7 @@ function formatWritePreview(
   verbose: boolean,
 ): string[] {
   const lines: string[] = [];
-  const content = String(input.content || "");
+  const content = displayValue(input.content);
   const contentLines = content.split("\n");
   const totalLines = contentLines.length;
 
@@ -282,8 +298,8 @@ function formatEditDiff(
   verbose: boolean,
 ): string[] {
   const lines: string[] = [];
-  const oldString = String(input.old_string || "");
-  const newString = String(input.new_string || "");
+  const oldString = displayValue(input.old_string);
+  const newString = displayValue(input.new_string);
 
   const oldLines = oldString.split("\n");
   const newLines = newString.split("\n");
@@ -341,23 +357,17 @@ function formatEditDiff(
  */
 function formatTodoList(input: Record<string, unknown>): string[] {
   const lines: string[] = [];
-  const todos = input.todos as
-    | Array<{
-        id?: string;
-        content?: string;
-        status?: string;
-      }>
-    | undefined;
+  const todos = input.todos;
 
-  if (!todos || !Array.isArray(todos)) {
+  if (!Array.isArray(todos)) {
     lines.push("└ ✓ Done");
     return lines;
   }
 
   for (let i = 0; i < todos.length; i++) {
-    const todo = todos[i]!;
-    const content = todo.content || "Unknown task";
-    const status = todo.status || "pending";
+    const todo = recordValue(todos[i]);
+    const content = nonEmptyDisplayValue(todo?.content) ?? "Unknown task";
+    const status = nonEmptyDisplayValue(todo?.status) ?? "pending";
     const icon = getTodoStatusIcon(status);
     const styledContent = formatTodoContent(content, status);
     const prefix = i === 0 ? "└ " : "  ";
