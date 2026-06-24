@@ -153,7 +153,7 @@ emit_groups() {
   done < <(printf '%s\n' "$hosts" | tr ',' '\n')
 
   groups=$(jq -n -c '[]')
-  groups=$(append_group "$groups" "arm64" "ARM64" "$arm64_hosts" "aarch64-unknown-linux-musl")
+  groups=$(append_group "$groups" "arm64" "arm64" "$arm64_hosts" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "$x86_64_hosts" "x86_64-unknown-linux-musl")
   printf '%s\n' "$groups"
 }
