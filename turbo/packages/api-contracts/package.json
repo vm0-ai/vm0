@@ -41,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
+    "@vm0/firewalls-generator": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",

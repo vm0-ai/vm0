@@ -3,8 +3,10 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 # ruff: noqa
 
+import json
+
 # fmt: off
-CONNECTOR_DIAGNOSTIC_FIREWALLS = [
+CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
   {
     "apis": [
       {
@@ -4628,9 +4630,9 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = [
     ],
     "name": "zoom"
   }
-]
+]""")
 
-MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = [
+MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(r"""[
   {
     "apis": [
       {
@@ -4758,6 +4760,6 @@ MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = [
     ],
     "name": "model-provider:zai-api-key"
   }
-]
+]""")
 
 # fmt: on

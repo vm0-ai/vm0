@@ -17,6 +17,9 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
   "../connector-firewall-sources.ts",
 ] as const;
+const GENERATOR_RENDERER_BOUNDARY_FILES = [
+  "../python-builtin-firewall-catalog.ts",
+] as const;
 
 function staticValueImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -147,6 +150,30 @@ describe("firewall metadata generator", () => {
       );
       expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
       expect(source, file).not.toMatch(/\bCONNECTOR_TYPES\b/);
+    }
+  });
+
+  it("keeps Python builtin firewall rendering detached from source composition", () => {
+    for (const file of GENERATOR_RENDERER_BOUNDARY_FILES) {
+      const source = fs.readFileSync(
+        path.resolve(import.meta.dirname, file),
+        "utf-8",
+      );
+      const specifiers = [
+        ...staticValueModuleSpecifiers(source),
+        ...dynamicImportSpecifiers(source),
+      ];
+
+      for (const specifier of specifiers) {
+        expect(specifier, file).not.toBe("@vm0/api-contracts");
+        expect(specifier, file).not.toBe("@vm0/connectors");
+        expect(specifier, file).not.toBe("@vm0/connectors/firewalls/all");
+        expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
+      }
+      expect(source, file).not.toContain("@vm0/api-contracts");
+      expect(source, file).not.toContain("@vm0/connectors");
+      expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
+      expect(source, file).not.toMatch(/\.\.\/\.\.\/connectors\/src\//);
     }
   });
 
