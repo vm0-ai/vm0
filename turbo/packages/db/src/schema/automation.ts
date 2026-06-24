@@ -33,6 +33,7 @@ export const automations = pgTable(
   "automations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    runGroupId: uuid("run_group_id").defaultRandom().notNull(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
@@ -80,6 +81,7 @@ export const automations = pgTable(
       index("idx_automations_org").on(table.orgId),
       index("idx_automations_user_org").on(table.userId, table.orgId),
       index("idx_automations_chat_thread").on(table.chatThreadId),
+      uniqueIndex("idx_automations_run_group").on(table.runGroupId),
       uniqueIndex("idx_automations_agent_name_org_user").on(
         table.agentId,
         table.name,

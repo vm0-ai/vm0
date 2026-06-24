@@ -123,6 +123,13 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
+import {
+  buildRunGroupFolding,
+  runGroupExpandedKeys$,
+  toggleRunGroupExpanded$,
+  type RunGroupFold,
+  type RunGroupFolding,
+} from "../../signals/chat-page/run-group-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -2657,11 +2664,19 @@ function ChatThreadMessagesMain({
     !skeletonVisible;
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
-  const completedWorkFolding = buildCompletedWorkFolding(renderedActiveGroups);
+  const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
+  const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
+  const runGroupFolding = buildRunGroupFolding(
+    renderedActiveGroups,
+    runGroupExpandedKeys,
+  );
+  const runGroupVisibleGroups =
+    runGroupFolding?.visibleGroups ?? renderedActiveGroups;
+  const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
   const visibleGroups =
-    completedWorkFolding?.visibleGroups ?? renderedActiveGroups;
+    completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2695,6 +2710,9 @@ function ChatThreadMessagesMain({
         <ChatThreadMessageGroups
           thread={thread}
           groups={visibleGroups}
+          runGroupFolding={runGroupFolding}
+          runGroupExpandedKeys={runGroupExpandedKeys}
+          onToggleRunGroup={toggleRunGroupExpanded}
           completedWorkFolding={completedWorkFolding}
           completedWorkExpandedKeys={completedWorkExpandedKeys}
           onToggleCompletedWork={toggleCompletedWorkExpanded}
@@ -2708,12 +2726,18 @@ function ChatThreadMessagesMain({
 function ChatThreadMessageGroups({
   thread,
   groups,
+  runGroupFolding,
+  runGroupExpandedKeys,
+  onToggleRunGroup,
   completedWorkFolding,
   completedWorkExpandedKeys,
   onToggleCompletedWork,
 }: {
   thread: ChatThreadSignals;
   groups: readonly GroupedChatMessageGroup[];
+  runGroupFolding: RunGroupFolding | null;
+  runGroupExpandedKeys: ReadonlySet<string>;
+  onToggleRunGroup: (key: string) => void;
   completedWorkFolding: CompletedWorkFolding | null;
   completedWorkExpandedKeys: ReadonlySet<string>;
   onToggleCompletedWork: (key: string) => void;
@@ -2721,23 +2745,29 @@ function ChatThreadMessageGroups({
   return (
     <>
       {groups.map((group) => {
-        const completedWorkFold =
-          completedWorkFolding !== null
-            ? (group.messages
-                .map((message) => {
-                  return completedWorkFolding.foldsByFinalMessageId.get(
-                    message.id,
-                  );
-                })
-                .find((fold) => {
-                  return fold !== undefined;
-                }) ?? null)
-            : null;
+        const runGroupFolds =
+          runGroupFolding?.foldsByNextGroupId.get(group.beginMessageId) ?? [];
+        const completedWorkFold = completedWorkFoldForGroup(
+          completedWorkFolding,
+          group,
+        );
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
           <div key={group.beginMessageId} className="contents">
+            {runGroupFolds.map((runGroupFold) => {
+              return (
+                <RunGroupFoldRow
+                  key={runGroupFold.key}
+                  fold={runGroupFold}
+                  expanded={runGroupExpandedKeys.has(runGroupFold.key)}
+                  onToggle={() => {
+                    onToggleRunGroup(runGroupFold.key);
+                  }}
+                />
+              );
+            })}
             <PagedGroupRow
               group={group}
               thread={thread}
@@ -2758,6 +2788,24 @@ function ChatThreadMessageGroups({
         );
       })}
     </>
+  );
+}
+
+function completedWorkFoldForGroup(
+  completedWorkFolding: CompletedWorkFolding | null,
+  group: GroupedChatMessageGroup,
+): CompletedWorkFold | null {
+  if (completedWorkFolding === null) {
+    return null;
+  }
+  return (
+    group.messages
+      .map((message) => {
+        return completedWorkFolding.foldsByFinalMessageId.get(message.id);
+      })
+      .find((fold) => {
+        return fold !== undefined;
+      }) ?? null
   );
 }
 
@@ -3048,6 +3096,76 @@ function CompletedWorkFoldRow({
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
         <IconHourglass
+          aria-hidden
+          size={14}
+          className="shrink-0 text-muted-foreground/70"
+        />
+        <span className="text-[13px]">{label}</span>
+        <IconChevronRight
+          aria-hidden
+          size={14}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
+function compactRunGroupLabel(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 56) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 53).trimEnd()}...`;
+}
+
+function runGroupFoldSourceLabel(fold: RunGroupFold): string {
+  const messages = fold.labelGroups.flatMap((group) => {
+    return group.messages;
+  });
+  const automationMessage = messages.find(isAutomationUserMessage);
+  if (automationMessage) {
+    return compactRunGroupLabel(automationMessageLabel(automationMessage));
+  }
+  const userMessage = messages.find((message) => {
+    return message.role === "user" && (message.content?.trim().length ?? 0) > 0;
+  });
+  const content = userMessage?.content?.trim();
+  return content ? compactRunGroupLabel(content) : "Automated run";
+}
+
+function runGroupFoldLabel(fold: RunGroupFold): string {
+  const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
+  return `Folded ${fold.hiddenRunCount} "${runGroupFoldSourceLabel(fold)}" ${runLabel}`;
+}
+
+function RunGroupFoldRow({
+  fold,
+  expanded,
+  onToggle,
+}: {
+  fold: RunGroupFold;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = runGroupFoldLabel(fold);
+  return (
+    <div data-chat-run-group-fold className="-mx-2">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={
+          expanded
+            ? "Collapse grouped run history"
+            : "Expand grouped run history"
+        }
+        onClick={onToggle}
+        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+      >
+        <IconPackage
           aria-hidden
           size={14}
           className="shrink-0 text-muted-foreground/70"

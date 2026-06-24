@@ -51,6 +51,9 @@ export const zeroRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
+    // Stable grouping key copied from automations / workflow triggers for
+    // chat rendering of repeated automated runs.
+    runGroupId: uuid("run_group_id"),
     // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
     triggerAgentId: uuid("trigger_agent_id").references(
       () => {
@@ -89,6 +92,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_workflow_trigger")
         .on(table.workflowTriggerId)
         .where(sql`workflow_trigger_id IS NOT NULL`),
+      index("idx_zero_runs_run_group")
+        .on(table.runGroupId)
+        .where(sql`run_group_id IS NOT NULL`),
     ];
   },
 );

@@ -5,6 +5,7 @@ import {
   type ChatMessageAttachFileMetadata,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -146,6 +147,18 @@ export function resolveAttachFileMetadataUrls(
   });
 }
 
+export async function runGroupIdForRun(
+  db: Db,
+  runId: string,
+): Promise<string | undefined> {
+  const [run] = await db
+    .select({ runGroupId: zeroRuns.runGroupId })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return run?.runGroupId ?? undefined;
+}
+
 export async function insertAssistantEventMessages(
   writeDb: Db,
   args: InsertAssistantEventMessagesInput,
@@ -169,6 +182,7 @@ export async function insertAssistantEventMessages(
   const legacyItems = args.items.filter((item) => {
     return item.runEventId === undefined;
   });
+  const runGroupId = await runGroupIdForRun(writeDb, args.runId);
 
   const deterministicRows =
     itemsWithRunEventId.length === 0
@@ -181,6 +195,7 @@ export async function insertAssistantEventMessages(
                 id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
                 chatThreadId: args.threadId,
                 runId: args.runId,
+                runGroupId,
                 role: "assistant",
                 content: item.content,
                 sequenceNumber: item.sequenceNumber,
@@ -202,6 +217,7 @@ export async function insertAssistantEventMessages(
               return {
                 chatThreadId: args.threadId,
                 runId: args.runId,
+                runGroupId,
                 role: "assistant",
                 content: item.content,
                 sequenceNumber: item.sequenceNumber,

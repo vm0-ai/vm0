@@ -209,6 +209,7 @@ const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
   runId: z.string().optional(),
+  runGroupId: z.string().optional(),
   runEventId: z.string().optional(),
   usage: chatMessageUsagePayloadSchema.optional(),
   revokesMessageId: z.string().optional(),

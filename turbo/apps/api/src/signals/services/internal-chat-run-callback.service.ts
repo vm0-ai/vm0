@@ -47,6 +47,7 @@ import {
   insertAssistantEventMessages$,
   resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
+  runGroupIdForRun,
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
@@ -468,6 +469,7 @@ async function insertAssistantErrorMessage(args: {
   readonly getFormattedError: () => Promise<string>;
 }): Promise<boolean> {
   const displayErrorMessage = await args.getFormattedError();
+  const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     const message = await tx
       .insert(chatMessages)
@@ -476,6 +478,7 @@ async function insertAssistantErrorMessage(args: {
         role: "assistant",
         content: displayErrorMessage,
         runId: args.runId,
+        runGroupId,
         error: displayErrorMessage,
         runLifecycleEvent: args.lifecycleEvent,
       })
@@ -533,6 +536,7 @@ async function insertRunLifecycleMarker(args: {
   readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const markerCreatedAt = nowDate();
+  const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     const marker = await tx
       .insert(chatMessages)
@@ -541,6 +545,7 @@ async function insertRunLifecycleMarker(args: {
         role: "assistant",
         content: null,
         runId: args.runId,
+        runGroupId,
         runLifecycleEvent: args.event,
         recommendedFollowups:
           args.event === "completed" ? args.recommendedFollowups : undefined,

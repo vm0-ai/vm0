@@ -1141,6 +1141,7 @@ export const runAutomationNow$ = command(
     const runInput = await new DefaultInterpreter().interpret(
       automationRowToManualAutomation({
         id: automation.id,
+        runGroupId: automation.runGroupId,
         agentId: automation.agentId,
         orgId: automation.orgId,
         userId: automation.userId,

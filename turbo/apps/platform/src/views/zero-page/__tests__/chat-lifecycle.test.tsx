@@ -3495,6 +3495,100 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("folds earlier runs from the same automation run group", async () => {
+    const threadId = "thread-run-group-folding";
+    const automationId = "f0000001-0000-4000-a000-000000000722";
+    const runGroupId = "f0000001-0000-4000-a000-000000000723";
+    const automationSnapshot = {
+      id: automationId,
+      title: "Daily check",
+      description: "Daily check",
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run group folding",
+      chatMessages: [
+        {
+          id: "msg-run-group-user-1",
+          role: "user",
+          content: "Run the daily check",
+          runId: "f0000001-0000-4000-a000-000000000724",
+          runGroupId,
+          automationId,
+          automationSnapshot,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-run-group-assistant-1",
+          role: "assistant",
+          content: "First daily check result",
+          runId: "f0000001-0000-4000-a000-000000000724",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-run-group-user-2",
+          role: "user",
+          content: "Run the daily check",
+          runId: "f0000001-0000-4000-a000-000000000725",
+          runGroupId,
+          automationId,
+          automationSnapshot,
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-run-group-assistant-2",
+          role: "assistant",
+          content: "Second daily check result",
+          runId: "f0000001-0000-4000-a000-000000000725",
+          runGroupId,
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-run-group-user-3",
+          role: "user",
+          content: "Run the daily check",
+          runId: "f0000001-0000-4000-a000-000000000726",
+          runGroupId,
+          automationId,
+          automationSnapshot,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-run-group-assistant-3",
+          role: "assistant",
+          content: "Latest daily check result",
+          runId: "f0000001-0000-4000-a000-000000000726",
+          runGroupId,
+          createdAt: "2026-06-09T10:02:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run group folding")).toBeInTheDocument();
+      expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
+      expect(
+        screen.getByText('Folded 2 "Daily check" runs'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText("First daily check result"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Second daily check result"),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First daily check result")).toBeInTheDocument();
+      expect(screen.getByText("Second daily check result")).toBeInTheDocument();
+    });
+  });
+
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

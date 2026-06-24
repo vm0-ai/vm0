@@ -173,6 +173,7 @@ export async function persistManualRunSideEffects(args: {
     runId: args.runId,
     prompt: args.prompt,
     appendQueueMarker: args.queued,
+    runGroupId: automation.runGroupId,
     automationTitle: automation.name,
     automationSnapshot: chatMessageAutomationSnapshot(automation),
   });

@@ -122,6 +122,7 @@ export const zeroWorkflowTriggers = pgTable(
   "zero_workflow_triggers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    runGroupId: uuid("run_group_id").defaultRandom().notNull(),
     orgId: text("org_id").notNull(),
     workflowId: uuid("workflow_id")
       .notNull()
@@ -170,6 +171,7 @@ export const zeroWorkflowTriggers = pgTable(
       index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
       index("idx_zero_workflow_triggers_org").on(table.orgId),
       index("idx_zero_workflow_triggers_chat_thread").on(table.chatThreadId),
+      uniqueIndex("idx_zero_workflow_triggers_run_group").on(table.runGroupId),
       uniqueIndex("idx_zero_workflow_triggers_thread_idle_thread_unique")
         .on(table.orgId, table.chatThreadId)
         .where(

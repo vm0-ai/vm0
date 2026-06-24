@@ -147,6 +147,9 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
+    // Stable grouping key for repeated automation/workflow/goal-triggered
+    // runs rendered in a chat thread.
+    runGroupId: uuid("run_group_id"),
     // Set when this user message was posted by a firing automation rather than
     // typed by the user; the snapshot preserves the basic display details at
     // send time so the bubble keeps its label after an edit/delete.
@@ -190,6 +193,9 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_interrupts_run_id_unique").on(
         table.interruptsRunId,
       ),
+      index("idx_chat_messages_run_group_id")
+        .on(table.runGroupId)
+        .where(sql`${table.runGroupId} IS NOT NULL`),
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
