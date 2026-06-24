@@ -2914,6 +2914,10 @@ describe("logs command", () => {
                         code: "server_error",
                         additional_details: "retry later",
                       },
+                      usage: {
+                        input_tokens: "not-a-number",
+                        output_tokens: "also-not-a-number",
+                      },
                     },
                   },
                 },
@@ -2948,6 +2952,8 @@ describe("logs command", () => {
       expect(mockExit).not.toHaveBeenCalled();
       expect(logCalls).toContain("server_error");
       expect(logCalls).toContain("retry later");
+      expect(logCalls).toContain("input=0 output=0");
+      expect(logCalls).not.toContain("NaN");
       expect(logCalls).toContain("Modified: /workspace/ok.ts");
       expect(logCalls).not.toContain("[object Object]");
     });
