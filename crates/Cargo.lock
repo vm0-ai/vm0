@@ -1268,6 +1268,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shell-quote",
  "tar",
  "tempfile",
  "thiserror 2.0.18",
@@ -2564,6 +2565,7 @@ dependencies = [
  "serde_path_to_error",
  "serde_yaml_ng",
  "sha2",
+ "shell-quote",
  "tar",
  "tempfile",
  "thiserror 2.0.18",
@@ -3023,6 +3025,10 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-quote"
+version = "0.1.0"
 
 [[package]]
 name = "shlex"
@@ -3671,6 +3677,7 @@ dependencies = [
  "guest-contracts",
  "libc",
  "process-control-ipc",
+ "shell-quote",
  "vsock-proto",
 ]
 
@@ -3679,6 +3686,7 @@ name = "vsock-host"
 version = "0.17.42"
 dependencies = [
  "nix",
+ "shell-quote",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3698,6 +3706,7 @@ dependencies = [
  "guest-write-file",
  "libc",
  "nix",
+ "shell-quote",
  "tempfile",
  "tokio",
  "vsock-guest",

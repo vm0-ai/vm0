@@ -15,6 +15,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use shell_quote::quote_shell_arg;
 use tokio::io::unix::AsyncFd;
 use vsock_host::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
@@ -405,10 +406,6 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
     Ok(())
 }
 
-fn shell_quote(raw: &str) -> String {
-    format!("'{}'", raw.replace('\'', "'\\''"))
-}
-
 fn guest_agent_wrapper_command(guest_agent: &str) -> String {
     format!(
         "cleanup_home_user=0; \
@@ -424,7 +421,7 @@ fn guest_agent_wrapper_command(guest_agent: &str) -> String {
            rmdir /home/user 2>/dev/null || true; \
         fi; \
          exit $status",
-        shell_quote(guest_agent)
+        quote_shell_arg(guest_agent)
     )
 }
 

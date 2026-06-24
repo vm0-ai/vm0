@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{fmt, io};
 
+use shell_quote::quote_shell_arg;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
 
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
     request_on_shared_with_composite_operation_and_observer,
 };
 
-use super::{normalize_file_exec_stderr, shell_quote, validate_guest_file_path};
+use super::{normalize_file_exec_stderr, validate_guest_file_path};
 
 /// Maximum content per write_file message. Leaves headroom below
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
@@ -465,7 +466,7 @@ impl VsockHost {
         // suffix prevents concurrent large writes to the same destination
         // from appending to or cleaning up each other's staging file.
         let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
-        let quoted_tmp = shell_quote(&tmp);
+        let quoted_tmp = quote_shell_arg(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
         let cleanup_armed = Arc::new(AtomicBool::new(false));
         let write_observer =
@@ -502,7 +503,7 @@ impl VsockHost {
         }
 
         // `-T` keeps directory targets from being treated as destination directories.
-        let mv_cmd = format!("mv -fT -- {quoted_tmp} {}", shell_quote(path));
+        let mv_cmd = format!("mv -fT -- {quoted_tmp} {}", quote_shell_arg(path));
         let rename_result =
             exec_operation::exec_operation_capture_with_composite_on_shared_and_observer(
                 &self.shared,

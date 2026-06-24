@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use shell_quote::quote_shell_arg;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
@@ -71,21 +72,17 @@ async fn run_workspace_drive_command(
     Err(RunnerError::Internal(message))
 }
 
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
 fn workspace_mount_command() -> String {
-    let workspace_dir = shell_quote(CANONICAL_WORKING_DIR);
-    let workspace_device = shell_quote(WORKSPACE_DEVICE);
+    let workspace_dir = quote_shell_arg(CANONICAL_WORKING_DIR);
+    let workspace_device = quote_shell_arg(WORKSPACE_DEVICE);
     format!(
         "workspace_dir={workspace_dir}\nworkspace_device={workspace_device}\n{WORKSPACE_MOUNT_SCRIPT}"
     )
 }
 
 fn workspace_unmount_command() -> String {
-    let workspace_dir = shell_quote(CANONICAL_WORKING_DIR);
-    let workspace_device = shell_quote(WORKSPACE_DEVICE);
+    let workspace_dir = quote_shell_arg(CANONICAL_WORKING_DIR);
+    let workspace_device = quote_shell_arg(WORKSPACE_DEVICE);
     format!(
         "workspace_dir={workspace_dir}\nworkspace_device={workspace_device}\n{WORKSPACE_UNMOUNT_SCRIPT}"
     )
@@ -128,8 +125,8 @@ mod tests {
     }
 
     fn write_fake_mountpoint(fake_bin: &Path, workspace_dir: &Path, workspace_device: &Path) {
-        let workspace_dir = shell_quote(workspace_dir.to_str().unwrap());
-        let workspace_device = shell_quote(workspace_device.to_str().unwrap());
+        let workspace_dir = quote_shell_arg(workspace_dir.to_str().unwrap());
+        let workspace_device = quote_shell_arg(workspace_device.to_str().unwrap());
         write_executable(
             &fake_bin.join("mountpoint"),
             &format!(
@@ -163,7 +160,7 @@ exit 1
     }
 
     fn write_fake_sync(fake_bin: &Path, log_path: &Path) {
-        let log_path = shell_quote(log_path.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
         write_executable(
             &fake_bin.join("sync"),
             &format!(
@@ -176,7 +173,7 @@ printf 'sync cwd=%s args=%s\n' "$(pwd)" "$*" >> {log_path}
     }
 
     fn write_successful_fake_umount(fake_bin: &Path, log_path: &Path) {
-        let log_path = shell_quote(log_path.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
         write_executable(
             &fake_bin.join("umount"),
             &format!(
@@ -190,8 +187,8 @@ exit 0
     }
 
     fn write_busy_then_successful_fake_umount(fake_bin: &Path, log_path: &Path, count_path: &Path) {
-        let log_path = shell_quote(log_path.to_str().unwrap());
-        let count_path = shell_quote(count_path.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
+        let count_path = quote_shell_arg(count_path.to_str().unwrap());
         write_executable(
             &fake_bin.join("umount"),
             &format!(
@@ -221,8 +218,8 @@ exit 0
     ) -> Output {
         let cmd = format!(
             "workspace_dir={}\nworkspace_device={}\n{}",
-            shell_quote(workspace_dir.to_str().unwrap()),
-            shell_quote(workspace_device.to_str().unwrap()),
+            quote_shell_arg(workspace_dir.to_str().unwrap()),
+            quote_shell_arg(workspace_device.to_str().unwrap()),
             WORKSPACE_UNMOUNT_SCRIPT
         );
         Command::new("sh")
@@ -293,8 +290,8 @@ exit 0
     }
 
     #[test]
-    fn shell_quote_handles_single_quotes() {
-        assert_eq!(shell_quote("/tmp/a'b"), "'/tmp/a'\\''b'");
+    fn quote_shell_arg_handles_single_quotes() {
+        assert_eq!(quote_shell_arg("/tmp/a'b"), "'/tmp/a'\\''b'");
     }
 
     #[test]

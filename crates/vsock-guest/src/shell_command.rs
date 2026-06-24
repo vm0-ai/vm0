@@ -42,6 +42,8 @@ use std::time::{Duration, SystemTime};
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 
+use shell_quote::quote_shell_arg;
+
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
 const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
@@ -65,7 +67,7 @@ fn shell_command_user() -> Option<&'static str> {
 
 /// Shell-escape a value by wrapping in single quotes and escaping embedded `'`.
 fn shell_escape_value(val: &str) -> String {
-    format!("'{}'", val.replace('\'', "'\\''"))
+    quote_shell_arg(val)
 }
 
 /// Build a Command to execute a shell command as the appropriate user.

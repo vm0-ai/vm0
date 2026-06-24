@@ -8,6 +8,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+pub(crate) use shell_quote::quote_shell_arg as shell_quote;
 use tokio::io::unix::AsyncFd;
 use vsock_host::{ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
 use vsock_proto::ExecTermination;
@@ -41,10 +42,6 @@ fn create_temp_dir(prefix: &str) -> tempfile::TempDir {
         .prefix(prefix)
         .tempdir()
         .expect("create temp dir")
-}
-
-pub(crate) fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub(crate) fn shell_quote_path(path: &Path) -> String {

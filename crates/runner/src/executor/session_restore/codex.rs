@@ -1,4 +1,5 @@
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use shell_quote::quote_shell_arg;
 use tracing::info;
 
 use super::{redact_session_restore_diagnostic, write_session_history_file};
@@ -168,12 +169,8 @@ async fn cleanup_existing_codex_session_files(
     Ok(())
 }
 
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
 fn codex_session_cleanup_command(codex_home: &str) -> String {
-    let codex_home = shell_quote(codex_home);
+    let codex_home = quote_shell_arg(codex_home);
     format!("codex_home={codex_home}\n{CODEX_SESSION_CLEANUP_SCRIPT}")
 }
 
