@@ -3466,6 +3466,13 @@
       "when": 1782230734808,
       "tag": "0494_remap_stripe_permission_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 495,
+      "version": "7",
+      "when": 1782275683368,
+      "tag": "0495_solid_nighthawk",
+      "breakpoints": true
     }
   ]
 }

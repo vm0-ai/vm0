@@ -12,7 +12,7 @@ import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -112,6 +112,52 @@ function requireAgentWritePermission(
   });
 }
 
+async function publicWorkflowSlugExists(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+    readonly excludeWorkflowId?: string;
+  },
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: zeroWorkflows.id })
+    .from(zeroWorkflows)
+    .where(
+      and(
+        eq(zeroWorkflows.orgId, args.orgId),
+        eq(zeroWorkflows.agentId, args.agentId),
+        eq(zeroWorkflows.name, args.name),
+        eq(zeroWorkflows.visibility, "public"),
+        eq(zeroWorkflows.type, "workflow"),
+        args.excludeWorkflowId
+          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          : undefined,
+      ),
+    )
+    .limit(1);
+
+  return existing !== undefined;
+}
+
+async function requirePublicWorkflowSlugAvailable(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+    readonly excludeWorkflowId?: string;
+  },
+) {
+  const exists = await publicWorkflowSlugExists(db, args);
+  return exists
+    ? conflict(
+        `A public workflow named "/${args.name}" already exists on this agent. Rename this workflow or keep it private.`,
+      )
+    : null;
+}
+
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
@@ -167,6 +213,18 @@ const createWorkflowInner$ = command(
     );
     if (permissionError) {
       return permissionError;
+    }
+
+    if (visibility === "public") {
+      const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
+        orgId: auth.orgId,
+        agentId: agent.id,
+        name: body.name,
+      });
+      signal.throwIfAborted();
+      if (slugError) {
+        return slugError;
+      }
     }
 
     const [inserted] = await writeDb
@@ -639,6 +697,17 @@ const requestPublishInner$ = command(
     const canPublishDirectly =
       requireAgentWritePermission(agent, member, "publish") === null;
     if (canPublishDirectly) {
+      const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
+        orgId: auth.orgId,
+        agentId: workflow.agentId,
+        name: workflow.name,
+        excludeWorkflowId: workflow.id,
+      });
+      signal.throwIfAborted();
+      if (slugError) {
+        return slugError;
+      }
+
       await applyVisibilityUpdate(writeDb, workflow.id, {
         visibility: "public",
         requestToPublish: false,
@@ -722,6 +791,17 @@ const approvePublishInner$ = command(
     );
     if (reviewError) {
       return reviewError;
+    }
+
+    const slugError = await requirePublicWorkflowSlugAvailable(writeDb, {
+      orgId: auth.orgId,
+      agentId: loaded.workflow.agentId,
+      name: loaded.workflow.name,
+      excludeWorkflowId: loaded.workflow.id,
+    });
+    signal.throwIfAborted();
+    if (slugError) {
+      return slugError;
     }
 
     await applyVisibilityUpdate(writeDb, loaded.workflow.id, {

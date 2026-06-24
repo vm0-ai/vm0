@@ -379,6 +379,7 @@ export const zeroWorkflowsCollectionContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Create a workflow under an agent",
   },
@@ -477,6 +478,7 @@ export const zeroWorkflowVisibilityContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary:
       "Owner requests promotion to public (auto-approves if owner has agent write-permission)",
@@ -508,6 +510,7 @@ export const zeroWorkflowVisibilityContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Agent write-permission holder approves a pending publish request",
   },
