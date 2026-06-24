@@ -362,19 +362,13 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             usage_sources[message_id] = usage_target
         usage.merge_openai_responses_usage_result(usage_target, usage_result)
         run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-        source_disposition = usage.report_model_provider_usage_source(
+        usage.report_model_provider_usage_source(
             flow,
             run_id,
             message_id,
             usage_target,
         )
-        # Retain only sources that may still become reportable on a later
-        # same-response-id frame. Buffered or permanently unreportable sources
-        # do not need to stay in per-flow metadata until websocket_end/error.
-        if source_disposition == "release":
-            usage_sources.pop(message_id, None)
-        else:
-            _retain_zero_usage_websocket_source(usage_sources, message_id, usage_target)
+        usage_sources.pop(message_id, None)
         return
 
     usage_target = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
@@ -382,16 +376,6 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
         usage_target = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_target
     usage.merge_openai_responses_usage_result(usage_target, usage_result)
-
-
-def _retain_zero_usage_websocket_source(
-    usage_sources: dict,
-    message_id: str,
-    source_usage: dict,
-) -> None:
-    if usage.has_positive_model_provider_usage(source_usage):
-        return
-    usage_sources.pop(message_id, None)
 
 
 def finalize_connector_response_state(flow: http.HTTPFlow) -> None:

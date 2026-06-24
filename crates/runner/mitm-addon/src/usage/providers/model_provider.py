@@ -16,7 +16,7 @@ id the proxy should report for model token usage. Billable rows go to
 
 import uuid
 from collections.abc import Iterator
-from typing import Literal, TypeGuard
+from typing import TypeGuard
 
 from mitmproxy import http
 
@@ -41,7 +41,6 @@ from ..model_tokens import MODEL_USAGE_CATEGORIES
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
-ModelProviderUsageSourceDisposition = Literal["release", "keep"]
 
 
 def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
@@ -173,14 +172,15 @@ def report_model_provider_usage_source(
     run_id: str,
     message_id: str,
     source_usage: dict,
-) -> ModelProviderUsageSourceDisposition:
+) -> None:
     """Buffer one finalized WebSocket response usage source.
 
     Unlike flow-terminal reporting, this preserves the source idempotency keys
     in the webhook payload so the platform can dedupe one response source even
-    when a later lifecycle hook sees the same source again. Returns ``release``
-    when the caller can drop the source from flow metadata and ``keep`` only
-    when a later same-response-id frame may still make the source reportable.
+    when a later lifecycle hook sees the same source again. Callers can drop the
+    source from flow metadata after this returns: observable flows carry the
+    canonical ``MODEL_USAGE_PROVIDER``, so zero-usage source model hints do not
+    need to be retained for later same-response-id frames.
     """
     usage_events: list[UsageEvent] = []
     observation_events: list[UsageEvent] = []
@@ -209,11 +209,7 @@ def report_model_provider_usage_source(
     api_url = get_api_url() if sandbox_token else ""
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not usage_events and not observation_events:
-        if not (can_report_usage or can_report_observation):
-            return "release"
-        if not sandbox_token or not api_url:
-            return "release"
-        return "keep"
+        return
 
     if not sandbox_token or not api_url:
         if usage_events:
@@ -235,7 +231,7 @@ def report_model_provider_usage_source(
                 "Cannot report model usage observation: missing sandbox_token or api_url",
                 type="model_usage_observation",
             )
-        return "release"
+        return
 
     if usage_events:
         buffer_source_usage_events(
@@ -253,7 +249,6 @@ def report_model_provider_usage_source(
             observation_events,
             proxy_log_path,
         )
-    return "release"
 
 
 def _build_model_provider_usage_events(
