@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  type BuiltinFirewallRuntimeApi,
   type BuiltinFirewallRuntimeFirewall,
   type PythonBuiltinFirewallCatalogEntry,
   type PythonBuiltinFirewallCatalogFile,
@@ -629,6 +630,56 @@ describe("Python builtin firewall catalog renderer", () => {
         }),
       ]);
     }).toThrow("unsupported JSON catalog object symbol key");
+
+    const sparseApis: BuiltinFirewallRuntimeApi[] = [];
+    sparseApis[1] = {
+      base: "https://sparse-array.example.com",
+      auth: {},
+    };
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "sparse-array",
+          apis: sparseApis,
+        }),
+      ]);
+    }).toThrow("unsupported sparse JSON catalog array");
+
+    const apisWithProperty: BuiltinFirewallRuntimeApi[] & {
+      extra?: string;
+    } = [
+      {
+        base: "https://array-property.example.com",
+        auth: {},
+      },
+    ];
+    apisWithProperty.extra = "hidden";
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "array-property",
+          apis: apisWithProperty,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog array property: extra");
+
+    const apisWithSymbol: BuiltinFirewallRuntimeApi[] = [
+      {
+        base: "https://array-symbol.example.com",
+        auth: {},
+      },
+    ];
+    Object.defineProperty(apisWithSymbol, Symbol("internal"), {
+      value: "hidden",
+    });
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "array-symbol",
+          apis: apisWithSymbol,
+        }),
+      ]);
+    }).toThrow("unsupported JSON catalog array symbol key");
   });
 
   it("rejects circular JSON catalog values without rejecting shared objects", () => {

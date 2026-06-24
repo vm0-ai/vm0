@@ -315,14 +315,35 @@ function sortJson(
     return value;
   }
   if (Array.isArray(value)) {
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error("unsupported JSON catalog array symbol key");
+    }
+    for (const key of Object.keys(value)) {
+      const index = Number(key);
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= value.length ||
+        String(index) !== key
+      ) {
+        throw new Error(`unsupported JSON catalog array property: ${key}`);
+      }
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      if (!(index in value)) {
+        throw new Error("unsupported sparse JSON catalog array");
+      }
+    }
     if (ancestors.has(value)) {
       throw new Error("unsupported circular JSON catalog value");
     }
     ancestors.add(value);
     try {
-      return value.map((item) => {
-        return sortJson(item, ancestors);
-      });
+      const sorted: JsonValue[] = [];
+      for (const item of value) {
+        sorted.push(sortJson(item, ancestors));
+      }
+      return sorted;
     } finally {
       ancestors.delete(value);
     }
