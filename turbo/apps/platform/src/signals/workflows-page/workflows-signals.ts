@@ -10,6 +10,7 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
   type ZeroWorkflowUpdateRequest,
+  type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept } from "../../lib/accept.ts";
@@ -404,6 +405,29 @@ export const setWorkflowTriggerEnabled$ = command(
           fetchOptions: { signal },
         });
     await accept(request, [200]);
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const setWorkflowTriggerPermissionPolicy$ = command(
+  async (
+    { get, set },
+    input: {
+      triggerId: string;
+      unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.setPermissionPolicy({
+        params: { id: input.triggerId },
+        body: { unattendedPermissionPolicy: input.unattendedPermissionPolicy },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(reloadWorkflows$);
   },
