@@ -900,7 +900,7 @@ enum DeBootstrapCacheFileKind {
 
 fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> {
     let name = path.file_name().and_then(|name| name.to_str())?;
-    if name.contains(".tar.tmp.") {
+    if name.contains(".tar.tmp.") || (name.contains(".tmp.") && name.ends_with(".tar")) {
         Some(DeBootstrapCacheFileKind::Temp)
     } else if name.ends_with(".tar") {
         Some(DeBootstrapCacheFileKind::Stable)
@@ -2626,23 +2626,34 @@ mod tests {
         let home = test_home(dir.path());
         let debootstrap_dir = home.debootstrap_dir();
         std::fs::create_dir_all(&debootstrap_dir).unwrap();
-        let stale_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.123");
-        let recent_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.456");
+        let stale_tmp = debootstrap_dir.join("noble-amd64.tmp.123.tar");
+        let recent_tmp = debootstrap_dir.join("noble-amd64.tmp.456.tar");
+        let legacy_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.789");
         std::fs::write(&stale_tmp, b"stale partial").unwrap();
         std::fs::write(&recent_tmp, b"recent partial").unwrap();
+        std::fs::write(&legacy_tmp, b"legacy partial").unwrap();
         let stale_size = std::fs::metadata(&stale_tmp).unwrap().len();
+        let legacy_size = std::fs::metadata(&legacy_tmp).unwrap().len();
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         std::fs::File::open(&stale_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        std::fs::File::open(&legacy_tmp)
             .unwrap()
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
         let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, stale_size);
+        assert_eq!(freed, stale_size + legacy_size);
         assert!(
             !stale_tmp.exists(),
             "stale debootstrap temp tarball should be GC'd"
+        );
+        assert!(
+            !legacy_tmp.exists(),
+            "legacy debootstrap temp tarball should still be GC'd"
         );
         assert!(
             recent_tmp.exists(),
@@ -2659,7 +2670,7 @@ mod tests {
         let debootstrap_dir = home.debootstrap_dir();
         std::fs::create_dir_all(&debootstrap_dir).unwrap();
         let stable_tar = debootstrap_dir.join("noble-amd64.tar");
-        let newer_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.789");
+        let newer_tmp = debootstrap_dir.join("noble-amd64.tmp.789.tar");
         std::fs::write(&stable_tar, b"stable").unwrap();
         std::fs::write(&newer_tmp, b"newer partial").unwrap();
         let temp_size = std::fs::metadata(&newer_tmp).unwrap().len();

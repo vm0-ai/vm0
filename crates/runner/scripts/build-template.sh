@@ -249,7 +249,9 @@ debootstrap_cache_locked() {
     # second stage, so we check the tarball was created instead. Write to a
     # process-scoped temp file first: a cancelled build must not publish a
     # partial tarball under the stable cache name that another runner may reuse.
-    CACHE_TMP_TAR="${cache_tar}.tmp.$$"
+    # debootstrap validates the tarball suffix when unpacking, so keep the
+    # process-scoped temp file ending in .tar instead of appending after it.
+    CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar"
     rm -f "$CACHE_TMP_TAR"
     sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
     if [[ ! -s "$CACHE_TMP_TAR" ]]; then
