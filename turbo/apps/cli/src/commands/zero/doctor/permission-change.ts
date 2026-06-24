@@ -93,9 +93,9 @@ async function outputPermissionChangeMessage(
   permission: string,
   action: PermissionAction,
   duration: UserPermissionGrantExpiresIn | undefined,
+  agentId: string | undefined,
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
-  const agentId = process.env.ZERO_AGENT_ID;
 
   const urlParams = new URLSearchParams({
     ref: connectorRef,
@@ -153,12 +153,19 @@ export const permissionChangeCommand = new Command()
   .addOption(
     new Option("--reason <text>", "Brief reason for the permission change"),
   )
+  .addOption(
+    new Option(
+      "--agent <id>",
+      "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
+    ),
+  )
   .addHelpText(
     "after",
     `
 Examples:
   zero doctor permission-change github --permission contents:read --enable
   zero doctor permission-change github --permission contents:write --enable --duration 24h
+  zero doctor permission-change gmail --permission messages.write --enable --agent <agent-id>
   zero doctor permission-change slack --permission chat:write --disable
   zero doctor permission-change cloudflare --permission __unknown__ --disable
   zero doctor permission-change computer-use --permission computer-use:write --enable
@@ -166,6 +173,7 @@ Examples:
 Notes:
   - Outputs a platform URL for the user to adjust the permission
   - Use --permission __unknown__ to change unknown endpoint policy
+  - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
   - Enable requests default to --duration 1h; use 24h or 7d for longer user-approved work
   - Use --duration always only when the user explicitly asks for persistent access
   - Permission changes update the current user's connector grants`,
@@ -180,6 +188,7 @@ Notes:
           disable?: boolean;
           duration?: UserPermissionGrantExpiresIn;
           reason?: string;
+          agent?: string;
         },
       ) => {
         if (!opts.enable && !opts.disable) {
@@ -220,6 +229,7 @@ Notes:
           opts.permission,
           action,
           opts.duration,
+          opts.agent ?? process.env.ZERO_AGENT_ID,
         );
       },
     ),

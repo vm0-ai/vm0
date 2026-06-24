@@ -163,6 +163,47 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("/agents/permissions");
   });
 
+  it("uses --agent when ZERO_AGENT_ID is not set", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "");
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "slack",
+      "--permission",
+      SLACK_READ_PERMISSION,
+      "--enable",
+      "--agent",
+      "target-agent-123",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("/agents/target-agent-123/permissions?");
+    expect(logCalls).toContain("ref=slack");
+    expect(logCalls).toContain("action=allow");
+  });
+
+  it("--agent overrides ZERO_AGENT_ID", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "env-agent-123");
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "slack",
+      "--permission",
+      SLACK_READ_PERMISSION,
+      "--enable",
+      "--agent",
+      "target-agent-123",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("/agents/target-agent-123/permissions?");
+    expect(logCalls).not.toContain("/agents/env-agent-123/permissions?");
+  });
+
   it("transforms www.vm0.ai to app.vm0.ai", async () => {
     vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-1");
