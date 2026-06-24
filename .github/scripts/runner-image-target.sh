@@ -109,3 +109,45 @@ runner_image_asset_suffix() {
       ;;
   esac
 }
+
+runner_image_release_tag() {
+  local version="${1:-}"
+  if [ -z "$version" ]; then
+    echo "missing runner release version" >&2
+    return 2
+  fi
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "unsupported runner release version: ${version} (expected semver like 0.81.0, without leading v)" >&2
+    return 2
+  fi
+
+  printf 'runner-rs-v%s\n' "$version"
+}
+
+runner_image_release_asset_name() {
+  local version="${1:-}"
+  local target="${2:-}"
+  local asset_suffix
+
+  runner_image_release_tag "$version" >/dev/null || return $?
+  asset_suffix=$(runner_image_asset_suffix "$target") || return $?
+  printf 'runner-v%s-%s\n' "$version" "$asset_suffix"
+}
+
+runner_image_elf_machine_hex() {
+  local target="${1:-}"
+
+  runner_image_validate_target "$target" || return $?
+  case "$target" in
+    aarch64-unknown-linux-musl)
+      printf '%s\n' "b700"
+      ;;
+    x86_64-unknown-linux-musl)
+      printf '%s\n' "3e00"
+      ;;
+    *)
+      echo "missing runner image ELF machine metadata for target: ${target}" >&2
+      return 2
+      ;;
+  esac
+}

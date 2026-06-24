@@ -22,7 +22,8 @@
 #     -e "r2_bucket=xxx"
 #
 # Required Variables:
-#   - runner_version: Semantic version of the runner being built
+#   - runner_version: Semantic version of the runner being built, without leading v
+#   - runner_target: Rust target triple for the copied runner binary
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
@@ -42,6 +43,9 @@
     runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
 
   tasks:
+    - name: Validate runner architecture
+      include_tasks: ../tasks/validate-runner-architecture.yml
+
     # ========================================
     # Phase 1: Deploy binaries
     # ========================================
@@ -53,7 +57,7 @@
 
     - name: Copy runner binary (guest binaries are embedded)
       copy:
-        src: "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/runner"
+        src: "{{ playbook_dir }}/../../crates/target/{{ runner_target }}/release/runner"
         dest: "{{ bin_dir }}/"
         mode: '0755'
 

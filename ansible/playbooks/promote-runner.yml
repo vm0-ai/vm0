@@ -15,7 +15,8 @@
 #     -e "runner_version=0.3.0"
 #
 # Required Variables:
-#   - runner_version: Semantic version of the runner being promoted
+#   - runner_version: Semantic version of the runner being promoted, without leading v
+#   - runner_target: Rust target triple for the staged runner binary
 #
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
@@ -36,6 +37,9 @@
     runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
 
   tasks:
+    - name: Validate runner architecture
+      include_tasks: ../tasks/validate-runner-architecture.yml
+
     # ========================================
     # Phase 3b: Install systemd service (traffic cutover point)
     # ========================================

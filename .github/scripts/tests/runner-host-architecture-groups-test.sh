@@ -64,11 +64,31 @@ assert_no_hosts_field() {
   jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
 }
 
+assert_target_matrix_contract() {
+  local output=$1
+  jq -e 'all(.[]; (keys | sort) == ["id", "label", "target"])' >/dev/null <<<"$output" || fail "expected target matrix fields only: ${output}"
+}
+
 out=$(bash -c '. "$1"; runner_image_target_for_uname_m aarch64' bash "$TARGET")
 [ "$out" = "aarch64-unknown-linux-musl" ] || fail "expected aarch64 target, got: ${out}"
 
 out=$(bash -c '. "$1"; runner_image_target_for_uname_m x86_64' bash "$TARGET")
 [ "$out" = "x86_64-unknown-linux-musl" ] || fail "expected x86_64 target, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_elf_machine_hex aarch64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "b700" ] || fail "expected aarch64 ELF machine metadata, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_elf_machine_hex x86_64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "3e00" ] || fail "expected x86_64 ELF machine metadata, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_release_tag 1.2.3' bash "$TARGET")
+[ "$out" = "runner-rs-v1.2.3" ] || fail "expected runner release tag, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_release_asset_name 1.2.3 aarch64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "runner-v1.2.3-aarch64-linux" ] || fail "expected aarch64 release asset name, got: ${out}"
+
+out=$(bash -c '. "$1"; runner_image_release_asset_name 1.2.3 x86_64-unknown-linux-musl' bash "$TARGET")
+[ "$out" = "runner-v1.2.3-x86_64-linux" ] || fail "expected x86_64 release asset name, got: ${out}"
 
 if bash -c '. "$1"; runner_image_target_for_uname_m ""' bash "$TARGET" >"${TMPDIR}/uname-empty.out" 2>"${TMPDIR}/uname-empty.err"; then
   fail "expected empty uname target lookup to fail"
@@ -90,6 +110,11 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" target-matrix)
+assert_compact_json "$out"
+assert_target_matrix_contract "$out"
+assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
 [ "$out" = "true" ] || fail "expected ARM64 has-groups=true, got: ${out}"
@@ -114,6 +139,11 @@ assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS" target-matrix)
+assert_compact_json "$out"
+assert_target_matrix_contract "$out"
+assert_json_eq "$out" '[{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl"}]'
+
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='x86-1' "$HOST_GROUPS" has-groups)
 [ "$out" = "true" ] || fail "expected x86_64 has-groups=true, got: ${out}"
 
@@ -130,6 +160,11 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" matrix
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+
+out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" target-matrix)
+assert_compact_json "$out"
+assert_target_matrix_contract "$out"
+assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" hosts x86_64)
 [ "$out" = "x86-1,x86-2" ] || fail "expected mixed x86_64 hosts, got: ${out}"
@@ -222,6 +257,10 @@ out=$(run_clean "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_json_eq "$out" '[]'
 
+out=$(run_clean "$HOST_GROUPS" target-matrix)
+assert_compact_json "$out"
+assert_json_eq "$out" '[]'
+
 out=$(run_clean "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected empty has-groups=false, got: ${out}"
 
@@ -244,5 +283,45 @@ if bash -c '. "$1"; runner_image_asset_suffix powerpc-unknown-linux-musl' bash "
   fail "expected unsupported asset suffix target to fail"
 fi
 grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/asset.err" || fail "expected unsupported asset suffix message"
+
+if bash -c '. "$1"; runner_image_elf_machine_hex ""' bash "$TARGET" >"${TMPDIR}/elf-empty.out" 2>"${TMPDIR}/elf-empty.err"; then
+  fail "expected empty ELF machine target to fail"
+fi
+grep -q "missing runner image target" "${TMPDIR}/elf-empty.err" || fail "expected missing ELF machine target message"
+
+if bash -c '. "$1"; runner_image_elf_machine_hex powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/elf.out" 2>"${TMPDIR}/elf.err"; then
+  fail "expected unsupported ELF machine target to fail"
+fi
+grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/elf.err" || fail "expected unsupported ELF machine message"
+
+if bash -c '. "$1"; runner_image_release_tag ""' bash "$TARGET" >"${TMPDIR}/tag-empty.out" 2>"${TMPDIR}/tag-empty.err"; then
+  fail "expected empty release tag version to fail"
+fi
+grep -q "missing runner release version" "${TMPDIR}/tag-empty.err" || fail "expected missing release tag version message"
+
+if bash -c '. "$1"; runner_image_release_tag v1.2.3' bash "$TARGET" >"${TMPDIR}/tag-leading-v.out" 2>"${TMPDIR}/tag-leading-v.err"; then
+  fail "expected leading-v release tag version to fail"
+fi
+grep -q "unsupported runner release version: v1.2.3" "${TMPDIR}/tag-leading-v.err" || fail "expected leading-v release tag version message"
+
+if bash -c '. "$1"; runner_image_release_tag "$2"' bash "$TARGET" "1.2.3/evil" >"${TMPDIR}/tag-path.out" 2>"${TMPDIR}/tag-path.err"; then
+  fail "expected path-like release tag version to fail"
+fi
+grep -q "unsupported runner release version: 1.2.3/evil" "${TMPDIR}/tag-path.err" || fail "expected path-like release tag version message"
+
+if bash -c '. "$1"; runner_image_release_asset_name "" aarch64-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-version-empty.out" 2>"${TMPDIR}/asset-name-version-empty.err"; then
+  fail "expected empty release asset name version to fail"
+fi
+grep -q "missing runner release version" "${TMPDIR}/asset-name-version-empty.err" || fail "expected missing release asset name version message"
+
+if bash -c '. "$1"; runner_image_release_asset_name v1.2.3 aarch64-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-version-leading-v.out" 2>"${TMPDIR}/asset-name-version-leading-v.err"; then
+  fail "expected leading-v release asset name version to fail"
+fi
+grep -q "unsupported runner release version: v1.2.3" "${TMPDIR}/asset-name-version-leading-v.err" || fail "expected leading-v release asset name version message"
+
+if bash -c '. "$1"; runner_image_release_asset_name 1.2.3 powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-target.out" 2>"${TMPDIR}/asset-name-target.err"; then
+  fail "expected unsupported release asset name target to fail"
+fi
+grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/asset-name-target.err" || fail "expected unsupported release asset name target message"
 
 echo "runner-host-architecture-groups-test: ok"
