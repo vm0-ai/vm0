@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.7...runner-rs-v0.129.8) (2026-06-24)
+
+
+### Bug Fixes
+
+* deduplicate stripe firewall route permissions ([#18715](https://github.com/vm0-ai/vm0/issues/18715)) ([1dd0238](https://github.com/vm0-ai/vm0/commit/1dd0238bd82fc9fcf7953dc9bb8e1adf4f933567))
+
 ## [0.129.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.6...runner-rs-v0.129.7) (2026-06-23)
 
 
