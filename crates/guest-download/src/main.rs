@@ -77,6 +77,7 @@ fn run_manifest_file_and_remove(manifest_path: &str) -> bool {
         Ok(manifest_json) => manifest_json,
         Err(e) => {
             log_error!(LOG_TAG, "Failed to read manifest: {e}");
+            let _ = remove_manifest_file(manifest_path);
             return false;
         }
     };
@@ -151,5 +152,20 @@ mod tests {
         assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));
 
         assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_manifest_file_and_remove_removes_symlink_on_read_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let target_dir = dir.path().join("target-dir");
+        let path = dir.path().join("storage-manifest.json");
+        std::fs::create_dir(&target_dir).unwrap();
+        std::os::unix::fs::symlink(&target_dir, &path).unwrap();
+
+        assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));
+
+        assert!(!path.exists());
+        assert!(target_dir.exists());
     }
 }
