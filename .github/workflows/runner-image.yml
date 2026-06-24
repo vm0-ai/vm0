@@ -232,6 +232,15 @@ jobs:
             exit 0
           fi
 
+          host_count=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | wc -l | tr -d ' ')
+          host_fingerprints=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | sed '/^$/d' \
+            | while IFS= read -r host; do printf '%s' "$host" | sha256sum | cut -c1-12; done \
+            | paste -sd, -)
+          echo "Runner image host input: count=${host_count}, fingerprints=${host_fingerprints}"
+
           matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix-with-hosts)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           echo "Configured runner host architecture groups: $(jq -r 'map(.id) | join(",") // ""' <<<"$matrix")"
