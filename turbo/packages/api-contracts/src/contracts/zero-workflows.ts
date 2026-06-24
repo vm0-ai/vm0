@@ -588,7 +588,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Create a schedule trigger on a workflow",
+    summary: "Create a trigger on a workflow",
   },
   get: {
     method: "GET",
@@ -601,7 +601,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a workflow schedule trigger",
+    summary: "Get a workflow trigger",
   },
   update: {
     method: "PATCH",
@@ -617,7 +617,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Update a workflow schedule trigger",
+    summary: "Update a workflow trigger",
   },
   delete: {
     method: "DELETE",
@@ -631,7 +631,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Delete a workflow schedule trigger",
+    summary: "Delete a workflow trigger",
   },
   enable: {
     method: "POST",
@@ -646,7 +646,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Enable a workflow schedule trigger",
+    summary: "Enable a workflow trigger",
   },
   disable: {
     method: "POST",
@@ -660,7 +660,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Disable a workflow schedule trigger",
+    summary: "Disable a workflow trigger",
   },
   run: {
     method: "POST",
@@ -675,7 +675,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Fire a one-off test run of a workflow schedule trigger",
+    summary: "Fire a one-off test run of a workflow trigger",
   },
 });
 

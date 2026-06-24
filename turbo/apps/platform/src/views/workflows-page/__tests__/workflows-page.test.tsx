@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerCreateRequest,
+  type ZeroWorkflowTriggerUpdateRequest,
   type ZeroWorkflowUpdateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
@@ -236,6 +237,29 @@ function mockCreateWorkflowTrigger(
   );
 }
 
+function mockUpdateWorkflowTrigger(
+  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.update,
+    ({ params, body, respond }) => {
+      onUpdate(params.id, body);
+      if ("eventConfig" in body) {
+        return respond(200, {
+          ...gmailWorkflowTrigger(),
+          id: params.id,
+          eventConfig: body.eventConfig,
+        });
+      }
+      return respond(200, {
+        ...weekdayWorkflowTrigger(),
+        id: params.id,
+        schedule: body.schedule,
+      });
+    },
+  );
+}
+
 describe("workflows index page", () => {
   it("shows every visible workflow with its agent and links into the detail page", async () => {
     mockWorkflowApis([salesResearch(), opsPlaybook()]);
@@ -353,6 +377,80 @@ describe("workflow detail page", () => {
           match: {
             from: { contains: "@acme.com" },
             subject: { doesNotContain: "newsletter" },
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail new message trigger with text match rules", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...gmailWorkflowTrigger(),
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: {
+              from: { containsAny: ["@vip.example"] },
+              subject: { doesNotContain: "newsletter" },
+              hasAttachment: true,
+            },
+          },
+        } satisfies WorkflowGmailNewMessageTriggerSummary,
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
+        0,
+      );
+    });
+    click(screen.getByRole("button", { name: "Edit match" }));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update Gmail new message trigger",
+    });
+    await fill(
+      within(updateTriggerForm).getByLabelText("From contains"),
+      "@acme.com",
+    );
+    await fill(
+      within(updateTriggerForm).getByLabelText("Body contains"),
+      "invoice",
+    );
+    fireEvent.submit(updateTriggerForm);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: GMAIL_TRIGGER_ID,
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: {
+              from: {
+                contains: "@acme.com",
+                containsAny: ["@vip.example"],
+              },
+              subject: { doesNotContain: "newsletter" },
+              body: { contains: "invoice" },
+              hasAttachment: true,
+            },
           },
         },
       });

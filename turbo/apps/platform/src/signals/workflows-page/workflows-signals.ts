@@ -353,6 +353,29 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
+export const updateWorkflowGmailNewMessageTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const setWorkflowTriggerEnabled$ = command(
   async (
     { get, set },
@@ -375,7 +398,7 @@ export const setWorkflowTriggerEnabled$ = command(
   },
 );
 
-export const deleteWorkflowScheduleTrigger$ = command(
+export const deleteWorkflowTrigger$ = command(
   async ({ get, set }, triggerId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(
@@ -387,7 +410,7 @@ export const deleteWorkflowScheduleTrigger$ = command(
   },
 );
 
-export const runWorkflowScheduleTrigger$ = command(
+export const runWorkflowTrigger$ = command(
   async ({ get }, triggerId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(

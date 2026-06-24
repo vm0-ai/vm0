@@ -466,6 +466,106 @@ describe("zero workflow trigger commands", () => {
       );
     });
 
+    it("should update a Gmail new message trigger with text match flags", async () => {
+      const updated = {
+        ...gmailTrigger,
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            from: { contains: "@example.com" },
+            subject: { doesNotContain: "marketing" },
+          },
+        },
+      };
+      const captured = captureUpdateTrigger(updated);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--from-contains",
+        "@example.com",
+        "--subject-not-contains",
+        "marketing",
+      ]);
+
+      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            from: { contains: "@example.com" },
+            subject: { doesNotContain: "marketing" },
+          },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`Trigger ${TRIGGER_ID} updated`);
+      expect(logCalls).toContain('subject does not contain "marketing"');
+    });
+
+    it("should update a Gmail new message trigger from a config file", async () => {
+      const configPath = writeGmailConfig({
+        match: {
+          body: { containsAny: ["invoice", "receipt"] },
+        },
+      });
+      const captured = captureUpdateTrigger({
+        ...gmailTrigger,
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            body: { containsAny: ["invoice", "receipt"] },
+          },
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--config",
+        configPath,
+      ]);
+
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            body: { containsAny: ["invoice", "receipt"] },
+          },
+        },
+      });
+    });
+
+    it("should reject mixing schedule and Gmail match options", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "update",
+          TRIGGER_ID,
+          "--expr",
+          "0 9 * * *",
+          "--from-contains",
+          "@acme.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Use either schedule flags or Gmail match options",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should reject more than one timing flag", async () => {
       await expect(async () => {
         await triggerCommand.parseAsync([

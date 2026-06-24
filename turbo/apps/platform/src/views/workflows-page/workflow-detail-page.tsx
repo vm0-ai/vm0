@@ -1,6 +1,7 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, run-once, copy, and delete.
+import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -38,14 +39,15 @@ import {
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowScheduleTrigger$,
   currentWorkflowId$,
-  deleteWorkflow$,
-  deleteWorkflowScheduleTrigger$,
   copyWorkflow$,
+  deleteWorkflow$,
+  deleteWorkflowTrigger$,
   runWorkflow$,
-  runWorkflowScheduleTrigger$,
+  runWorkflowTrigger$,
   selectedWorkflowFilePath$,
   setSelectedWorkflowFilePath$,
   setWorkflowTriggerEnabled$,
+  updateWorkflowGmailNewMessageTrigger$,
   updateWorkflow$,
   workflowDetail,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -668,19 +670,37 @@ function formTextValue(form: FormData, name: string): string | undefined {
 
 function buildGmailNewMessageEventConfig(
   form: FormData,
+  baseConfig?: GmailNewMessageEventConfig,
 ): GmailNewMessageEventConfig {
+  const baseMatch = baseConfig?.match;
   const match: GmailMatchRules = {};
+  if (baseMatch?.snippet) {
+    match.snippet = baseMatch.snippet;
+  }
+  if (baseMatch?.labels) {
+    match.labels = baseMatch.labels;
+  }
+  if (baseMatch?.hasAttachment !== undefined) {
+    match.hasAttachment = baseMatch.hasAttachment;
+  }
   for (const { field } of GMAIL_TEXT_FIELDS) {
+    const existing = baseMatch?.[field];
     const contains = formTextValue(form, `${field}Contains`);
     const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
-    if (contains || doesNotContain) {
-      const matcher: { contains?: string; doesNotContain?: string } = {};
-      if (contains) {
-        matcher.contains = contains;
-      }
-      if (doesNotContain) {
-        matcher.doesNotContain = doesNotContain;
-      }
+    const matcher: GmailTextMatcher = {};
+    if (existing?.containsAny) {
+      matcher.containsAny = existing.containsAny;
+    }
+    if (existing?.doesNotContainAny) {
+      matcher.doesNotContainAny = existing.doesNotContainAny;
+    }
+    if (contains) {
+      matcher.contains = contains;
+    }
+    if (doesNotContain) {
+      matcher.doesNotContain = doesNotContain;
+    }
+    if (Object.keys(matcher).length > 0) {
       match[field] = matcher;
     }
   }
@@ -736,6 +756,14 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
     parts.push("custom match rules");
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
+}
+
+function gmailMatcherDefaultValue(
+  config: GmailNewMessageEventConfig,
+  field: GmailTextField,
+  key: "contains" | "doesNotContain",
+): string {
+  return config.match?.[field]?.[key] ?? "";
 }
 
 function TriggersSection({
@@ -961,14 +989,15 @@ function TriggerRow({
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
 }) {
+  const [editingMatch, setEditingMatch] = useState(false);
   const pageSignal = useGet(pageSignal$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowTriggerEnabled$,
   );
   const [deleteLoadable, deleteTrigger] = useLoadableSet(
-    deleteWorkflowScheduleTrigger$,
+    deleteWorkflowTrigger$,
   );
-  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowScheduleTrigger$);
+  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowTrigger$);
   const busy =
     enabledLoadable.state === "loading" ||
     deleteLoadable.state === "loading" ||
@@ -1019,7 +1048,7 @@ function TriggerRow({
             Open thread
           </Link>
         ) : null}
-        {canManage && trigger.kind === "schedule" ? (
+        {canManage ? (
           <div className="mt-1 flex items-center gap-2">
             <button
               type="button"
@@ -1031,6 +1060,20 @@ function TriggerRow({
             >
               Test run
             </button>
+            {trigger.kind === "event" && !editingMatch ? (
+              <button
+                type="button"
+                disabled={busy}
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                onClick={() => {
+                  setEditingMatch((value) => {
+                    return !value;
+                  });
+                }}
+              >
+                Edit match
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy}
@@ -1062,8 +1105,114 @@ function TriggerRow({
             </button>
           </div>
         ) : null}
+        {canManage && trigger.kind === "event" && editingMatch ? (
+          <UpdateGmailNewMessageTriggerForm
+            trigger={trigger}
+            onCancel={() => {
+              setEditingMatch(false);
+            }}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function UpdateGmailNewMessageTriggerForm({
+  trigger,
+  onCancel,
+}: {
+  readonly trigger: Extract<ZeroWorkflowTriggerSummary, { kind: "event" }>;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateGmailTrigger] = useLoadableSet(
+    updateWorkflowGmailNewMessageTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      aria-label="Update Gmail new message trigger"
+      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        detach(
+          updateGmailTrigger(
+            {
+              triggerId: trigger.id,
+              eventConfig: buildGmailNewMessageEventConfig(
+                form,
+                trigger.eventConfig,
+              ),
+            },
+            pageSignal,
+          ).then(() => {
+            onCancel();
+          }),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+          return (
+            <div key={field} className="grid grid-cols-2 gap-1.5">
+              <input
+                name={`${field}Contains`}
+                aria-label={`${label} contains`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "contains",
+                )}
+                disabled={saving}
+                placeholder={`${label} contains`}
+                className={TRIGGER_FIELD_CLASS}
+              />
+              <input
+                name={`${field}DoesNotContain`}
+                aria-label={`${label} does not contain`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "doesNotContain",
+                )}
+                disabled={saving}
+                placeholder={`${label} does not contain`}
+                className={TRIGGER_FIELD_CLASS}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className={cn(
+            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+            saving ? "cursor-not-allowed opacity-60" : "",
+          )}
+        >
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconMail size={13} stroke={1.5} />
+          )}
+          <span>Save match</span>
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
