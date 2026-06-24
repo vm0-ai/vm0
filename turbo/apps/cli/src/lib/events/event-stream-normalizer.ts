@@ -59,13 +59,21 @@ function combineDistinctMessages(
     if (!message) {
       continue;
     }
-    if (
-      messages.some((existing) => {
-        return existing === message || existing.includes(message);
-      })
-    ) {
+    const containingIndex = messages.findIndex((existing) => {
+      return existing === message || existing.includes(message);
+    });
+    if (containingIndex !== -1) {
       continue;
     }
+
+    const containedIndex = messages.findIndex((existing) => {
+      return message.includes(existing);
+    });
+    if (containedIndex !== -1) {
+      messages[containedIndex] = message;
+      continue;
+    }
+
     messages.push(message);
   }
   return messages.length > 0 ? messages.join("\n") : undefined;

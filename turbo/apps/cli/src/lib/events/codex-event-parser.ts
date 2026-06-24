@@ -230,13 +230,21 @@ function combineDistinctMessages(
     if (!trimmed) {
       continue;
     }
-    if (
-      messages.some((existing) => {
-        return existing === trimmed || existing.includes(trimmed);
-      })
-    ) {
+    const containingIndex = messages.findIndex((existing) => {
+      return existing === trimmed || existing.includes(trimmed);
+    });
+    if (containingIndex !== -1) {
       continue;
     }
+
+    const containedIndex = messages.findIndex((existing) => {
+      return trimmed.includes(existing);
+    });
+    if (containedIndex !== -1) {
+      messages[containedIndex] = trimmed;
+      continue;
+    }
+
     messages.push(trimmed);
   }
   return messages.length > 0 ? messages.join("\n") : undefined;
