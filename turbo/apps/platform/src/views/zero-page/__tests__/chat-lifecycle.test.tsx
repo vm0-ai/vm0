@@ -3566,9 +3566,13 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Run group folding")).toBeInTheDocument();
       expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
+      const foldButton = buttonByLabel("Expand grouped run history");
       expect(
-        screen.getByText('Folded 2 "Daily check" runs'),
+        within(foldButton).getByText("2 runs for Daily check"),
       ).toBeInTheDocument();
+      expect(
+        within(foldButton).getByText("2 runs for Daily check"),
+      ).toHaveClass("truncate", "whitespace-nowrap");
       expect(
         screen.queryByText("First daily check result"),
       ).not.toBeInTheDocument();
@@ -3654,7 +3658,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Goal prompt")).toBeInTheDocument();
       expect(screen.getByText(goalPrompt)).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
-        "Archived goal for 3m",
+        "3 mins for Keep the release moving",
       );
       expect(screen.queryByText("Worked for 30s")).not.toBeInTheDocument();
       expect(screen.queryByText("First goal result")).not.toBeInTheDocument();
@@ -3665,12 +3669,18 @@ describe("chat lifecycle", () => {
       .closest('[data-role="assistant"]') as HTMLElement | null;
     expect(latestAssistantGroup).not.toBeNull();
     expect(
-      within(latestAssistantGroup!).getByText("Archived goal for 3m"),
+      within(latestAssistantGroup!).getByText(
+        "3 mins for Keep the release moving",
+      ),
     ).toBeInTheDocument();
-    expectTextBefore(document.body, goalPrompt, "Archived goal for 3m");
+    expectTextBefore(
+      document.body,
+      goalPrompt,
+      "3 mins for Keep the release moving",
+    );
     expectTextBefore(
       latestAssistantGroup!,
-      "Archived goal for 3m",
+      "3 mins for Keep the release moving",
       "Latest goal result",
     );
 
@@ -3686,6 +3696,11 @@ describe("chat lifecycle", () => {
     const threadId = "thread-workflow-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
     const workflowPrompt = "/daily-workflow";
+    const workflowSnapshot = {
+      name: "daily-workflow",
+      displayName: "Daily workflow",
+      description: "Daily workflow summary",
+    };
 
     mockChatLifecycle(context, {
       threadId,
@@ -3697,6 +3712,8 @@ describe("chat lifecycle", () => {
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -3705,6 +3722,8 @@ describe("chat lifecycle", () => {
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -3713,6 +3732,8 @@ describe("chat lifecycle", () => {
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -3721,6 +3742,8 @@ describe("chat lifecycle", () => {
           content: "Latest workflow result",
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -3737,7 +3760,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Latest workflow result")).toBeInTheDocument();
       expect(screen.queryByLabelText("Goal prompt")).not.toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
-        'Folded 1 "/daily-workflow" run',
+        "1 run for Daily workflow summary",
       );
       expect(
         screen.queryByText("First workflow result"),

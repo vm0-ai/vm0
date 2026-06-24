@@ -10,6 +10,7 @@ import {
   type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
@@ -31,6 +32,10 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  zeroWorkflowTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -70,6 +75,7 @@ type ChatMessageRow = {
   readonly content: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
+  readonly triggerSource: TriggerSource | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
@@ -87,6 +93,9 @@ type ChatMessageRow = {
   readonly interruptsRunId: string | null;
   readonly automationId: string | null;
   readonly automationTitle: string | null;
+  readonly workflowName: string | null;
+  readonly workflowDisplayName: string | null;
+  readonly workflowDescription: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -136,6 +145,12 @@ const messageColumns = {
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
+  triggerSource: sql<TriggerSource | null>`(
+    SELECT ${zeroRuns.triggerSource}
+    FROM ${zeroRuns}
+    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    LIMIT 1
+  )`,
   isGoalRun: sql<boolean>`EXISTS (
     SELECT 1
     FROM ${zeroRuns}
@@ -158,6 +173,36 @@ const messageColumns = {
   interruptsRunId: chatMessages.interruptsRunId,
   automationId: chatMessages.automationId,
   automationTitle: chatMessages.automationTitle,
+  workflowName: sql<string | null>`(
+    SELECT ${zeroWorkflows.name}
+    FROM ${zeroRuns}
+    INNER JOIN ${zeroWorkflowTriggers}
+      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
+    INNER JOIN ${zeroWorkflows}
+      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
+    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    LIMIT 1
+  )`,
+  workflowDisplayName: sql<string | null>`(
+    SELECT ${zeroWorkflows.displayName}
+    FROM ${zeroRuns}
+    INNER JOIN ${zeroWorkflowTriggers}
+      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
+    INNER JOIN ${zeroWorkflows}
+      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
+    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    LIMIT 1
+  )`,
+  workflowDescription: sql<string | null>`(
+    SELECT ${zeroWorkflows.description}
+    FROM ${zeroRuns}
+    INNER JOIN ${zeroWorkflowTriggers}
+      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
+    INNER JOIN ${zeroWorkflows}
+      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
+    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    LIMIT 1
+  )`,
 } as const;
 
 const searchMessageColumns = {
@@ -410,6 +455,14 @@ function toPagedMessage(
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
     const attachFiles = await get(chatMessageAttachFiles(userId, row));
+    const workflowSnapshot =
+      row.workflowName === null
+        ? undefined
+        : {
+            name: row.workflowName,
+            displayName: row.workflowDisplayName,
+            description: row.workflowDescription,
+          };
 
     const role = messageRoleSchema.parse(row.role);
     const message = {
@@ -418,6 +471,7 @@ function toPagedMessage(
       content: row.content,
       runId: row.runId ?? undefined,
       runGroupId: row.runGroupId ?? undefined,
+      triggerSource: row.triggerSource ?? undefined,
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
@@ -427,6 +481,7 @@ function toPagedMessage(
       error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
+      workflowSnapshot,
       createdAt: row.createdAt.toISOString(),
     };
     if (role !== "assistant") {
