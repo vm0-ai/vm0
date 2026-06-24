@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.206.0](https://github.com/vm0-ai/vm0/compare/cli-v9.205.0...cli-v9.206.0) (2026-06-24)
+
+
+### Features
+
+* support updating gmail workflow triggers ([#18752](https://github.com/vm0-ai/vm0/issues/18752)) ([6edf19c](https://github.com/vm0-ai/vm0/commit/6edf19ce250b89d24b26c05768b1ea81b282029c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.112.0
+    * @vm0/connectors bumped to 1.106.0
+    * @vm0/core bumped to 8.366.0
+
 ## [9.205.0](https://github.com/vm0-ai/vm0/compare/cli-v9.204.4...cli-v9.205.0) (2026-06-24)
 
 

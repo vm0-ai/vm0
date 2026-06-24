@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.129.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.9...runner-rs-v0.129.10) (2026-06-24)
+
+
+### Documentation
+
+* **mitm-addon:** clarify browser passthrough tradeoff ([#18745](https://github.com/vm0-ai/vm0/issues/18745)) ([4d84d1b](https://github.com/vm0-ai/vm0/commit/4d84d1b4af5c0bf6edab16598661e267529a1a9e))
+
+
+### Refactoring
+
+* encapsulate network log upload batching ([#18743](https://github.com/vm0-ai/vm0/issues/18743)) ([08518b6](https://github.com/vm0-ai/vm0/commit/08518b660274f38abe064a40ddacc4b515d8f1fa))
+
 ## [0.129.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.8...runner-rs-v0.129.9) (2026-06-24)
 
 

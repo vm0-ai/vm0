@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.487.0](https://github.com/vm0-ai/vm0/compare/app-v0.486.0...app-v0.487.0) (2026-06-24)
+
+
+### Features
+
+* fold chat runs by run group ([#18754](https://github.com/vm0-ai/vm0/issues/18754)) ([c28ffbc](https://github.com/vm0-ai/vm0/commit/c28ffbca17de6fa9f62a8403f9886657084d2677))
+* redesign Zero Computer Use download modal with illustration ([#18719](https://github.com/vm0-ai/vm0/issues/18719)) ([cb4374a](https://github.com/vm0-ai/vm0/commit/cb4374a90e6ce4b19ec3e05b898e259408ec79e2))
+* support updating gmail workflow triggers ([#18752](https://github.com/vm0-ai/vm0/issues/18752)) ([6edf19c](https://github.com/vm0-ai/vm0/commit/6edf19ce250b89d24b26c05768b1ea81b282029c))
+
+
+### Refactoring
+
+* **platform:** move permission duration picker left and drop expiry pill ([#18537](https://github.com/vm0-ai/vm0/issues/18537)) ([0e59833](https://github.com/vm0-ai/vm0/commit/0e59833d4798dca963796aad94308865d883df07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.0
+    * @vm0/connectors bumped to 1.106.0
+    * @vm0/core bumped to 8.366.0
+
 ## [0.486.0](https://github.com/vm0-ai/vm0/compare/app-v0.485.1...app-v0.486.0) (2026-06-24)
 
 
