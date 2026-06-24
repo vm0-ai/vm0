@@ -48,10 +48,7 @@
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
     },
-    "./firewalls": {
-      "import": "./src/firewalls/index.ts",
-      "types": "./src/firewalls/index.ts"
-    },
+    "./firewalls": null,
     "./firewalls/all": {
       "import": "./src/firewall-runtime-all.ts",
       "types": "./src/firewall-runtime-all.ts"
@@ -64,10 +61,7 @@
       "import": "./src/firewall-selection-resolver.ts",
       "types": "./src/firewall-selection-resolver.ts"
     },
-    "./firewalls/*": {
-      "import": "./src/firewalls/*.ts",
-      "types": "./src/firewalls/*.ts"
-    },
+    "./firewalls/*": null,
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",
       "types": "./src/auth-providers/connector-auth.ts"

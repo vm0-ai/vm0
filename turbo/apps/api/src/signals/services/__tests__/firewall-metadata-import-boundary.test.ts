@@ -54,6 +54,7 @@ describe("firewall metadata import boundary", () => {
       `import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";`,
       `export { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `await import("@vm0/connectors/firewalls/github.generated");`,
+      `await import("@vm0/connectors/firewalls/index");`,
       `import "@vm0/connectors/firewalls";`,
       `require("@vm0/connectors/firewalls/github.generated");`,
     ]) {

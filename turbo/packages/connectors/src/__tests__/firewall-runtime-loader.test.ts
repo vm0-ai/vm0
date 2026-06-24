@@ -332,10 +332,12 @@ describe("firewall runtime loader", () => {
       "utf-8",
     );
 
+    expect(packageJson.exports["./firewalls"]).toBeNull();
     expect(packageJson.exports["./firewalls/all"]).toStrictEqual({
       import: "./src/firewall-runtime-all.ts",
       types: "./src/firewall-runtime-all.ts",
     });
+    expect(packageJson.exports["./firewalls/*"]).toBeNull();
     expect(defaultFirewallEntrypoint).not.toHaveProperty(
       "getAllConnectorFirewalls",
     );
