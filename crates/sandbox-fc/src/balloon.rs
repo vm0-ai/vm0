@@ -244,7 +244,7 @@ fn parse_meminfo(content: &str) -> Option<(u64, u64)> {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::UnixListener;
+    use tokio::net::{UnixListener, UnixStream};
 
     const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -293,6 +293,45 @@ mod tests {
         run_tick_with_mock_at(stats_json, max_inflate, 0).await
     }
 
+    async fn read_mock_request_body(stream: &mut UnixStream) -> String {
+        let mut buf = Vec::with_capacity(4096);
+
+        let header_end = loop {
+            let n = stream.read_buf(&mut buf).await.expect("read mock request");
+            assert!(n != 0, "mock request closed before headers completed");
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break pos;
+            }
+        };
+
+        let headers = String::from_utf8_lossy(&buf[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                if key.trim().eq_ignore_ascii_case("content-length") {
+                    value.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+
+        let body_start = header_end + 4;
+        let already_read = buf.len().saturating_sub(body_start);
+        if already_read < content_length {
+            let mut tail = vec![0u8; content_length - already_read];
+            stream
+                .read_exact(&mut tail)
+                .await
+                .expect("read mock request body");
+            buf.extend_from_slice(&tail);
+        }
+
+        let body_end = body_start + content_length;
+        String::from_utf8_lossy(&buf[body_start..body_end]).to_string()
+    }
+
     async fn run_tick_with_mock_at(
         stats_json: &str,
         max_inflate: u32,
@@ -311,8 +350,7 @@ mod tests {
 
             // First request: GET /balloon/statistics
             let (mut stream, _) = listener.accept().await.unwrap();
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
+            let _ = read_mock_request_body(&mut stream).await;
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{stats_body}",
                 stats_body.len()
@@ -325,14 +363,7 @@ mod tests {
                 tokio::time::timeout(Duration::from_millis(100), listener.accept()).await
             {
                 let (mut stream, _) = result.unwrap();
-                let mut buf = vec![0u8; 4096];
-                let n = stream.read(&mut buf).await.unwrap();
-                let req = String::from_utf8_lossy(&buf[..n]).to_string();
-
-                // Extract body from HTTP request.
-                if let Some(pos) = req.find("\r\n\r\n") {
-                    patch_body = Some(req[pos + 4..].to_string());
-                }
+                patch_body = Some(read_mock_request_body(&mut stream).await);
 
                 let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
                 let _ = stream.write_all(response.as_bytes()).await;
