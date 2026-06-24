@@ -159,10 +159,12 @@ export class EventStreamNormalizer {
       return [parsed];
     }
 
-    const output = this.flush();
-    if (parsed) {
-      output.push(parsed);
+    if (!parsed) {
+      return [];
     }
+
+    const output = this.flush();
+    output.push(parsed);
     return output;
   }
 
