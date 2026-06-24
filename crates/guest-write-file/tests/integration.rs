@@ -237,6 +237,38 @@ fn create_mode_rejects_character_device_target() {
 
 #[cfg(unix)]
 #[test]
+fn create_mode_rejects_symlink_target_without_truncating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link.txt");
+    std::fs::write(&target, b"keep").unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let output = run_helper(&[link.to_str().unwrap()], b"replace");
+
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read(&target).unwrap(), b"keep");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[cfg(unix)]
+#[test]
+fn append_mode_rejects_symlink_target_without_appending_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link.txt");
+    std::fs::write(&target, b"keep").unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let output = run_helper(&["--append", link.to_str().unwrap()], b"append");
+
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read(&target).unwrap(), b"keep");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[cfg(unix)]
+#[test]
 fn create_mode_fails_fast_for_fifo_without_reader() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("fifo");
