@@ -249,6 +249,85 @@ class TestGetVmContext:
         assert first_result.api_entry["id"] == "run-github-a:0"
         assert second_result.api_entry["id"] == "run-github-b:0"
 
+    def test_builtin_firewall_refs_share_static_payload_but_keep_vm_api_shells(
+        self, tmp_path, monkeypatch
+    ):
+        auth = {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}}
+        permissions = [{"name": "read-items", "rules": ["GET /items"]}]
+        monkeypatch.setattr(
+            registry,
+            "BUILTIN_FIREWALLS",
+            {
+                "large": {
+                    "name": "large",
+                    "apis": [
+                        {
+                            "base": "https://api.example.com",
+                            "auth": auth,
+                            "permissions": permissions,
+                        },
+                        {
+                            "base": "https://upload.example.com",
+                            "auth": auth,
+                            "permissions": permissions,
+                        },
+                    ],
+                }
+            },
+        )
+        path = tmp_path / "registry.json"
+        _write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": _builtin_vm("run-large-a", "large"),
+                "10.200.0.2": _builtin_vm("run-large-b", "large"),
+            },
+        )
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, first_policies = first_context
+        second_vm_info, second_compiled, second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is _first_firewall_core(second_compiled)
+
+        first_firewall = first_vm_info["firewalls"][0]
+        second_firewall = second_vm_info["firewalls"][0]
+        assert first_firewall is not second_firewall
+        assert first_firewall["apis"] is not second_firewall["apis"]
+
+        first_api = first_firewall["apis"][0]
+        second_api = second_firewall["apis"][0]
+        assert first_api is not second_api
+        assert first_api["id"] == "run-large-a:0"
+        assert second_api["id"] == "run-large-b:0"
+        assert first_api["permissions"] is permissions
+        assert second_api["permissions"] is permissions
+        assert first_api["auth"] is auth
+        assert second_api["auth"] is auth
+
+        first_result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            first_compiled,
+            first_policies,
+        )
+        second_result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            second_compiled,
+            second_policies,
+        )
+
+        assert isinstance(first_result, matching.FirewallAllow)
+        assert isinstance(second_result, matching.FirewallAllow)
+        assert first_result.api_entry is first_api
+        assert second_result.api_entry is second_api
+
     def test_builtin_firewall_entry_resolves_dynamic_base_url_vars(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(

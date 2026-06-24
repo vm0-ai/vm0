@@ -631,6 +631,30 @@ def _validate_credentialed_builtin_base(
         )
 
 
+def _copy_builtin_firewall_shell(
+    *,
+    firewall_name: str,
+    catalog_firewall: dict,
+) -> tuple[dict, list[dict]]:
+    raw_apis = catalog_firewall.get("apis")
+    if not isinstance(raw_apis, list):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" apis must be a list'
+        )
+
+    copied_apis: list[dict] = []
+    for api in raw_apis:
+        if not isinstance(api, dict):
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{firewall_name}" api entries must be objects'
+            )
+        copied_apis.append(dict(api))
+
+    firewall = dict(catalog_firewall)
+    firewall["apis"] = copied_apis
+    return firewall, copied_apis
+
+
 def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntry:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
@@ -642,18 +666,14 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
     if catalog_firewall is None:
         raise _FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
 
-    firewall = copy.deepcopy(catalog_firewall)
-    raw_apis = firewall.get("apis")
-    if not isinstance(raw_apis, list):
-        raise _FirewallEntryResolutionError(f'builtin firewall "{raw_name}" apis must be a list')
+    firewall, raw_apis = _copy_builtin_firewall_shell(
+        firewall_name=raw_name,
+        catalog_firewall=catalog_firewall,
+    )
 
     vars_map = _base_url_vars_for_entry(entry)
     resolved_bases: list[str] = []
     for api in raw_apis:
-        if not isinstance(api, dict):
-            raise _FirewallEntryResolutionError(
-                f'builtin firewall "{raw_name}" api entries must be objects'
-            )
         raw_base = api.get("base")
         if not isinstance(raw_base, str):
             raise _FirewallEntryResolutionError(
