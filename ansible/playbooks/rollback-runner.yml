@@ -101,13 +101,23 @@
           - (runner_target | default('')) in ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
           - (runner_asset_suffix | default('')) in ["aarch64-linux", "x86_64-linux"]
           - (expected_runner_uname_m | default('')) in ["aarch64", "x86_64"]
+          - >-
+            (
+              runner_target == "aarch64-unknown-linux-musl" and
+              runner_asset_suffix == "aarch64-linux" and
+              expected_runner_uname_m == "aarch64"
+            ) or (
+              runner_target == "x86_64-unknown-linux-musl" and
+              runner_asset_suffix == "x86_64-linux" and
+              expected_runner_uname_m == "x86_64"
+            )
         fail_msg: >-
           Missing or invalid inputs. Required: `runner_version` in semver
           form (e.g. 0.81.0, no leading v), `rollback_mode` (graceful |
           emergency), `runner_target` (aarch64-unknown-linux-musl |
           x86_64-unknown-linux-musl), `runner_asset_suffix` (aarch64-linux |
-          x86_64-linux), and `expected_runner_uname_m` (aarch64 | x86_64).
-          Got
+          x86_64-linux), and `expected_runner_uname_m` (aarch64 | x86_64),
+          all matching the same architecture. Got
           runner_version='{{ runner_version | default('<undefined>') }}',
           rollback_mode='{{ rollback_mode | default('<undefined>') }}',
           runner_target='{{ runner_target | default('<undefined>') }}',
