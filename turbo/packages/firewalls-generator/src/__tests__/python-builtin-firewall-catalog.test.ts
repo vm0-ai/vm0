@@ -685,6 +685,20 @@ describe("Python builtin firewall catalog renderer", () => {
     }).toThrow("unsupported JSON catalog object accessor property: dynamic");
     expect(objectAccessorInvoked).toBe(false);
 
+    let nameAccessorInvoked = false;
+    const firewallWithNameAccessor = testFirewall("name-accessor");
+    Object.defineProperty(firewallWithNameAccessor, "name", {
+      enumerable: true,
+      get() {
+        nameAccessorInvoked = true;
+        return "name-accessor";
+      },
+    });
+    expect(() => {
+      renderEntries([connectorEntry(firewallWithNameAccessor)]);
+    }).toThrow("unsupported JSON catalog object accessor property: name");
+    expect(nameAccessorInvoked).toBe(false);
+
     let authAccessorInvoked = false;
     const authWithAccessor: Record<string, unknown> = {};
     Object.defineProperty(authWithAccessor, "headers", {

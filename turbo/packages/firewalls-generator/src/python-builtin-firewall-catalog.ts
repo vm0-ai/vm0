@@ -958,14 +958,17 @@ function sortedUniqueEntries(
 export function renderPythonBuiltinFirewallCatalogFiles(
   options: RenderPythonBuiltinFirewallCatalogOptions,
 ): readonly PythonBuiltinFirewallCatalogFile[] {
-  const entries = sortedUniqueEntries(options.entries);
-  const jsonByFirewallName = new Map<string, string>();
-  for (const entry of entries) {
-    jsonByFirewallName.set(
-      entry.firewall.name,
-      stablePrettyJson(entry.firewall),
-    );
+  const unsortedEntries = options.entries.map((entry) => {
+    return {
+      firewall: entry.firewall,
+      diagnosticKind: entry.diagnosticKind,
+    };
+  });
+  const jsonByFirewall = new Map<BuiltinFirewallRuntimeFirewall, string>();
+  for (const entry of unsortedEntries) {
+    jsonByFirewall.set(entry.firewall, stablePrettyJson(entry.firewall));
   }
+  const entries = sortedUniqueEntries(unsortedEntries);
   const diagnosticManifest = buildBuiltinFirewallDiagnosticManifest(entries);
   const maxJsonChunkLength =
     options.maxJsonChunkLength ?? DEFAULT_FIREWALL_JSON_CHUNK_LENGTH;
@@ -986,7 +989,7 @@ export function renderPythonBuiltinFirewallCatalogFiles(
       );
     }
 
-    const firewallJson = jsonByFirewallName.get(firewall.name);
+    const firewallJson = jsonByFirewall.get(firewall);
     if (firewallJson === undefined) {
       throw new Error(`missing Python JSON for firewall: ${firewall.name}`);
     }
