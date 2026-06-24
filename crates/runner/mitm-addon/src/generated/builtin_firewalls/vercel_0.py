@@ -192,7 +192,6 @@ JSON_PART = r"""{
         {
           "name": "deployments:write",
           "rules": [
-            "PATCH /v1/deployments/{deploymentId}/integrations/{integrationConfigurationId}/resources/{resourceId}/actions/{action}",
             "PATCH /v12/deployments/{id}/cancel",
             "POST /v13/deployments",
             "DELETE /v13/deployments/{id}",
@@ -465,8 +464,7 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/connect/networks",
             "PATCH /v1/connect/networks/{networkId}",
-            "DELETE /v1/connect/networks/{networkId}",
-            "PATCH /v1/projects/{idOrName}/shared-connect-links"
+            "DELETE /v1/connect/networks/{networkId}"
           ]
         },
         {
