@@ -2190,11 +2190,12 @@ jobs:
               -H "Authorization: token ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100&page=${page}")
+            matching_ids=$(jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id' <<<"$assets_page")
             while IFS= read -r aid; do
               if [ -n "$aid" ]; then
                 existing_asset_ids+=("$aid")
               fi
-            done < <(jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id' <<<"$assets_page")
+            done <<<"$matching_ids"
 
             asset_count=$(jq 'length' <<<"$assets_page")
             if [ "$asset_count" -lt 100 ]; then
