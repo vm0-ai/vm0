@@ -20,6 +20,29 @@ fn content_hash_for_single_file(storage_id: &str, path: &str, content: &str) -> 
     sha256_hex(format!("storage:{storage_id}\n{path}:{file_hash}"))
 }
 
+fn checkpoint_request_has_artifact_snapshot(
+    req: &HttpMockRequest,
+    expected_version: &str,
+    expected_mount_path: &str,
+) -> bool {
+    let Ok(body) = serde_json::from_slice::<serde_json::Value>(req.body_ref()) else {
+        return false;
+    };
+    let Some(snapshots) = body
+        .get("artifactSnapshots")
+        .and_then(|value| value.as_array())
+    else {
+        return false;
+    };
+
+    snapshots.iter().any(|snapshot| {
+        snapshot.get("name").and_then(|value| value.as_str()) == Some("workspace")
+            && snapshot.get("version").and_then(|value| value.as_str()) == Some(expected_version)
+            && snapshot.get("mountPath").and_then(|value| value.as_str())
+                == Some(expected_mount_path)
+    })
+}
+
 unsafe fn setup_env(temp_dir: &Path, server: &MockServer, mount_path: &Path, version_id: &str) {
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
@@ -71,7 +94,7 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
     let history_prepare = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints/prepare-history")
-            .body_includes(format!(r#""runId":"{RUN_ID}""#));
+            .json_body_includes(format!(r#"{{"runId":"{RUN_ID}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({"existing": true}));
@@ -86,11 +109,18 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
             .path("/api/webhooks/agent/storages/commit");
         then.status(200).json_body(json!({"unreachable": true}));
     });
+    let expected_version = version_id.clone();
+    let expected_mount_path = mount_path.to_string_lossy().into_owned();
     let checkpoint = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints")
-            .body_includes(r#""artifactSnapshots":[{"mountPath":"#)
-            .body_includes(format!(r#""version":"{version_id}""#));
+            .is_true(move |req| {
+                checkpoint_request_has_artifact_snapshot(
+                    req,
+                    &expected_version,
+                    &expected_mount_path,
+                )
+            });
         then.status(200)
             .header("Content-Type", "application/json")
             .json_body(json!({"checkpointId": "checkpoint-with-unchanged-artifact"}));
