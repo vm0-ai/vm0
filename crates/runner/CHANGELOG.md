@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.129.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.10...runner-rs-v0.129.11) (2026-06-24)
+
+
+### Bug Fixes
+
+* bound zero-usage websocket sources ([#18755](https://github.com/vm0-ai/vm0/issues/18755)) ([b8ecc71](https://github.com/vm0-ai/vm0/commit/b8ecc71a95621bbc0cefc5511611b04d55c3c115))
+
+
+### Performance Improvements
+
+* reduce user env pre-spawn round trips ([#18775](https://github.com/vm0-ai/vm0/issues/18775)) ([e59f00e](https://github.com/vm0-ai/vm0/commit/e59f00e521f616a7e7619a3c43cb9a659b4b24d5))
+
 ## [0.129.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.9...runner-rs-v0.129.10) (2026-06-24)
 
 

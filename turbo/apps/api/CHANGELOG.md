@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.174.1](https://github.com/vm0-ai/vm0/compare/api-v1.174.0...api-v1.174.1) (2026-06-24)
+
+
+### Refactoring
+
+* narrow gmail workflow trigger match fields ([#18778](https://github.com/vm0-ai/vm0/issues/18778)) ([421e930](https://github.com/vm0-ai/vm0/commit/421e930e0ca9dc79b70d46402a8eea6598eea92c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.1
+    * @vm0/core bumped to 8.366.1
+    * @vm0/db bumped to 1.69.1
+
 ## [1.174.0](https://github.com/vm0-ai/vm0/compare/api-v1.173.2...api-v1.174.0) (2026-06-24)
 
 
