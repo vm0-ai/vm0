@@ -33,10 +33,6 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import {
   and,
   asc,
   desc,
@@ -146,9 +142,9 @@ const messageColumns = {
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
   triggerSource: sql<TriggerSource | null>`(
-    SELECT ${zeroRuns.triggerSource}
-    FROM ${zeroRuns}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    SELECT "zero_runs"."trigger_source"
+    FROM "zero_runs"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   isGoalRun: sql<boolean>`EXISTS (
@@ -174,33 +170,33 @@ const messageColumns = {
   automationId: chatMessages.automationId,
   automationTitle: chatMessages.automationTitle,
   workflowName: sql<string | null>`(
-    SELECT ${zeroWorkflows.name}
-    FROM ${zeroRuns}
-    INNER JOIN ${zeroWorkflowTriggers}
-      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
-    INNER JOIN ${zeroWorkflows}
-      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    SELECT "zero_workflows"."name"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflows"
+      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDisplayName: sql<string | null>`(
-    SELECT ${zeroWorkflows.displayName}
-    FROM ${zeroRuns}
-    INNER JOIN ${zeroWorkflowTriggers}
-      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
-    INNER JOIN ${zeroWorkflows}
-      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    SELECT "zero_workflows"."display_name"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflows"
+      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDescription: sql<string | null>`(
-    SELECT ${zeroWorkflows.description}
-    FROM ${zeroRuns}
-    INNER JOIN ${zeroWorkflowTriggers}
-      ON ${zeroWorkflowTriggers.id} = ${zeroRuns.workflowTriggerId}
-    INNER JOIN ${zeroWorkflows}
-      ON ${zeroWorkflows.id} = ${zeroWorkflowTriggers.workflowId}
-    WHERE ${zeroRuns.id} = ${chatMessages.runId}
+    SELECT "zero_workflows"."description"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflows"
+      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
 } as const;
