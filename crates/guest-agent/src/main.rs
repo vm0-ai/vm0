@@ -500,7 +500,7 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
     source == FailureDetailSource::ClaudeResult
-        && normalized.contains("api error: 500")
+        && has_claude_api_status(normalized, "500")
         && normalized.contains("internal server error")
         && normalized.contains("server-side issue")
 }
@@ -529,6 +529,17 @@ fn claude_529_error_detail(detail: &str) -> Option<&str> {
         return None;
     }
     Some(trim_error_detail_start(detail))
+}
+
+fn has_claude_api_status(normalized: &str, status: &str) -> bool {
+    const MARKER: &str = "api error:";
+    normalized.match_indices(MARKER).any(|(index, _)| {
+        let detail = trim_error_detail_start(&normalized[index + MARKER.len()..]);
+        let Some(remaining) = detail.strip_prefix(status) else {
+            return false;
+        };
+        !remaining.chars().next().is_some_and(is_error_type_char)
+    })
 }
 
 fn trim_error_detail_start(detail: &str) -> &str {
@@ -1551,6 +1562,17 @@ mod tests {
             AgentFramework::ClaudeCode,
             FailureDetailSource::Stderr,
             CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_provider_server_error_status_prefix() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            "API Error: 5000 Internal server error. This is a server-side issue, usually temporary - try again in a moment.",
         );
 
         assert_eq!(reason, None);
