@@ -123,6 +123,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
@@ -132,6 +133,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
   });
 

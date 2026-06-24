@@ -2664,12 +2664,14 @@ function ChatThreadMessagesMain({
     !skeletonVisible;
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
+  const features = useLastResolved(featureSwitch$);
+  const runGroupFoldingEnabled =
+    features?.[FeatureSwitchKey.ChatRunGroupFolding] ?? false;
   const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
-  const runGroupFolding = buildRunGroupFolding(
-    renderedActiveGroups,
-    runGroupExpandedKeys,
-  );
+  const runGroupFolding = runGroupFoldingEnabled
+    ? buildRunGroupFolding(renderedActiveGroups, runGroupExpandedKeys)
+    : null;
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
   const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);

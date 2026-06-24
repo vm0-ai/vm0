@@ -3565,7 +3565,11 @@ describe("chat lifecycle", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Run group folding")).toBeInTheDocument();
@@ -3586,6 +3590,76 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("First daily check result")).toBeInTheDocument();
       expect(screen.getByText("Second daily check result")).toBeInTheDocument();
+    });
+  });
+
+  it("does not fold automation run groups when the feature switch is off", async () => {
+    const threadId = "thread-run-group-folding-off";
+    const automationId = "f0000001-0000-4000-a000-000000000727";
+    const runGroupId = "f0000001-0000-4000-a000-000000000728";
+    const automationSnapshot = {
+      id: automationId,
+      title: "Daily check",
+      description: "Daily check",
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run group folding disabled",
+      chatMessages: [
+        {
+          id: "msg-run-group-off-user-1",
+          role: "user",
+          content: "Run the daily check",
+          runId: "f0000001-0000-4000-a000-000000000729",
+          runGroupId,
+          automationId,
+          automationSnapshot,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-run-group-off-assistant-1",
+          role: "assistant",
+          content: "First daily check result",
+          runId: "f0000001-0000-4000-a000-000000000729",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-run-group-off-user-2",
+          role: "user",
+          content: "Run the daily check",
+          runId: "f0000001-0000-4000-a000-00000000072a",
+          runGroupId,
+          automationId,
+          automationSnapshot,
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-run-group-off-assistant-2",
+          role: "assistant",
+          content: "Latest daily check result",
+          runId: "f0000001-0000-4000-a000-00000000072a",
+          runGroupId,
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run group folding disabled"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("First daily check result")).toBeInTheDocument();
+      expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Expand grouped run history"),
+      ).not.toBeInTheDocument();
     });
   });
 
