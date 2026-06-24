@@ -178,6 +178,9 @@ pub(super) async fn download_storages(
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
+    let run_id = context.run_id.to_string();
+    let runtime_dir = guest_runtime_dir(context.run_id)?;
+    let download_env = guest_download_env(&run_id, &runtime_dir);
     let use_stdin = manifest_json.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES;
     let download_cmd = if use_stdin {
         guest_download_stdin_command()
@@ -194,9 +197,6 @@ pub(super) async fn download_storages(
     };
     let stdin_bytes = use_stdin.then_some(manifest_json.as_slice());
 
-    let run_id = context.run_id.to_string();
-    let runtime_dir = guest_runtime_dir(context.run_id)?;
-    let download_env = guest_download_env(&run_id, &runtime_dir);
     info!(run_id = %context.run_id, "downloading storages");
     let result = match sandbox
         .exec_with_diagnostic_label(
