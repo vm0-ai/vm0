@@ -118,7 +118,30 @@ function jsonAssignmentFromModule(
       nextAssignment === -1 ? file.content.length : nextAssignment,
     )
     .trim();
-  return JSON.parse(literal);
+  if (!literal.startsWith("json.loads(")) {
+    return JSON.parse(literal);
+  }
+
+  const chunks: string[] = [];
+  const stringLiteralPattern = /r"""([\s\S]*?)"""|"(?:\\.|[^"\\])*"/g;
+  for (
+    let match = stringLiteralPattern.exec(literal);
+    match !== null;
+    match = stringLiteralPattern.exec(literal)
+  ) {
+    const rawLiteral = match[1];
+    if (rawLiteral !== undefined) {
+      chunks.push(rawLiteral);
+      continue;
+    }
+    const parsedLiteral: unknown = JSON.parse(match[0]);
+    if (typeof parsedLiteral !== "string") {
+      throw new Error(`invalid Python JSON string literal in ${file.path}`);
+    }
+    chunks.push(parsedLiteral);
+  }
+
+  return JSON.parse(chunks.join(""));
 }
 
 describe("Python builtin firewall catalog renderer", () => {
@@ -281,6 +304,56 @@ describe("Python builtin firewall catalog renderer", () => {
     expect(diagnostics.content).not.toContain("DYNAMIC_TOKEN");
     expect(diagnostics.content).not.toContain("JSON_PART");
     expect(diagnostics.content).not.toContain("Provider Responses API");
+  });
+
+  it("renders diagnostic JSON through json.loads so escaped unicode round-trips", () => {
+    const emoji = "\u{1f600}";
+    const files = renderEntries([
+      modelProviderEntry({
+        name: `model-provider:${emoji}`,
+        apis: [
+          {
+            base: "https://api.example.com/v1/responses",
+            auth: {},
+            permissions: [
+              {
+                name: `responses-${emoji}`,
+                rules: [`POST /emoji-${emoji}`],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(diagnostics.content).toContain("import json");
+    expect(diagnostics.content).toContain(
+      "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(",
+    );
+    expect(diagnostics.content).toContain("\\ud83d\\ude00");
+    expect(diagnostics.content).not.toContain(emoji);
+    expect(
+      jsonAssignmentFromModule(
+        diagnostics,
+        "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS",
+      ),
+    ).toStrictEqual([
+      {
+        name: `model-provider:${emoji}`,
+        apis: [
+          {
+            base: "https://api.example.com/v1/responses",
+            permissions: [
+              {
+                name: `responses-${emoji}`,
+                rules: [`POST /emoji-${emoji}`],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 
   it("renders manifest entries in sorted firewall-name order", () => {

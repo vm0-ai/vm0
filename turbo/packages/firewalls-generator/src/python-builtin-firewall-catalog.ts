@@ -78,11 +78,19 @@ interface BuiltinFirewallDiagnosticManifest {
 const DEFAULT_FIREWALL_JSON_CHUNK_LENGTH = 200_000;
 const MAX_GENERATED_PYTHON_LINE_LENGTH = 512;
 const PYTHON_JSON_PART_ASSIGNMENT_PREFIX = "JSON_PART = ";
+const DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX =
+  "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(";
 // Fallback JSON string literals can double quotes and backslashes.
 const MAX_JSON_PART_SOURCE_CHARS = Math.floor(
   (MAX_GENERATED_PYTHON_LINE_LENGTH -
     PYTHON_JSON_PART_ASSIGNMENT_PREFIX.length -
     2) /
+    2,
+);
+const MAX_DIAGNOSTIC_JSON_SOURCE_CHARS = Math.floor(
+  (MAX_GENERATED_PYTHON_LINE_LENGTH -
+    DIAGNOSTIC_JSON_ASSIGNMENT_PREFIX.length -
+    3) /
     2,
 );
 const DIAGNOSTIC_REFERENCE_NAME_PATTERN =
@@ -555,21 +563,95 @@ function renderPythonDiagnosticManifest(
   generatedHeader: readonly string[],
   manifest: BuiltinFirewallDiagnosticManifest,
 ): string {
+  const connectorAssignment = renderPythonJsonAssignment(
+    "CONNECTOR_DIAGNOSTIC_FIREWALLS",
+    manifest.connectorFirewalls,
+  );
+  const modelProviderAssignment = renderPythonJsonAssignment(
+    "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS",
+    manifest.modelProviderExclusions,
+  );
+
   return [
     ...generatedHeader,
     "",
-    "# fmt: off",
-    `CONNECTOR_DIAGNOSTIC_FIREWALLS = ${stablePrettyJson(
-      manifest.connectorFirewalls,
-    )}`,
+    "import json",
     "",
-    `MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = ${stablePrettyJson(
-      manifest.modelProviderExclusions,
-    )}`,
+    "# fmt: off",
+    ...connectorAssignment,
+    "",
+    ...modelProviderAssignment,
     "",
     "# fmt: on",
     "",
   ].join("\n");
+}
+
+function renderPythonJsonAssignment(
+  name: string,
+  value: unknown,
+): readonly string[] {
+  const json = stablePrettyJson(value);
+  const assignmentPrefix = `${name} = json.loads(`;
+  const inlineLiteral = pythonRawJsonLiteralForAssignment(
+    json,
+    assignmentPrefix.length,
+  );
+  if (inlineLiteral !== null) {
+    return [`${assignmentPrefix}${inlineLiteral})`];
+  }
+
+  const chunks = splitJsonLines(json, MAX_DIAGNOSTIC_JSON_SOURCE_CHARS);
+  if (chunks.length === 1) {
+    const chunk = chunks[0];
+    if (chunk === undefined) {
+      throw new Error(`missing generated Python JSON assignment for ${name}`);
+    }
+    return [`${assignmentPrefix}${pythonJsonChunkLiteral(chunk)})`];
+  }
+
+  return [
+    assignmentPrefix,
+    '    "".join((',
+    ...chunks.map((chunk) => {
+      return `        ${pythonJsonChunkLiteral(chunk)},`;
+    }),
+    "    ))",
+    ")",
+  ];
+}
+
+function pythonRawJsonLiteralForAssignment(
+  value: string,
+  assignmentPrefixLength: number,
+): string | null {
+  if (
+    value.includes('"""') ||
+    value.endsWith('"') ||
+    hasOddTrailingBackslashes(value)
+  ) {
+    return null;
+  }
+
+  const lines = value.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === undefined) {
+      throw new Error("failed to read Python JSON assignment line");
+    }
+
+    const isFirstLine = index === 0;
+    const isLastLine = index === lines.length - 1;
+    const renderedLineLength =
+      (isFirstLine ? assignmentPrefixLength + 'r"""'.length : 0) +
+      line.length +
+      (isLastLine ? '""")'.length : 0);
+    if (renderedLineLength > MAX_GENERATED_PYTHON_LINE_LENGTH) {
+      return null;
+    }
+  }
+
+  return `r"""${value}"""`;
 }
 
 function renderPythonJsonPartModule(
