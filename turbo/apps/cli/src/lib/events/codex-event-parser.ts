@@ -17,6 +17,8 @@ const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
 const MAX_FORMATTED_TEXT_LENGTH = 240;
 const MAX_ERROR_SIGNAL_DEPTH = 8;
+const MAX_FORMATTED_PLAN_STEPS = 20;
+const MAX_FORMATTED_FILE_CHANGES = 20;
 
 function asRecord(value: unknown): JsonRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -483,7 +485,8 @@ function formatPlanLines(plan: unknown): string[] {
   if (!Array.isArray(plan)) {
     return [];
   }
-  return plan
+  const lines = plan
+    .slice(0, MAX_FORMATTED_PLAN_STEPS)
     .map((step) => {
       const stepRecord = asRecord(step);
       if (!stepRecord) {
@@ -499,6 +502,11 @@ function formatPlanLines(plan: unknown): string[] {
     .filter((line): line is string => {
       return line !== undefined;
     });
+  const remaining = plan.length - MAX_FORMATTED_PLAN_STEPS;
+  if (remaining > 0) {
+    lines.push(`- ... +${remaining} more steps`);
+  }
+  return lines;
 }
 
 function formatGenericItem(item: JsonRecord): string | undefined {
@@ -937,6 +945,7 @@ export class CodexEventParser {
     const errorMessage = getItemErrorMessage(item);
     const lines = Array.isArray(item.changes)
       ? item.changes
+          .slice(0, MAX_FORMATTED_FILE_CHANGES)
           .map((change) => {
             const changeRecord = asRecord(change);
             if (!changeRecord) {
@@ -955,6 +964,14 @@ export class CodexEventParser {
             return line !== undefined;
           })
       : [];
+    if (
+      Array.isArray(item.changes) &&
+      item.changes.length > MAX_FORMATTED_FILE_CHANGES
+    ) {
+      lines.push(
+        `... +${item.changes.length - MAX_FORMATTED_FILE_CHANGES} more changes`,
+      );
+    }
 
     if (lines.length === 0 && !isFailedStatus(status) && !errorMessage) {
       return null;

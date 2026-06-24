@@ -2648,6 +2648,63 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("[object Object]");
     });
 
+    it("should bound large Codex plan and file-change lists", async () => {
+      const plan = Array.from({ length: 25 }, (_, index) => {
+        return { step: `step-${index}`, status: "pending" };
+      });
+      const changes = Array.from({ length: 25 }, (_, index) => {
+        return { path: `/workspace/file-${index}.ts`, kind: "add" };
+      });
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "turn.plan.updated",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "turn.plan.updated",
+                    plan,
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "changes-1",
+                      type: "file_change",
+                      changes,
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("pending: step-0");
+      expect(logCalls).toContain("pending: step-19");
+      expect(logCalls).toContain("- ... +5 more steps");
+      expect(logCalls).not.toContain("pending: step-20");
+      expect(logCalls).toContain("Created: /workspace/file-0.ts");
+      expect(logCalls).toContain("Created: /workspace/file-19.ts");
+      expect(logCalls).toContain("... +5 more changes");
+      expect(logCalls).not.toContain("Created: /workspace/file-20.ts");
+    });
+
     it("should respect failed and declined statuses and flush pending tools", async () => {
       server.use(
         http.get(
