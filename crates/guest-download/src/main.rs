@@ -1,5 +1,7 @@
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(unix)]
+use std::fs::OpenOptions;
 use std::io::{self, ErrorKind, Read as _};
 use std::time::Instant;
 
