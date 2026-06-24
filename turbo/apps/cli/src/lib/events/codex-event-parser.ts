@@ -225,12 +225,44 @@ function getTurnStatus(event: JsonRecord): string | undefined {
   );
 }
 
+const FAILED_STATUSES = new Set([
+  "aborted",
+  "cancelled",
+  "canceled",
+  "declined",
+  "error",
+  "failed",
+  "interrupted",
+  "timed_out",
+  "timeout",
+]);
+
 function isFailedStatus(status: string | undefined): boolean {
-  return status === "failed" || status === "declined";
+  return status !== undefined && FAILED_STATUSES.has(status.toLowerCase());
 }
 
-function isTerminalFailedTurnStatus(status: string | undefined): boolean {
-  return status === "failed" || status === "interrupted";
+function hasExtractableError(value: unknown): boolean {
+  return extractErrorMessage(value) !== undefined;
+}
+
+function hasTurnCompletionError(
+  event: JsonRecord,
+  turn: JsonRecord | null,
+): boolean {
+  return (
+    (turn !== null && hasExtractableError(turn.error)) ||
+    hasExtractableError(event.error)
+  );
+}
+
+function getTurnCompletionErrorMessage(
+  event: JsonRecord,
+  turn: JsonRecord | null,
+): string | undefined {
+  return combineDistinctMessages(
+    turn !== null ? extractErrorMessage(turn.error) : undefined,
+    extractEventErrorMessage(event),
+  );
 }
 
 function getUsage(event: JsonRecord): JsonRecord {
@@ -398,11 +430,10 @@ export class CodexEventParser {
       getFirstNumber(event, ["duration_ms", "durationMs"]) ??
       0;
 
-    if (isTerminalFailedTurnStatus(status)) {
+    if (isFailedStatus(status) || hasTurnCompletionError(event, turn)) {
       const result =
-        (turn ? extractErrorMessage(turn.error) : undefined) ??
-        extractEventErrorMessage(event) ??
-        `Turn ${status}`;
+        getTurnCompletionErrorMessage(event, turn) ??
+        (status ? `Turn ${status}` : "Turn failed");
       return {
         type: "result",
         timestamp: new Date(),

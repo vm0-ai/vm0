@@ -1579,6 +1579,97 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("[object Object]");
     });
 
+    it("should render turn.completed with an error payload as failed when status is missing", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      error: {
+                        message: "server overloaded",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("server overloaded");
+      expect(logCalls).not.toContain("Codex Completed");
+    });
+
+    it("should render cancelled turn.completed as failed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "cancelled",
+                      error: null,
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("Turn cancelled");
+      expect(logCalls).not.toContain("Codex Completed");
+    });
+
     it("should ignore null turn errors when rendering failed turn.completed", async () => {
       server.use(
         http.get(
