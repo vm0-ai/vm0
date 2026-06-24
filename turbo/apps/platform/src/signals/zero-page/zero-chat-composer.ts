@@ -166,6 +166,18 @@ export const setTemplatePickerPreviewSlug$ = command(
   },
 );
 
+const internalTemplatePickerPresentationScrollTop$ = state(0);
+export const setTemplatePickerPresentationScrollTop$ = command(
+  ({ set }, scrollTop: number) => {
+    set(internalTemplatePickerPresentationScrollTop$, scrollTop);
+  },
+);
+export const restoreTemplatePickerPresentationScroll$ = command(
+  ({ get }, node: HTMLElement) => {
+    node.scrollTop = get(internalTemplatePickerPresentationScrollTop$);
+  },
+);
+
 // Inline illustration cards show a hero image plus a variant thumbnail strip.
 // Several cards are visible at once, so the active variant index is tracked per
 // illustration style slug rather than as a single shared value.
