@@ -68,6 +68,14 @@ function connectorSearchFixtureTypes(): readonly ConnectorType[] {
   }).slice(0, 21);
 }
 
+function expectTextBefore(firstText: string, secondText: string): void {
+  const first = screen.getByText(firstText);
+  const second = screen.getByText(secondText);
+  expect(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -1610,6 +1618,34 @@ describe("chat composer models", () => {
       expect(
         screen.queryByText(/Available connectors to connect/u),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps composer connector order independent of authorization state", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockManyConnectedConnectors();
+    mockAgentConnectorAuthorizations(["slack"]);
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    click(within(composer).getByLabelText("Connectors"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
+      expectTextBefore("GitHub", "Slack");
+    });
+
+    await user.click(screen.getByLabelText("Remove Slack"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
+      expectTextBefore("GitHub", "Slack");
     });
   });
 });
