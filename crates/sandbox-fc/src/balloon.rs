@@ -347,6 +347,14 @@ mod tests {
         server.await.unwrap()
     }
 
+    fn patch_amount_mib(body: &str) -> u64 {
+        let parsed: serde_json::Value =
+            serde_json::from_str(body).unwrap_or_else(|e| panic!("parse PATCH body {body:?}: {e}"));
+        parsed["amount_mib"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("PATCH body missing numeric amount_mib: {body}"))
+    }
+
     #[tokio::test]
     async fn controller_handle_drop_aborts_task() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -464,8 +472,7 @@ mod tests {
         let patch = run_tick_with_mock(stats, 1536).await;
         assert!(patch.is_some(), "expected PATCH call for inflate");
         let body = patch.unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let amount = parsed["amount_mib"].as_u64().unwrap();
+        let amount = patch_amount_mib(&body);
         assert_eq!(
             amount, 256,
             "expected per-tick cap of {MAX_INFLATE_PER_TICK_MIB}, got {amount}"
@@ -493,7 +500,26 @@ mod tests {
         let patch = run_tick_with_mock(stats, 1536).await;
         assert!(patch.is_some(), "expected PATCH call for deflate");
         let body = patch.unwrap();
-        assert!(body.contains("amount_mib"), "body: {body}");
+        let amount = patch_amount_mib(&body);
+        assert_eq!(
+            amount, 384,
+            "expected deflate target for 128 MiB available memory, got {amount}"
+        );
+    }
+
+    #[tokio::test]
+    async fn tick_deflate_saturates_when_deficit_exceeds_current() {
+        // available_memory = 0 MiB, so deficit is 256 MiB.
+        // current balloon is only 100 MiB, so target should saturate at 0.
+        let stats = r#"{"target_mib":100,"actual_mib":100,"target_pages":25600,"actual_pages":25600,"free_memory":0,"available_memory":0}"#;
+        let patch = run_tick_with_mock(stats, 1536).await;
+        assert!(patch.is_some(), "expected PATCH call for deflate");
+        let body = patch.unwrap();
+        let amount = patch_amount_mib(&body);
+        assert_eq!(
+            amount, 0,
+            "expected saturated deflate target of 0, got {amount}"
+        );
     }
 
     #[tokio::test]
@@ -514,8 +540,7 @@ mod tests {
         let patch = run_tick_with_mock(stats, 512).await;
         assert!(patch.is_some(), "expected PATCH call");
         let body = patch.unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let amount = parsed["amount_mib"].as_u64().unwrap();
+        let amount = patch_amount_mib(&body);
         assert_eq!(
             amount, 256,
             "expected per-tick cap of {MAX_INFLATE_PER_TICK_MIB}, got {amount}"
@@ -531,8 +556,7 @@ mod tests {
         let patch = run_tick_with_mock(stats, 1536).await;
         assert!(patch.is_some(), "expected PATCH call");
         let body = patch.unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let amount = parsed["amount_mib"].as_u64().unwrap();
+        let amount = patch_amount_mib(&body);
         assert_eq!(
             amount, 1536,
             "expected clamped to max_inflate, got {amount}"
