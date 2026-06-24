@@ -4480,11 +4480,6 @@ function prepareRunContext(
       const userTimezone = await loadUserTimezone(db, args);
       signal.throwIfAborted();
 
-      const runArtifacts = artifactsForRun({
-        resolved,
-        framework,
-        bodyArtifacts: body.artifacts,
-      });
       const additionalVolumes = preparedRunAdditionalVolumes({
         createArgs: args,
         framework,
@@ -4503,7 +4498,11 @@ function prepareRunContext(
         permissionManifest,
         billableFirewalls: modelUsageContext.billableFirewalls,
         modelUsageProvider: modelUsageContext.modelUsageProvider,
-        artifacts: runArtifacts.artifacts,
+        artifacts: artifactsForRun({
+          resolved,
+          framework,
+          bodyArtifacts: body.artifacts,
+        }).artifacts,
         additionalVolumes,
         userTimezone,
         featureSwitchContext,
