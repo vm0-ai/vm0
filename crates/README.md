@@ -4,26 +4,26 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 
 ## Crates
 
-| Crate | Description |
-|-------|-------------|
-| **runner** | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
-| **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult` |
-| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore |
-| **nbd-cow** | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices |
-| **vsock-proto** | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages |
-| **vsock-host** | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets |
-| **vsock-guest** | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2 |
-| **vsock-test** | Integration tests for vsock — real host + real guest over Unix sockets |
-| **guest-init** | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest |
-| **guest-agent** | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM |
-| **guest-contracts** | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers |
-| **guest-common** | Guest-only shared utilities — logging macros and telemetry recording |
-| **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |
-| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
-| **guest-mock-codex** | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists JSONL session files |
-| **guest-reseed** | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG |
-| **guest-write-file** | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead |
-| **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
+| Crate                 | Description                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **runner**            | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
+| **sandbox**           | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult`                          |
+| **sandbox-fc**        | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore                                |
+| **nbd-cow**           | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices                    |
+| **vsock-proto**       | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages                                          |
+| **vsock-host**        | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets                                                    |
+| **vsock-guest**       | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2                                             |
+| **vsock-test**        | Integration tests for vsock — real host + real guest over Unix sockets                                                              |
+| **guest-init**        | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest                 |
+| **guest-agent**       | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM                              |
+| **guest-contracts**   | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers                     |
+| **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                |
+| **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                      |
+| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                            |
+| **guest-mock-codex**  | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists JSONL session files                                  |
+| **guest-reseed**      | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG              |
+| **guest-write-file**  | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead                              |
+| **ably-subscriber**   | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection             |
 
 ## Architecture
 
@@ -73,22 +73,31 @@ Both HTTP clients in the workspace use `rustls-platform-verifier` to read from t
 cargo build
 cargo build --release
 
-# Cross-compile for aarch64 with the faster CI/dev profile
+# Cross-compile with the faster CI/dev profile.
+# Supported targets:
+#   aarch64-unknown-linux-musl
+#   x86_64-unknown-linux-musl
+TARGET_TRIPLE=aarch64-unknown-linux-musl
+
 # Step 1: build guest binaries
-cargo build --target aarch64-unknown-linux-musl \
+cargo build --target "$TARGET_TRIPLE" \
   -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file \
   --profile ci
 
 # Step 2: build runner with embedded guests
-GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/ci/guest-agent \
-GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/ci/guest-download \
-GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/ci/guest-init \
-GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/ci/guest-mock-claude \
-GUEST_MOCK_CODEX_PATH=target/aarch64-unknown-linux-musl/ci/guest-mock-codex \
-GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/ci/guest-reseed \
-GUEST_WRITE_FILE_PATH=target/aarch64-unknown-linux-musl/ci/guest-write-file \
-cargo build --target aarch64-unknown-linux-musl -p runner --profile ci
+GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
+GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
+GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
+GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
+GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
+GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
+cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```
+
+See [`../docs/runner-multi-architecture.md`](../docs/runner-multi-architecture.md)
+for runner deployment, release asset naming, and host-architecture target
+selection.
 
 ## Testing
 
