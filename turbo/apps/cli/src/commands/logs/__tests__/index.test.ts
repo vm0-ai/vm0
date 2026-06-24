@@ -605,6 +605,75 @@ describe("logs command", () => {
       expect(logCalls).toContain("File content here");
     });
 
+    it("should not pair malformed tool results with tool uses that lack ids", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "Bash",
+                          input: { command: "echo no-id" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          content: "orphan output",
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        { type: "text", text: "after malformed result" },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("echo no-id");
+      expect(logCalls).toContain("after malformed result");
+      expect(logCalls).not.toContain("orphan output");
+    });
+
     it("should handle tool_result events", async () => {
       server.use(
         http.get(

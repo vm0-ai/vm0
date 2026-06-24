@@ -204,7 +204,7 @@ export class EventRenderer {
 
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
-    if (this.options.buffered !== false) {
+    if (this.options.buffered !== false && toolUseId.length > 0) {
       const existing = this.pendingToolUse.get(toolUseId);
       if (existing && !existing.rendered) {
         this.renderToolUseOnly(existing.toolUse, existing.prefix);
@@ -215,7 +215,7 @@ export class EventRenderer {
         rendered: false,
       });
     } else {
-      // Non-buffered: render tool_use header immediately
+      // Non-buffered, or malformed tool_use without a stable id: render immediately.
       this.renderToolUseOnly(toolUseData, prefix);
     }
   }
