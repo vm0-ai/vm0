@@ -32,6 +32,14 @@ function makeAgentEvent(sequenceNumber: number) {
   };
 }
 
+function makeNestedArray(depth: number): unknown[] {
+  let value: unknown[] = ["leaf"];
+  for (let index = 0; index < depth; index += 1) {
+    value = [value];
+  }
+  return value;
+}
+
 describe("logs command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -2321,6 +2329,46 @@ describe("logs command", () => {
       expect(logCalls).toContain("retry later");
       expect(logCalls).toContain("Modified: /workspace/ok.ts");
       expect(logCalls).not.toContain("[object Object]");
+    });
+
+    it("should bound deeply nested Codex error detail formatting", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      error: {
+                        message: "nested error detail",
+                        connectors: makeNestedArray(20),
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(logCalls).toContain("nested error detail");
+      expect(logCalls).toContain("...");
+      expect(logCalls).not.toContain("leaf");
     });
   });
 

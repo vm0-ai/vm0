@@ -12,6 +12,7 @@ import type { ParsedEvent } from "./claude-event-parser";
 type JsonRecord = Record<string, unknown>;
 
 const MAX_FORMATTED_ARRAY_ITEMS = 6;
+const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_TEXT_LENGTH = 240;
 
@@ -96,6 +97,10 @@ function formatUnknownValue(value: unknown, depth = 0): string | undefined {
   }
 
   if (Array.isArray(value)) {
+    if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+      return "...";
+    }
+
     const items = value
       .slice(0, MAX_FORMATTED_ARRAY_ITEMS)
       .map((item) => {
