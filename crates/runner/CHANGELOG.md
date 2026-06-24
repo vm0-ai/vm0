@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.13...runner-rs-v0.129.14) (2026-06-24)
+
+
+### Refactoring
+
+* compose builtin firewall catalog in generator ([#18821](https://github.com/vm0-ai/vm0/issues/18821)) ([a5a32b5](https://github.com/vm0-ai/vm0/commit/a5a32b59fe54f5182360c2ec45934be4f48ffe85))
+
 ## [0.129.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.12...runner-rs-v0.129.13) (2026-06-24)
 
 
