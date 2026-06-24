@@ -208,7 +208,7 @@ jobs:
       - name: Select runner job refs
         id: runner-job-ref
         env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
@@ -296,18 +296,9 @@ jobs:
       - name: Resolve runner host architecture groups
         id: groups
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         run: |
-          host_count=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | wc -l | tr -d ' ')
-          host_fingerprints=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" \
-            | tr ',' '\n' \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | sed '/^$/d' \
-            | while IFS= read -r host; do printf '%s' "$host" | sha256sum | cut -c1-12; done \
-            | paste -sd, -)
-          echo "Crates host input: count=${host_count}, fingerprints=${host_fingerprints}"
-
           MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix-with-hosts)
           GROUP_COUNT=$(jq -r 'length' <<<"$MATRIX")
           if [ "$GROUP_COUNT" -lt 1 ]; then

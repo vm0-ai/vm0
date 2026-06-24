@@ -2273,7 +2273,7 @@ jobs:
       - name: Resolve production runner host architecture groups
         id: groups
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         shell: bash
         run: |
@@ -2349,7 +2349,7 @@ jobs:
       - name: Resolve metal hosts for architecture
         id: matrix-hosts
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         shell: bash
@@ -2596,7 +2596,7 @@ jobs:
       - name: Resolve metal hosts for architecture
         id: matrix-hosts
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         shell: bash

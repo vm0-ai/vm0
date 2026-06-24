@@ -19,7 +19,7 @@ jobs:
       - name: Check if cleanup needed
         id: check
         env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
@@ -46,7 +46,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
           JOB_REF="pr-${PR_NUMBER}"
@@ -64,7 +64,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
           JOB_REF="pr-${PR_NUMBER}"
@@ -82,7 +82,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
           JOB_REF="pr-${PR_NUMBER}-test"

@@ -220,7 +220,7 @@ jobs:
       - name: Check if cleanup needed
         id: check
         env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
@@ -269,7 +269,7 @@ jobs:
         if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
           DRY_RUN: ${{ env.DRY_RUN }}
         run: |

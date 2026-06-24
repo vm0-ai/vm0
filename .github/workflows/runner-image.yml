@@ -183,7 +183,7 @@ jobs:
         id: host-group-presence
         env:
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           set -euo pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -222,7 +222,7 @@ jobs:
         id: host-groups
         env:
           CURRENT_RUNNER_IMAGE_NEEDED: ${{ steps.needed.outputs.current-runner-image-needed }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         run: |
           set -euo pipefail
@@ -231,15 +231,6 @@ jobs:
             echo "Skipping runner host architecture group resolution because runner image is not needed"
             exit 0
           fi
-
-          host_count=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | wc -l | tr -d ' ')
-          host_fingerprints=$(printf '%s\n' "$AWS_METAL_RUNNER_HOSTS" \
-            | tr ',' '\n' \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | sed '/^$/d' \
-            | while IFS= read -r host; do printf '%s' "$host" | sha256sum | cut -c1-12; done \
-            | paste -sd, -)
-          echo "Runner image host input: count=${host_count}, fingerprints=${host_fingerprints}"
 
           matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix-with-hosts)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
