@@ -1,0 +1,38 @@
+- name: Validate architecture inputs
+  assert:
+    that:
+      - (runner_target | default('')) in ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
+      - (runner_asset_suffix | default('')) in ["aarch64-linux", "x86_64-linux"]
+      - (expected_runner_uname_m | default('')) in ["aarch64", "x86_64"]
+      - >-
+        (
+          runner_target == "aarch64-unknown-linux-musl" and
+          runner_asset_suffix == "aarch64-linux" and
+          expected_runner_uname_m == "aarch64"
+        ) or (
+          runner_target == "x86_64-unknown-linux-musl" and
+          runner_asset_suffix == "x86_64-linux" and
+          expected_runner_uname_m == "x86_64"
+        )
+    fail_msg: >-
+      Missing or invalid architecture inputs. Required: `runner_target`
+      (aarch64-unknown-linux-musl | x86_64-unknown-linux-musl),
+      `runner_asset_suffix` (aarch64-linux | x86_64-linux), and
+      `expected_runner_uname_m` (aarch64 | x86_64), all matching the same
+      architecture. Got runner_target='{{ runner_target | default('<undefined>') }}',
+      runner_asset_suffix='{{ runner_asset_suffix | default('<undefined>') }}',
+      expected_runner_uname_m='{{ expected_runner_uname_m | default('<undefined>') }}'.
+
+- name: Probe remote architecture
+  command: uname -m
+  register: remote_uname_m
+  changed_when: false
+
+- name: Assert remote architecture matches runner target
+  assert:
+    that:
+      - (remote_uname_m.stdout | trim) == expected_runner_uname_m
+    fail_msg: >-
+      Refusing to use runner target '{{ runner_target }}' on remote
+      architecture '{{ remote_uname_m.stdout | trim }}' (expected
+      '{{ expected_runner_uname_m }}').
