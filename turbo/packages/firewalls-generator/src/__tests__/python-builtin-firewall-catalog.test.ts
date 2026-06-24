@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -79,6 +83,44 @@ function findGeneratedFile(
     throw new Error(`missing generated file: ${path}`);
   }
   return file;
+}
+
+function assertPythonCatalogLoadsNames(
+  files: readonly PythonBuiltinFirewallCatalogFile[],
+  names: readonly string[],
+): void {
+  const packageRoot = mkdtempSync(join(tmpdir(), "builtin-firewalls-"));
+  const packageDir = join(packageRoot, "builtin_firewalls");
+  try {
+    mkdirSync(packageDir, { recursive: true });
+    for (const file of files) {
+      writeFileSync(join(packageDir, file.path), file.content);
+    }
+
+    execFileSync(
+      "python3",
+      [
+        "-c",
+        [
+          "import json",
+          "import os",
+          "from builtin_firewalls import BUILTIN_FIREWALLS",
+          'names = json.loads(os.environ["EXPECTED_FIREWALL_NAMES"])',
+          "for name in names:",
+          '    assert BUILTIN_FIREWALLS[name]["name"] == name',
+        ].join("\n"),
+      ],
+      {
+        env: {
+          ...process.env,
+          EXPECTED_FIREWALL_NAMES: JSON.stringify(names),
+          PYTHONPATH: packageRoot,
+        },
+      },
+    );
+  } finally {
+    rmSync(packageRoot, { recursive: true, force: true });
+  }
 }
 
 function jsonPartFromModule(file: PythonBuiltinFirewallCatalogFile): string {
@@ -395,6 +437,7 @@ describe("Python builtin firewall catalog renderer", () => {
       connectorEntry(testFirewall(secondName)),
     ]);
     const manifest = findGeneratedFile(files, "manifest.py").content;
+    const loader = findGeneratedFile(files, "loader.py").content;
     const partPaths = files
       .map((file) => {
         return file.path;
@@ -408,8 +451,16 @@ describe("Python builtin firewall catalog renderer", () => {
     for (const path of partPaths) {
       expect(path.length).toBeLessThanOrEqual(120);
     }
-    expect(manifest).toContain(JSON.stringify(firstName));
-    expect(manifest).toContain(JSON.stringify(secondName));
+    for (const file of files) {
+      for (const line of file.content.split("\n")) {
+        expect(line.length).toBeLessThanOrEqual(
+          MAX_GENERATED_PYTHON_LINE_LENGTH,
+        );
+      }
+    }
+    expect(loader).toContain("    if name == (\n");
+    expect(manifest).toContain("    (\n");
+    assertPythonCatalogLoadsNames(files, [firstName, secondName]);
   });
 
   it("deduplicates sanitized module-name collisions", () => {

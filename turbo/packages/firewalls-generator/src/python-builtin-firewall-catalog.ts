@@ -396,6 +396,81 @@ function pythonEscapedStringLiteral(value: string): string {
   return literal;
 }
 
+function splitPythonStringLiteralChunks(
+  value: string,
+  maxLiteralLength: number,
+): readonly string[] {
+  if (!Number.isInteger(maxLiteralLength) || maxLiteralLength < 2) {
+    throw new Error(
+      `invalid Python string literal length: ${maxLiteralLength}`,
+    );
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const char of value) {
+    const candidate = `${current}${char}`;
+    if (
+      current.length > 0 &&
+      pythonEscapedStringLiteral(candidate).length > maxLiteralLength
+    ) {
+      chunks.push(current);
+      current = char;
+      if (pythonEscapedStringLiteral(current).length > maxLiteralLength) {
+        throw new Error("failed to split Python string literal");
+      }
+      continue;
+    }
+    current = candidate;
+  }
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  return chunks.length > 0 ? chunks : [""];
+}
+
+function renderPythonStringExpressionLines({
+  value,
+  prefix,
+  continuationIndent,
+  closingIndent,
+  suffix,
+}: {
+  readonly value: string;
+  readonly prefix: string;
+  readonly continuationIndent: string;
+  readonly closingIndent: string;
+  readonly suffix: string;
+}): readonly string[] {
+  const literal = pythonEscapedStringLiteral(value);
+  if (
+    prefix.length + literal.length + suffix.length <=
+    MAX_GENERATED_PYTHON_LINE_LENGTH
+  ) {
+    return [`${prefix}${literal}${suffix}`];
+  }
+
+  if (prefix.length + "(".length > MAX_GENERATED_PYTHON_LINE_LENGTH) {
+    throw new Error("invalid Python string expression prefix");
+  }
+  if (
+    closingIndent.length + ")".length + suffix.length >
+    MAX_GENERATED_PYTHON_LINE_LENGTH
+  ) {
+    throw new Error("invalid Python string expression suffix");
+  }
+
+  const maxLiteralLength =
+    MAX_GENERATED_PYTHON_LINE_LENGTH - continuationIndent.length;
+  return [
+    `${prefix}(`,
+    ...splitPythonStringLiteralChunks(value, maxLiteralLength).map((chunk) => {
+      return `${continuationIndent}${pythonEscapedStringLiteral(chunk)}`;
+    }),
+    `${closingIndent})${suffix}`,
+  ];
+}
+
 function hasOddTrailingBackslashes(value: string): boolean {
   let count = 0;
   for (let index = value.length - 1; index >= 0; index -= 1) {
@@ -577,7 +652,15 @@ function renderPythonLoader(
   ];
 
   for (const [name, modules] of modulesByFirewall) {
-    lines.push(`    if name == ${pythonEscapedStringLiteral(name)}:`);
+    lines.push(
+      ...renderPythonStringExpressionLines({
+        value: name,
+        prefix: "    if name == ",
+        continuationIndent: "        ",
+        closingIndent: "    ",
+        suffix: ":",
+      }),
+    );
     for (const moduleName of modules) {
       lines.push(`        from . import ${moduleName}`);
     }
@@ -618,7 +701,15 @@ function renderPythonManifest(
       .join(", ");
     const tupleSuffix = modules.length === 1 ? "," : "";
     if (modules.length > 1) {
-      lines.push(`    ${pythonEscapedStringLiteral(name)}: (`);
+      lines.push(
+        ...renderPythonStringExpressionLines({
+          value: name,
+          prefix: "    ",
+          continuationIndent: "        ",
+          closingIndent: "    ",
+          suffix: ": (",
+        }),
+      );
       for (const moduleName of modules) {
         lines.push(`        ${pythonEscapedStringLiteral(moduleName)},`);
       }
@@ -627,7 +718,13 @@ function renderPythonManifest(
     }
 
     lines.push(
-      `    ${pythonEscapedStringLiteral(name)}: (${renderedModules}${tupleSuffix}),`,
+      ...renderPythonStringExpressionLines({
+        value: name,
+        prefix: "    ",
+        continuationIndent: "        ",
+        closingIndent: "    ",
+        suffix: `: (${renderedModules}${tupleSuffix}),`,
+      }),
     );
   }
 
