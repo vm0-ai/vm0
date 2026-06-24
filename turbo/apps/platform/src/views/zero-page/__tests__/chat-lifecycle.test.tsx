@@ -4590,10 +4590,10 @@ describe("chat lifecycle", () => {
     await user.click(await screen.findByText("Connect my computer"));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Connect your computer")).toBeInTheDocument();
+    expect(screen.getByText("Let Zero use your computer")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Download Zero Computer Use for macOS, then open it to let Zero use your desktop.",
+        "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
       ),
     ).toBeInTheDocument();
     expect(linkByText("Download for macOS")).toHaveAttribute(
