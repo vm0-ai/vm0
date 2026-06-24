@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
-import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
 import { getAppUrl } from "../../../src/lib/zero/url";
@@ -15,6 +14,7 @@ import {
 } from "./data";
 
 const MAX_WIDTH = 880;
+const GALLERY_MAX_WIDTH = 1200;
 const PAGE_PADDING = 24;
 const PRESENTATION_PREVIEW_IMAGE_SIZE = { width: 1664, height: 824 } as const;
 
@@ -50,7 +50,7 @@ function PresentationCard({
             )}
             alt={item.title}
             fill
-            sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
+            sizes="(min-width: 1024px) 368px, (min-width: 640px) 45vw, calc(100vw - 48px)"
             className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
@@ -62,7 +62,6 @@ function PresentationCard({
         </div>
       </a>
       <div className="flex flex-col gap-3 px-4 py-3">
-        <CopyablePrompt prompt={item.prompt} />
         <a
           href={remixHref}
           className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] bg-[#ed4e01] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#d94600]"
@@ -106,11 +105,11 @@ export function PresentationClient() {
       <section style={{ paddingBottom: 120 }}>
         <div
           style={{
-            maxWidth: MAX_WIDTH,
+            maxWidth: GALLERY_MAX_WIDTH,
             margin: "0 auto",
             padding: `0 ${PAGE_PADDING}px`,
           }}
-          className="flex flex-col items-stretch gap-6"
+          className="grid grid-cols-1 items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3"
         >
           {PRESENTATION_ITEMS.map((item) => {
             return (
