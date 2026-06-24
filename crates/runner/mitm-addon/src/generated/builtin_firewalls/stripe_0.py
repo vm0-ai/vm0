@@ -35,11 +35,7 @@ JSON_PART = r"""{
             "POST /v1/accounts",
             "POST /v1/accounts/{account}",
             "DELETE /v1/accounts/{account}",
-            "POST /v1/accounts/{account}/reject",
-            "POST /v1/customers/{customer}/bank_accounts",
-            "DELETE /v1/customers/{customer}/bank_accounts/{id}",
-            "POST /v1/customers/{customer}/cards",
-            "DELETE /v1/customers/{customer}/cards/{id}"
+            "POST /v1/accounts/{account}/reject"
           ]
         },
         {
@@ -106,31 +102,9 @@ JSON_PART = r"""{
         },
         {
           "description": "Stripe API resource bank_account",
-          "name": "bank_account_read",
-          "rules": [
-            "GET /v1/accounts/{account}/bank_accounts/{id}",
-            "GET /v1/accounts/{account}/external_accounts",
-            "GET /v1/accounts/{account}/external_accounts/{id}",
-            "GET /v1/customers/{customer}/sources",
-            "GET /v1/customers/{customer}/sources/{id}"
-          ]
-        },
-        {
-          "description": "Stripe API resource bank_account",
           "name": "bank_account_write",
           "rules": [
-            "POST /v1/accounts/{account}/bank_accounts",
-            "POST /v1/accounts/{account}/bank_accounts/{id}",
-            "POST /v1/accounts/{account}/external_accounts",
-            "POST /v1/accounts/{account}/external_accounts/{id}",
-            "POST /v1/customers/{customer}/bank_accounts",
-            "POST /v1/customers/{customer}/bank_accounts/{id}",
-            "DELETE /v1/customers/{customer}/bank_accounts/{id}",
-            "POST /v1/customers/{customer}/bank_accounts/{id}/verify",
-            "POST /v1/customers/{customer}/cards",
-            "POST /v1/customers/{customer}/cards/{id}",
-            "DELETE /v1/customers/{customer}/cards/{id}",
-            "POST /v1/external_accounts/{id}"
+            "POST /v1/customers/{customer}/bank_accounts/{id}/verify"
           ]
         },
         {
@@ -258,34 +232,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource card",
-          "name": "card_read",
-          "rules": [
-            "GET /v1/accounts/{account}/bank_accounts/{id}",
-            "GET /v1/accounts/{account}/external_accounts",
-            "GET /v1/accounts/{account}/external_accounts/{id}",
-            "GET /v1/customers/{customer}/sources",
-            "GET /v1/customers/{customer}/sources/{id}"
-          ]
-        },
-        {
-          "description": "Stripe API resource card",
-          "name": "card_write",
-          "rules": [
-            "POST /v1/accounts/{account}/bank_accounts",
-            "POST /v1/accounts/{account}/bank_accounts/{id}",
-            "POST /v1/accounts/{account}/external_accounts",
-            "POST /v1/accounts/{account}/external_accounts/{id}",
-            "POST /v1/customers/{customer}/bank_accounts",
-            "POST /v1/customers/{customer}/bank_accounts/{id}",
-            "DELETE /v1/customers/{customer}/bank_accounts/{id}",
-            "POST /v1/customers/{customer}/cards",
-            "POST /v1/customers/{customer}/cards/{id}",
-            "DELETE /v1/customers/{customer}/cards/{id}",
-            "POST /v1/external_accounts/{id}"
-          ]
-        },
-        {
           "description": "Stripe API resource cash_balance",
           "name": "cash_balance_read",
           "rules": [
@@ -399,8 +345,7 @@ JSON_PART = r"""{
           "rules": [
             "GET /v1/account",
             "GET /v1/accounts",
-            "GET /v1/accounts/{account}",
-            "GET /v1/customers/{customer}/sources/{id}"
+            "GET /v1/accounts/{account}"
           ]
         },
         {
@@ -619,6 +564,7 @@ JSON_PART = r"""{
           "name": "external_account_read",
           "rules": [
             "GET /v1/accounts/{account}/bank_accounts/{id}",
+            "GET /v1/accounts/{account}/external_accounts",
             "GET /v1/accounts/{account}/external_accounts/{id}"
           ]
         },
@@ -1154,23 +1100,6 @@ JSON_PART = r"""{
             "POST /v1/payment_records/{id}/report_payment_attempt_guaranteed",
             "POST /v1/payment_records/{id}/report_payment_attempt_informational",
             "POST /v1/payment_records/{id}/report_refund"
-          ]
-        },
-        {
-          "description": "Stripe API resource payment_source",
-          "name": "payment_source_read",
-          "rules": [
-            "GET /v1/customers/{customer}/sources/{id}"
-          ]
-        },
-        {
-          "description": "Stripe API resource payment_source",
-          "name": "payment_source_write",
-          "rules": [
-            "POST /v1/customers/{customer}/bank_accounts",
-            "DELETE /v1/customers/{customer}/bank_accounts/{id}",
-            "POST /v1/customers/{customer}/cards",
-            "DELETE /v1/customers/{customer}/cards/{id}"
           ]
         },
         {

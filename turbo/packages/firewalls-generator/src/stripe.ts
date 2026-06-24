@@ -13,7 +13,7 @@
  * a direct operation-to-permission map in the public GA OpenAPI spec, so this
  * generator first uses named official permissions, then maps remaining
  * operations through API docs endpoint lists, unambiguous OpenAPI x-resourceId
- * schemas, and explicit multi-resource overrides for legacy ambiguous unions
+ * schemas, and explicit single-owner overrides for legacy ambiguous unions
  * that are validated against the current OpenAPI response resource IDs.
  *
  * Token format (gitleaks: stripe-access-token):
@@ -211,37 +211,45 @@ const REPRESENTATIVE_ALIAS_RULES: ReadonlyArray<{
   },
 ];
 
-const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
+const LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES: ReadonlyArray<{
   rule: string;
   resourceIds: readonly string[];
+  ownerResourceId: string;
 }> = [
   {
     rule: "POST /v1/accounts/{account}/bank_accounts",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "GET /v1/accounts/{account}/bank_accounts/{id}",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "POST /v1/accounts/{account}/bank_accounts/{id}",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "GET /v1/accounts/{account}/external_accounts",
     resourceIds: ["bank_account", "card"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "POST /v1/accounts/{account}/external_accounts",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "GET /v1/accounts/{account}/external_accounts/{id}",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "POST /v1/accounts/{account}/external_accounts/{id}",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
   {
     rule: "POST /v1/customers/{customer}/bank_accounts",
@@ -252,10 +260,12 @@ const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
       "payment_source",
       "source",
     ],
+    ownerResourceId: "source",
   },
   {
     rule: "POST /v1/customers/{customer}/bank_accounts/{id}",
     resourceIds: ["bank_account", "card", "source"],
+    ownerResourceId: "source",
   },
   {
     rule: "DELETE /v1/customers/{customer}/bank_accounts/{id}",
@@ -267,6 +277,7 @@ const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
       "payment_source",
       "source",
     ],
+    ownerResourceId: "source",
   },
   {
     rule: "POST /v1/customers/{customer}/cards",
@@ -277,10 +288,12 @@ const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
       "payment_source",
       "source",
     ],
+    ownerResourceId: "source",
   },
   {
     rule: "POST /v1/customers/{customer}/cards/{id}",
     resourceIds: ["bank_account", "card", "source"],
+    ownerResourceId: "source",
   },
   {
     rule: "DELETE /v1/customers/{customer}/cards/{id}",
@@ -292,10 +305,12 @@ const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
       "payment_source",
       "source",
     ],
+    ownerResourceId: "source",
   },
   {
     rule: "GET /v1/customers/{customer}/sources",
     resourceIds: ["bank_account", "card", "source"],
+    ownerResourceId: "source",
   },
   {
     rule: "GET /v1/customers/{customer}/sources/{id}",
@@ -306,24 +321,26 @@ const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES: ReadonlyArray<{
       "payment_source",
       "source",
     ],
+    ownerResourceId: "source",
   },
   {
     rule: "POST /v1/external_accounts/{id}",
     resourceIds: ["bank_account", "card", "external_account"],
+    ownerResourceId: "external_account",
   },
 ];
 
-const LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES_BY_RULE = new Map(
-  LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES.map((override) => {
-    return [override.rule, override.resourceIds] as const;
+const LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES_BY_RULE = new Map(
+  LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES.map((override) => {
+    return [override.rule, override] as const;
   }),
 );
 
 if (
-  LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES_BY_RULE.size !==
-  LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES.length
+  LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES_BY_RULE.size !==
+  LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES.length
 ) {
-  throw new Error("Duplicate Stripe legacy ambiguous resource override");
+  throw new Error("Duplicate Stripe legacy ambiguous route owner override");
 }
 
 interface StripeOpenApiSpec {
@@ -708,32 +725,34 @@ function validateLegacyAmbiguousResourceIds(
   );
 }
 
-function legacyAmbiguousPermissionDefinitions(
+function legacyAmbiguousPermissionDefinition(
   rule: string,
   resourceIds: readonly string[],
   access: "read" | "write",
   permissionDefinitions: Map<string, StripePermissionDefinition>,
-): StripePermissionDefinition[] {
-  const overrideResourceIds =
-    LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES_BY_RULE.get(rule);
-  if (!overrideResourceIds) return [];
+): StripePermissionDefinition | null {
+  const ownerOverride =
+    LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES_BY_RULE.get(rule);
+  if (!ownerOverride) return null;
 
-  validateLegacyAmbiguousResourceIds(rule, resourceIds, overrideResourceIds);
+  validateLegacyAmbiguousResourceIds(
+    rule,
+    resourceIds,
+    ownerOverride.resourceIds,
+  );
 
-  const definitions = new Map<string, StripePermissionDefinition>();
-  for (const resourceId of overrideResourceIds) {
-    for (const definition of permissionDefinitionsForResourceId(
-      resourceId,
-      access,
-      permissionDefinitions,
-    )) {
-      definitions.set(definition.name, definition);
-    }
+  const definitions = permissionDefinitionsForResourceId(
+    ownerOverride.ownerResourceId,
+    access,
+    permissionDefinitions,
+  );
+  if (definitions.length !== 1) {
+    throw new Error(
+      `Stripe legacy ambiguous owner "${ownerOverride.ownerResourceId}" maps to ${definitions.length} ${access} permissions for "${rule}"`,
+    );
   }
 
-  return [...definitions.values()].sort((a, b) => {
-    return a.name.localeCompare(b.name);
-  });
+  return definitions[0]!;
 }
 
 function cleanPermissionName(value: string): string {
@@ -1056,6 +1075,60 @@ function validateRepresentativeRules(
   }
 }
 
+const RUNTIME_METHODS = [
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+] as const;
+
+function expandRuntimeRule(rule: string): string[] {
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (method !== "ANY") return [rule];
+  return RUNTIME_METHODS.map((runtimeMethod) => {
+    return `${runtimeMethod} ${path}`;
+  });
+}
+
+function assertUniqueStripeRules(
+  permissions: readonly PermissionGroup[],
+): void {
+  const owners = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const permission of permissions) {
+    for (const rule of permission.rules) {
+      for (const runtimeRule of expandRuntimeRule(rule)) {
+        const existing = owners.get(runtimeRule);
+        if (existing) {
+          duplicates.push(`${runtimeRule}: ${existing}, ${permission.name}`);
+          continue;
+        }
+        owners.set(runtimeRule, permission.name);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new Error(
+      "Stripe generated duplicate firewall route owners:\n" +
+        duplicates
+          .sort((left, right) => {
+            return left.localeCompare(right);
+          })
+          .map((duplicate) => {
+            return `  - ${duplicate}`;
+          })
+          .join("\n"),
+    );
+  }
+}
+
 function buildGroups(
   spec: StripeOpenApiSpec,
   permissionDefinitions: Map<string, StripePermissionDefinition>,
@@ -1138,18 +1211,16 @@ function buildGroups(
       if (permissionName) {
         mappedPermissionNames.push(permissionName);
       } else {
-        const legacyDefinitions = legacyAmbiguousPermissionDefinitions(
+        const legacyDefinition = legacyAmbiguousPermissionDefinition(
           rule,
           resourceIds,
           access,
           permissionDefinitions,
         );
-        if (legacyDefinitions.length > 0) {
+        if (legacyDefinition) {
           usedLegacyAmbiguousOverride = true;
-          for (const definition of legacyDefinitions) {
-            mappedPermissionNames.push(definition.name);
-            generatedPermissionDefinitions.push(definition);
-          }
+          mappedPermissionNames.push(legacyDefinition.name);
+          generatedPermissionDefinitions.push(legacyDefinition);
         } else {
           const openApiResourcePermission = chooseOpenApiResourcePermission(
             resourceIds,
@@ -1206,7 +1277,7 @@ function buildGroups(
   }
 
   const unusedLegacyAmbiguousOverrideRules = [
-    ...LEGACY_AMBIGUOUS_RESOURCE_ID_OVERRIDES_BY_RULE.keys(),
+    ...LEGACY_AMBIGUOUS_ROUTE_OWNER_OVERRIDES_BY_RULE.keys(),
   ].filter((rule) => {
     return !usedLegacyAmbiguousOverrideRules.has(rule);
   });
@@ -1235,6 +1306,7 @@ function buildGroups(
   }
 
   validateRepresentativeRules(permissions, permissionDefinitions);
+  assertUniqueStripeRules(permissions);
 
   const stats: BuildStats = {
     specVersion: spec.info?.version ?? "unknown",
