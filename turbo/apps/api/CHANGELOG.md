@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.176.0](https://github.com/vm0-ai/vm0/compare/api-v1.175.1...api-v1.176.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+* **triggers:** add session-gated route to set unattended permission policy ([#18819](https://github.com/vm0-ai/vm0/issues/18819)) ([26cd67e](https://github.com/vm0-ai/vm0/commit/26cd67ef4a04577178f51653167320caa673a0dc))
+* **triggers:** add unattendedPermissionPolicy column and contract type ([#18806](https://github.com/vm0-ai/vm0/issues/18806)) ([e452d86](https://github.com/vm0-ai/vm0/commit/e452d8677c93183c64d5139dca0a8c7d72e09c56))
+
+
+### Performance Improvements
+
+* add api dispatch timing telemetry ([#18816](https://github.com/vm0-ai/vm0/issues/18816)) ([03237da](https://github.com/vm0-ai/vm0/commit/03237da88a861b159808f2b080ac031786956ba5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+    * @vm0/db bumped to 1.70.0
+
 ## [1.175.1](https://github.com/vm0-ai/vm0/compare/api-v1.175.0...api-v1.175.1) (2026-06-24)
 
 
