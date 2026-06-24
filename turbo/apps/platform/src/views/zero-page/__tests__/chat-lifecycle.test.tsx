@@ -3585,6 +3585,166 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("surfaces archived goal history in the latest assistant row", async () => {
+    const threadId = "thread-goal-run-group-folding";
+    const runGroupId = "f0000001-0000-4000-a000-00000000072b";
+    const goalPrompt = "Keep the release moving";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Goal run group folding",
+      chatMessages: [
+        {
+          id: "msg-goal-run-group-user-1",
+          role: "user",
+          content: goalPrompt,
+          runId: "f0000001-0000-4000-a000-00000000072c",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-run-group-assistant-1",
+          role: "assistant",
+          content: "First goal result",
+          runId: "f0000001-0000-4000-a000-00000000072c",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-goal-run-group-user-2",
+          role: "user",
+          content: goalPrompt,
+          runId: "f0000001-0000-4000-a000-00000000072d",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-goal-run-group-assistant-2a",
+          role: "assistant",
+          content: "Checking the current goal state.",
+          runId: "f0000001-0000-4000-a000-00000000072d",
+          runGroupId,
+          isGoalRun: true,
+          createdAt: "2026-06-09T10:02:10Z",
+        },
+        {
+          id: "msg-goal-run-group-assistant-2b",
+          role: "assistant",
+          content: "Latest goal result",
+          runId: "f0000001-0000-4000-a000-00000000072d",
+          runGroupId,
+          isGoalRun: true,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latest goal result")).toBeInTheDocument();
+      expect(screen.getByLabelText("Goal prompt")).toBeInTheDocument();
+      expect(screen.getByText(goalPrompt)).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "Archived goal for 3m",
+      );
+      expect(screen.queryByText("Worked for 30s")).not.toBeInTheDocument();
+      expect(screen.queryByText("First goal result")).not.toBeInTheDocument();
+    });
+
+    const latestAssistantGroup = screen
+      .getByText("Latest goal result")
+      .closest('[data-role="assistant"]') as HTMLElement | null;
+    expect(latestAssistantGroup).not.toBeNull();
+    expect(
+      within(latestAssistantGroup!).getByText("Archived goal for 3m"),
+    ).toBeInTheDocument();
+    expectTextBefore(document.body, goalPrompt, "Archived goal for 3m");
+    expectTextBefore(
+      latestAssistantGroup!,
+      "Archived goal for 3m",
+      "Latest goal result",
+    );
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First goal result")).toBeInTheDocument();
+      expect(screen.getByText("Worked for 30s")).toBeInTheDocument();
+    });
+  });
+
+  it("does not treat workflow run groups as goals", async () => {
+    const threadId = "thread-workflow-run-group-folding";
+    const runGroupId = "f0000001-0000-4000-a000-00000000073b";
+    const workflowPrompt = "/daily-workflow";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow run group folding",
+      chatMessages: [
+        {
+          id: "msg-workflow-run-group-user-1",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000073c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-run-group-assistant-1",
+          role: "assistant",
+          content: "First workflow result",
+          runId: "f0000001-0000-4000-a000-00000000073c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-workflow-run-group-user-2",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000073d",
+          runGroupId,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-workflow-run-group-assistant-2",
+          role: "assistant",
+          content: "Latest workflow result",
+          runId: "f0000001-0000-4000-a000-00000000073d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latest workflow result")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Goal prompt")).not.toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        'Folded 1 "/daily-workflow" run',
+      );
+      expect(
+        screen.queryByText("First workflow result"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("does not fold automation run groups when the feature switch is off", async () => {
     const threadId = "thread-run-group-folding-off";
     const automationId = "f0000001-0000-4000-a000-000000000727";
