@@ -339,10 +339,11 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     Called from ``websocket_message()`` only for server-originated frames. Reads
     ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
     and temporarily writes per-response sources to
-    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` until they are accepted into
-    the source-preserving usage buffer. Frames without a response id fall back
-    to ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is not idempotent for
-    the same frame; callers must feed each server frame once.
+    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` while attempting a
+    source-preserving report, then releases them from flow metadata. Frames
+    without a response id fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``.
+    This helper is not idempotent for the same frame; callers must feed each
+    server frame once.
     """
     if not is_model_websocket_usage_enabled(flow):
         return
