@@ -2150,6 +2150,7 @@ jobs:
           VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           TARGET_TRIPLE: ${{ matrix.target }}
           ASSET_SUFFIX: ${{ steps.target-metadata.outputs.asset_suffix }}
+        shell: bash
         run: |
           set -euo pipefail
           TAG="runner-rs-v${VERSION}"
@@ -2295,6 +2296,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           TARGET_TRIPLE: aarch64-unknown-linux-musl
+        shell: bash
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
