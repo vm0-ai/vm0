@@ -431,6 +431,123 @@ async fn write_private_file_chunked_guest_failure_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_private_file_with_write_observer(
+                "/tmp/private-blocked.env",
+                &content,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_request_count(&host) != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_chunk_observer_error_keeps_tracker_fail_closed() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+
+    let err = host
+        .write_private_file_with_write_observer(
+            "/tmp/private-observer.env",
+            &content,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Err(io::Error::other("private chunk observer failed"))
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("private chunk observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send private write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task =
+        spawn_write_private_file(Arc::clone(&host), "/tmp/private-unexpected.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-unexpected.env");
+    assert!(!first.append);
+    assert!(first.private);
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-unexpected.env");
+    assert!(second.append);
+    assert!(second.private);
+    guest
+        .write_all(&vsock_proto::encode(MSG_EXEC_START, second.seq(), &[]).unwrap())
+        .await
+        .unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => {
+            panic!("private write must not send cleanup after unexpected response; read {n} bytes")
+        }
+        Err(err) => panic!("unexpected read error after unexpected response: {err}"),
+    }
+}
+
+#[tokio::test]
 async fn write_file_chunked_quotes_target_path_with_single_quote() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big'quote.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
