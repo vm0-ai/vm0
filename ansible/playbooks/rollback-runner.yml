@@ -31,7 +31,7 @@
 #     -e "rollback_mode=graceful"
 #
 # Required Variables:
-#   - runner_version: Semantic version to roll back TO (e.g. 0.81.0)
+#   - runner_version: Semantic version to roll back TO (e.g. 0.81.0, no leading v)
 #   - runner_target: Rust target triple for the rollback runner binary
 #   - rollback_mode: graceful | emergency
 #       graceful  — `runner service drain` (SIGUSR1). Active jobs finish
@@ -84,23 +84,12 @@
     # Typos like rollback_mode=greaceful silently no-op both Phase 7 drain
     # branches, leaving the fleet in a mixed-version state while the play
     # reports success. Catch that upfront.
-    # Semver regex is enforced at the workflow layer too (rollback-runner.yml
-    # Validate target_version format), but we re-check here as defense in
-    # depth for direct `ansible-playbook` invocations: `runner_version`
-    # flows into systemd unit names and `command:` tasks (Ansible splits
-    # on whitespace), so a malformed value containing spaces or shell
-    # metachars could inject extra CLI flags.
-    - name: Validate required inputs
+    - name: Validate rollback mode
       assert:
         that:
-          - runner_version is defined and runner_version | length > 0
-          - runner_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
           - rollback_mode is defined and rollback_mode in ["graceful", "emergency"]
         fail_msg: >-
-          Missing or invalid inputs. Required: `runner_version` in semver
-          form (e.g. 0.81.0, no leading v) and `rollback_mode` (graceful |
-          emergency). Got
-          runner_version='{{ runner_version | default('<undefined>') }}',
+          Missing or invalid `rollback_mode` (graceful | emergency). Got
           rollback_mode='{{ rollback_mode | default('<undefined>') }}'.
 
     - name: Validate runner architecture

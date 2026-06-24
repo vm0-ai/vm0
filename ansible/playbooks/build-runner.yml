@@ -22,7 +22,7 @@
 #     -e "r2_bucket=xxx"
 #
 # Required Variables:
-#   - runner_version: Semantic version of the runner being built
+#   - runner_version: Semantic version of the runner being built, without leading v
 #   - runner_target: Rust target triple for the copied runner binary
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)

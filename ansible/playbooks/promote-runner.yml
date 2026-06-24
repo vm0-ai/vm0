@@ -15,7 +15,7 @@
 #     -e "runner_version=0.3.0"
 #
 # Required Variables:
-#   - runner_version: Semantic version of the runner being promoted
+#   - runner_version: Semantic version of the runner being promoted, without leading v
 #   - runner_target: Rust target triple for the staged runner binary
 #
 # Optional Variables:

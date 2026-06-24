@@ -299,10 +299,25 @@ if bash -c '. "$1"; runner_image_release_tag ""' bash "$TARGET" >"${TMPDIR}/tag-
 fi
 grep -q "missing runner release version" "${TMPDIR}/tag-empty.err" || fail "expected missing release tag version message"
 
+if bash -c '. "$1"; runner_image_release_tag v1.2.3' bash "$TARGET" >"${TMPDIR}/tag-leading-v.out" 2>"${TMPDIR}/tag-leading-v.err"; then
+  fail "expected leading-v release tag version to fail"
+fi
+grep -q "unsupported runner release version: v1.2.3" "${TMPDIR}/tag-leading-v.err" || fail "expected leading-v release tag version message"
+
+if bash -c '. "$1"; runner_image_release_tag "$2"' bash "$TARGET" "1.2.3/evil" >"${TMPDIR}/tag-path.out" 2>"${TMPDIR}/tag-path.err"; then
+  fail "expected path-like release tag version to fail"
+fi
+grep -q "unsupported runner release version: 1.2.3/evil" "${TMPDIR}/tag-path.err" || fail "expected path-like release tag version message"
+
 if bash -c '. "$1"; runner_image_release_asset_name "" aarch64-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-version-empty.out" 2>"${TMPDIR}/asset-name-version-empty.err"; then
   fail "expected empty release asset name version to fail"
 fi
 grep -q "missing runner release version" "${TMPDIR}/asset-name-version-empty.err" || fail "expected missing release asset name version message"
+
+if bash -c '. "$1"; runner_image_release_asset_name v1.2.3 aarch64-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-version-leading-v.out" 2>"${TMPDIR}/asset-name-version-leading-v.err"; then
+  fail "expected leading-v release asset name version to fail"
+fi
+grep -q "unsupported runner release version: v1.2.3" "${TMPDIR}/asset-name-version-leading-v.err" || fail "expected leading-v release asset name version message"
 
 if bash -c '. "$1"; runner_image_release_asset_name 1.2.3 powerpc-unknown-linux-musl' bash "$TARGET" >"${TMPDIR}/asset-name-target.out" 2>"${TMPDIR}/asset-name-target.err"; then
   fail "expected unsupported release asset name target to fail"

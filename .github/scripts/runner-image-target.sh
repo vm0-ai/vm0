@@ -116,6 +116,10 @@ runner_image_release_tag() {
     echo "missing runner release version" >&2
     return 2
   fi
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "unsupported runner release version: ${version} (expected semver like 0.81.0, without leading v)" >&2
+    return 2
+  fi
 
   printf 'runner-rs-v%s\n' "$version"
 }

@@ -6,7 +6,6 @@
       - |
         set -euo pipefail
         . "$1"
-        runner_image_asset_suffix "$2"
         runner_image_expected_uname_m "$2"
         runner_image_release_tag "$3"
         runner_image_release_asset_name "$3" "$2"
@@ -22,10 +21,9 @@
 
 - name: Store runner architecture metadata
   set_fact:
-    derived_runner_asset_suffix: "{{ runner_architecture_metadata.stdout_lines[0] }}"
-    derived_expected_runner_uname_m: "{{ runner_architecture_metadata.stdout_lines[1] }}"
-    derived_runner_release_tag: "{{ runner_architecture_metadata.stdout_lines[2] }}"
-    derived_runner_release_asset_name: "{{ runner_architecture_metadata.stdout_lines[3] }}"
+    derived_expected_runner_uname_m: "{{ runner_architecture_metadata.stdout_lines[0] }}"
+    derived_runner_release_tag: "{{ runner_architecture_metadata.stdout_lines[1] }}"
+    derived_runner_release_asset_name: "{{ runner_architecture_metadata.stdout_lines[2] }}"
 
 - name: Probe remote architecture
   command: uname -m
