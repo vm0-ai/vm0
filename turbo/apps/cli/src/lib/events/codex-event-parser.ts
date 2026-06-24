@@ -94,6 +94,54 @@ function formatScalar(value: unknown): string | undefined {
   return undefined;
 }
 
+function hasSignalValue(value: unknown, depth = 0): boolean {
+  if (value === null || value === undefined || value === false) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (typeof value === "boolean") {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+      return false;
+    }
+
+    return value.slice(0, MAX_FORMATTED_ARRAY_ITEMS).some((item) => {
+      return hasSignalValue(item, depth + 1);
+    });
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return false;
+  }
+
+  let inspectedFields = 0;
+  for (const key in record) {
+    if (!hasOwnKey(record, key)) {
+      continue;
+    }
+    if (inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS) {
+      return false;
+    }
+    inspectedFields += 1;
+    if (hasSignalValue(record[key], depth + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function formatUnknownValue(value: unknown, depth = 0): string | undefined {
   const scalar = formatScalar(value);
   if (scalar !== undefined) {
@@ -175,7 +223,7 @@ function formatDetailSuffix(details: readonly string[]): string {
 }
 
 function extractErrorMessage(value: unknown): string | undefined {
-  if (value === null || value === undefined || value === false) {
+  if (!hasSignalValue(value)) {
     return undefined;
   }
 

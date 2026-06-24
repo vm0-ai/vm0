@@ -1967,6 +1967,55 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("Turn completed");
     });
 
+    it("should ignore empty object turn errors when rendering successful turn.completed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "completed",
+                      error: {
+                        message: null,
+                        error: false,
+                        additional_details: "   ",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Completed");
+      expect(logCalls).not.toContain("Codex Failed");
+      expect(logCalls).not.toContain("message=null");
+    });
+
     it("should collapse same-turn Codex error and failed turn.completed while preserving details", async () => {
       server.use(
         http.get(
