@@ -49,6 +49,7 @@ describe("automations schema", () => {
   });
 
   it("keeps the expected automation column names stable", () => {
+    expect(automations.runGroupId.name).toBe("run_group_id");
     expect(automations.orgId.name).toBe("org_id");
     expect(automations.userId.name).toBe("user_id");
     expect(automations.name.name).toBe("name");
@@ -69,6 +70,7 @@ describe("automations schema", () => {
         "idx_automations_org",
         "idx_automations_user_org",
         "idx_automations_chat_thread",
+        "idx_automations_run_group",
         "idx_automations_agent_name_org_user",
       ]),
     );

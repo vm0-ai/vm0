@@ -50,6 +50,7 @@ interface DueTrigger {
   readonly trigger: TriggerRow;
   readonly automation: {
     readonly id: string;
+    readonly runGroupId: string;
     readonly agentId: string;
     readonly orgId: string;
     readonly userId: string;
@@ -64,6 +65,7 @@ interface DueTrigger {
 interface DueTriggerRow {
   readonly trigger: TriggerRow;
   readonly automationId: string;
+  readonly runGroupId: string;
   readonly agentId: string;
   readonly orgId: string;
   readonly userId: string;
@@ -114,6 +116,7 @@ function dueTriggerFromRow(row: DueTriggerRow): DueTrigger {
     trigger: row.trigger,
     automation: {
       id: row.automationId,
+      runGroupId: row.runGroupId,
       agentId: row.agentId,
       orgId: row.orgId,
       userId: row.userId,
@@ -379,6 +382,7 @@ const runTriggerNow$ = command(
     const runInput = await new DefaultInterpreter().interpret(
       automationRowToTimeAutomation({
         id: automation.id,
+        runGroupId: automation.runGroupId,
         agentId: automation.agentId,
         orgId: automation.orgId,
         userId: automation.userId,
@@ -438,6 +442,7 @@ const runTriggerNow$ = command(
       runId: result.body.runId,
       prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
+      runGroupId: automation.runGroupId,
       automationTitle: automation.name,
       automationSnapshot: {
         id: automation.id,
@@ -489,6 +494,7 @@ export const executeDueTriggers$ = command(
       .select({
         trigger: automationTriggers,
         automationId: automations.id,
+        runGroupId: automations.runGroupId,
         agentId: automations.agentId,
         orgId: automations.orgId,
         userId: automations.userId,

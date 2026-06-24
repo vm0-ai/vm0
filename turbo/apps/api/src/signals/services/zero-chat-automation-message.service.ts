@@ -150,6 +150,7 @@ export async function postAutomationUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
+  readonly runGroupId?: string;
   readonly automationTitle?: string;
   readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
@@ -161,6 +162,7 @@ export async function postAutomationUserMessage(params: {
         role: "user",
         content: params.prompt,
         runId: params.runId,
+        runGroupId: params.runGroupId,
         automationTitle: params.automationTitle,
         automationSnapshot: params.automationSnapshot,
       })
@@ -169,6 +171,7 @@ export async function postAutomationUserMessage(params: {
       await appendQueuedRunAssistantMarker(tx, {
         chatThreadId: params.threadId,
         runId: params.runId,
+        runGroupId: params.runGroupId,
         createdAfter: inserted?.createdAt ?? nowDate(),
       });
     }

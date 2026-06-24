@@ -25,6 +25,7 @@ export async function appendQueuedRunAssistantMarker(
   args: {
     readonly chatThreadId: string;
     readonly runId: string;
+    readonly runGroupId?: string;
     readonly createdAfter?: Date;
   },
 ): Promise<void> {
@@ -59,6 +60,7 @@ export async function appendQueuedRunAssistantMarker(
     role: "assistant",
     content: QUEUED_RUN_ASSISTANT_MESSAGE,
     runId: args.runId,
+    runGroupId: args.runGroupId,
     runEventId: QUEUED_RUN_MARKER_EVENT_ID,
     ...(args.createdAfter
       ? { createdAt: new Date(args.createdAfter.getTime() + 1) }
@@ -77,6 +79,7 @@ export async function revokeQueuedRunAssistantMarkers(
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
+      runGroupId: chatMessages.runGroupId,
     })
     .from(chatMessages)
     .where(
@@ -101,6 +104,7 @@ export async function revokeQueuedRunAssistantMarkers(
         role: "assistant",
         content: null,
         runId: args.runId,
+        runGroupId: marker.runGroupId ?? undefined,
         revokesMessageId: marker.id,
         runEventId: QUEUED_RUN_MARKER_REVOKE_EVENT_ID,
       })

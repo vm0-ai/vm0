@@ -250,6 +250,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatRunGroupFolding]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Fold repeated automation, workflow trigger, and goal continuation chat runs by contiguous run-group sections in the chat thread UI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
     description:

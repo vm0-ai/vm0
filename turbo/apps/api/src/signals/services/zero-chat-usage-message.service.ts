@@ -18,6 +18,12 @@ import { publishUserSignal } from "../external/realtime";
 const L = logger("ChatUsageMessage");
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
+const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
+  agentRuns.status,
+  zeroRuns.chatThreadId,
+  zeroRuns.runGroupId,
+  chatThreads.userId,
+] as const;
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") {
@@ -123,6 +129,7 @@ export const maybeEmitRunUsageMessage$ = command(
         .select({
           status: agentRuns.status,
           chatThreadId: zeroRuns.chatThreadId,
+          runGroupId: zeroRuns.runGroupId,
           userId: chatThreads.userId,
           pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
           processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
@@ -139,7 +146,7 @@ export const maybeEmitRunUsageMessage$ = command(
         .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
         .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
         .where(eq(agentRuns.id, runId))
-        .groupBy(agentRuns.status, zeroRuns.chatThreadId, chatThreads.userId)
+        .groupBy(...USAGE_CONTEXT_GROUP_BY_COLUMNS)
         .limit(1);
       signal.throwIfAborted();
 
@@ -212,6 +219,7 @@ export const maybeEmitRunUsageMessage$ = command(
           role: "assistant",
           content: null,
           runId,
+          runGroupId: context.runGroupId,
           usagePayload: payload,
           createdAt: new Date(payload.settledAt),
         })

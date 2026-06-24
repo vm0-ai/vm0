@@ -67,6 +67,13 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
+function workflowTriggerRunMetadata(trigger: TriggerRow) {
+  return {
+    workflowTriggerId: trigger.id,
+    runGroupId: trigger.runGroupId,
+  };
+}
+
 /**
  * The recurrence reschedule callback (advances `next_run_at` / failure
  * bookkeeping on completion) plus the chat callback (drives the web-chat
@@ -278,9 +285,7 @@ export const runWorkflowTriggerNow$ = command(
           args.appendSystemPrompt ?? buildAppendSystemPrompt(workflowName),
         callbacks:
           args.callbacks ?? buildWorkflowTriggerCallbacks(trigger, agentId),
-        zeroRunMetadata: {
-          workflowTriggerId: trigger.id,
-        },
+        zeroRunMetadata: workflowTriggerRunMetadata(trigger),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
@@ -298,6 +303,7 @@ export const runWorkflowTriggerNow$ = command(
       runId: result.body.runId,
       prompt,
       appendQueueMarker: result.body.status === "queued",
+      runGroupId: trigger.runGroupId,
     });
     signal.throwIfAborted();
 

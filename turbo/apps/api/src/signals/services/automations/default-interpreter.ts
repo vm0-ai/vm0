@@ -24,6 +24,7 @@ type InterpreterKind = "time" | "default";
 interface Automation {
   readonly interpreterKind: InterpreterKind;
   readonly id: string;
+  readonly runGroupId: string;
   readonly agentId: string;
   readonly orgId: string;
   readonly userId: string;
@@ -52,6 +53,7 @@ type RunCallback = InternalRunCallback;
  */
 type ZeroRunInputMetadata = {
   readonly automationId: string;
+  readonly runGroupId: string;
   readonly triggerId?: string;
 };
 
@@ -111,6 +113,7 @@ type TriggerEvent = AutomationTimeTriggerEvent | ManualTriggerEvent;
  */
 export function automationRowToTimeAutomation(row: {
   readonly id: string;
+  readonly runGroupId: string;
   readonly agentId: string;
   readonly orgId: string;
   readonly userId: string;
@@ -124,6 +127,7 @@ export function automationRowToTimeAutomation(row: {
   return {
     interpreterKind: "time",
     id: row.id,
+    runGroupId: row.runGroupId,
     agentId: row.agentId,
     orgId: row.orgId,
     userId: row.userId,
@@ -144,6 +148,7 @@ export function automationRowToTimeAutomation(row: {
  */
 export function automationRowToManualAutomation(row: {
   readonly id: string;
+  readonly runGroupId: string;
   readonly agentId: string;
   readonly orgId: string;
   readonly userId: string;
@@ -154,6 +159,7 @@ export function automationRowToManualAutomation(row: {
   return {
     interpreterKind: "default",
     id: row.id,
+    runGroupId: row.runGroupId,
     agentId: row.agentId,
     orgId: row.orgId,
     userId: row.userId,
@@ -282,7 +288,10 @@ export class DefaultInterpreter {
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildAutomationAppendSystemPrompt(automation),
         callbacks: [buildChatCallback(automation)],
-        zeroRunMetadata: { automationId: automation.id },
+        zeroRunMetadata: {
+          automationId: automation.id,
+          runGroupId: automation.runGroupId,
+        },
       });
     }
 
@@ -298,6 +307,7 @@ export class DefaultInterpreter {
       callbacks: buildTriggerCallbacks(automation, triggerEvent.triggerId),
       zeroRunMetadata: {
         automationId: automation.id,
+        runGroupId: automation.runGroupId,
         triggerId: triggerEvent.triggerId,
       },
     });

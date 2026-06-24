@@ -68,6 +68,7 @@ type ChatMessageRow = {
   readonly role: string;
   readonly content: string | null;
   readonly runId: string | null;
+  readonly runGroupId: string | null;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
   readonly error: string | null;
@@ -131,6 +132,7 @@ const messageColumns = {
   role: chatMessages.role,
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
+  runGroupId: chatMessages.runGroupId,
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   error: chatMessages.error,
@@ -405,6 +407,7 @@ function toPagedMessage(
       role,
       content: row.content,
       runId: row.runId ?? undefined,
+      runGroupId: row.runGroupId ?? undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,

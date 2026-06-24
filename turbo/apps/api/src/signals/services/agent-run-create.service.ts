@@ -250,6 +250,8 @@ interface ZeroRunMetadata {
   readonly triggerId?: string;
   // Run provenance for workflow schedule triggers.
   readonly workflowTriggerId?: string;
+  // Stable chat run-group key for automation/workflow/goal-triggered runs.
+  readonly runGroupId?: string;
 }
 
 interface AgentConfig {
@@ -3232,6 +3234,7 @@ async function insertZeroRunRecord(
     automationId: args.zeroRunMetadata?.automationId ?? null,
     triggerId: args.zeroRunMetadata?.triggerId ?? null,
     workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId ?? null,
+    runGroupId: args.zeroRunMetadata?.runGroupId ?? null,
     triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
     modelProvider: args.modelProvider?.type ?? null,
     modelProviderId: args.modelProvider?.id ?? null,
