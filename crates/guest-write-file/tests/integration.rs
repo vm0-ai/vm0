@@ -338,6 +338,22 @@ fn private_append_mode_appends_with_private_mode() {
 
 #[cfg(unix)]
 #[test]
+fn private_append_mode_creates_missing_private_parent_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", "--append", path_str], b"hello");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/logs")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
 fn private_mode_rejects_symlink_parent_without_touching_target() {
     let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("target");

@@ -185,8 +185,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// `--append` appends to the target file and creates it only when the parent
 /// directory already exists. `--create-parents` creates missing parent
 /// directories before writing. `--private` writes through the guest runtime
-/// private file helpers, ensuring parent directories are private and rejecting
-/// symlinked parent components.
+/// private file helpers, ensuring parent directories are private, creating
+/// missing parent directories even with `--append`, and rejecting symlinked
+/// parent components.
 ///
 /// Returns process-style exit codes: `0` for success, `1` for runtime or write
 /// failures, and `2` for usage or argument errors.
