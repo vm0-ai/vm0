@@ -545,5 +545,22 @@ describe("Python builtin firewall catalog renderer", () => {
         }),
       ]);
     }).toThrow("unsupported circular JSON catalog value");
+
+    const circularAuth: Record<string, unknown> = {};
+    circularAuth.self = circularAuth;
+
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "circular-auth",
+          apis: [
+            {
+              base: "https://circular-auth.example.com",
+              auth: circularAuth,
+            },
+          ],
+        }),
+      ]);
+    }).toThrow("unsupported circular JSON catalog value");
   });
 });

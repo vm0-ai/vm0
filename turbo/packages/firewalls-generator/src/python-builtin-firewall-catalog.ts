@@ -112,6 +112,7 @@ function isPlainJsonObject(value: object): value is Record<string, unknown> {
 function extractDiagnosticReferenceNames(value: unknown): readonly string[] {
   const result: string[] = [];
   const seen = new Set<string>();
+  const ancestors = new WeakSet<object>();
 
   function add(name: string): void {
     if (seen.has(name)) {
@@ -137,16 +138,32 @@ function extractDiagnosticReferenceNames(value: unknown): readonly string[] {
       return;
     }
     if (Array.isArray(nested)) {
-      for (const item of nested) {
-        visit(item);
+      if (ancestors.has(nested)) {
+        throw new Error("unsupported circular JSON catalog value");
+      }
+      ancestors.add(nested);
+      try {
+        for (const item of nested) {
+          visit(item);
+        }
+      } finally {
+        ancestors.delete(nested);
       }
       return;
     }
     if (!isRecord(nested)) {
       return;
     }
-    for (const key of Object.keys(nested).sort()) {
-      visit(nested[key]);
+    if (ancestors.has(nested)) {
+      throw new Error("unsupported circular JSON catalog value");
+    }
+    ancestors.add(nested);
+    try {
+      for (const key of Object.keys(nested).sort()) {
+        visit(nested[key]);
+      }
+    } finally {
+      ancestors.delete(nested);
     }
   }
 
