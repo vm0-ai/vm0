@@ -52,6 +52,33 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const connectorFirewalls = getAllConnectorFirewalls();
 type ConnectorFirewallType = keyof typeof connectorFirewalls;
+const API_DISPATCH_TIMING_ACTION_TYPES = [
+  "api_dispatch_check_org_tier",
+  "api_dispatch_prepare_run_context",
+  "api_dispatch_insert_run_with_concurrency",
+  "api_dispatch_mark_pending_heartbeat",
+  "api_dispatch_build_runner_job_payload",
+  "api_dispatch_persist_runner_job_queue",
+  "api_dispatch_admission_lock_wait",
+  "api_dispatch_check_concurrency_limit",
+  "api_dispatch_insert_run_record",
+  "api_dispatch_prepare_storage_manifest",
+  "api_dispatch_build_stored_execution_context",
+] as const;
+const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "presigned_url",
+] as const;
 
 function modelProviderPlaceholder(
   type: ModelProviderType,
@@ -138,6 +165,30 @@ function base64UrlEncode(input: string): string {
 function unsignedJwt(payload: Record<string, unknown>): string {
   const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return (
+        isRecord(event) &&
+        event.run_id === runId &&
+        typeof event.op_type === "string" &&
+        event.op_type.startsWith("api_dispatch_")
+      );
+    });
+  });
 }
 
 /**
@@ -234,6 +285,53 @@ function assistantOutputEvent(
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
+  it("emits api dispatch timing for direct dispatch runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const prompt = "api dispatch timing should not leak prompt";
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const observedActionTypes = new Set(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of API_DISPATCH_TIMING_ACTION_TYPES) {
+      expect(observedActionTypes).toContain(actionType);
+    }
+    expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
+    expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
+
+    for (const event of timingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          success: true,
+          run_id: created.runId,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          dispatch_path: "direct",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(["top_level", "nested"]).toContain(event.span_kind);
+      for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(prompt);
+      expect(serialized).not.toContain(agentId);
+    }
+  });
+
   it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {
     const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
