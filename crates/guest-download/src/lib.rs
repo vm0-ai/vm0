@@ -36,6 +36,24 @@ pub fn run(manifest_path: &str) -> bool {
         }
     };
 
+    run_manifest(manifest)
+}
+
+/// Run the download process for a manifest supplied as JSON bytes.
+/// Returns `true` if all downloads succeeded, `false` otherwise.
+pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
+    let manifest = match Manifest::parse(manifest_json) {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to parse manifest: {e}");
+            return false;
+        }
+    };
+
+    run_manifest(manifest)
+}
+
+fn run_manifest(manifest: Manifest) -> bool {
     let RunPlan {
         cleanup_paths,
         preserved_paths,

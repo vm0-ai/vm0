@@ -94,7 +94,7 @@ fn output_options(append: bool) -> OpenOptions {
     {
         use std::os::unix::fs::OpenOptionsExt;
 
-        options.custom_flags(libc::O_NONBLOCK);
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
     }
 
     options

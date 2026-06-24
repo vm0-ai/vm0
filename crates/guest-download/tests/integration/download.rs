@@ -1,5 +1,6 @@
 use crate::support::{
-    TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_download, write_manifest,
+    TarEntry, create_tar_gz, create_tar_gz_entries, manifest_json, run_guest_download,
+    run_guest_download_manifest_json, write_manifest,
 };
 use httpmock::Mock;
 use httpmock::prelude::*;
@@ -447,6 +448,22 @@ fn manifest_json_invalid() {
     std::fs::write(&manifest_path, "{{not valid json").unwrap();
 
     let result = run_guest_download(manifest_path.to_str().unwrap());
+    assert!(!result);
+}
+
+#[test]
+fn manifest_json_from_stdin_valid() {
+    let json = manifest_json(&[], None).unwrap();
+
+    let result = run_guest_download_manifest_json(&json);
+
+    assert!(result);
+}
+
+#[test]
+fn manifest_json_from_stdin_invalid() {
+    let result = run_guest_download_manifest_json(b"{{not valid json secret-body");
+
     assert!(!result);
 }
 

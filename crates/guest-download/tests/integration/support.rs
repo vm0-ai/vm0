@@ -133,6 +133,16 @@ pub(crate) fn write_manifest(
     storages: &[(&str, Option<&str>)],
     artifact: Option<(&str, Option<&str>)>,
 ) -> std::io::Result<PathBuf> {
+    let json = manifest_json(storages, artifact)?;
+    let manifest_path = dir.path().join("manifest.json");
+    std::fs::write(&manifest_path, json)?;
+    Ok(manifest_path)
+}
+
+pub(crate) fn manifest_json(
+    storages: &[(&str, Option<&str>)],
+    artifact: Option<(&str, Option<&str>)>,
+) -> std::io::Result<Vec<u8>> {
     let mut manifest = Map::new();
     manifest.insert(
         "storages".to_owned(),
@@ -151,11 +161,7 @@ pub(crate) fn write_manifest(
         );
     }
 
-    let json = serde_json::to_vec(&Value::Object(manifest)).map_err(std::io::Error::other)?;
-
-    let manifest_path = dir.path().join("manifest.json");
-    std::fs::write(&manifest_path, json)?;
-    Ok(manifest_path)
+    serde_json::to_vec(&Value::Object(manifest)).map_err(std::io::Error::other)
 }
 
 fn manifest_entry(mount_path: &str, archive_url: Option<&str>) -> Value {
@@ -170,6 +176,11 @@ fn manifest_entry(mount_path: &str, archive_url: Option<&str>) -> Value {
 pub(crate) fn run_guest_download(manifest_path: &str) -> bool {
     guest_common::log::clear_system_log_file();
     guest_download::run(manifest_path)
+}
+
+pub(crate) fn run_guest_download_manifest_json(manifest_json: &[u8]) -> bool {
+    guest_common::log::clear_system_log_file();
+    guest_download::run_manifest_bytes(manifest_json)
 }
 
 pub(crate) fn assert_does_not_contain_any(haystack_name: &str, haystack: &str, forbidden: &[&str]) {
