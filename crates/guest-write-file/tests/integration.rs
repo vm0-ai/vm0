@@ -286,6 +286,25 @@ fn private_mode_creates_private_parent_dirs_and_writes_content() {
 
 #[cfg(unix)]
 #[test]
+fn private_mode_rejects_non_private_existing_parent_without_chmod() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("public");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let path = parent.join("env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert_eq!(mode(&parent), 0o777);
+    assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn private_mode_forces_parent_modes_with_restrictive_umask() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("run/logs/system.log");
@@ -336,7 +355,10 @@ fn private_mode_rejects_symlink_parent_without_touching_target() {
 #[cfg(unix)]
 #[test]
 fn private_mode_rejects_directory_target() {
+    use std::os::unix::fs::PermissionsExt;
+
     let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let path = dir.path().join("target");
     std::fs::create_dir(&path).unwrap();
     let path_str = path.to_str().unwrap();
@@ -349,10 +371,26 @@ fn private_mode_rejects_directory_target() {
 
 #[cfg(unix)]
 #[test]
+fn private_mode_rejects_trailing_separator_without_creating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/session-id");
+    let path_with_trailing_separator = format!("{}/", path.display());
+
+    let output = run_helper(&["--private", &path_with_trailing_separator], b"hello");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("directory separator"));
+    assert!(!dir.path().join("run").exists());
+    assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn private_mode_rejects_fifo_with_reader() {
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let path = dir.path().join("fifo");
     mkfifo(&path);
     let _reader = std::fs::OpenOptions::new()
@@ -365,7 +403,8 @@ fn private_mode_rejects_fifo_with_reader() {
     let output = run_helper(&["--private", path_str], b"");
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("not a regular"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not a regular"), "stderr={stderr}");
 }
 
 #[cfg(unix)]
