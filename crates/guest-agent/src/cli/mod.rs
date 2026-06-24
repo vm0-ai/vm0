@@ -427,7 +427,6 @@ async fn execute_cli_inner(
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
     let process_group = ChildProcessGroup::from_group_leader_child_id(child.id());
-    let pgid = process_group.map(ChildProcessGroup::raw_pgid);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
 
@@ -447,9 +446,7 @@ async fn execute_cli_inner(
     // See: https://github.com/vm0-ai/vm0/issues/11667
     let termination_deadline = tokio::time::sleep(Duration::MAX);
     tokio::pin!(termination_deadline);
-    let mut termination_state = TerminationState::Idle;
-    let mut termination_error: Option<AgentError> = None;
-    let mut cli_termination: Option<CliTerminationDiagnostic> = None;
+    let mut termination_runtime = CliTerminationRuntime::new(process_group);
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
@@ -514,7 +511,8 @@ async fn execute_cli_inner(
             }, if claude_stdin_write_handle.is_some() => {
                 claude_stdin_write_handle = None;
                 let can_terminate_for_stdin_error =
-                    matches!(termination_state, TerminationState::Idle) && cli_status.is_none();
+                    matches!(termination_runtime.state, TerminationState::Idle)
+                        && cli_status.is_none();
                 match stdin_write_result {
                     Some(Ok(Ok(()))) => {}
                     Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
@@ -522,26 +520,15 @@ async fn execute_cli_inner(
                         log_warn!(
                             LOG_TAG,
                             "Claude stdin writer failed, SIGTERM pgid={}: {error}",
-                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            termination_runtime
+                                .pgid
+                                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
-                        record_cli_termination_signal(
-                            &mut cli_termination,
+                        termination_runtime.begin_forced_sigkill_pending(
                             TerminationReason::InitialPromptStdin,
-                            CliTerminationSignal::Sigterm,
-                            pgid,
-                            Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                        );
-                        if let Some(process_group) = process_group {
-                            process_group.sigterm();
-                        }
-                        termination_error = Some(error);
-                        post_result_cleanup = None;
-                        termination_state = TerminationState::SigkillPending {
-                            reason: TerminationReason::InitialPromptStdin,
-                        };
-                        termination_deadline.as_mut().reset(
-                            tokio::time::Instant::now()
-                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            error,
+                            &mut post_result_cleanup,
+                            termination_deadline.as_mut(),
                         );
                     }
                     Some(Ok(Err(_))) => {
@@ -552,28 +539,17 @@ async fn execute_cli_inner(
                         log_warn!(
                             LOG_TAG,
                             "Claude stdin writer task failed, SIGTERM pgid={}: {error}",
-                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            termination_runtime
+                                .pgid
+                                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
-                        record_cli_termination_signal(
-                            &mut cli_termination,
+                        termination_runtime.begin_forced_sigkill_pending(
                             TerminationReason::InitialPromptStdin,
-                            CliTerminationSignal::Sigterm,
-                            pgid,
-                            Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                        );
-                        if let Some(process_group) = process_group {
-                            process_group.sigterm();
-                        }
-                        termination_error = Some(AgentError::Execution(format!(
-                            "Claude stdin writer task failed: {error}"
-                        )));
-                        post_result_cleanup = None;
-                        termination_state = TerminationState::SigkillPending {
-                            reason: TerminationReason::InitialPromptStdin,
-                        };
-                        termination_deadline.as_mut().reset(
-                            tokio::time::Instant::now()
-                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            AgentError::Execution(format!(
+                                "Claude stdin writer task failed: {error}"
+                            )),
+                            &mut post_result_cleanup,
+                            termination_deadline.as_mut(),
                         );
                     }
                     Some(Err(_)) => {
@@ -681,7 +657,8 @@ async fn execute_cli_inner(
                                 // run when no active follow-up input is still
                                 // pending — see `TerminationState::should_arm_post_result`.
                                 if active_input_idle
-                                    && termination_state
+                                    && termination_runtime
+                                        .state
                                         .should_arm_post_result(cli_status.is_some())
                                 {
                                     let now = tokio::time::Instant::now();
@@ -693,7 +670,8 @@ async fn execute_cli_inner(
                                         Duration::from_secs(env::post_result_total_cap_secs()),
                                     );
                                     if let Some(next_deadline) = cleanup.next_deadline() {
-                                        termination_state = TerminationState::SigtermPending {
+                                        termination_runtime.state =
+                                            TerminationState::SigtermPending {
                                             reason: TerminationReason::PostResult,
                                         };
                                         termination_deadline.as_mut().reset(next_deadline);
@@ -728,7 +706,7 @@ async fn execute_cli_inner(
                             }
                             if post_result_cleanup_was_armed
                                 && matches!(
-                                    termination_state,
+                                    termination_runtime.state,
                                     TerminationState::SigtermPending {
                                         reason: TerminationReason::PostResult
                                     }
@@ -786,7 +764,7 @@ async fn execute_cli_inner(
                         // CLI exited on its own (possibly in response to our
                         // SIGTERM). Park the termination FSM so it can't
                         // re-arm on any late `type=result` event.
-                        termination_state = TerminationState::Done;
+                        termination_runtime.state = TerminationState::Done;
                         post_result_cleanup = None;
                         if stdout_eof {
                             break Ok(());
@@ -799,14 +777,14 @@ async fn execute_cli_inner(
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
-            () = &mut termination_deadline, if termination_state.is_pending() && cli_status.is_none() => {
+            () = &mut termination_deadline, if termination_runtime.state.is_pending() && cli_status.is_none() => {
                 // Process-group signal results are intentionally discarded in
                 // both arms: ESRCH (child reaped since the is_pending() /
                 // is_none() check) is racy-but-harmless, and every other
                 // error would be unrecoverable from userspace.
                 // The sigkill_grace deadline is the escalation path if
                 // the signal fails to take effect in time.
-                match termination_state {
+                match termination_runtime.state {
                     TerminationState::SigtermPending { reason } => {
                         let now = tokio::time::Instant::now();
                         let cleanup_timeout =
@@ -822,7 +800,7 @@ async fn execute_cli_inner(
                             .unwrap_or_else(|| {
                                 Duration::from_secs(env::post_result_sigterm_grace_secs())
                             });
-                        if let Some(pid) = pgid {
+                        if let Some(pid) = termination_runtime.pgid {
                             if reason == TerminationReason::PostResult {
                                 if let Some(timeout) = cleanup_timeout {
                                     let trigger = timeout.trigger.label();
@@ -857,17 +835,17 @@ async fn execute_cli_inner(
                                 );
                             }
                             record_cli_termination_signal(
-                                &mut cli_termination,
+                                &mut termination_runtime.diagnostic,
                                 reason,
                                 CliTerminationSignal::Sigterm,
-                                pgid,
+                                termination_runtime.pgid,
                                 grace,
                             );
-                            if let Some(process_group) = process_group {
+                            if let Some(process_group) = termination_runtime.process_group {
                                 process_group.sigterm();
                             }
                         }
-                        termination_state = TerminationState::SigkillPending { reason };
+                        termination_runtime.state = TerminationState::SigkillPending { reason };
                         termination_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(env::post_result_sigkill_grace_secs()),
@@ -876,7 +854,7 @@ async fn execute_cli_inner(
                     TerminationState::SigkillPending { reason } => {
                         let grace = Duration::from_secs(env::post_result_sigkill_grace_secs());
                         let now = tokio::time::Instant::now();
-                        if let Some(pid) = pgid {
+                        if let Some(pid) = termination_runtime.pgid {
                             log_warn!(
                                 LOG_TAG,
                                 "CLI did not exit after {} SIGTERM+{}ms, SIGKILL pgid={pid}",
@@ -901,18 +879,18 @@ async fn execute_cli_inner(
                                 );
                             }
                             record_cli_termination_signal(
-                                &mut cli_termination,
+                                &mut termination_runtime.diagnostic,
                                 reason,
                                 CliTerminationSignal::Sigkill,
-                                pgid,
+                                termination_runtime.pgid,
                                 grace,
                             );
-                            if let Some(process_group) = process_group {
+                            if let Some(process_group) = termination_runtime.process_group {
                                 process_group.sigkill();
                             }
                         }
                         post_result_cleanup = None;
-                        termination_state = TerminationState::Done;
+                        termination_runtime.state = TerminationState::Done;
                     }
                     // Unreachable by the is_pending() guard. Log in
                     // every build so any future FSM regression surfaces
@@ -922,11 +900,13 @@ async fn execute_cli_inner(
                     TerminationState::Idle | TerminationState::Done => {
                         log_warn!(
                             LOG_TAG,
-                            "termination_deadline fired in non-pending state {termination_state:?}"
+                            "termination_deadline fired in non-pending state {:?}",
+                            termination_runtime.state
                         );
                         debug_assert!(
                             false,
-                            "termination_deadline fired in non-pending state {termination_state:?}"
+                            "termination_deadline fired in non-pending state {:?}",
+                            termination_runtime.state
                         );
                     }
                 }
@@ -951,7 +931,7 @@ async fn execute_cli_inner(
                     .min_by_key(|(_, started)| *started)
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
                 if let Some((name, elapsed)) = stuck
-                    && termination_error.is_none()
+                    && termination_runtime.control_error.is_none()
                 {
                     let timeout_error = AgentError::Execution(format!(
                         "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
@@ -959,26 +939,15 @@ async fn execute_cli_inner(
                     log_warn!(
                         LOG_TAG,
                         "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={}",
-                        pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        termination_runtime
+                            .pgid
+                            .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                     );
-                    record_cli_termination_signal(
-                        &mut cli_termination,
+                    termination_runtime.begin_forced_sigkill_pending(
                         TerminationReason::StuckTool,
-                        CliTerminationSignal::Sigterm,
-                        pgid,
-                        Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                    );
-                    if let Some(process_group) = process_group {
-                        process_group.sigterm();
-                    }
-                    termination_error = Some(timeout_error);
-                    post_result_cleanup = None;
-                    termination_state = TerminationState::SigkillPending {
-                        reason: TerminationReason::StuckTool,
-                    };
-                    termination_deadline.as_mut().reset(
-                        tokio::time::Instant::now()
-                            + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        timeout_error,
+                        &mut post_result_cleanup,
+                        termination_deadline.as_mut(),
                     );
                 }
             }
@@ -995,30 +964,19 @@ async fn execute_cli_inner(
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {
                         // Heartbeat failed — kill process group
-                        if termination_error.is_none() {
+                        if termination_runtime.control_error.is_none() {
                             log_warn!(
                                 LOG_TAG,
                                 "Heartbeat failed, SIGTERM pgid={}",
-                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                                termination_runtime
+                                    .pgid
+                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
-                            record_cli_termination_signal(
-                                &mut cli_termination,
+                            termination_runtime.begin_forced_sigkill_pending(
                                 TerminationReason::HeartbeatError,
-                                CliTerminationSignal::Sigterm,
-                                pgid,
-                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                            );
-                            if let Some(process_group) = process_group {
-                                process_group.sigterm();
-                            }
-                            termination_error = Some(e);
-                            post_result_cleanup = None;
-                            termination_state = TerminationState::SigkillPending {
-                                reason: TerminationReason::HeartbeatError,
-                            };
-                            termination_deadline.as_mut().reset(
-                                tokio::time::Instant::now()
-                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                                e,
+                                &mut post_result_cleanup,
+                                termination_deadline.as_mut(),
                             );
                         }
                     }
@@ -1028,59 +986,37 @@ async fn execute_cli_inner(
                     }
                     Ok(HeartbeatStatus::TaskFailed(message)) => {
                         let error = AgentError::Execution(format!("heartbeat task panicked: {message}"));
-                        if termination_error.is_none() {
+                        if termination_runtime.control_error.is_none() {
                             log_warn!(
                                 LOG_TAG,
                                 "Heartbeat task panicked, SIGTERM pgid={}",
-                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                                termination_runtime
+                                    .pgid
+                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
-                            record_cli_termination_signal(
-                                &mut cli_termination,
+                            termination_runtime.begin_forced_sigkill_pending(
                                 TerminationReason::HeartbeatPanic,
-                                CliTerminationSignal::Sigterm,
-                                pgid,
-                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                            );
-                            if let Some(process_group) = process_group {
-                                process_group.sigterm();
-                            }
-                            termination_error = Some(error);
-                            post_result_cleanup = None;
-                            termination_state = TerminationState::SigkillPending {
-                                reason: TerminationReason::HeartbeatPanic,
-                            };
-                            termination_deadline.as_mut().reset(
-                                tokio::time::Instant::now()
-                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                                error,
+                                &mut post_result_cleanup,
+                                termination_deadline.as_mut(),
                             );
                         }
                     }
                     Err(e) => {
                         let error = AgentError::Execution(format!("heartbeat task stopped before reporting status: {e}"));
-                        if termination_error.is_none() {
+                        if termination_runtime.control_error.is_none() {
                             log_warn!(
                                 LOG_TAG,
                                 "Heartbeat task stopped before reporting status, SIGTERM pgid={}",
-                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                                termination_runtime
+                                    .pgid
+                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                             );
-                            record_cli_termination_signal(
-                                &mut cli_termination,
+                            termination_runtime.begin_forced_sigkill_pending(
                                 TerminationReason::HeartbeatPanic,
-                                CliTerminationSignal::Sigterm,
-                                pgid,
-                                Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                            );
-                            if let Some(process_group) = process_group {
-                                process_group.sigterm();
-                            }
-                            termination_error = Some(error);
-                            post_result_cleanup = None;
-                            termination_state = TerminationState::SigkillPending {
-                                reason: TerminationReason::HeartbeatPanic,
-                            };
-                            termination_deadline.as_mut().reset(
-                                tokio::time::Instant::now()
-                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                                error,
+                                &mut post_result_cleanup,
+                                termination_deadline.as_mut(),
                             );
                         }
                     }
@@ -1114,7 +1050,7 @@ async fn execute_cli_inner(
         }
     }
 
-    let has_control_error = termination_error.is_some();
+    let has_control_error = termination_runtime.control_error.is_some();
     let event_error = if has_control_error {
         None
     } else {
@@ -1201,6 +1137,11 @@ async fn execute_cli_inner(
     };
     let masked_stderr_lines = masker.mask_diagnostic_lines(stderr_lines);
 
+    let CliTerminationRuntime {
+        control_error,
+        diagnostic: cli_termination,
+        ..
+    } = termination_runtime;
     let cli_termination =
         cli_termination.map(|diagnostic| diagnostic.with_observed_exit_code(exit_code));
 
@@ -1215,9 +1156,55 @@ async fn execute_cli_inner(
         claude_result,
         post_result_cleanup_result,
         failure_diagnostic,
-        control_error: termination_error,
+        control_error,
         cli_termination,
     })
+}
+
+struct CliTerminationRuntime {
+    process_group: Option<ChildProcessGroup>,
+    pgid: Option<i32>,
+    state: TerminationState,
+    control_error: Option<AgentError>,
+    diagnostic: Option<CliTerminationDiagnostic>,
+}
+
+impl CliTerminationRuntime {
+    fn new(process_group: Option<ChildProcessGroup>) -> Self {
+        Self {
+            process_group,
+            pgid: process_group.map(ChildProcessGroup::raw_pgid),
+            state: TerminationState::Idle,
+            control_error: None,
+            diagnostic: None,
+        }
+    }
+
+    fn begin_forced_sigkill_pending(
+        &mut self,
+        reason: TerminationReason,
+        error: AgentError,
+        post_result_cleanup: &mut Option<PostResultCleanupState>,
+        mut termination_deadline: std::pin::Pin<&mut tokio::time::Sleep>,
+    ) {
+        let grace = Duration::from_secs(env::post_result_sigkill_grace_secs());
+        record_cli_termination_signal(
+            &mut self.diagnostic,
+            reason,
+            CliTerminationSignal::Sigterm,
+            self.pgid,
+            grace,
+        );
+        if let Some(process_group) = self.process_group {
+            process_group.sigterm();
+        }
+        self.control_error = Some(error);
+        *post_result_cleanup = None;
+        self.state = TerminationState::SigkillPending { reason };
+        termination_deadline
+            .as_mut()
+            .reset(tokio::time::Instant::now() + grace);
+    }
 }
 
 fn record_cli_termination_signal(
@@ -1312,7 +1299,8 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, TerminationReason, claude_initial_prompt_frame,
+        AgentError, CliFailureDiagnostic, CliTerminationRuntime, PostResultCleanupState,
+        TerminationReason, TerminationState, claude_initial_prompt_frame,
         record_cli_termination_signal, select_failure_diagnostic, set_cli_current_dir,
         with_carried_failure_reason,
     };
@@ -1388,6 +1376,45 @@ mod tests {
         assert_eq!(escalated.signal_pgid, Some(42));
         assert_eq!(escalated.signal_grace_ms, Some(2_000));
         assert!(escalated.escalated);
+    }
+
+    #[tokio::test]
+    async fn forced_sigkill_pending_records_control_failure_transition() {
+        let deadline = tokio::time::sleep(Duration::MAX);
+        tokio::pin!(deadline);
+        let mut runtime = CliTerminationRuntime::new(None);
+        let now = tokio::time::Instant::now();
+        let mut post_result_cleanup = Some(PostResultCleanupState::arm(
+            now,
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+        ));
+
+        runtime.begin_forced_sigkill_pending(
+            TerminationReason::HeartbeatError,
+            AgentError::Execution("heartbeat failed".to_string()),
+            &mut post_result_cleanup,
+            deadline.as_mut(),
+        );
+
+        let control_error = runtime
+            .control_error
+            .as_ref()
+            .expect("control error should be stored");
+        assert!(control_error.to_string().contains("heartbeat failed"));
+        assert!(post_result_cleanup.is_none());
+        assert_eq!(
+            runtime.state,
+            TerminationState::SigkillPending {
+                reason: TerminationReason::HeartbeatError
+            }
+        );
+        let diagnostic = runtime.diagnostic.expect("diagnostic should be recorded");
+        assert_eq!(diagnostic.reason, CliTerminationReason::HeartbeatError);
+        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigterm));
+        assert_eq!(diagnostic.signal_pgid, None);
+        assert!(diagnostic.signal_grace_ms.is_some());
+        assert!(!diagnostic.escalated);
     }
 
     #[tokio::test]
