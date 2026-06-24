@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.174.0](https://github.com/vm0-ai/vm0/compare/api-v1.173.2...api-v1.174.0) (2026-06-24)
+
+
+### Features
+
+* fold chat runs by run group ([#18754](https://github.com/vm0-ai/vm0/issues/18754)) ([c28ffbc](https://github.com/vm0-ai/vm0/commit/c28ffbca17de6fa9f62a8403f9886657084d2677))
+
+
+### Bug Fixes
+
+* enforce public workflow slug uniqueness ([#18756](https://github.com/vm0-ai/vm0/issues/18756)) ([b2e099e](https://github.com/vm0-ai/vm0/commit/b2e099e0ede62155fe6a58c50b3df7a3935bd829))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.0
+    * @vm0/connectors bumped to 1.106.0
+    * @vm0/core bumped to 8.366.0
+    * @vm0/db bumped to 1.69.0
+
 ## [1.173.2](https://github.com/vm0-ai/vm0/compare/api-v1.173.1...api-v1.173.2) (2026-06-24)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.366.0](https://github.com/vm0-ai/vm0/compare/core-v8.365.4...core-v8.366.0) (2026-06-24)
+
+
+### Features
+
+* fold chat runs by run group ([#18754](https://github.com/vm0-ai/vm0/issues/18754)) ([c28ffbc](https://github.com/vm0-ai/vm0/commit/c28ffbca17de6fa9f62a8403f9886657084d2677))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.112.0
+    * @vm0/connectors bumped to 1.106.0
+
 ## [8.365.4](https://github.com/vm0-ai/vm0/compare/core-v8.365.3...core-v8.365.4) (2026-06-24)
 
 

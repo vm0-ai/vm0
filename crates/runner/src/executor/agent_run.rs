@@ -18,7 +18,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_restore::restore_session;
-use super::storage::{download_storages, filter_unchanged_storages, guest_download_has_work};
+use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
@@ -247,18 +247,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 2. Set guest timezone from user preference (best-effort, never fails).
     sync_guest_timezone(sandbox, context).await;
 
-    // 3. Download storages (skipping entries unchanged since the previous turn)
+    // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
         let guest_manifest = GuestDownloadManifest::from(manifest);
         let mut effective: GuestDownloadManifest = match start.prev_storage {
-            Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
+            Some(prev) => apply_storage_fingerprint_reuse(&guest_manifest, prev),
             None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if no downloads, cleanup, or
         // guest-side instruction normalization remain.
         let has_work = guest_download_has_work(&effective);
         if !has_work {
-            info!(run_id = %context.run_id, "all storages unchanged, skipping download");
+            info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
         }
         let t = Instant::now();
         let result = if has_work {
