@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.177.0](https://github.com/vm0-ai/vm0/compare/api-v1.176.0...api-v1.177.0) (2026-06-24)
+
+
+### Features
+
+* **triggers:** trigger-aware permission-change link + blocked-run feedback ([#18839](https://github.com/vm0-ai/vm0/issues/18839)) ([0c523b2](https://github.com/vm0-ai/vm0/commit/0c523b20a11c5d3a8866cd4df3989c323336cea0))
+
+
+### Bug Fixes
+
+* update run group fold copy ([#18830](https://github.com/vm0-ai/vm0/issues/18830)) ([b49fe6b](https://github.com/vm0-ai/vm0/commit/b49fe6ba5851b0849acd51acb2bc7f44b5d40977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+    * @vm0/db bumped to 1.70.1
+
 ## [1.176.0](https://github.com/vm0-ai/vm0/compare/api-v1.175.1...api-v1.176.0) (2026-06-24)
 
 

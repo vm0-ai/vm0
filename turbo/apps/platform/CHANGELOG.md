@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.489.0](https://github.com/vm0-ai/vm0/compare/app-v0.488.0...app-v0.489.0) (2026-06-24)
+
+
+### Features
+
+* **triggers:** add trigger permission editor UI ([#18836](https://github.com/vm0-ai/vm0/issues/18836)) ([15baec8](https://github.com/vm0-ai/vm0/commit/15baec835aec900054a4471742517ebd2188eaeb))
+
+
+### Bug Fixes
+
+* count folded run groups in chat render window ([#18838](https://github.com/vm0-ai/vm0/issues/18838)) ([d040ab1](https://github.com/vm0-ai/vm0/commit/d040ab13d2685903cd4d42bdea7ee0e8e859aea3))
+* update run group fold copy ([#18830](https://github.com/vm0-ai/vm0/issues/18830)) ([b49fe6b](https://github.com/vm0-ai/vm0/commit/b49fe6ba5851b0849acd51acb2bc7f44b5d40977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+
 ## [0.488.0](https://github.com/vm0-ai/vm0/compare/app-v0.487.3...app-v0.488.0) (2026-06-24)
 
 
