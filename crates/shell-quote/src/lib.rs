@@ -131,4 +131,22 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn all_non_nul_ascii_bytes_round_trip_through_posix_shell() {
+        let value = String::from_utf8((1_u8..=127).collect()).expect("ASCII is valid UTF-8");
+        let command = format!("printf '%s' {}", quote_shell_arg(&value));
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run shell: {error}"));
+
+        assert!(
+            output.status.success(),
+            "shell failed via {command:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stdout, value.as_bytes());
+    }
 }
