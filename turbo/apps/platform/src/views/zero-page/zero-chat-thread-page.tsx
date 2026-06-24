@@ -43,6 +43,7 @@ import {
   IconPresentation,
   IconSearch,
   IconTag,
+  IconTarget,
   IconX,
   IconClock,
   IconCoins,
@@ -2744,11 +2745,21 @@ function ChatThreadMessageGroups({
   completedWorkExpandedKeys: ReadonlySet<string>;
   onToggleCompletedWork: (key: string) => void;
 }) {
+  const { embeddedRunGroupFolds, externalRunGroupFolds } =
+    resolveRunGroupFoldPlacements({
+      groups,
+      runGroupFolding,
+      runGroupExpandedKeys,
+      onToggleRunGroup,
+    });
+
   return (
     <>
       {groups.map((group) => {
         const runGroupFolds =
-          runGroupFolding?.foldsByNextGroupId.get(group.beginMessageId) ?? [];
+          externalRunGroupFolds.get(group.beginMessageId) ?? [];
+        const embeddedFolds =
+          embeddedRunGroupFolds.get(group.beginMessageId) ?? [];
         const completedWorkFold = completedWorkFoldForGroup(
           completedWorkFolding,
           group,
@@ -2761,18 +2772,15 @@ function ChatThreadMessageGroups({
             {runGroupFolds.map((runGroupFold) => {
               return (
                 <RunGroupFoldRow
-                  key={runGroupFold.key}
-                  fold={runGroupFold}
-                  expanded={runGroupExpandedKeys.has(runGroupFold.key)}
-                  onToggle={() => {
-                    onToggleRunGroup(runGroupFold.key);
-                  }}
+                  key={runGroupFold.fold.key}
+                  control={runGroupFold}
                 />
               );
             })}
             <PagedGroupRow
               group={group}
               thread={thread}
+              runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
                   ? {
@@ -2791,6 +2799,93 @@ function ChatThreadMessageGroups({
       })}
     </>
   );
+}
+
+interface RunGroupFoldControl {
+  fold: RunGroupFold;
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+function resolveRunGroupFoldPlacements({
+  groups,
+  runGroupFolding,
+  runGroupExpandedKeys,
+  onToggleRunGroup,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  runGroupFolding: RunGroupFolding | null;
+  runGroupExpandedKeys: ReadonlySet<string>;
+  onToggleRunGroup: (key: string) => void;
+}): {
+  embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
+  externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
+} {
+  const embeddedRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
+  const externalRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
+
+  if (runGroupFolding === null) {
+    return { embeddedRunGroupFolds, externalRunGroupFolds };
+  }
+
+  for (const [index, group] of groups.entries()) {
+    const folds = runGroupFolding.foldsByNextGroupId.get(group.beginMessageId);
+    if (!folds || folds.length === 0) {
+      continue;
+    }
+
+    for (const fold of folds) {
+      const control: RunGroupFoldControl = {
+        fold,
+        expanded: runGroupExpandedKeys.has(fold.key),
+        onToggle: () => {
+          onToggleRunGroup(fold.key);
+        },
+      };
+      const embeddedGroupId = control.expanded
+        ? undefined
+        : assistantGroupIdForCollapsedRunGroupFold(groups, index);
+      const target = embeddedGroupId
+        ? embeddedRunGroupFolds
+        : externalRunGroupFolds;
+      const targetGroupId = embeddedGroupId ?? group.beginMessageId;
+      const existing = target.get(targetGroupId);
+      if (existing) {
+        existing.push(control);
+      } else {
+        target.set(targetGroupId, [control]);
+      }
+    }
+  }
+
+  return { embeddedRunGroupFolds, externalRunGroupFolds };
+}
+
+function assistantGroupIdForCollapsedRunGroupFold(
+  groups: readonly GroupedChatMessageGroup[],
+  index: number,
+): string | undefined {
+  const group = groups[index];
+  if (!group || group.role !== "user") {
+    return undefined;
+  }
+  const runId = firstRunIdForMessages(group.messages);
+  if (runId === undefined) {
+    return undefined;
+  }
+
+  for (let nextIndex = index + 1; nextIndex < groups.length; nextIndex++) {
+    const candidate = groups[nextIndex]!;
+    const candidateRunId = firstRunIdForMessages(candidate.messages);
+    if (candidateRunId !== runId) {
+      return undefined;
+    }
+    if (candidate.role === "assistant") {
+      return candidate.beginMessageId;
+    }
+  }
+
+  return undefined;
 }
 
 function completedWorkFoldForGroup(
@@ -3056,9 +3151,9 @@ function formatCompactDuration(totalSeconds: number): string {
   return `${totalHours}h`;
 }
 
-function completedWorkLabel(
+function durationLabelForGroups(
   groups: readonly GroupedChatMessageGroup[],
-): string {
+): string | null {
   const timestamps = groups.flatMap((group) => {
     return group.messages.flatMap((message) => {
       const timestamp = parseMessageTime(message.createdAt);
@@ -3066,13 +3161,20 @@ function completedWorkLabel(
     });
   });
   if (timestamps.length < 2) {
-    return "Worked";
+    return null;
   }
   const elapsedSeconds = Math.max(
     1,
     Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
   );
-  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
+  return formatCompactDuration(elapsedSeconds);
+}
+
+function completedWorkLabel(
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const duration = durationLabelForGroups(groups);
+  return duration ? `Worked for ${duration}` : "Worked";
 }
 
 const RUN_SECTION_LABEL_CLASS =
@@ -3139,23 +3241,58 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   return content ? compactRunGroupLabel(content) : "Automated run";
 }
 
+function isGoalUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    message.runGroupId !== undefined &&
+    !hasAutomationMessageMetadata(message) &&
+    (message.content?.trim().length ?? 0) > 0
+  );
+}
+
+function isGoalRunGroupFold(fold: RunGroupFold): boolean {
+  return fold.labelGroups.some((group) => {
+    return group.messages.some(isGoalUserMessage);
+  });
+}
+
+function durationLabelForRunGroupFold(fold: RunGroupFold): string | null {
+  const groups = fold.labelGroups.flatMap((group) => {
+    const messages = group.messages.filter((message) => {
+      return message.runGroupId === fold.runGroupId;
+    });
+    return messages.length > 0 ? [{ ...group, messages }] : [];
+  });
+  return durationLabelForGroups(groups);
+}
+
 function runGroupFoldLabel(fold: RunGroupFold): string {
+  if (isGoalRunGroupFold(fold)) {
+    const duration = durationLabelForRunGroupFold(fold);
+    return duration ? `Archived goal for ${duration}` : "Archived goal";
+  }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
   return `Folded ${fold.hiddenRunCount} "${runGroupFoldSourceLabel(fold)}" ${runLabel}`;
 }
 
 function RunGroupFoldRow({
-  fold,
-  expanded,
-  onToggle,
+  control,
+  embedded = false,
 }: {
-  fold: RunGroupFold;
-  expanded: boolean;
-  onToggle: () => void;
+  control: RunGroupFoldControl;
+  embedded?: boolean;
 }) {
+  const { fold, expanded, onToggle } = control;
   const label = runGroupFoldLabel(fold);
+  const isGoal = isGoalRunGroupFold(fold);
+  const Icon = isGoal ? IconTarget : IconPackage;
   return (
-    <div data-chat-run-group-fold className="-mx-2">
+    <div
+      data-chat-run-group-fold
+      className={cn("-mx-2", embedded && "@[900px]:-mb-[15px]")}
+    >
       <button
         type="button"
         aria-expanded={expanded}
@@ -3165,9 +3302,12 @@ function RunGroupFoldRow({
             : "Expand grouped run history"
         }
         onClick={onToggle}
-        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+        className={cn(
+          "inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50",
+          embedded && "mt-1.5",
+        )}
       >
-        <IconPackage
+        <Icon
           aria-hidden
           size={14}
           className="shrink-0 text-muted-foreground/70"
@@ -5534,10 +5674,12 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  runGroupFolds,
   completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
     hiddenGroups: readonly GroupedChatMessageGroup[];
@@ -5552,6 +5694,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
   );
@@ -5576,11 +5719,14 @@ function PagedUserGroup({
 function isAutomationUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
+  return message.role === "user" && hasAutomationMessageMetadata(message);
+}
+
+function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "user" &&
-    (message.automationSnapshot !== undefined ||
-      message.automationTitle !== undefined ||
-      message.automationId !== undefined)
+    message.automationSnapshot !== undefined ||
+    message.automationTitle !== undefined ||
+    message.automationId !== undefined
   );
 }
 
@@ -5922,6 +6068,44 @@ function AutomationUserMessage({
   );
 }
 
+function GoalUserMessage({
+  bodyBlocks,
+  openLightbox,
+}: {
+  bodyBlocks: BodyRenderBlock[];
+  openLightbox: (url: string) => void;
+}) {
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex w-full flex-col items-end">
+          <div
+            aria-label="Goal prompt"
+            className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+          >
+            <IconTarget size={15} stroke={1.8} className="shrink-0" />
+            <span>Goal prompt</span>
+          </div>
+          {bodyBlocks.length > 0 ? (
+            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
+              <div className="px-4 py-3">
+                <BodyContentBlocks
+                  blocks={bodyBlocks}
+                  openLightbox={openLightbox}
+                  hardBreaks
+                  escapeMarkdownHtml
+                  markdownMediaPreview={false}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -5983,6 +6167,12 @@ function PagedUserMessage({
     );
   }
 
+  if (isGoalUserMessage(message)) {
+    return (
+      <GoalUserMessage bodyBlocks={bodyBlocks} openLightbox={openLightbox} />
+    );
+  }
+
   return (
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -6022,10 +6212,12 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  runGroupFolds,
   completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
     hiddenGroups: readonly GroupedChatMessageGroup[];
@@ -6036,7 +6228,9 @@ function PagedAssistantGroup({
   const hasRenderableMessage = group.messages.some((message) => {
     return isRenderableAssistantMessage(message);
   });
-  if (!hasRenderableMessage && !completedWorkFold) {
+  const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
+  const showCompletedWorkFold = completedWorkFold && !hasRunGroupFolds;
+  if (!hasRenderableMessage && !completedWorkFold && !hasRunGroupFolds) {
     return null;
   }
 
@@ -6057,14 +6251,19 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
-          {completedWorkFold && (
+          {runGroupFolds?.map((fold) => {
+            return (
+              <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
+            );
+          })}
+          {showCompletedWorkFold && (
             <CompletedWorkFoldRow
               groups={completedWorkFold.groups}
               expanded={completedWorkFold.expanded}
               onToggle={completedWorkFold.onToggle}
             />
           )}
-          {completedWorkFold?.expanded
+          {showCompletedWorkFold && completedWorkFold.expanded
             ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
                 return (
                   <div key={hiddenGroup.beginMessageId} className="contents">
