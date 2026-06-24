@@ -2184,8 +2184,8 @@ jobs:
             --retry-all-errors \
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
-            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id') || true
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id')
           for aid in $EXISTING; do
             curl -sfL -X DELETE \
               --retry 5 \
