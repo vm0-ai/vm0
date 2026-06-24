@@ -915,6 +915,36 @@ async fn write_user_env_file_uses_single_stdin_exec_for_small_env() {
 }
 
 #[tokio::test]
+async fn write_user_env_file_uses_stdin_exec_at_protocol_limit() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    let run_id = RunId::nil();
+    let empty_payload_len = serde_json::to_vec(&HashMap::from([("A".to_string(), String::new())]))
+        .unwrap()
+        .len();
+    let user_env = HashMap::from([(
+        "A".to_string(),
+        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES - empty_payload_len),
+    )]);
+    let payload = serde_json::to_vec(&user_env).unwrap();
+    assert_eq!(payload.len(), vsock_proto::MAX_EXEC_STDIN_BYTES);
+
+    let path = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(
+        exec_calls[0].stdin_bytes.as_ref().unwrap().len(),
+        vsock_proto::MAX_EXEC_STDIN_BYTES
+    );
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn write_user_env_file_fails_on_non_exited_fast_path_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
@@ -997,6 +1027,36 @@ async fn write_user_env_file_fallback_fails_on_non_exited_mkdir_result() {
         "got: {message}"
     );
     assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn write_user_env_file_fallback_fails_on_non_exited_chmod_result() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::Cancelled,
+        stdout: Vec::new(),
+        stderr: b"cancelled".to_vec(),
+        diagnostic: String::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+    let run_id = RunId::nil();
+    let user_env = HashMap::from([(
+        "CUSTOM_ENV".to_string(),
+        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+    )]);
+
+    let err = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+
+    assert!(
+        message.contains("user env file permission update failed (cancelled)"),
+        "got: {message}"
+    );
+    assert_eq!(sandbox.write_file_calls().len(), 1);
 }
 
 #[test]
