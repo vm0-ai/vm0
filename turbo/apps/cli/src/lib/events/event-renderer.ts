@@ -88,6 +88,9 @@ export class EventRenderer {
    * Format timestamp for display (without milliseconds, matching metrics format)
    */
   static formatTimestamp(timestamp: Date): string {
+    if (!Number.isFinite(timestamp.getTime())) {
+      return "invalid-date";
+    }
     return timestamp.toISOString().replace(/\.\d{3}Z$/, "Z");
   }
 

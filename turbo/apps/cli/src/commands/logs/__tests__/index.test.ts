@@ -85,6 +85,39 @@ describe("logs command", () => {
       expect(logCalls).toContain("Hello, world!");
     });
 
+    it("should not fail when an agent event has an invalid timestamp", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "not-a-timestamp",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [{ type: "text", text: "Still visible" }],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[invalid-date]");
+      expect(logCalls).toContain("Still visible");
+    });
+
     it("should handle empty events", async () => {
       server.use(
         http.get(
