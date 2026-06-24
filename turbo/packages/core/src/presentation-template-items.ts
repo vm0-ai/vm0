@@ -3078,40 +3078,40 @@ const PLAYFUL_POP_PREVIEW_HTMLS = [
 
 const PRESENTATION_TEMPLATE_REFERENCE_PREVIEW_IMAGES = {
   "bloom-pitch": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ba49b06d-52ec-4872-98f4-f9f83c51631a/bloom-pitch.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4124c01a-a6c7-484c-9e22-8dd4d62a6c6c/bloom-pitch.png",
   ],
   "blueprint-academy": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9148d8a1-ea93-41c9-8d75-f2daa26a89ca/blueprint-academy.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ffa9f511-0e01-4191-99a6-3d6621b99661/blueprint-academy.png",
   ],
   meridian: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3ec2bc5c-0fa0-43cb-a5fa-e938c31a1d95/meridian.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/189d2344-ca5f-4dbf-86ce-04b1567c062f/meridian.png",
   ],
   "neo-brutalism": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30f14341-4928-4f01-89d9-a0cfef45affa/neo-brutalism.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a184e26a-c514-434e-9467-a19b2af1e979/neo-brutalism.png",
   ],
   nocturne: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/daab1cba-6f19-4ab9-a1e9-5070905a244e/nocturne.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fb660157-e71e-4064-8a96-0c707c7e6a1f/nocturne.png",
   ],
   "pixel-glitch": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c9388ff7-af83-44b7-bd7b-5393633e1900/pixel-glitch.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dfcbf20f-9341-4f3f-a93d-4df159f6c4fd/pixel-glitch.png",
   ],
   prospectus: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c70efcfa-30cf-4db6-b2d7-f32a49779b00/prospectus.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5aad7d6c-4ca1-4041-985c-27674403c382/prospectus.png",
   ],
   schoolhouse: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5263bdcd-135d-4c0f-8b67-03ae01a09448/schoolhouse.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b8cdd8b6-122d-461a-8dc4-d17a73ad09e5/schoolhouse.png",
   ],
   "sticker-scrapbook": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/47808759-eca7-4d77-b51d-df0567a746f8/sticker-scrapbook.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4a6c9374-be17-40f9-83e9-acd7d6461efc/sticker-scrapbook.png",
   ],
   strata: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3476ca71-c8cc-4174-9f28-2569e5fe9962/strata.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f931d6b1-c44e-442a-bcd4-c23f60888a7d/strata.png",
   ],
   "taped-consulting": [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ef875c5b-4991-4671-b172-093b28aaffe7/taped-consulting.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/fbf6d3b5-9a96-46a4-9fe6-6874b1bb5b63/taped-consulting.png",
   ],
   vantage: [
-    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/881a5fdc-1a2f-4b00-8bb4-bce2a6e3d043/vantage.png",
+    "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d1aea99-3215-41b6-9994-6a4613d64524/vantage.png",
   ],
 } as const satisfies Readonly<Record<string, readonly [string, ...string[]]>>;
 
