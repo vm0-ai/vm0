@@ -1111,6 +1111,7 @@ jobs:
       - build-web-production
       - build-api-production
       - build-app-production
+      - build-runner-release-assets
       - build-runner-production
       - build-e2b-template-production
       - sbom
@@ -2056,7 +2057,128 @@ jobs:
             echo "r2-bucket=$R2_BUCKET"
           } >> "$GITHUB_OUTPUT"
 
-  # Build runner: compile binary, upload to GitHub Release, stage on
+  # Publish runner release binaries for every supported host architecture.
+  # Production host staging remains in build-runner-production until #18486
+  # makes deploy/rollback architecture-aware.
+  build-runner-release-assets:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-musl
+          - x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve runner target metadata
+        id: target-metadata
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          . .github/scripts/runner-image-target.sh
+          runner_image_validate_target "$TARGET_TRIPLE"
+          {
+            echo "cache_suffix=$(runner_image_cache_suffix "$TARGET_TRIPLE")"
+            echo "asset_suffix=$(runner_image_asset_suffix "$TARGET_TRIPLE")"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: ${{ steps.target-metadata.outputs.cache_suffix }}-release
+          save-if: ${{ github.event.workflow_run.head_branch == 'main' }}
+
+      # IMPORTANT: production runner releases use the release profile. The
+      # shared R2 template cache intentionally ignores guest binaries. See #9192.
+      - name: Cross-compile guest binaries for ${{ matrix.target }}
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          cd crates
+          cargo build --release --target "$TARGET_TRIPLE" \
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
+
+      - name: Cross-compile runner with embedded guests for ${{ matrix.target }}
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          cd crates
+          TARGET_DIR="target/${TARGET_TRIPLE}/release"
+          GUEST_AGENT_PATH="${TARGET_DIR}/guest-agent" \
+          GUEST_DOWNLOAD_PATH="${TARGET_DIR}/guest-download" \
+          GUEST_INIT_PATH="${TARGET_DIR}/guest-init" \
+          GUEST_MOCK_CLAUDE_PATH="${TARGET_DIR}/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="${TARGET_DIR}/guest-mock-codex" \
+          GUEST_RESEED_PATH="${TARGET_DIR}/guest-reseed" \
+          GUEST_WRITE_FILE_PATH="${TARGET_DIR}/guest-write-file" \
+            cargo build --release --target "$TARGET_TRIPLE" -p runner
+
+      - name: Upload runner binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          TARGET_TRIPLE: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ steps.target-metadata.outputs.asset_suffix }}
+        run: |
+          set -euo pipefail
+          TAG="runner-rs-v${VERSION}"
+          ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
+          ASSET_PATH="crates/target/${TARGET_TRIPLE}/release/runner"
+
+          if [ ! -x "$ASSET_PATH" ]; then
+            echo "::error::runner binary not found or not executable: ${ASSET_PATH}"
+            exit 1
+          fi
+
+          # Get the release ID from the tag.
+          RELEASE_ID=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            | jq -r '.id')
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "::error::release not found for tag: ${TAG}"
+            exit 1
+          fi
+
+          # Delete existing asset with the same name (--clobber equivalent).
+          EXISTING=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id') || true
+          for aid in $EXISTING; do
+            curl -sfL -X DELETE \
+              -H "Authorization: token ${GH_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${aid}"
+          done
+
+          # Upload binary.
+          curl -sfL \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${ASSET_PATH}" \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
+
+  # Build runner: compile binary and stage it on
   # metal hosts (provision OS + monitoring + `runner build`
   # rootfs/snapshot). This job does not flip traffic — the systemd
   # service is still running the previous version. Runs in parallel
@@ -2068,7 +2190,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     permissions:
-      contents: write
+      contents: read
     environment: production
     steps:
       - uses: actions/checkout@v7
@@ -2118,49 +2240,6 @@ jobs:
           GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
           GUEST_WRITE_FILE_PATH=target/aarch64-unknown-linux-musl/release/guest-write-file \
             cargo build --release --target aarch64-unknown-linux-musl -p runner
-
-      - name: Upload runner binary to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
-        run: |
-          TAG="runner-rs-v${VERSION}"
-          ASSET_NAME="runner-v${VERSION}-aarch64-linux"
-          ASSET_PATH="crates/target/aarch64-unknown-linux-musl/release/runner"
-
-          # Get the release ID from the tag
-          RELEASE_ID=$(curl -sfL \
-            --retry 5 \
-            --retry-delay 2 \
-            --retry-max-time 60 \
-            --retry-all-errors \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
-            | jq -r '.id')
-
-          # Delete existing asset with the same name (--clobber equivalent)
-          EXISTING=$(curl -sfL \
-            --retry 5 \
-            --retry-delay 2 \
-            --retry-max-time 60 \
-            --retry-all-errors \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
-            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id') || true
-          for aid in $EXISTING; do
-            curl -sfL -X DELETE \
-              -H "Authorization: token ${GH_TOKEN}" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${aid}"
-          done
-
-          # Upload binary
-          curl -sfL \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary "@${ASSET_PATH}" \
-            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
