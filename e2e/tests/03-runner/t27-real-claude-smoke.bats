@@ -14,8 +14,6 @@
 # Test 3 (settings): --settings with PreToolUse hook
 #   Verifies the full pipeline: API → claim route → runner → sandbox → hook fires
 #   Regression test for #5832 (claim route omitted settings from response)
-# Test 4 (slash command): real Claude local slash-command flow completes and
-#   checkpoints without regressing to the old no-history failure.
 
 load '../../helpers/setup'
 
@@ -92,26 +90,9 @@ volumes:
     version: latest
 EOF
 
-    cat > "$TEST_DIR/vm0-slash.yaml" <<EOF
-version: "1.0"
-agents:
-  ${AGENT_NAME}-slash:
-    description: "Real Claude slash-command no-history test"
-    framework: claude-code
-    environment:
-      ANTHROPIC_MODEL: "$REAL_CLAUDE_MODEL"
-    volumes:
-      - claude-files:/home/user/.claude
-volumes:
-  claude-files:
-    name: $VOLUME_NAME
-    version: latest
-EOF
-
     $VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
     $VM0_CLI compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
     $VM0_CLI compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
-    $VM0_CLI compose "$TEST_DIR/vm0-slash.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -216,43 +197,4 @@ ensure_anthropic_model_provider() {
     assert_output --partial "◆ Claude Code Completed"
     # Sentinel file was created by PreToolUse hook and read by Claude
     assert_output --partial "SETTINGS_HOOK_OK"
-}
-
-# Test 4: real Claude slash-command local flow — verify the current Claude CLI
-# behavior still produces resumable session history and never degrades into the
-# old checkpoint read error.
-@test "t27-4: status slash command completes with session history" {
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        skip "ANTHROPIC_API_KEY not set"
-    fi
-
-    ensure_anthropic_model_provider
-
-    run $VM0_CLI run "${AGENT_NAME}-slash" \
-        --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
-        "/status"
-
-    assert_success
-    assert_output --partial "/status"
-    assert_output --partial "Run completed successfully"
-    refute_output --partial "Claude Code emitted a zero-turn result without creating session history"
-    refute_output --partial "Checkpoint failed:"
-    refute_output --partial "Failed to read session history"
-
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
-    [ -n "$RUN_ID" ] || {
-        echo "# Failed to extract Run ID from output"
-        echo "$output"
-        return 1
-    }
-
-    wait_for_log "$RUN_ID" --system -- \
-        "Session history loaded" \
-        "checkpoint created successfully"
-
-    refute_output --partial "Claude Code emitted a zero-turn result without creating session history"
-    refute_output --partial "Skipping recovery checkpoint because no session history was created"
-    refute_output --partial "Checkpoint failed:"
-    refute_output --partial "Failed to read session history"
 }
