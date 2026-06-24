@@ -5380,7 +5380,12 @@ function ComputerUseConnectorMenuSection({
           })}
         </div>
       ) : (
-        <div className="px-2 py-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+          <IconDeviceDesktop
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
           No online computers
         </div>
       )}
