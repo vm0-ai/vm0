@@ -42,6 +42,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 sentry = { workspace = true, features = ["panic"] }
 which = { workspace = true }
 zstd = { workspace = true, features = ["zstdmt"] }
+vsock-proto = { workspace = true }
 
 # These dev-dependencies exist solely for release-please version tracking:
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,

@@ -2573,6 +2573,7 @@ dependencies = [
  "tracing-test-support",
  "url",
  "uuid",
+ "vsock-proto",
  "which",
  "zstd",
 ]

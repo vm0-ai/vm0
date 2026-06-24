@@ -11,9 +11,9 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_user_env_json, is_runner_owned_env_key,
-    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
-    write_user_env_file,
+    HostEnv, build_env_json_with_host_env, build_user_env_json, guest_user_env_file_path,
+    is_runner_owned_env_key, validate_execution_context_before_sandbox,
+    validate_model_provider_env_placeholders, write_user_env_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -869,7 +869,53 @@ fn build_env_json_user_vars_cannot_override_system() {
 }
 
 #[tokio::test]
-async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
+async fn write_user_env_file_skips_empty_env() {
+    let sandbox = MockSandbox::new("test");
+    let run_id = RunId::nil();
+
+    let path = write_user_env_file(&sandbox, run_id, &HashMap::new())
+        .await
+        .unwrap();
+
+    assert!(path.is_none());
+    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn write_user_env_file_uses_single_stdin_exec_for_small_env() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    let run_id = RunId::nil();
+    let user_env = HashMap::from([
+        ("CUSTOM_ENV".to_string(), "value".to_string()),
+        ("TZ".to_string(), "Asia/Shanghai".to_string()),
+    ]);
+
+    let path = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    let call = &exec_calls[0];
+    assert!(!call.sudo);
+    assert!(call.env_keys.is_empty());
+    assert!(call.cmd.contains("umask 077"));
+    assert!(call.cmd.contains("mkdir -p -m 700 --"));
+    assert!(call.cmd.contains("chmod 700 --"));
+    assert!(call.cmd.contains("cat >"));
+    assert!(call.cmd.contains("chmod 600 --"));
+    let stdin_bytes = call.stdin_bytes.as_ref().unwrap();
+    let decoded: HashMap<String, String> = serde_json::from_slice(stdin_bytes).unwrap();
+    assert_eq!(decoded, user_env);
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn write_user_env_file_fails_on_non_exited_fast_path_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::Cancelled,
@@ -881,6 +927,65 @@ async fn write_user_env_file_fails_on_non_exited_mkdir_result() {
     }));
     let run_id = RunId::nil();
     let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
+
+    let err = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+
+    assert!(
+        message.contains("user env file write failed (cancelled)"),
+        "got: {message}"
+    );
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
+async fn write_user_env_file_falls_back_for_oversized_env() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    let run_id = RunId::nil();
+    let user_env = HashMap::from([(
+        "CUSTOM_ENV".to_string(),
+        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+    )]);
+
+    let path = write_user_env_file(&sandbox, run_id, &user_env)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 2);
+    assert!(exec_calls[0].cmd.contains("mkdir -p -m 700 --"));
+    assert!(exec_calls[0].stdin_bytes.is_none());
+    assert!(exec_calls[1].cmd.contains("chmod 600 --"));
+    assert!(exec_calls[1].stdin_bytes.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, path);
+    let decoded: HashMap<String, String> = serde_json::from_slice(&writes[0].content).unwrap();
+    assert_eq!(decoded, user_env);
+}
+
+#[tokio::test]
+async fn write_user_env_file_fallback_fails_on_non_exited_mkdir_result() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult {
+        termination: ExecTermination::Cancelled,
+        stdout: Vec::new(),
+        stderr: b"cancelled".to_vec(),
+        diagnostic: String::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    }));
+    let run_id = RunId::nil();
+    let user_env = HashMap::from([(
+        "CUSTOM_ENV".to_string(),
+        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+    )]);
 
     let err = write_user_env_file(&sandbox, run_id, &user_env)
         .await
