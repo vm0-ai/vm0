@@ -1856,16 +1856,9 @@ describe("chat composer templates", () => {
       fireEvent.mouseEnter(preview);
       await waitFor(() => {
         expect(
-          screen.getByTestId(`${template.title} card HTML preview`),
-        ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+          screen.queryByTestId(`${template.title} card HTML preview`),
+        ).not.toBeInTheDocument();
       });
-      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
-      const firstPreviewHtml = await htmlForFrame(currentPreviewFrame());
-      expect(firstPreviewHtml).toContain("Slide one");
-      expect(firstPreviewHtml).toContain("--accent:#FF7A1A");
-      expect(firstPreviewHtml).toContain("--s2:#F5B73E");
-      expect(firstPreviewHtml).not.toContain("--fd:");
-      expect(firstPreviewHtml).not.toContain("--fb:");
 
       fireEvent.mouseEnter(preview);
       fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
@@ -1875,6 +1868,12 @@ describe("chat composer templates", () => {
           "Slide two",
         );
       });
+      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
+      const secondPreviewHtml = await htmlForFrame(currentPreviewFrame());
+      expect(secondPreviewHtml).toContain("--accent:#FF7A1A");
+      expect(secondPreviewHtml).toContain("--s2:#F5B73E");
+      expect(secondPreviewHtml).not.toContain("--fd:");
+      expect(secondPreviewHtml).not.toContain("--fb:");
       const createObjectUrlCountBeforeLeave = createObjectURL.mock.calls.length;
       fireEvent.mouseLeave(preview);
       await waitFor(() => {
@@ -1910,6 +1909,12 @@ describe("chat composer templates", () => {
       });
 
       fireEvent.mouseEnter(prismPreview);
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId(`${prismTemplate.title} card HTML preview`),
+        ).not.toBeInTheDocument();
+      });
+      fireEvent.mouseMove(prismPreview, { clientX: 300, clientY: 80 });
       await waitFor(() => {
         expect(
           screen.getByTestId(`${prismTemplate.title} card HTML preview`),
@@ -2259,8 +2264,8 @@ describe("chat composer templates", () => {
     fireEvent.mouseEnter(preview);
     await waitFor(() => {
       expect(
-        screen.getByTestId(`${template.title} card HTML preview`),
-      ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+        screen.queryByTestId(`${template.title} card HTML preview`),
+      ).not.toBeInTheDocument();
     });
     fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
     const animationFrame = createDeferredPromise<void>(AbortSignal.any([]));

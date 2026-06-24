@@ -2417,6 +2417,20 @@ function createPresentationTemplateHtmlPreviewState(params: {
   };
 }
 
+function createPresentationTemplateCardHtmlPreviewState(params: {
+  readonly draft: PresentationEditDraft;
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly previousFrameUrl: string | null;
+  readonly theme: PresentationTemplateThemeOption;
+}): TemplateCardHtmlPreviewState | null {
+  if (params.index === 0) {
+    revokePresentationTemplateHtmlPreviewUrl(params.previousFrameUrl);
+    return null;
+  }
+  return createPresentationTemplateHtmlPreviewState(params);
+}
+
 function presentationTemplateCardFrameUrls(params: {
   readonly currentFrameUrl: string | null;
   readonly loadedFrameUrl: string | null;
@@ -2596,16 +2610,10 @@ function TemplatePreview({
       ? htmlPreview
       : null;
   const loadedHtmlFrameKey = `card:${item.embedUrl}:${previewTheme.id}:loaded`;
-  const currentFrameUrl = activeHtmlPreview?.frameUrl ?? null;
   const loadedFrameUrl = loadedHtmlFrameUrls[loadedHtmlFrameKey] ?? null;
   const previousActiveFrameUrlForImmediateRevocation =
     presentationTemplateCardActiveFrameUrlForImmediateRevocation({
       activeFrameUrl: activeHtmlPreview?.frameUrl ?? null,
-      loadedFrameUrl,
-    });
-  const { overlayFrameUrl, primaryFrameUrl } =
-    presentationTemplateCardFrameUrls({
-      currentFrameUrl,
       loadedFrameUrl,
     });
   const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
@@ -2617,6 +2625,15 @@ function TemplatePreview({
       hoverSlideIndex;
     return Math.max(0, Math.min(index, scrubSlideCount - 1));
   };
+  const currentFrameUrl =
+    currentPreviewSlideIndex() === 0
+      ? null
+      : (activeHtmlPreview?.frameUrl ?? null);
+  const { overlayFrameUrl, primaryFrameUrl } =
+    presentationTemplateCardFrameUrls({
+      currentFrameUrl,
+      loadedFrameUrl,
+    });
   const openPreview = () => {
     onPreview(item, currentPreviewSlideIndex());
   };
@@ -2633,7 +2650,7 @@ function TemplatePreview({
     const activeIndex = cache.activeIndexes.get(item.embedUrl) ?? 0;
     const cachedDraft = cache.drafts.get(item.embedUrl);
     if (cachedDraft !== undefined) {
-      const previewState = createPresentationTemplateHtmlPreviewState({
+      const previewState = createPresentationTemplateCardHtmlPreviewState({
         draft: cachedDraft,
         index: activeIndex,
         item,
@@ -2700,7 +2717,7 @@ function TemplatePreview({
         cache.drafts.set(item.embedUrl, result.value);
         if (cache.activeTokens.get(item.embedUrl) === activeToken) {
           setHtmlPreview(
-            createPresentationTemplateHtmlPreviewState({
+            createPresentationTemplateCardHtmlPreviewState({
               draft: result.value,
               index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
@@ -2721,7 +2738,7 @@ function TemplatePreview({
     setHover({ slug: item.slug, index });
     if (cachedDraft !== undefined) {
       setHtmlPreview(
-        createPresentationTemplateHtmlPreviewState({
+        createPresentationTemplateCardHtmlPreviewState({
           draft: cachedDraft,
           index,
           item,
