@@ -15,6 +15,62 @@ function getEventType(
   return typeof eventType === "string" ? eventType : undefined;
 }
 
+function stringData(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function isFailureResult(event: ParsedEvent | null): event is ParsedEvent {
+  return event?.type === "result" && event.data.success === false;
+}
+
+function isTopLevelCodexError(
+  eventType: string | undefined,
+  parsed: ParsedEvent | null,
+): boolean {
+  return eventType === "error" && isFailureResult(parsed);
+}
+
+function isTerminalCodexFailure(
+  eventType: string | undefined,
+  parsed: ParsedEvent | null,
+): parsed is ParsedEvent {
+  if (!isFailureResult(parsed)) {
+    return false;
+  }
+  return eventType === "turn.failed" || eventType === "turn.completed";
+}
+
+function getParsedTurnId(event: ParsedEvent): string | undefined {
+  return stringData(event.data.turnId);
+}
+
+function getResultText(event: ParsedEvent): string | undefined {
+  return stringData(event.data.result);
+}
+
+function combineDistinctMessages(
+  first: string | undefined,
+  second: string | undefined,
+): string | undefined {
+  const messages: string[] = [];
+  for (const message of [first, second]) {
+    if (!message) {
+      continue;
+    }
+    if (
+      messages.some((existing) => {
+        return existing === message || existing.includes(message);
+      })
+    ) {
+      continue;
+    }
+    messages.push(message);
+  }
+  return messages.length > 0 ? messages.join("\n") : undefined;
+}
+
 /**
  * Preserves single-event parser behavior while applying stream-aware
  * presentation fixes that require one-event lookahead.
@@ -43,15 +99,45 @@ export class EventStreamNormalizer {
       return output;
     }
 
-    if (eventType === "error" && parsed?.type === "result") {
+    if (isTopLevelCodexError(eventType, parsed)) {
       const output = this.flush();
       this.pendingCodexError = parsed;
       return output;
     }
 
-    if (eventType === "turn.failed") {
+    if (isTerminalCodexFailure(eventType, parsed)) {
+      if (this.pendingCodexError) {
+        const pendingTurnId = getParsedTurnId(this.pendingCodexError);
+        const terminalTurnId = getParsedTurnId(parsed);
+        const shouldCollapse =
+          pendingTurnId && terminalTurnId
+            ? pendingTurnId === terminalTurnId
+            : !pendingTurnId && !terminalTurnId;
+
+        if (shouldCollapse) {
+          const mergedResult = combineDistinctMessages(
+            getResultText(this.pendingCodexError),
+            getResultText(parsed),
+          );
+          this.pendingCodexError = null;
+          return [
+            {
+              ...parsed,
+              data: {
+                ...parsed.data,
+                ...(mergedResult ? { result: mergedResult } : {}),
+              },
+            },
+          ];
+        }
+
+        const output = this.flush();
+        output.push(parsed);
+        return output;
+      }
+
       this.pendingCodexError = null;
-      return parsed ? [parsed] : [];
+      return [parsed];
     }
 
     const output = this.flush();

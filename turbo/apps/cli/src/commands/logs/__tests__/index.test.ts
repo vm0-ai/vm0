@@ -1240,6 +1240,409 @@ describe("logs command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
     });
+
+    it("should render failed turn.completed with nested error details", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    thread_id: "thread-x",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      duration_ms: 1200,
+                      error: {
+                        message: "selected model is at capacity",
+                        additional_details: "retry later",
+                        codex_error_info: "serverOverloaded",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("selected model is at capacity");
+      expect(logCalls).toContain("retry later");
+      expect(logCalls).not.toContain("[object Object]");
+    });
+
+    it("should collapse same-turn Codex error and failed turn.completed while preserving details", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:29:59Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-1",
+                    message: "API connection failed",
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      error: {
+                        message: "Rate limit exceeded",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(logCalls).toContain("API connection failed");
+      expect(logCalls).toContain("Rate limit exceeded");
+    });
+
+    it("should not collapse Codex failures from different turns", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:29:59Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-1",
+                    message: "First turn failed",
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-2",
+                      status: "failed",
+                      error: {
+                        message: "Second turn failed",
+                      },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Second turn failed");
+    });
+
+    it("should render warnings, plans, and generic completed items", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "warning",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "warning",
+                    message: "configuration warning",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.plan.updated",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.plan.updated",
+                    explanation: "working",
+                    plan: [
+                      { step: "read files", status: "completed" },
+                      { step: "write fix", status: "in_progress" },
+                    ],
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "plan-1",
+                      type: "plan",
+                      text: "Review implementation",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "mcp-1",
+                      type: "mcp_tool_call",
+                      status: "completed",
+                      server: "github",
+                      tool: "listIssues",
+                      arguments: { owner: "vm0-ai" },
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[warning] configuration warning");
+      expect(logCalls).toContain("[plan]");
+      expect(logCalls).toContain("working");
+      expect(logCalls).toContain("completed: read files");
+      expect(logCalls).toContain("Review implementation");
+      expect(logCalls).toContain("[item] mcp_tool_call");
+      expect(logCalls).toContain("server=github");
+      expect(logCalls).not.toContain("Codex Failed");
+      expect(logCalls).not.toContain("[object Object]");
+    });
+
+    it("should respect failed and declined statuses and flush pending tools", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd-failed",
+                      type: "command_execution",
+                      command: "deploy",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd-failed",
+                      type: "command_execution",
+                      status: "failed",
+                      aggregated_output: "permission denied",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "read-declined",
+                      type: "file_read",
+                      path: "/workspace/private.txt",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read-declined",
+                      type: "file_read",
+                      status: "declined",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 5,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:04Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd-pending",
+                      type: "command_execution",
+                      command: "sleep 10",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("deploy");
+      expect(logCalls).toContain("permission denied");
+      expect(logCalls).toContain("File read declined");
+      expect(logCalls).toContain("sleep 10");
+      expect(countOccurrences(logCalls, "✗")).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should tolerate malformed optional Codex payload fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "malformed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: 123,
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.completed",
+                    turn: {
+                      id: "turn-1",
+                      status: "failed",
+                      error: {
+                        code: "server_error",
+                        additional_details: "retry later",
+                      },
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "change-1",
+                      type: "file_change",
+                      changes: [
+                        null,
+                        { kind: { type: "modify" }, path: 12 },
+                        { kind: "modify", path: "/workspace/ok.ts" },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(logCalls).toContain("server_error");
+      expect(logCalls).toContain("retry later");
+      expect(logCalls).toContain("Modified: /workspace/ok.ts");
+      expect(logCalls).not.toContain("[object Object]");
+    });
   });
 
   describe("system log", () => {

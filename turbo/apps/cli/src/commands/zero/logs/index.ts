@@ -73,6 +73,7 @@ async function showAgentEvents(
   for (const parsed of normalizer.flush()) {
     renderer.render(parsed);
   }
+  renderer.flush();
 }
 
 export const zeroLogsCommand = new Command()

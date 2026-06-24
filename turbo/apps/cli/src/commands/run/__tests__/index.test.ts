@@ -2168,6 +2168,230 @@ describe("run command", () => {
       );
     });
 
+    it("should render failed Codex turn.completed before failed run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: {
+                      message: "selected model is at capacity",
+                      additional_details: "retry later",
+                    },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("selected model is at capacity");
+      expect(logCalls).toContain("retry later");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should collapse same-turn Codex error and failed turn.completed across event pages", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "thread.started",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+                {
+                  sequenceNumber: 1,
+                  eventType: "error",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-1",
+                    message: "API connection failed",
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 1,
+              run: { status: "running" },
+              framework: "codex",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: { message: "Rate limit exceeded" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(pollCount).toBe(2);
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(logCalls).toContain("API connection failed");
+      expect(logCalls).toContain("Rate limit exceeded");
+    });
+
+    it("should not collapse Codex terminal failures from different turns while polling", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  turn_id: "turn-1",
+                  message: "First turn failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-2",
+                    status: "failed",
+                    error: { message: "Second turn failed" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Second turn failed");
+    });
+
+    it("should flush pending Codex tool use before terminal run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "item.started",
+                eventData: {
+                  type: "item.started",
+                  item: {
+                    id: "cmd-pending",
+                    type: "command_execution",
+                    command: "sleep 10",
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("sleep 10");
+      const pendingIndex = logCalls.indexOf("sleep 10");
+      const completedIndex = logCalls.indexOf("Run completed successfully");
+      expect(pendingIndex).toBeGreaterThan(-1);
+      expect(completedIndex).toBeGreaterThan(pendingIndex);
+    });
+
     it("should not drain additional pages after failed status without watermark", async () => {
       let pollCount = 0;
       server.use(

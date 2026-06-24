@@ -108,6 +108,17 @@ export class EventRenderer {
   }
 
   /**
+   * Render any buffered display state that cannot wait for a future event.
+   */
+  flush(): void {
+    const pending = Array.from(this.pendingToolUse.values());
+    this.pendingToolUse.clear();
+    for (const { toolUse, prefix } of pending) {
+      this.renderToolUseOnly(toolUse, prefix);
+    }
+  }
+
+  /**
    * Render run completed state
    * Note: This is run lifecycle status, not an event
    */
@@ -183,6 +194,10 @@ export class EventRenderer {
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
     if (this.options.buffered !== false) {
+      const existing = this.pendingToolUse.get(toolUseId);
+      if (existing) {
+        this.renderToolUseOnly(existing.toolUse, existing.prefix);
+      }
       this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
     } else {
       // Non-buffered: render tool_use header immediately
@@ -312,6 +327,14 @@ export class EventRenderer {
       );
     } else {
       console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
+      const result = String(event.data.result || "").trim();
+      if (result.length > 0) {
+        const [firstLine, ...restLines] = result.split("\n");
+        console.log(`  Error: ${chalk.red(firstLine)}`);
+        for (const line of restLines) {
+          console.log(`         ${chalk.red(line)}`);
+        }
+      }
     }
 
     const durationMs = Number(event.data.durationMs || 0);

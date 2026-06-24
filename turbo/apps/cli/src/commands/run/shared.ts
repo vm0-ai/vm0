@@ -496,6 +496,7 @@ export async function pollEvents(
     for (const parsed of normalizer.flush()) {
       renderer.render(parsed);
     }
+    renderer.flush();
   };
 
   for (;;) {
