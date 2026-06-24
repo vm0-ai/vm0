@@ -9,6 +9,8 @@ use crate::helper_exec::{
 };
 use crate::types::ExecutionContext;
 
+const ENTROPY_SIZE: usize = 256;
+
 fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
     match result.termination {
         ExecTermination::Exited { exit_code } => Some(exit_code),
@@ -19,72 +21,58 @@ fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
     }
 }
 
-pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
-    let timestamp = format!(
+fn host_unix_timestamp_secs() -> String {
+    format!(
         "{:.3}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs_f64()
-    );
-    let date_cmd = format!("date -s \"@{timestamp}\"");
-    let result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &date_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: true,
-                stdin_bytes: None,
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "guest-clock-sync",
-        )
-        .await?;
-    if !helper_exec_succeeded(&result) {
-        return Err(RunnerError::Internal(format_helper_exec_failure(
-            "guest clock sync",
-            &result,
-        )));
-    }
-    Ok(())
+    )
 }
 
-/// Reseed guest CRNG after snapshot restore.
-///
-/// On ARM64 with kernel 6.1, VMGenID does not work (the driver only supports
-/// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
-/// same snapshot share identical CRNG state, producing identical random output.
-///
-/// This function injects fresh host entropy and forces an immediate CRNG reseed
-/// so each VM produces unique random numbers from the first `getrandom()` call.
-pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+fn read_host_entropy() -> RunnerResult<Vec<u8>> {
     use std::io::Read;
-
-    const ENTROPY_SIZE: usize = 256;
 
     let mut entropy = vec![0u8; ENTROPY_SIZE];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut entropy))
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
+    Ok(entropy)
+}
 
+/// Restores snapshot-sensitive guest state in one exec before the agent starts.
+///
+/// On ARM64 with kernel 6.1, VMGenID does not work (the driver only supports
+/// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
+/// same snapshot share identical CRNG state, producing identical random output.
+///
+/// This syncs the frozen guest clock and injects fresh host entropy so each VM
+/// produces unique random numbers from the first `getrandom()` call.
+pub(crate) async fn restore_guest_state(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+    let timestamp = host_unix_timestamp_secs();
+    let entropy = read_host_entropy()?;
+    let cmd = format!(
+        r#"date -s "@{timestamp}" || {{ status=$?; echo "guest clock sync failed" >&2; exit "$status"; }}
+guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}"#
+    );
     let result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
-                cmd: "guest-reseed",
+                cmd: &cmd,
                 timeout: DEFAULT_EXEC_TIMEOUT,
                 env: &[],
                 sudo: true,
                 stdin_bytes: Some(&entropy),
                 output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
             },
-            "guest-reseed",
+            "guest-state-restore",
         )
         .await?;
 
     if !helper_exec_succeeded(&result) {
         return Err(RunnerError::Internal(format_helper_exec_failure(
-            "guest-reseed",
+            "guest state restore",
             &result,
         )));
     }
