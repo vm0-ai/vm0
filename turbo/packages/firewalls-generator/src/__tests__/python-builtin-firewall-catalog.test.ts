@@ -509,4 +509,41 @@ describe("Python builtin firewall catalog renderer", () => {
       ]);
     }).toThrow("unsupported JSON catalog object: Date");
   });
+
+  it("rejects circular JSON catalog values without rejecting shared objects", () => {
+    const sharedAuth = {
+      headers: {
+        Authorization: "Bearer token",
+      },
+    };
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          name: "shared",
+          apis: [
+            {
+              base: "https://shared-a.example.com",
+              auth: sharedAuth,
+            },
+            {
+              base: "https://shared-b.example.com",
+              auth: sharedAuth,
+            },
+          ],
+        }),
+      ]);
+    }).not.toThrow();
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    expect(() => {
+      renderEntries([
+        connectorEntry({
+          ...testFirewall("circular"),
+          circular,
+        }),
+      ]);
+    }).toThrow("unsupported circular JSON catalog value");
+  });
 });

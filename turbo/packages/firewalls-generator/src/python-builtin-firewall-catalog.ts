@@ -276,7 +276,10 @@ function buildBuiltinFirewallDiagnosticManifest(
   };
 }
 
-function sortJson(value: unknown): JsonValue {
+function sortJson(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet<object>(),
+): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -291,7 +294,17 @@ function sortJson(value: unknown): JsonValue {
     return value;
   }
   if (Array.isArray(value)) {
-    return value.map(sortJson);
+    if (ancestors.has(value)) {
+      throw new Error("unsupported circular JSON catalog value");
+    }
+    ancestors.add(value);
+    try {
+      return value.map((item) => {
+        return sortJson(item, ancestors);
+      });
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (typeof value !== "object") {
     throw new Error(`unsupported JSON catalog value: ${typeof value}`);
@@ -302,11 +315,19 @@ function sortJson(value: unknown): JsonValue {
   }
 
   const sorted: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value).sort()) {
-    const nested = value[key];
-    if (nested !== undefined) {
-      sorted[key] = sortJson(nested);
+  if (ancestors.has(value)) {
+    throw new Error("unsupported circular JSON catalog value");
+  }
+  ancestors.add(value);
+  try {
+    for (const key of Object.keys(value).sort()) {
+      const nested = value[key];
+      if (nested !== undefined) {
+        sorted[key] = sortJson(nested, ancestors);
+      }
     }
+  } finally {
+    ancestors.delete(value);
   }
   return sorted;
 }
