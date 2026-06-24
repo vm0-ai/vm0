@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.6...guest-agent-v0.41.0) (2026-06-24)
+
+
+### Features
+
+* add codex app-server event adapter ([#18716](https://github.com/vm0-ai/vm0/issues/18716)) ([c419e1f](https://github.com/vm0-ai/vm0/commit/c419e1f84cee76d2a374a038b0efa6b29fb5e4bf))
+
 ## [0.40.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.40.5...guest-agent-v0.40.6) (2026-06-23)
 
 

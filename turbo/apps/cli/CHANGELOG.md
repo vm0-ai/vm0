@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.205.0](https://github.com/vm0-ai/vm0/compare/cli-v9.204.4...cli-v9.205.0) (2026-06-24)
+
+
+### Features
+
+* add agent option to permission-change ([#18734](https://github.com/vm0-ai/vm0/issues/18734)) ([c7c33e2](https://github.com/vm0-ai/vm0/commit/c7c33e2cb07a5d32899542f0f0f3ba89e006931e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.111.2
+    * @vm0/connectors bumped to 1.105.4
+    * @vm0/core bumped to 8.365.4
+
 ## [9.204.4](https://github.com/vm0-ai/vm0/compare/cli-v9.204.3...cli-v9.204.4) (2026-06-24)
 
 
