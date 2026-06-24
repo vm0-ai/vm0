@@ -25,6 +25,11 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { encryptStoredSecretValue } from "../../services/crypto.utils";
 import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
+import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
   seedWorkflowsFixture$,
@@ -169,6 +174,12 @@ describe("zero workflow triggers", () => {
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
+  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
+    async (fixture) => {
+      await store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
+
   async function setupFixture(): Promise<{
     fixture: WorkflowsFixture;
     agentId: string;
@@ -285,11 +296,24 @@ describe("zero workflow triggers", () => {
     const { workflowId } = await setupFixture();
     const triggerId = await createScheduleTrigger(workflowId);
 
+    // Seed the in-run token's org membership so role resolution hits the cache
+    // instead of Clerk; the request then reaches the token-type gate, which is
+    // what this test asserts.
+    const runUserId = `user_${randomUUID()}`;
+    const runOrgId = `org_${randomUUID()}`;
+    await trackMembership(
+      store.set(
+        seedOrgMembership$,
+        { orgId: runOrgId, userId: runUserId },
+        context.signal,
+      ),
+    );
+
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
+      userId: runUserId,
+      orgId: runOrgId,
       runId: `run_${randomUUID()}`,
       capabilities: ["agent:write"],
       iat: seconds,

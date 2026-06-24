@@ -211,7 +211,8 @@ export type UnattendedTriggerPermissionPolicy = z.infer<
  * clears the policy back to connector metadata defaults.
  */
 export const setUnattendedTriggerPermissionPolicyRequestSchema = z.object({
-  unattendedPermissionPolicy: unattendedTriggerPermissionPolicySchema.nullable(),
+  unattendedPermissionPolicy:
+    unattendedTriggerPermissionPolicySchema.nullable(),
 });
 export type SetUnattendedTriggerPermissionPolicyRequest = z.infer<
   typeof setUnattendedTriggerPermissionPolicyRequestSchema
