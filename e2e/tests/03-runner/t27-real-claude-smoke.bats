@@ -230,7 +230,7 @@ ensure_anthropic_model_provider() {
     run $VM0_CLI run "${AGENT_NAME}-slash" \
         --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
-        "/help"
+        "/status"
 
     assert_failure
     assert_output --partial "Run failed"
