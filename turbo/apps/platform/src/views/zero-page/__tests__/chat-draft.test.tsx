@@ -16,7 +16,6 @@ import {
   click,
   detachedSetupPage,
   fill,
-  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -134,9 +133,9 @@ function chatClipboardHtml(payload: {
 
 async function navigateToThread(threadId: string): Promise<void> {
   const link = await waitFor(() => {
-    return queryAllByRoleFast("link").find((element) => {
-      return element.getAttribute("href") === `/chats/${threadId}`;
-    });
+    return document.querySelector<HTMLAnchorElement>(
+      `a[href="/chats/${threadId}"]`,
+    );
   });
   if (!link) {
     throw new Error(`Thread link not found: ${threadId}`);
