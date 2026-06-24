@@ -232,7 +232,7 @@ jobs:
             exit 0
           fi
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix-with-hosts)
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           echo "Configured runner host architecture groups: $(jq -r 'map(.id) | join(",") // ""' <<<"$matrix")"
 
@@ -296,16 +296,18 @@ jobs:
         id: matrix-hosts
         shell: bash
         env:
-          HOSTS: ${{ matrix.hosts }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         run: |
           set -euo pipefail
-          if [ -z "$HOSTS" ]; then
+          hosts=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          if [ -z "$hosts" ]; then
             echo "::error::No metal hosts resolved for ${RUNNER_HOST_GROUP_ID}"
             exit 1
           fi
-          echo "hosts=${HOSTS}" >> "$GITHUB_OUTPUT"
-          host_count=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "hosts=${hosts}" >> "$GITHUB_OUTPUT"
+          host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
           echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
 
       - name: Provision metal hosts
