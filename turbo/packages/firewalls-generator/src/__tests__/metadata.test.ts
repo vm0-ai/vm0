@@ -16,6 +16,7 @@ const FIREWALLS_INDEX_FILE = path.join(FIREWALLS_DIR, "index.ts");
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
   "../connector-firewall-sources.ts",
+  "../python-builtin-firewall-catalog-composition.ts",
 ] as const;
 const GENERATOR_RENDERER_BOUNDARY_FILES = [
   "../python-builtin-firewall-catalog.ts",
