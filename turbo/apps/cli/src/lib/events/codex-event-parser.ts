@@ -85,11 +85,10 @@ function formatScalar(value: unknown): string | undefined {
   if (value === null) {
     return "null";
   }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? truncate(value) : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
     return truncate(String(value));
   }
   return undefined;
