@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.486.0](https://github.com/vm0-ai/vm0/compare/app-v0.485.1...app-v0.486.0) (2026-06-24)
+
+
+### Features
+
+* group computer use as a footer at the bottom of the connectors dropdown ([#18702](https://github.com/vm0-ai/vm0/issues/18702)) ([927536a](https://github.com/vm0-ai/vm0/commit/927536ae5a1f55d82566843cc1e594571997d569))
+
+
+### Bug Fixes
+
+* keep composer connector order stable ([#18733](https://github.com/vm0-ai/vm0/issues/18733)) ([b64b3e7](https://github.com/vm0-ai/vm0/commit/b64b3e7933a0cacc58540a581c205d991d1bb50b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.111.2
+    * @vm0/connectors bumped to 1.105.4
+    * @vm0/core bumped to 8.365.4
+
 ## [0.485.1](https://github.com/vm0-ai/vm0/compare/app-v0.485.0...app-v0.485.1) (2026-06-24)
 
 
