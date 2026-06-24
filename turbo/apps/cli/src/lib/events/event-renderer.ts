@@ -90,9 +90,11 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
+        this.flushPendingToolUses();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
+        this.flushPendingToolUses();
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
@@ -102,6 +104,7 @@ export class EventRenderer {
         this.handleToolResult(event, timestampPrefix);
         break;
       case "result":
+        this.flushPendingToolUses();
         this.renderResult(event, timestampPrefix);
         break;
     }
@@ -111,6 +114,10 @@ export class EventRenderer {
    * Render any buffered display state that cannot wait for a future event.
    */
   flush(): void {
+    this.flushPendingToolUses();
+  }
+
+  private flushPendingToolUses(): void {
     const pending = Array.from(this.pendingToolUse.values());
     this.pendingToolUse.clear();
     for (const { toolUse, prefix } of pending) {

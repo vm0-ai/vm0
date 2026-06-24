@@ -2392,6 +2392,67 @@ describe("run command", () => {
       expect(completedIndex).toBeGreaterThan(pendingIndex);
     });
 
+    it("should flush pending Codex tool use before terminal Codex failure output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "item.started",
+                eventData: {
+                  type: "item.started",
+                  item: {
+                    id: "cmd-pending",
+                    type: "command_execution",
+                    command: "sleep 10",
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: { message: "model unavailable" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const pendingIndex = logCalls.indexOf("sleep 10");
+      const codexFailedIndex = logCalls.indexOf("Codex Failed");
+      expect(pendingIndex).toBeGreaterThan(-1);
+      expect(codexFailedIndex).toBeGreaterThan(pendingIndex);
+      expect(logCalls).toContain("model unavailable");
+    });
+
     it("should not drain additional pages after failed status without watermark", async () => {
       let pollCount = 0;
       server.use(
