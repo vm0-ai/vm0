@@ -2086,11 +2086,7 @@ jobs:
           . .github/scripts/runner-image-target.sh
           runner_image_validate_target "$TARGET_TRIPLE"
           cache_suffix=$(runner_image_cache_suffix "$TARGET_TRIPLE")
-          asset_suffix=$(runner_image_asset_suffix "$TARGET_TRIPLE")
-          {
-            echo "cache_suffix=$cache_suffix"
-            echo "asset_suffix=$asset_suffix"
-          } >> "$GITHUB_OUTPUT"
+          echo "cache_suffix=$cache_suffix" >> "$GITHUB_OUTPUT"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -2148,12 +2144,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           TARGET_TRIPLE: ${{ matrix.target }}
-          ASSET_SUFFIX: ${{ steps.target-metadata.outputs.asset_suffix }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="runner-rs-v${VERSION}"
-          ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
+          . .github/scripts/runner-image-target.sh
+          TAG=$(runner_image_release_tag "$VERSION")
+          ASSET_NAME=$(runner_image_release_asset_name "$VERSION" "$TARGET_TRIPLE")
           ASSET_NAME_ENCODED=$(jq -rn --arg value "$ASSET_NAME" '$value|@uri')
           ASSET_PATH="crates/target/${TARGET_TRIPLE}/release/runner"
 
@@ -2283,7 +2279,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix | jq -c 'map({ id, label, target })')
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh target-matrix)
           group_count=$(jq -r 'length' <<<"$matrix")
           if [ "$group_count" -lt 1 ]; then
             echo "::error::No production runner host architecture groups found"
@@ -2379,12 +2375,10 @@ jobs:
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
-          runner_image_validate_target "$TARGET_TRIPLE"
-          ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
+          TAG=$(runner_image_release_tag "$VERSION")
+          ASSET_NAME=$(runner_image_release_asset_name "$VERSION" "$TARGET_TRIPLE")
           EXPECTED_ELF_MACHINE=$(runner_image_elf_machine_hex "$TARGET_TRIPLE")
 
-          TAG="runner-rs-v${VERSION}"
-          ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
           ASSET_PATH="crates/target/${TARGET_TRIPLE}/release/runner"
 
           ASSET_ID=$(curl -sfL \

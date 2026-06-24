@@ -315,11 +315,11 @@
           set_fact:
             download_headers: "{{ {'Authorization': 'token ' + github_token} if (github_token is defined and github_token | length > 0) else {} }}"
 
-        # Release asset naming matches release-please.yml's upload step
-        # (runner-rs-v{version} tag, runner-v{version}-{asset suffix} asset).
+        # Release asset naming comes from runner-image-target.sh, the same
+        # helper used by release-please.yml when uploading assets.
         - name: Download runner binary from GitHub Release
           get_url:
-            url: "https://github.com/vm0-ai/vm0/releases/download/runner-rs-{{ runner_name }}/runner-{{ runner_name }}-{{ derived_runner_asset_suffix }}"
+            url: "https://github.com/vm0-ai/vm0/releases/download/{{ derived_runner_release_tag }}/{{ derived_runner_release_asset_name }}"
             dest: "{{ bin_dir }}/runner"
             mode: "0755"
             headers: "{{ download_headers }}"

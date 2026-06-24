@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh [matrix|has-groups|hosts ID|select-host ID KEY [HOSTS]]
+Usage: runner-host-architecture-groups.sh [matrix|target-matrix|has-groups|hosts ID|select-host ID KEY [HOSTS]]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
@@ -16,6 +16,7 @@ Inputs:
 Commands:
   <none>      Emit the full local contract, including hosts.
   matrix      Emit the cross-job matrix contract, excluding hosts.
+  target-matrix  Emit the deploy/rollback matrix contract: id, label, target.
   has-groups  Emit true when at least one host group is configured.
   hosts ID            Emit comma-separated hosts for the given architecture group.
   select-host ID KEY [HOSTS]  Emit one deterministic host from the given architecture group.
@@ -169,6 +170,16 @@ emit_matrix() {
   })' <<<"$groups"
 }
 
+emit_target_matrix() {
+  local groups
+  groups=$(emit_groups) || return $?
+  jq -c 'map({
+    id,
+    label,
+    target
+  })' <<<"$groups"
+}
+
 emit_has_groups() {
   local groups
   groups=$(emit_groups) || return $?
@@ -245,6 +256,9 @@ case "$cmd" in
     ;;
   matrix)
     emit_matrix
+    ;;
+  target-matrix)
+    emit_target_matrix
     ;;
   has-groups)
     emit_has_groups

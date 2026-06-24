@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          matrix=$(.github/scripts/runner-host-architecture-groups.sh matrix | jq -c 'map({ id, label, target })')
+          matrix=$(.github/scripts/runner-host-architecture-groups.sh target-matrix)
           group_count=$(jq -r 'length' <<<"$matrix")
           if [ "$group_count" -lt 1 ]; then
             echo "::error::No production runner host architecture groups found"
@@ -169,11 +169,9 @@ jobs:
         run: |
           set -euo pipefail
           . .github/scripts/runner-image-target.sh
-          runner_image_validate_target "$TARGET_TRIPLE"
-          ASSET_SUFFIX=$(runner_image_asset_suffix "$TARGET_TRIPLE")
+          TAG=$(runner_image_release_tag "$VERSION")
+          ASSET_NAME=$(runner_image_release_asset_name "$VERSION" "$TARGET_TRIPLE")
 
-          TAG="runner-rs-v${VERSION}"
-          ASSET_NAME="runner-v${VERSION}-${ASSET_SUFFIX}"
           # curl + jq instead of `gh` — the toolchain-rust image doesn't
           # ship `gh` (it's in stage 3 `development`, not stage 2). Same
           # REST endpoint and auth as the upload step in release-please.yml.

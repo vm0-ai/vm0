@@ -110,6 +110,26 @@ runner_image_asset_suffix() {
   esac
 }
 
+runner_image_release_tag() {
+  local version="${1:-}"
+  if [ -z "$version" ]; then
+    echo "missing runner release version" >&2
+    return 2
+  fi
+
+  printf 'runner-rs-v%s\n' "$version"
+}
+
+runner_image_release_asset_name() {
+  local version="${1:-}"
+  local target="${2:-}"
+  local asset_suffix
+
+  runner_image_release_tag "$version" >/dev/null || return $?
+  asset_suffix=$(runner_image_asset_suffix "$target") || return $?
+  printf 'runner-v%s-%s\n' "$version" "$asset_suffix"
+}
+
 runner_image_elf_machine_hex() {
   local target="${1:-}"
 
