@@ -1195,7 +1195,8 @@ function WorkflowSelectedFileEditor({
   const draft = draftMatches ? draftState.content : null;
   const content = draft ?? sourceContent;
   const dirty = draft !== null && draft !== sourceContent;
-  const markdown = selectedFilePath === null || isMarkdownPath(selectedFilePath);
+  const markdown =
+    selectedFilePath === null || isMarkdownPath(selectedFilePath);
   const setDraft = (nextContent: string) => {
     setDraftState({
       workflowId: detail.id,
@@ -1209,11 +1210,7 @@ function WorkflowSelectedFileEditor({
     if (!detail.canManage || draft === null) {
       return;
     }
-    const body = workflowDraftUpdateBody(
-      selectedFilePath,
-      draft,
-      fileContents,
-    );
+    const body = workflowDraftUpdateBody(selectedFilePath, draft, fileContents);
     detach(
       (async () => {
         await updateWorkflow(

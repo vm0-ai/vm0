@@ -25,11 +25,11 @@ import {
 } from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
-export type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
 const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
 const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 
-export interface WorkflowDetailFileDraft {
+interface WorkflowDetailFileDraft {
   readonly workflowId: string;
   readonly filePath: string | null;
   readonly sourceContent: string;
@@ -87,10 +87,7 @@ export const setWorkflowDetailTriggerSidebarOpen$ = command(
       return;
     }
     if (open) {
-      params.set(
-        WORKFLOW_DETAIL_SIDEBAR_PARAM,
-        WORKFLOW_TRIGGER_SIDEBAR_VALUE,
-      );
+      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
       set(updateSearchParams$, params);
       return;
     }
