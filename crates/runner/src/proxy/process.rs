@@ -32,6 +32,7 @@ const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 /// own graceful process exit.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Configuration for starting the proxy.
 #[derive(Clone)]
 pub struct ProxyConfig {
     /// Path to the mitmdump binary.

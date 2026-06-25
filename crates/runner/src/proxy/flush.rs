@@ -11,6 +11,13 @@ use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
 
+/// Maximum time to wait for buffered and pending usage reports before stopping.
+///
+/// The runner writes `{addon_dir}/usage-flush-request`, signals the Python
+/// addon, then polls `{addon_dir}/usage-pending` until the addon acknowledges
+/// the current request with zero counters or this timeout expires. 30 s covers
+/// one webhook retry cycle (10 s timeout x 2 attempts plus 0.5 s backoff) with
+/// headroom for request delivery and mitmproxy event-loop drain.
 pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Maximum time to wait for mitmproxy JSONL writes to become visible before upload.
