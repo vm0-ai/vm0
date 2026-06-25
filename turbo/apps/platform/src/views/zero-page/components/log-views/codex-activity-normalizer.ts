@@ -51,6 +51,12 @@ function trimmedStringValue(value: unknown): string | undefined {
   return valueString && valueString.length > 0 ? valueString : undefined;
 }
 
+function nonBlankStringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
@@ -63,6 +69,19 @@ function getFirstString(
 ): string | undefined {
   for (const key of keys) {
     const value = trimmedStringValue(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function getFirstNonBlankString(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = nonBlankStringValue(record[key]);
     if (value) {
       return value;
     }
@@ -231,6 +250,31 @@ function combineDistinctMessages(
     messages.push(trimmed);
   }
   return messages.length > 0 ? messages.join("\n") : undefined;
+}
+
+function combineContentWithError(
+  content: string | undefined,
+  errorMessage: string | undefined,
+): string | undefined {
+  const contentText =
+    content !== undefined && content.trim().length > 0 ? content : undefined;
+  const errorText = errorMessage?.trim();
+
+  if (!contentText) {
+    return errorText && errorText.length > 0 ? errorText : undefined;
+  }
+  if (!errorText) {
+    return contentText;
+  }
+
+  const trimmedContent = contentText.trim();
+  if (trimmedContent === errorText || trimmedContent.includes(errorText)) {
+    return contentText;
+  }
+
+  return contentText.endsWith("\n")
+    ? `${contentText}${errorText}`
+    : `${contentText}\n${errorText}`;
 }
 
 function formatDetailSuffix(details: readonly string[]): string {
@@ -437,7 +481,7 @@ function parseCodexChanges(value: unknown): CodexFileChange[] {
       return {
         kind: getFirstString(change, ["kind"]),
         path: getFirstString(change, ["path"]),
-        diff: getFirstString(change, ["diff"]),
+        diff: getFirstNonBlankString(change, ["diff"]),
       };
     });
 }
@@ -697,7 +741,7 @@ function formatGenericCodexItem(
   }
 
   const readable =
-    getFirstString(item, [
+    getFirstNonBlankString(item, [
       "text",
       "title",
       "name",
@@ -867,7 +911,7 @@ function normalizeCodexCommandEvent(
   item: Record<string, unknown>,
 ): AgentEvent | null {
   const itemId = getItemId(item);
-  const command = getFirstString(item, ["command"]);
+  const command = getFirstNonBlankString(item, ["command"]);
   if (!itemId) {
     return null;
   }
@@ -883,8 +927,8 @@ function normalizeCodexCommandEvent(
 
   if (codexType === "item.completed") {
     const output =
-      getFirstString(item, ["aggregated_output", "aggregatedOutput"]) ??
-      getFirstString(item, ["output"]) ??
+      getFirstNonBlankString(item, ["aggregated_output", "aggregatedOutput"]) ??
+      getFirstNonBlankString(item, ["output"]) ??
       "";
     const status = getItemStatus(item);
     const exitCode = numberValue(item.exit_code);
@@ -897,7 +941,7 @@ function normalizeCodexCommandEvent(
       event,
       itemId,
       content:
-        combineDistinctMessages(output, errorMessage) ??
+        combineContentWithError(output, errorMessage) ??
         (isFailedStatus(status) ? `Command ${status}` : ""),
       isError,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
@@ -936,7 +980,10 @@ function normalizeCodexFileMutationEvent(
       event,
       itemId,
       content:
-        combineDistinctMessages(getFirstString(item, ["diff"]), errorMessage) ??
+        combineContentWithError(
+          getFirstNonBlankString(item, ["diff"]),
+          errorMessage,
+        ) ??
         (isFailedStatus(status)
           ? `File operation ${status}`
           : "File operation completed"),
@@ -975,8 +1022,8 @@ function normalizeCodexFileReadEvent(
       event,
       itemId,
       content:
-        combineDistinctMessages(
-          getFirstString(item, ["output"]),
+        combineContentWithError(
+          getFirstNonBlankString(item, ["output"]),
           errorMessage,
         ) ??
         (isFailedStatus(status)
@@ -996,7 +1043,7 @@ function normalizeCodexTextItemEvent(
   item: Record<string, unknown>,
   prefix?: string,
 ): AgentEvent {
-  const text = getFirstString(item, ["text"]);
+  const text = getFirstNonBlankString(item, ["text"]);
   if (text) {
     return makeCodexAssistantTextEvent(
       event,
@@ -1014,7 +1061,7 @@ function normalizeCodexPlanItemEvent(
   codexType: string,
   item: Record<string, unknown>,
 ): AgentEvent | null {
-  const text = getFirstString(item, ["text"]);
+  const text = getFirstNonBlankString(item, ["text"]);
   if (!text && codexType !== "item.completed") {
     return null;
   }

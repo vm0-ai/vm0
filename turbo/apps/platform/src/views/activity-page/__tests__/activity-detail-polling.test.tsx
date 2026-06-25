@@ -1112,6 +1112,7 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           type: "command_execution",
           status: "failed",
           command: "pnpm test adapter",
+          aggregated_output: "  partial adapter output\nadapter output tail  ",
           error: {
             message: "Command refused by policy",
             additional_details: "no shell grant",
@@ -2758,8 +2759,14 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(screen.getAllByText("pnpm test adapter")).not.toHaveLength(0);
     expect(
-      screen.getAllByText("Command refused by policy (no shell grant)"),
-    ).not.toHaveLength(0);
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "PRE" &&
+          element.textContent ===
+            "  partial adapter output\nadapter output tail  \nCommand refused by policy (no shell grant)"
+        );
+      }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Read")).not.toHaveLength(0);
     expect(screen.getByText("src/secret.ts")).toBeInTheDocument();
     expect(screen.getAllByText("Read declined by sandbox")).not.toHaveLength(0);
