@@ -512,9 +512,10 @@ fn is_claude_result_simple_provider_overloaded_error(
 }
 
 fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normalized: &str) -> bool {
+    let trimmed = normalized.trim();
     source == FailureDetailSource::ClaudeResult
-        && normalized.contains("api error: stream idle timeout")
-        && normalized.contains("partial response received")
+        && trimmed.starts_with("api error: stream idle timeout")
+        && trimmed.contains("partial response received")
 }
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
@@ -1653,6 +1654,17 @@ mod tests {
             AgentFramework::ClaudeCode,
             FailureDetailSource::ClaudeResult,
             "API Error: request timed out",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_explanatory_stream_idle_timeout_text() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            "Observed API Error: Stream idle timeout - partial response received in an earlier run",
         );
 
         assert_eq!(reason, None);
