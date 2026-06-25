@@ -16,6 +16,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -309,6 +310,13 @@ describe("workflow detail page", () => {
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
+    const permissionsLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent?.trim() === "Permissions";
+    });
+    expect(permissionsLink).toHaveAttribute(
+      "href",
+      `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}/triggers/workflow-trigger-weekday-brief/permissions`,
+    );
 
     click(screen.getByLabelText("Open config/settings.json"));
     await waitFor(() => {

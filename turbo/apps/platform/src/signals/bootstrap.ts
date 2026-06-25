@@ -10,6 +10,7 @@ import {
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
+  type RouterPathParams,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
 import { onDomEventFn } from "./utils.ts";
@@ -92,10 +93,7 @@ function redirectWithId(target: RoutePath, targetParam: string) {
   return command(({ get, set }) => {
     const params = get(pathParams$) ?? {};
     set(detachedNavigateTo$, target, {
-      pathParams: { [targetParam]: String(params.id) } as Record<
-        string,
-        string
-      >,
+      pathParams: { [targetParam]: String(params.id) } as RouterPathParams,
       replace: true,
     });
   });
