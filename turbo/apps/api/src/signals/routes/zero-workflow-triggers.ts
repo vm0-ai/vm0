@@ -230,6 +230,7 @@ const setTriggerPermissionPolicyInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         triggerId: params.id,
+        connectorRefs: bodyResult.data.unattendedConnectorRefs,
         policy: bodyResult.data.unattendedPermissionPolicy,
       },
       signal,

@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { UnattendedTriggerPermissionPolicy } from "@vm0/api-contracts/contracts/zero-workflows";
+import type {
+  UnattendedTriggerConnectorRefs,
+  UnattendedTriggerPermissionPolicy,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { networkPoliciesSchema } from "@vm0/connectors/firewall-types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -133,6 +136,7 @@ async function seedTrigger(
     readonly enabled?: boolean;
     readonly consecutiveFailures?: number;
     readonly lastRunId?: string;
+    readonly unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
     readonly unattendedPermissionPolicy?: UnattendedTriggerPermissionPolicy | null;
   },
 ): Promise<{ triggerId: string; threadId: string }> {
@@ -161,6 +165,7 @@ async function seedTrigger(
       nextRunAt: opts.nextRunAt,
       consecutiveFailures: opts.consecutiveFailures ?? 0,
       lastRunId: opts.lastRunId ?? null,
+      unattendedConnectorRefs: opts.unattendedConnectorRefs ?? [],
       unattendedPermissionPolicy: opts.unattendedPermissionPolicy ?? null,
     })
     .returning({ id: zeroWorkflowTriggers.id });
@@ -244,7 +249,7 @@ describe("zero workflow trigger scheduler", () => {
       encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
       type: "connector",
     });
-    // Enable Gmail for the agent so it surfaces in the resolved network policies.
+    // Enable Gmail for the agent; trigger runs still use their own connector refs.
     await db.insert(userConnectors).values({
       orgId: scenario.fixture.orgId,
       userId: scenario.fixture.userId,
@@ -266,6 +271,7 @@ describe("zero workflow trigger scheduler", () => {
       scheduleType: "loop",
       intervalSeconds: 60,
       nextRunAt: pastDate(),
+      unattendedConnectorRefs: ["gmail"],
       unattendedPermissionPolicy: {
         gmail: { policies: { "labels.write": "allow" } },
       },
@@ -285,6 +291,55 @@ describe("zero workflow trigger scheduler", () => {
     // It resolves to deny, and no permission is left as ask in an unattended run.
     expect(policies?.gmail?.deny ?? []).toContain("messages.write");
     expect(policies?.gmail?.ask ?? []).toHaveLength(0);
+  });
+
+  it("does not grant connector access from trigger policies when the connector is disabled", async () => {
+    const scenario = await setup();
+    const db = store.set(writeDb$);
+
+    await db.insert(connectors).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      type: "gmail",
+      authMethod: "oauth",
+      externalEmail: "trigger-user@example.com",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      oauthScopes: JSON.stringify([
+        "https://www.googleapis.com/auth/gmail.modify",
+      ]),
+    });
+    await db.insert(secrets).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      name: "GMAIL_ACCESS_TOKEN",
+      encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
+      type: "connector",
+    });
+    await db.insert(userConnectors).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      agentId: scenario.agentId,
+      connectorType: "gmail",
+    });
+
+    const trigger = await seedTrigger(scenario, {
+      scheduleType: "loop",
+      intervalSeconds: 60,
+      nextRunAt: pastDate(),
+      unattendedConnectorRefs: [],
+      unattendedPermissionPolicy: {
+        gmail: { policies: { "labels.write": "allow" } },
+      },
+    });
+
+    const result = await store.set(executeDueWorkflowTriggers$, context.signal);
+    expect(result.executed).toBe(1);
+
+    const policies = await runNetworkPolicies(
+      db,
+      await runIdForTrigger(db, trigger.triggerId),
+    );
+    expect(policies?.gmail).toBeUndefined();
   });
 
   it("exposes the trigger and workflow ids to the run environment", async () => {

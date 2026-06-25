@@ -9,6 +9,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import type {
+  UnattendedTriggerConnectorRefs,
   UnattendedTriggerPermissionAction,
   UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -40,6 +41,7 @@ import { setWorkflowTriggerPermissionPolicy$ } from "../../signals/workflows-pag
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
@@ -86,6 +88,21 @@ function visibleTriggerPermissionConnectors(query: string): readonly string[] {
   return matches.slice(0, TRIGGER_PERMISSION_CONNECTOR_LIMIT);
 }
 
+function toggleConnectorRef(
+  connectorRefs: readonly string[],
+  connectorRef: string,
+  enabled: boolean,
+): UnattendedTriggerConnectorRefs {
+  if (enabled) {
+    return connectorRefs.includes(connectorRef)
+      ? [...connectorRefs]
+      : [...connectorRefs, connectorRef];
+  }
+  return connectorRefs.filter((ref) => {
+    return ref !== connectorRef;
+  });
+}
+
 function LoadingCard() {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
@@ -127,7 +144,27 @@ function ConnectorPicker({
 }) {
   const query = useGet(triggerPermissionsConnectorSearch$);
   const setQuery = useSet(setTriggerPermissionsConnectorSearch$);
+  const pageSignal = useGet(pageSignal$);
+  const triggerLoadable = useLastLoadable(triggerPermissionsTrigger$);
+  const [saveLoadable, save] = useLoadableSet(
+    setWorkflowTriggerPermissionPolicy$,
+  );
   const visibleConnectors = visibleTriggerPermissionConnectors(query);
+
+  if (triggerLoadable.state === "loading") {
+    return <LoadingCard />;
+  }
+  if (triggerLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load trigger" />;
+  }
+
+  const trigger = triggerLoadable.data;
+  if (!trigger) {
+    return <ErrorMessage message="Trigger not found" />;
+  }
+
+  const connectorRefs = trigger.unattendedConnectorRefs;
+  const saving = saveLoadable.state === "loading";
 
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-6 py-10">
@@ -150,35 +187,65 @@ function ConnectorPicker({
       <div className="flex flex-col divide-y divide-border/70 rounded-lg border border-border">
         {visibleConnectors.map((type) => {
           const config = CONNECTOR_TYPES[type as ConnectorType];
+          const connectorEnabled = connectorRefs.includes(type);
           return (
-            <Link
+            <div
               key={type}
-              pathname={ROUTES.agentWorkflowTriggerPermissions}
-              options={{
-                pathParams: { agentId, workflowId, triggerId },
-                searchParams: new URLSearchParams({ ref: type }),
-              }}
-              className="flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
-                <ConnectorIcon type={type as ConnectorType} size={20} />
-              </span>
-              <span className="min-w-0 flex-1 flex flex-col gap-1">
-                <span className="text-sm font-medium text-foreground">
-                  {config.label}
+              <Link
+                pathname={ROUTES.agentWorkflowTriggerPermissions}
+                options={{
+                  pathParams: { agentId, workflowId, triggerId },
+                  searchParams: new URLSearchParams({ ref: type }),
+                }}
+                className="min-w-0 flex-1 flex items-center gap-3 text-left"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
+                  <ConnectorIcon type={type as ConnectorType} size={20} />
                 </span>
-                {config.helpText && (
-                  <span className="line-clamp-1 text-xs text-muted-foreground">
-                    {config.helpText}
+                <span className="min-w-0 flex-1 flex flex-col gap-1">
+                  <span className="text-sm font-medium text-foreground">
+                    {config.label}
                   </span>
-                )}
-              </span>
+                  {config.helpText && (
+                    <span className="line-clamp-1 text-xs text-muted-foreground">
+                      {config.helpText}
+                    </span>
+                  )}
+                </span>
+              </Link>
+              <LoadingSwitch
+                checked={connectorEnabled}
+                loading={saving}
+                ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${
+                  config.label
+                }`}
+                onCheckedChange={(enabled) => {
+                  detach(
+                    save(
+                      {
+                        triggerId,
+                        unattendedConnectorRefs: toggleConnectorRef(
+                          connectorRefs,
+                          type,
+                          enabled,
+                        ),
+                        unattendedPermissionPolicy:
+                          trigger.unattendedPermissionPolicy,
+                      },
+                      pageSignal,
+                    ),
+                    Reason.DomCallback,
+                  );
+                }}
+              />
               <IconChevronRight
                 size={16}
                 stroke={1.5}
                 className="shrink-0 text-muted-foreground"
               />
-            </Link>
+            </div>
           );
         })}
         {visibleConnectors.length === 0 ? (
@@ -277,16 +344,124 @@ function materializeTriggerPermissionPolicies(
   return policies;
 }
 
+function ConnectorAccessCard({
+  connectorEnabled,
+  connectorLabel,
+  saving,
+  onToggle,
+}: {
+  readonly connectorEnabled: boolean;
+  readonly connectorLabel: string;
+  readonly saving: boolean;
+  readonly onToggle: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+      <div className="min-w-0 flex flex-col gap-1">
+        <p className="text-sm font-medium text-foreground">Connector access</p>
+        <p className="text-xs text-muted-foreground">
+          {connectorEnabled
+            ? "Enabled for unattended trigger runs"
+            : "Disabled for unattended trigger runs"}
+        </p>
+      </div>
+      <LoadingSwitch
+        checked={connectorEnabled}
+        loading={saving}
+        ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${
+          connectorLabel
+        }`}
+        onCheckedChange={onToggle}
+      />
+    </div>
+  );
+}
+
+function ConnectorPermissionList({
+  metadata,
+  saving,
+  actionFor,
+  onChange,
+}: {
+  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly saving: boolean;
+  readonly actionFor: (permission: string) => UnattendedTriggerPermissionAction;
+  readonly onChange: (
+    permission: string,
+    action: UnattendedTriggerPermissionAction,
+  ) => void;
+}) {
+  return (
+    <div className="flex flex-col divide-y divide-border/70 rounded-lg border border-border">
+      {metadata.permissions.map((permission) => {
+        return (
+          <div
+            key={permission.name}
+            className="flex items-center gap-3 px-4 py-3"
+          >
+            <span className="min-w-0 flex-1 text-sm text-foreground">
+              {permission.description ?? permission.name}
+            </span>
+            <code className="hidden shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700 sm:inline">
+              {permission.name}
+            </code>
+            <PermissionToggle
+              action={actionFor(permission.name)}
+              disabled={saving}
+              onChange={(action) => {
+                onChange(permission.name, action);
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PermissionEditorSaveBar({
+  saved,
+  dirty,
+  saving,
+  onSave,
+}: {
+  readonly saved: boolean;
+  readonly dirty: boolean;
+  readonly saving: boolean;
+  readonly onSave: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-3">
+      {saved && !dirty && (
+        <span className="flex items-center gap-1 text-sm text-green-700 dark:text-green-400">
+          <IconCheck size={16} />
+          Saved
+        </span>
+      )}
+      <Button
+        type="button"
+        onClick={onSave}
+        disabled={saving || !dirty}
+        className="h-9 rounded-[10px]"
+      >
+        {saving ? "Saving..." : "Save"}
+      </Button>
+    </div>
+  );
+}
+
 function ConnectorPermissionEditorCard({
   triggerId,
   connectorRef,
   metadata,
+  connectorRefs,
   savedPolicy,
   editor,
 }: {
   triggerId: string;
   connectorRef: string;
   metadata: FirewallPermissionDetailMetadata;
+  connectorRefs: UnattendedTriggerConnectorRefs;
   savedPolicy: UnattendedTriggerPermissionPolicy | null;
   editor: TriggerPermissionEditorSignals;
 }) {
@@ -304,6 +479,7 @@ function ConnectorPermissionEditorCard({
     : undefined;
   const connectorLabel = connectorConfig?.label ?? metadata.label;
   const connectorHelpText = connectorConfig?.helpText ?? "";
+  const connectorEnabled = connectorRefs.includes(connectorRef);
 
   const actionFor = (permission: string): UnattendedTriggerPermissionAction => {
     return (
@@ -335,7 +511,32 @@ function ConnectorPermissionEditorCard({
     // reflects the merge, the local overrides match the saved state and `dirty`
     // collapses to false on its own — no explicit reset needed.
     detach(
-      save({ triggerId, unattendedPermissionPolicy: merged }, pageSignal),
+      save(
+        {
+          triggerId,
+          unattendedConnectorRefs: connectorRefs,
+          unattendedPermissionPolicy: merged,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleToggleConnector = (enabled: boolean) => {
+    detach(
+      save(
+        {
+          triggerId,
+          unattendedConnectorRefs: toggleConnectorRef(
+            connectorRefs,
+            connectorRef,
+            enabled,
+          ),
+          unattendedPermissionPolicy: savedPolicy,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -363,47 +564,26 @@ function ConnectorPermissionEditorCard({
         <p className="text-xs text-muted-foreground">{connectorHelpText}</p>
       )}
 
-      <div className="flex flex-col divide-y divide-border/70 rounded-lg border border-border">
-        {metadata.permissions.map((permission) => {
-          return (
-            <div
-              key={permission.name}
-              className="flex items-center gap-3 px-4 py-3"
-            >
-              <span className="min-w-0 flex-1 text-sm text-foreground">
-                {permission.description ?? permission.name}
-              </span>
-              <code className="hidden shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700 sm:inline">
-                {permission.name}
-              </code>
-              <PermissionToggle
-                action={actionFor(permission.name)}
-                disabled={saving}
-                onChange={(action) => {
-                  setOverride(permission.name, action);
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
+      <ConnectorAccessCard
+        connectorEnabled={connectorEnabled}
+        connectorLabel={connectorLabel}
+        saving={saving}
+        onToggle={handleToggleConnector}
+      />
 
-      <div className="flex items-center justify-end gap-3">
-        {saved && !dirty && (
-          <span className="flex items-center gap-1 text-sm text-green-700 dark:text-green-400">
-            <IconCheck size={16} />
-            Saved
-          </span>
-        )}
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || !dirty}
-          className="h-9 rounded-[10px]"
-        >
-          {saving ? "Saving..." : "Save"}
-        </Button>
-      </div>
+      <ConnectorPermissionList
+        metadata={metadata}
+        saving={saving}
+        actionFor={actionFor}
+        onChange={setOverride}
+      />
+
+      <PermissionEditorSaveBar
+        saved={saved}
+        dirty={dirty}
+        saving={saving}
+        onSave={handleSave}
+      />
     </div>
   );
 }
@@ -451,6 +631,7 @@ function TriggerPermissionsEditor({
       triggerId={triggerId}
       connectorRef={connectorRef}
       metadata={metadata}
+      connectorRefs={trigger.unattendedConnectorRefs}
       savedPolicy={trigger.unattendedPermissionPolicy}
       editor={editor}
     />

@@ -10,6 +10,7 @@ import {
   type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
   type ZeroWorkflowUpdateRequest,
+  type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -425,6 +426,7 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     { get, set },
     input: {
       triggerId: string;
+      unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
       unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
     },
     signal: AbortSignal,
@@ -433,7 +435,12 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     await accept(
       client.setPermissionPolicy({
         params: { id: input.triggerId },
-        body: { unattendedPermissionPolicy: input.unattendedPermissionPolicy },
+        body: {
+          ...(input.unattendedConnectorRefs !== undefined
+            ? { unattendedConnectorRefs: input.unattendedConnectorRefs }
+            : {}),
+          unattendedPermissionPolicy: input.unattendedPermissionPolicy,
+        },
         fetchOptions: { signal },
       }),
       [200],
