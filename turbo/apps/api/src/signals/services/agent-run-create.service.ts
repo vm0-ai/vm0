@@ -43,7 +43,6 @@ import {
   type FirewallExecutionMetadataConnectorType,
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
-import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   extractSecretNamesFromApis,
@@ -547,7 +546,6 @@ interface ConnectorRuntimeContext {
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
-  readonly connectorAuthMethods: Partial<Record<ConnectorType, string>>;
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -1923,7 +1921,6 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     connectorTypes: [],
-    connectorAuthMethods: {},
     storedEnvironment: undefined,
   };
 }
@@ -2221,11 +2218,6 @@ async function loadStoredConnectorContext(
       connectorTypes: allowedConnectorRows.map((row) => {
         return row.connectorType;
       }),
-      connectorAuthMethods: Object.fromEntries(
-        allowedConnectorRows.map((row) => {
-          return [row.connectorType, row.authMethod];
-        }),
-      ),
       storedEnvironment: compactRecord(resolved.environment),
     };
   });
@@ -2523,36 +2515,6 @@ function inlineFirewallEntry(
   return { kind: "inline", firewall: runtimeFirewall(firewall) };
 }
 
-const FIGMA_API_TOKEN_TEMPLATE = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
-const FIGMA_API_TOKEN_AUTH_HEADERS = Object.freeze({
-  "X-Figma-Token": FIGMA_API_TOKEN_TEMPLATE,
-});
-
-function figmaApiTokenFirewall(
-  firewall: ExpandedFirewallConfig,
-): ExpandedFirewallConfig {
-  return {
-    ...firewall,
-    apis: firewall.apis.map((api) => {
-      return {
-        ...api,
-        auth: {
-          ...api.auth,
-          headers: FIGMA_API_TOKEN_AUTH_HEADERS,
-        },
-      };
-    }),
-  };
-}
-
-async function loadFigmaApiTokenFirewall(): Promise<ExpandedFirewallConfig> {
-  const firewall = await loadConnectorFirewall("figma");
-  if (!firewall) {
-    throw new Error("Missing figma runtime firewall");
-  }
-  return figmaApiTokenFirewall(firewall);
-}
-
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
@@ -2689,7 +2651,6 @@ async function buildPermissionManifest(args: {
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
-  readonly connectorAuthMethods?: Partial<Record<ConnectorType, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
 }): Promise<PermissionManifest | undefined> {
   const connectorTypes =
@@ -2702,62 +2663,18 @@ async function buildPermissionManifest(args: {
     isFirewallExecutionMetadataConnectorType,
   );
 
-  const builtinSources: BuiltinConnectorManifestSource[] = [];
-  const inlineConnectorFirewalls: ExpandedFirewallConfig[] = [];
-  const inlineConnectorDefaultPolicies = new Map<string, FirewallPolicy>();
-  const inlineConnectorBillableFirewalls: string[] = [];
-
-  const loadedConnectorSources = await Promise.all(
+  const builtinSources = await Promise.all(
     builtinConnectorTypes.map(async (type) => {
       const metadata = getRequiredFirewallExecutionMetadata(type);
       const permissionIndex = await loadRequiredFirewallPermissionIndex(type);
-      if (
-        type === "figma" &&
-        args.connectorAuthMethods?.[type] === "api-token"
-      ) {
-        return {
-          type,
-          metadata,
-          permissionIndex,
-          inlineFirewall: await loadFigmaApiTokenFirewall(),
-        };
-      }
-      return { type, metadata, permissionIndex, inlineFirewall: null };
+      return { metadata, permissionIndex };
     }),
   );
-  for (const source of loadedConnectorSources) {
-    if (source.inlineFirewall) {
-      inlineConnectorFirewalls.push(source.inlineFirewall);
-      inlineConnectorDefaultPolicies.set(
-        source.type,
-        defaultPolicyForPermissionIndex(source.permissionIndex),
-      );
-      if (source.metadata.billable) {
-        inlineConnectorBillableFirewalls.push(source.type);
-      }
-      continue;
-    }
-    builtinSources.push({
-      metadata: source.metadata,
-      permissionIndex: source.permissionIndex,
-    });
-  }
 
   const connectorManifest = applyBuiltinConnectorMetadataPolicies(
     builtinSources,
     args.permissionPolicies,
     connectorBaseUrlVars,
-  );
-  const inlineConnectorManifest = applyConnectorPolicies(
-    inlineConnectorFirewalls,
-    args.permissionPolicies,
-    inlineFirewallEntry,
-    (firewall, permissionNames) => {
-      return (
-        inlineConnectorDefaultPolicies.get(firewall.name) ??
-        allAllowPolicyForPermissions(permissionNames)
-      );
-    },
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2778,7 +2695,6 @@ async function buildPermissionManifest(args: {
   const firewalls = [
     ...(providerManifest?.firewalls ?? []),
     ...connectorManifest.firewalls,
-    ...inlineConnectorManifest.firewalls,
     ...customConnectorManifest.firewalls,
   ];
 
@@ -2791,18 +2707,15 @@ async function buildPermissionManifest(args: {
     environmentSecretPlaceholders: mergeRecords(
       providerManifest?.environmentSecretPlaceholders,
       connectorManifest.environmentSecretPlaceholders,
-      firewallSecretPlaceholdersFromFirewalls(inlineConnectorFirewalls),
       firewallSecretPlaceholdersFromFirewalls(args.customConnectorFirewalls),
     ),
     billableFirewalls: [
       ...(providerManifest?.billableFirewalls ?? []),
       ...connectorManifest.billableFirewalls,
-      ...inlineConnectorBillableFirewalls,
     ],
     networkPolicies: {
       ...providerManifest?.networkPolicies,
       ...connectorManifest.networkPolicies,
-      ...inlineConnectorManifest.networkPolicies,
       ...customConnectorManifest.networkPolicies,
     },
   };
@@ -4533,7 +4446,6 @@ async function buildPreparedPermissionManifest(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
-    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
 }
