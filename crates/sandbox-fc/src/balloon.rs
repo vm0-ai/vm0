@@ -287,8 +287,8 @@ mod tests {
         (dir, sock_path)
     }
 
-    /// Helper: spawn a mock server that handles one GET (stats) and optionally one PATCH.
-    /// Returns the PATCH request body if one was received.
+    /// Run one tick against a mock Firecracker API and return the PATCH body if
+    /// the tick issued one.
     async fn run_tick_with_mock(stats_json: &str, max_inflate: u32) -> Option<String> {
         run_tick_with_mock_at(stats_json, max_inflate, 0).await
     }

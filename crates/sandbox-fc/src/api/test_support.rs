@@ -175,6 +175,11 @@ impl MockFirecrackerApi {
             .expect("mock Firecracker API server stopped before capturing request")
     }
 
+    /// Drain requests that the mock server has already captured.
+    ///
+    /// This does not wait for in-flight requests. Use it after the operation
+    /// under test has reached a synchronization point, such as after the API
+    /// client call returns.
     pub(crate) fn drain_requests(&mut self) -> Vec<MockRequest> {
         let mut requests = Vec::new();
         while let Ok(request) = self.requests.try_recv() {
