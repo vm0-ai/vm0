@@ -17,6 +17,8 @@ import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    AuthBaseForwardingAdmission,
+    AuthBaseForwardingSaturatedError,
     ForwardedRequestTooLargeError,
     InvalidResolvedAuthHeaderError,
     forward_request,
@@ -55,6 +57,7 @@ class FirewallHeaderPhaseAuthResult(Enum):
 
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
+AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
 
 
 @dataclass(frozen=True)
@@ -347,6 +350,63 @@ def _set_url_rewrite_forward_failed(
     )
 
 
+def _log_auth_base_forwarding_saturated(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base forwarding admission saturated",
+        type="firewall",
+        firewall_base=firewall_base,
+    )
+
+
+def _set_auth_base_forwarding_saturated(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    _log_auth_base_forwarding_saturated(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=503,
+        action="ALLOW",
+        error_code=AUTH_BASE_FORWARDING_SATURATED_ERROR,
+        message="auth.base forwarding is temporarily saturated",
+        permission=allow.name,
+    )
+
+
+def mark_auth_base_forwarding_saturated(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    """Record auth.base forwarding saturation before killing the flow."""
+    _log_auth_base_forwarding_saturated(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code=AUTH_BASE_FORWARDING_SATURATED_ERROR,
+    )
+
+
 def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
     body = flow.request.raw_content
     return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
@@ -633,6 +693,13 @@ def _set_invalid_resolved_auth_header_response(
     )
 
 
+def _take_auth_base_forward_admission(
+    flow: http.HTTPFlow,
+) -> AuthBaseForwardingAdmission | None:
+    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
+    return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -691,15 +758,25 @@ async def _apply_url_rewrite(
             return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
+        admission = _take_auth_base_forward_admission(flow)
         status, resp_body, resp_headers = await forward_request(
             new_url,
             flow.request.method,
             req_headers,
             req_body,
+            admission=admission,
         )
         flow.response = http.Response.make(status, resp_body, resp_headers)
     except ForwardedRequestTooLargeError:
         _set_auth_base_request_too_large(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+    except AuthBaseForwardingSaturatedError:
+        _set_auth_base_forwarding_saturated(
             flow,
             allow=allow,
             proxy_log_path=proxy_log_path,

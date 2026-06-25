@@ -727,6 +727,65 @@ class TestForwardRequestAsyncWrapper:
 
         getaddrinfo.assert_not_called()
 
+    async def test_rejects_when_admitted_forward_count_is_saturated(self):
+        first_entered = threading.Event()
+        release_first = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            first_entered.set()
+            if not release_first.wait(timeout=5):
+                raise TimeoutError("test did not release first forward")
+            return FakeSocket(http_response())
+
+        with (
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1),
+            fake_forwarder_upstream(create_connection=create_connection) as upstream,
+        ):
+            first_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                first_started = await asyncio.to_thread(first_entered.wait, 2)
+                assert first_started
+                with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
+                    await forwarder.forward_request("https://example.com", "GET", [], None)
+            finally:
+                release_first.set()
+                await asyncio.gather(first_task, return_exceptions=True)
+
+        assert upstream.getaddrinfo_calls == [("example.com", 443)]
+        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+
+    async def test_rejects_when_admitted_forward_body_bytes_are_saturated(self):
+        first_entered = threading.Event()
+        release_first = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            first_entered.set()
+            if not release_first.wait(timeout=5):
+                raise TimeoutError("test did not release first forward")
+            return FakeSocket(http_response())
+
+        with (
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            fake_forwarder_upstream(create_connection=create_connection) as upstream,
+        ):
+            first_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "POST", [], b"1234")
+            )
+            try:
+                first_started = await asyncio.to_thread(first_entered.wait, 2)
+                assert first_started
+                with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
+                    await forwarder.forward_request("https://example.com", "POST", [], b"x")
+            finally:
+                release_first.set()
+                await asyncio.gather(first_task, return_exceptions=True)
+
+        assert upstream.getaddrinfo_calls == [("example.com", 443)]
+        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+
     async def test_releases_forward_slot_when_forwarding_raises(self):
         first = True
 
@@ -852,6 +911,7 @@ class TestForwardRequestAsyncWrapper:
 
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
             fake_forwarder_upstream(create_connection=create_connection),
         ):
@@ -871,32 +931,18 @@ class TestForwardRequestAsyncWrapper:
                 with lock:
                     assert active == 1
 
-                second_task = asyncio.create_task(
-                    forwarder.forward_request("https://example.com", "GET", [], None)
-                )
-                await asyncio.sleep(0)
+                with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
+                    await forwarder.forward_request("https://example.com", "GET", [], None)
                 assert executor.submit_count == 1
 
                 release_first.set()
-                second_submitted_after_release = await asyncio.to_thread(
-                    executor.wait_for_submit_count,
-                    2,
-                    2,
-                )
-                assert second_submitted_after_release
-                second_started_after_release = await asyncio.to_thread(second_entered.wait, 2)
-                assert second_started_after_release
-
-                status, body, headers = await asyncio.wait_for(second_task, timeout=2)
             finally:
                 release_first.set()
                 await asyncio.gather(first_task, return_exceptions=True)
                 if second_task is not None:
                     await asyncio.gather(second_task, return_exceptions=True)
 
-        assert status == 200
-        assert body == b"ok"
-        assert list(headers.items(multi=True)) == []
+        assert not second_entered.is_set()
         assert max_active == 1
 
     async def test_cancelled_waiting_forward_does_not_leak_forward_slot(self):
@@ -933,6 +979,7 @@ class TestForwardRequestAsyncWrapper:
         third_task = None
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
             fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(

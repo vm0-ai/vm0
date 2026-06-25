@@ -57,6 +57,7 @@ from auth import (
     FirewallHeaderPhaseAuthResult,
     handle_firewall_request,
     is_billable_firewall,
+    mark_auth_base_forwarding_saturated,
     mark_auth_base_request_length_required,
     mark_auth_base_request_too_large,
     prepare_firewall_metadata,
@@ -1385,12 +1386,13 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
+    auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
     if (
         classification.kind == "firewall_allow"
         and allow is not None
         and vm_info is not None
         and body_check.kind != "ok"
-        and _firewall_allow_auth_base(allow)
+        and auth_base
     ):
         _start_request_timing(flow)
         prepare_firewall_metadata(flow, allow, vm_info)
@@ -1414,6 +1416,38 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
         return None
+
+    if (
+        classification.kind == "firewall_allow"
+        and allow is not None
+        and vm_info is not None
+        and auth_base
+        and body_check.kind == "ok"
+    ):
+        try:
+            admission = auth_base_forwarder.reserve_forward_request_admission(
+                body_check.observed_size
+            )
+        except (
+            auth_base_forwarder.AuthBaseForwardingSaturatedError,
+            RuntimeError,
+        ):
+            _start_request_timing(flow)
+            prepare_firewall_metadata(flow, allow, vm_info)
+            proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+            firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+            mark_auth_base_forwarding_saturated(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+            )
+            flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            flow.kill()
+            return
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        flow.metadata[_REQUEST_CLASSIFICATION] = classification
+        return
 
     if _should_stream_capture_request(classification):
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
@@ -1587,6 +1621,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 # Local firewall/auth errors never reach a provider. They only
                 # need pre-tracking to keep shutdown from racing while auth is
                 # resolving, so release as soon as the local response exists.
+                _release_auth_base_forward_admission(flow)
                 _release_tracked_usage_flow(flow)
             return
 
@@ -1597,6 +1632,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+        _release_auth_base_forward_admission(flow)
         _release_tracked_usage_flow(flow)
         raise
     finally:
@@ -1634,6 +1670,12 @@ def _maybe_track_usage_flow(
 def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
     if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
         usage.decrement_in_flight_flows()
+
+
+def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
+    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
+    if isinstance(admission, auth_base_forwarder.AuthBaseForwardingAdmission):
+        auth_base_forwarder.release_forward_request_admission(admission)
 
 
 def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
@@ -1789,6 +1831,7 @@ def _release_usage_hook_state(
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
+    _release_auth_base_forward_admission(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
 
