@@ -32,7 +32,7 @@ import {
 import {
   clerk$,
   currentUserInfo$,
-  resolveWebOrigin,
+  resolveWebAuthUrl,
 } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -465,9 +465,10 @@ export function AccountDropdown({
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
       const sessionId = clerk?.session?.id;
-      const signInUrl = `${resolveWebOrigin()}/sign-in?redirect_url=${encodeURIComponent(location.href)}`;
+      const signInUrl = new URL(resolveWebAuthUrl("/sign-in"));
+      signInUrl.searchParams.set("redirect_url", location.href);
       detach(
-        clerk?.signOut({ sessionId, redirectUrl: signInUrl }),
+        clerk?.signOut({ sessionId, redirectUrl: signInUrl.toString() }),
         Reason.DomCallback,
       );
       return;

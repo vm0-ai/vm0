@@ -51,12 +51,8 @@ const SO_FRONTEND_ASSET_PATHS = [
   "/checkmark-primary.svg",
 ];
 
-function shouldRewriteAuthPaths(env) {
-  return env.VERCEL_ENV === "production";
-}
-
-function authRewritePaths(env) {
-  return shouldRewriteAuthPaths(env) ? SO_FRONTEND_AUTH_PATHS : [];
+function authRewritePaths() {
+  return SO_FRONTEND_AUTH_PATHS;
 }
 
 function withoutTrailingSlash(value) {

@@ -1,7 +1,7 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
-import { clerk$, needsOrgSelection$, resolveWebOrigin } from "./auth.ts";
+import { clerk$, needsOrgSelection$, resolveWebAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -269,6 +269,24 @@ export const setupAuthPageWrapper = (
     signal.throwIfAborted();
 
     if (!clerk.user) {
+      const signInUrl = new URL(
+        resolveWebAuthUrl("/sign-in", { redirectUrl: location.href }),
+        location.origin,
+      );
+      if (signInUrl.searchParams.has("domain")) {
+        L.info("redirect unauthenticated preview user to web sign-in", {
+          currentUrl: location.href,
+          signInUrl: signInUrl.toString(),
+          domain: signInUrl.searchParams.get("domain"),
+          redirectUrl: signInUrl.searchParams.get("redirect_url"),
+        });
+        window.location.href = signInUrl.toString();
+        return;
+      }
+      L.info("redirect unauthenticated user with Clerk helper", {
+        currentUrl: location.href,
+        signInUrl: signInUrl.toString(),
+      });
       await clerk.redirectToSignIn();
       signal.throwIfAborted();
       return;
@@ -281,7 +299,9 @@ export const setupAuthPageWrapper = (
       L.debug(
         "redirect to choose-organization because org selection is needed",
       );
-      window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+      window.location.href = resolveWebAuthUrl(
+        "/sign-in/tasks/choose-organization",
+      );
       return;
     }
 
