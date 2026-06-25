@@ -7,8 +7,9 @@
 //! guest-agent background tasks.
 //!
 //! This is a guest-agent local runtime boundary. It is public because the
-//! binary and integration tests use the library crate boundary, not because it
-//! is a stable external API.
+//! binary imports modules through the library crate boundary, while integration
+//! tests exercise this runtime path through the spawned guest-agent process. It
+//! is not a stable external API.
 
 use std::io;
 use std::net::Shutdown;
