@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import auth
+import auth_base_forwarder
 import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
@@ -1450,6 +1451,8 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry()
         vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
+        admission = auth_base_forwarder.reserve_forward_request_admission(42)
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
 
         with mitm_ctx():
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1465,6 +1468,8 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
+        assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
 # =========================================================================

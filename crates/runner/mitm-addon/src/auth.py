@@ -892,6 +892,14 @@ def _finalize_firewall_auth_success(
     )
 
 
+def _finish_firewall_auth_result(
+    flow: http.HTTPFlow, result: FirewallAuthHandlingResult
+) -> FirewallAuthHandlingResult:
+    if result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+        _release_auth_base_forward_admission(flow)
+    return result
+
+
 async def handle_firewall_request(
     flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
 ) -> FirewallAuthHandlingResult:
@@ -901,7 +909,7 @@ async def handle_firewall_request(
 
     preflight_result = _preflight_firewall_auth(flow, context)
     if preflight_result is not None:
-        return preflight_result
+        return _finish_firewall_auth_result(flow, preflight_result)
 
     try:
         token_meta = await get_firewall_headers(
@@ -910,7 +918,10 @@ async def handle_firewall_request(
             context.auth_request,
         )
     except Exception as exc:
-        return _set_firewall_auth_resolution_failure(flow, context, exc)
+        return _finish_firewall_auth_result(
+            flow,
+            _set_firewall_auth_resolution_failure(flow, context, exc),
+        )
 
     auth_result = await _apply_resolved_firewall_auth(
         flow,
@@ -920,7 +931,7 @@ async def handle_firewall_request(
         proxy_log_path=context.proxy_log_path,
     )
     if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-        return auth_result
+        return _finish_firewall_auth_result(flow, auth_result)
 
     _finalize_firewall_auth_success(flow, context, token_meta)
     return auth_result
