@@ -198,6 +198,31 @@ def test_tweet_create_refines_from_complete_stream_capture(x_usage, tmp_path, re
     assert p["quantity"] == 1
 
 
+def test_tweet_create_refines_from_complete_stream_capture_when_raw_content_is_empty(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = b""
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
 def test_tweet_create_incomplete_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
     flow = x_usage.make_flow(
         real_flow,
