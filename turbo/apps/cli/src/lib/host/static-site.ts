@@ -3,7 +3,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, relative, resolve, sep, dirname, posix } from "node:path";
 
 interface StaticSiteFile {
-  readonly absolutePath: string;
+  readonly absolutePath?: string;
+  readonly content?: Uint8Array;
   readonly path: string;
   readonly size: number;
   readonly sha256: string;
@@ -11,10 +12,16 @@ interface StaticSiteFile {
   readonly immutable?: boolean;
 }
 
+interface StaticSiteScanOptions {
+  readonly defaultRobots?: "disallow-all";
+}
+
 interface StaticSiteScanResult {
   readonly root: string;
   readonly files: readonly StaticSiteFile[];
 }
+
+export const DEFAULT_HOSTED_SITE_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -168,6 +175,33 @@ async function hashFile(path: string): Promise<string> {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function textFile(path: string, content: string): StaticSiteFile {
+  const bytes = new TextEncoder().encode(content);
+  return {
+    content: bytes,
+    path,
+    size: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    contentType: inferContentType(path),
+  };
+}
+
+function ensureDefaultRobots(
+  files: readonly StaticSiteFile[],
+  options: StaticSiteScanOptions,
+): readonly StaticSiteFile[] {
+  if (
+    options.defaultRobots !== "disallow-all" ||
+    files.some((file) => {
+      return file.path === "/robots.txt";
+    })
+  ) {
+    return files;
+  }
+
+  return [...files, textFile("/robots.txt", DEFAULT_HOSTED_SITE_ROBOTS_TXT)];
+}
+
 async function walk(
   root: string,
   dir: string,
@@ -214,6 +248,9 @@ async function assertReferencesExist(
     if (!shouldValidateReferences(ext)) {
       continue;
     }
+    if (!file.absolutePath) {
+      throw new Error(`Hosted-site file has no source: ${file.path}`);
+    }
     const text = await readFile(file.absolutePath, "utf8");
     const references = collectReferences(ext, text);
 
@@ -236,6 +273,7 @@ async function assertReferencesExist(
 
 export async function scanStaticSite(
   rootPath: string,
+  options: StaticSiteScanOptions = {},
 ): Promise<StaticSiteScanResult> {
   const root = resolve(rootPath);
   const rootStat = await stat(root);
@@ -255,11 +293,25 @@ export async function scanStaticSite(
   }
 
   await assertReferencesExist(files);
+  const publishFiles = [...ensureDefaultRobots(files, options)];
 
   return {
     root,
-    files: files.sort((a, b) => {
+    files: publishFiles.sort((a, b) => {
       return a.path.localeCompare(b.path);
     }),
   };
+}
+
+export async function readStaticSiteFile(
+  file: StaticSiteFile,
+): Promise<Uint8Array> {
+  if (file.content) {
+    return file.content;
+  }
+  if (!file.absolutePath) {
+    throw new Error(`Hosted-site file has no source: ${file.path}`);
+  }
+  const bytes = await readFile(file.absolutePath);
+  return new Uint8Array(bytes);
 }
