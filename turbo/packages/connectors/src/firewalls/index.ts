@@ -636,20 +636,6 @@ export const BILLABLE_CONNECTORS = [
 export type BillableConnector = (typeof BILLABLE_CONNECTORS)[number];
 
 /**
- * Extract the union of permission names from a firewall config object.
- * Requires the config to be declared with `as const satisfies FirewallConfig`
- * so that permission name strings are preserved as literal types.
- */
-export type PermissionNamesOf<T extends FirewallConfig> =
-  T["apis"][number] extends { permissions?: infer P }
-    ? P extends ReadonlyArray<{ name: infer N }>
-      ? N extends string
-        ? N
-        : never
-      : never
-    : never;
-
-/**
  * Connector types that do not have a firewall config.
  *
  * When adding a new ConnectorType, place it in either CONNECTOR_FIREWALLS

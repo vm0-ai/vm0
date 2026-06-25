@@ -232,6 +232,22 @@ function expectNoGeneratedRuntimeImports(source: string): void {
   }
 }
 
+function generatedFirewallSourceFiles(): string[] {
+  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
+  return fs
+    .readdirSync(firewallsDir)
+    .filter((fileName) => {
+      return (
+        fileName.endsWith(".generated.ts") &&
+        fileName !== "runtime-loader.generated.ts"
+      );
+    })
+    .map((fileName) => {
+      return path.join(firewallsDir, fileName);
+    })
+    .sort(compareStrings);
+}
+
 describe("firewall runtime loader", () => {
   it("keeps the runtime loader behind an explicit package subpath", () => {
     const packageJson = JSON.parse(
@@ -375,6 +391,21 @@ describe("firewall runtime loader", () => {
         "permissionGrantsToFirewallPolicies",
       ].sort(compareStrings),
     );
+  });
+
+  it("keeps generated firewall configs independent from the eager registry index", () => {
+    const offenders: string[] = [];
+    const generatedFiles = generatedFirewallSourceFiles();
+
+    expect(generatedFiles.length).toBeGreaterThan(0);
+    for (const filePath of generatedFiles) {
+      const source = fs.readFileSync(filePath, "utf-8");
+      if (moduleSpecifiers(source).includes("./index")) {
+        offenders.push(path.basename(filePath));
+      }
+    }
+
+    expect(offenders).toStrictEqual([]);
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {
