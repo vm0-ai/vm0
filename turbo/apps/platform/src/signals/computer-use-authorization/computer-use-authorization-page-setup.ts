@@ -9,7 +9,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 export const setupComputerUseAuthorizationPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ComputerUseAuthorizationPage), "minimal");
-    set(updateDocumentTitle$, "Authorize Computer Use");
+    set(updateDocumentTitle$, "Authorize computer use");
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
