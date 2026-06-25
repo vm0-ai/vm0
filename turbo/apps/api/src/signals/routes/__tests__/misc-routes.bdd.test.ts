@@ -167,6 +167,12 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
 
     const logs = await api.listLogs(admin);
     expect(logs.body.data).toStrictEqual([]);
+    const invalidListLimit = await api.requestListLogs(
+      admin,
+      { limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidListLimit.body);
     const searched = await api.searchLogs(admin, "nothing-here");
     expect(searched.body.results).toStrictEqual([]);
     const invalidSearchLimit = await api.requestSearchLogs(

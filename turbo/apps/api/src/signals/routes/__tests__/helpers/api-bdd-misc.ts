@@ -46,6 +46,7 @@ interface AuthHeaders {
 type ZeroLogsSearchQuery = z.input<
   (typeof zeroLogsSearchContract.searchLogs)["query"]
 >;
+type ZeroLogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
 
 interface ClerkOrg {
   readonly imageUrl: string | null;
@@ -127,6 +128,21 @@ async function requestZeroLogsSearch<TStatus extends 200 | 400 | 401 | 403>(
 ) {
   return await accept(
     setupApp({ context })(zeroLogsSearchContract).searchLogs({
+      headers: authenticate(context, actor),
+      query,
+    }),
+    statuses,
+  );
+}
+
+async function requestZeroLogsList<TStatus extends 200 | 400 | 401 | 403>(
+  context: TestContext,
+  actor: ApiTestUser | null,
+  query: ZeroLogsListQuery,
+  statuses: readonly TStatus[],
+) {
+  return await accept(
+    setupApp({ context })(logsListContract).list({
       headers: authenticate(context, actor),
       query,
     }),
@@ -509,13 +525,15 @@ export function createMiscRoutesApi(context: TestContext) {
     },
 
     async listLogs(actor: ApiTestUser) {
-      return await accept(
-        setupApp({ context })(logsListContract).list({
-          headers: authenticate(context, actor),
-          query: {},
-        }),
-        [200],
-      );
+      return await requestZeroLogsList(context, actor, {}, [200]);
+    },
+
+    async requestListLogs<TStatus extends 200 | 400 | 401 | 403>(
+      actor: ApiTestUser | null,
+      query: ZeroLogsListQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await requestZeroLogsList(context, actor, query, statuses);
     },
 
     async requestSearchLogs<TStatus extends 200 | 400 | 401 | 403>(
