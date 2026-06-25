@@ -2808,6 +2808,16 @@ describe("activity detail polling", () => {
     expect(screen.getByText("Recoverable adapter error")).toBeInTheDocument();
     const detailText = document.body.textContent ?? "";
     expect(detailText.indexOf("Recoverable adapter error")).toBeGreaterThan(-1);
+    expect(
+      detailText.indexOf(
+        "Visible Codex assistant text after recoverable error.",
+      ),
+    ).toBeGreaterThan(-1);
+    expect(detailText.indexOf("Recoverable adapter error")).toBeLessThan(
+      detailText.indexOf(
+        "Visible Codex assistant text after recoverable error.",
+      ),
+    );
     expect(detailText.indexOf("9.9s")).toBeGreaterThan(-1);
     expect(detailText.indexOf("Recoverable adapter error")).toBeLessThan(
       detailText.indexOf("9.9s"),

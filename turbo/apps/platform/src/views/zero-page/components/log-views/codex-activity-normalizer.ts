@@ -1280,5 +1280,7 @@ export function normalizeCodexEventsForGrouping(
   }
 
   flushPendingCodexError();
-  return normalizedEvents;
+  return normalizedEvents.sort((a, b) => {
+    return a.sequenceNumber - b.sequenceNumber;
+  });
 }
