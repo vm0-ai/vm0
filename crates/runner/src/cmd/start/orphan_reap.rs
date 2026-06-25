@@ -314,13 +314,9 @@ async fn reap_orphaned_active_runs_with_firecrackers(
 mod tests {
     use super::*;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::resource_budget::ResourceBudget;
-    use crate::storage_fingerprints::StorageFingerprints;
-    use sandbox::SandboxFactory;
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
     use std::time::Duration;
 
     struct OrphanReapFixture {
@@ -363,20 +359,10 @@ mod tests {
         ) {
             let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
             let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-            let candidate =
-                ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-                    sandbox: Box::new(MockSandbox::new(mock_name)),
-                    factory: Arc::new(
-                        Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-                    ),
-                    cli_agent_session_id: session_id.into(),
-                    sandbox_id,
-                    profile_name: "vm0/default".into(),
-                    device_rate_limits: None,
-                    budget_lease: lease,
-                    source_ip: "10.0.0.1".into(),
-                    storage_fingerprints: StorageFingerprints::default(),
-                });
+            let candidate = ParkedIdleCandidateBuilder::new(session_id, lease)
+                .with_mock_sandbox_name(mock_name)
+                .with_sandbox_id(sandbox_id)
+                .build();
             let result = {
                 let mut idle_pool = self.idle_pool.lock().await;
                 idle_pool.park(candidate)

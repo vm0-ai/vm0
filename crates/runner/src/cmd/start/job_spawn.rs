@@ -920,8 +920,7 @@ mod tests {
         AgentFramework, CliTerminationDiagnostic, CliTerminationReason, CliTerminationSignal,
         FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
-    use sandbox::{SandboxFactory, SandboxId};
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox::SandboxId;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -930,8 +929,7 @@ mod tests {
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
@@ -1520,18 +1518,10 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate =
-            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-                sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
-                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-                cli_agent_session_id: "sess-idle-owned-cleanup".into(),
-                sandbox_id,
-                profile_name: "vm0/default".into(),
-                device_rate_limits: None,
-                budget_lease: lease,
-                source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-            });
+        let candidate = ParkedIdleCandidateBuilder::new("sess-idle-owned-cleanup", lease)
+            .with_mock_sandbox_name("idle-owned-cleanup")
+            .with_sandbox_id(sandbox_id)
+            .build();
         assert!(matches!(
             fixture.idle_pool.lock().await.park(candidate),
             ParkResult::Parked
