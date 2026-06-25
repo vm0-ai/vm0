@@ -967,13 +967,40 @@ async def test_auth_base_requestheaders_accepts_no_body_framing(
         mitm_addon.requestheaders(flow)
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,
-            auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+            0,
         )
         await mitm_addon.request(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 200
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_bodyless_requests_do_not_spend_body_budget(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="placeholder.example.com",
+            method="GET",
+            path="/",
+            request_headers=headers(("Host", "placeholder.example.com")),
+        )
+        for _ in range(2)
+    ]
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_base_forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 1),
+    ):
+        for flow in flows:
+            mitm_addon.requestheaders(flow)
+
+    assert all(flow.response is None for flow in flows)
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (2, 0)
 
 
 async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow, headers):
