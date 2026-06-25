@@ -6,6 +6,9 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use serde_json::Value;
 
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
@@ -53,6 +56,7 @@ impl Drop for StreamJsonChild {
     fn drop(&mut self) {
         self.close_stdin();
         if let Some(mut child) = self.child.take() {
+            terminate_child(child.id());
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -64,6 +68,59 @@ impl Drop for StreamJsonChild {
 
 fn mock_claude() -> Command {
     Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
+}
+
+fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<Child> {
+    #[cfg(unix)]
+    command.process_group(0);
+
+    command.spawn()
+}
+
+fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::Error>> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    wait_child_output(spawn_managed_mock_child(command)?)
+}
+
+fn terminate_child(pid: u32) {
+    #[cfg(unix)]
+    {
+        if let Some(pgid) = signalable_child_pgid(pid) {
+            unsafe {
+                libc::kill(-pgid, libc::SIGKILL);
+            }
+        }
+
+        if let Ok(pid) = i32::try_from(pid) {
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+#[cfg(unix)]
+fn signalable_child_pgid(child_pid: u32) -> Option<libc::pid_t> {
+    let pgid = i32::try_from(child_pid).ok()?;
+    (pgid > 1 && pgid != current_process_group()).then_some(pgid as libc::pid_t)
+}
+
+#[cfg(unix)]
+fn current_process_group() -> i32 {
+    unsafe { libc::getpgrp() }
+}
+
+#[cfg(unix)]
+#[test]
+fn signalable_child_pgid_rejects_dangerous_values() {
+    assert_eq!(signalable_child_pgid(0), None);
+    assert_eq!(signalable_child_pgid(1), None);
+    if let Ok(current_pgid) = u32::try_from(current_process_group()) {
+        assert_eq!(signalable_child_pgid(current_pgid), None);
+    }
 }
 
 fn expected_history_path(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
@@ -179,7 +236,7 @@ fn spawn_stream_json_child(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = command.spawn()?;
+    let mut child = spawn_managed_mock_child(&mut command)?;
     let stdin = child.stdin.take().ok_or("missing stdin")?;
     let stdout = child.stdout.take().ok_or("missing stdout")?;
     let (tx, rx) = mpsc::channel();
@@ -249,7 +306,6 @@ fn wait_child(
     mut child: Child,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
-    let pid = child.id();
     let child_stderr = child.stderr.take();
     let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
         let mut stderr = String::new();
@@ -258,6 +314,21 @@ fn wait_child(
         }
         Ok(stderr)
     });
+
+    let status = wait_child_status(child);
+
+    stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
+    let stderr = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+    let status = status?;
+    Ok((status, stderr))
+}
+
+fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    let pid = child.id();
     let (tx, rx) = mpsc::channel();
     let wait_thread = std::thread::spawn(move || {
         let result = child.wait();
@@ -267,11 +338,7 @@ fn wait_child(
     let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            // SAFETY: this is a test cleanup path for the child process that
-            // this helper just spawned. The wait thread reaps it below.
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
-            }
+            terminate_child(pid);
             rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
                 std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
@@ -287,17 +354,10 @@ fn wait_child(
     wait_thread
         .join()
         .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
-    stdout_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
-    let stderr = stderr_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
-    Ok((child_result?, stderr))
+    Ok(child_result?)
 }
 
 fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
-    let pid = child.id();
     let mut child_stdout = child.stdout.take().ok_or("missing stdout")?;
     let mut child_stderr = child.stderr.take().ok_or("missing stderr")?;
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
@@ -310,44 +370,18 @@ fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Err
         child_stderr.read_to_end(&mut stderr)?;
         Ok(stderr)
     });
-    let (tx, rx) = mpsc::channel();
-    let wait_thread = std::thread::spawn(move || {
-        let result = child.wait();
-        let _ = tx.send(result);
-    });
 
-    let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            // SAFETY: this is a test cleanup path for the child process that
-            // this helper just spawned. The wait thread reaps it below.
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
-            }
-            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("mock child did not exit after SIGKILL: {error}"),
-                )
-            })?
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
-            "mock child wait thread exited without status",
-        )),
-    };
-
-    wait_thread
-        .join()
-        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+    let status = wait_child_status(child);
     let stdout = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
     let stderr = stderr_thread
         .join()
         .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+    let status = status?;
 
     Ok(Output {
-        status: child_result?,
+        status,
         stdout,
         stderr,
     })
@@ -364,7 +398,7 @@ fn mock_stream_json_shell_output(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    wait_child_output(command.spawn()?)
+    wait_child_output(spawn_managed_mock_child(&mut command)?)
 }
 
 #[test]
@@ -378,10 +412,11 @@ fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error
     .join("\n");
     let prompt = format!("@ECHO@\n{payload}\n");
 
-    let output = mock_claude()
+    let mut command = mock_claude();
+    command
         .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", &prompt])
-        .output()?;
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(
         output.status.success(),
@@ -405,10 +440,11 @@ fn echo_jsonl_without_init_skips_history() -> Result<(), Box<dyn std::error::Err
     let payload = r#"{"type":"assistant","session_id":"preview-no-init","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#;
     let prompt = format!("@ECHO@\n{payload}\n");
 
-    let output = mock_claude()
+    let mut command = mock_claude();
+    command
         .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", &prompt])
-        .output()?;
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(
         output.status.success(),
@@ -428,10 +464,11 @@ fn echo_jsonl_without_init_skips_history() -> Result<(), Box<dyn std::error::Err
 fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
 
-    let output = mock_claude()
+    let mut command = mock_claude();
+    command
         .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", "printf hello"])
-        .output()?;
+        .args(["--output-format", "stream-json", "--", "printf hello"]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(
         output.status.success(),
@@ -482,7 +519,8 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
 #[test]
 fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
-    let mut child = mock_claude()
+    let mut command = mock_claude();
+    command
         .env("HOME", home.path())
         .args([
             "--input-format",
@@ -494,14 +532,14 @@ fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error:
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    let mut child = spawn_managed_mock_child(&mut command)?;
 
     let mut stdin = child.stdin.take().ok_or("missing stdin")?;
     stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
     drop(stdin);
 
-    let output = child.wait_with_output()?;
+    let output = wait_child_output(child)?;
     assert!(
         output.status.success(),
         "expected success, stderr: {}",
@@ -783,14 +821,14 @@ fn concurrent_stream_json_ids_are_unique() -> Result<(), Box<dyn std::error::Err
                 .env("HOME", home.path())
                 .args(["--output-format", "stream-json", "--", "true"])
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
+                .stderr(Stdio::piped());
+            spawn_managed_mock_child(&mut command)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let mut session_ids = HashSet::new();
 
     for child in children {
-        let output = child.wait_with_output()?;
+        let output = wait_child_output(child)?;
         assert!(
             output.status.success(),
             "expected success, stderr: {}",
@@ -814,15 +852,14 @@ fn concurrent_stream_json_ids_are_unique() -> Result<(), Box<dyn std::error::Err
 fn stream_json_shell_failure_writes_error_history() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
 
-    let output = mock_claude()
-        .env("HOME", home.path())
-        .args([
-            "--output-format",
-            "stream-json",
-            "--",
-            "printf out; printf err >&2; exit 7",
-        ])
-        .output()?;
+    let mut command = mock_claude();
+    command.env("HOME", home.path()).args([
+        "--output-format",
+        "stream-json",
+        "--",
+        "printf out; printf err >&2; exit 7",
+    ]);
+    let output = run_mock_output(&mut command)?;
 
     assert_eq!(output.status.code(), Some(7));
     assert!(output.stderr.is_empty());
@@ -994,10 +1031,14 @@ fn stream_json_shell_invalid_utf8_output_remains_valid_jsonl()
 fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
 
-    let output = mock_claude()
-        .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", "@exit-after-result"])
-        .output()?;
+    let mut command = mock_claude();
+    command.env("HOME", home.path()).args([
+        "--output-format",
+        "stream-json",
+        "--",
+        "@exit-after-result",
+    ]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(
         output.status.success(),
@@ -1040,15 +1081,17 @@ fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std:
 }
 
 #[test]
-fn echo_jsonl_rejects_path_like_session_id_without_writing_history() -> std::io::Result<()> {
+fn echo_jsonl_rejects_path_like_session_id_without_writing_history()
+-> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
     let payload = r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"../escape","tools":["Bash"],"model":"mock-claude"}"#;
     let prompt = format!("@ECHO@\n{payload}\n");
 
-    let output = mock_claude()
+    let mut command = mock_claude();
+    command
         .env("HOME", home.path())
-        .args(["--output-format", "stream-json", "--", &prompt])
-        .output()?;
+        .args(["--output-format", "stream-json", "--", &prompt]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(!output.status.success());
     assert!(
@@ -1073,9 +1116,9 @@ fn echo_jsonl_rejects_path_like_session_id_without_writing_history() -> std::io:
 
 #[test]
 fn echo_jsonl_rejects_invalid_json_line() -> Result<(), Box<dyn std::error::Error>> {
-    let output = mock_claude()
-        .args(["--output-format", "stream-json", "--", "@ECHO@\n{\"type\""])
-        .output()?;
+    let mut command = mock_claude();
+    command.args(["--output-format", "stream-json", "--", "@ECHO@\n{\"type\""]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
@@ -1085,9 +1128,9 @@ fn echo_jsonl_rejects_invalid_json_line() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn echo_jsonl_rejects_empty_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let output = mock_claude()
-        .args(["--output-format", "stream-json", "--", "@ECHO@\n\n"])
-        .output()?;
+    let mut command = mock_claude();
+    command.args(["--output-format", "stream-json", "--", "@ECHO@\n\n"]);
+    let output = run_mock_output(&mut command)?;
 
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
