@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.179.3](https://github.com/vm0-ai/vm0/compare/api-v1.179.2...api-v1.179.3) (2026-06-25)
+
+
+### Bug Fixes
+
+* refresh presentation template registry archives ([#18980](https://github.com/vm0-ai/vm0/issues/18980)) ([941727a](https://github.com/vm0-ai/vm0/commit/941727a14a176feb173f70c63843dafb027fe964))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+    * @vm0/db bumped to 1.72.2
+
 ## [1.179.2](https://github.com/vm0-ai/vm0/compare/api-v1.179.1...api-v1.179.2) (2026-06-25)
 
 
