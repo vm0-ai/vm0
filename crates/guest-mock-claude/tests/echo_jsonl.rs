@@ -315,7 +315,6 @@ fn wait_child(
     mut child: Child,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
-    let pid = child.id();
     let child_stderr = child.stderr.take();
     let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
         let mut stderr = String::new();
@@ -325,8 +324,7 @@ fn wait_child(
         Ok(stderr)
     });
 
-    let status = wait_child_status(child)?;
-    terminate_child_process_group(pid);
+    let status = wait_child_status_and_cleanup_group(child)?;
 
     stdout_thread
         .join()
@@ -337,6 +335,79 @@ fn wait_child(
     Ok((status, stderr))
 }
 
+#[cfg(target_os = "linux")]
+fn wait_child_status_and_cleanup_group(
+    mut child: Child,
+) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    let wait_thread = std::thread::spawn(move || {
+        let result = observe_child_exit_without_reaping(pid);
+        let _ = tx.send(result);
+    });
+
+    let child_observed = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            terminate_child(pid);
+            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mock child did not exit after SIGKILL: {error}"),
+                )
+            })?
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
+            "mock child wait thread exited without observing status",
+        )),
+    };
+
+    wait_thread
+        .join()
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+    child_observed?;
+    terminate_child_process_group(pid);
+    Ok(child.wait()?)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn wait_child_status_and_cleanup_group(
+    child: Child,
+) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    wait_child_status(child)
+}
+
+#[cfg(target_os = "linux")]
+fn observe_child_exit_without_reaping(pid: u32) -> std::io::Result<()> {
+    let pid = i32::try_from(pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "mock child PID does not fit in i32",
+        )
+    })?;
+
+    loop {
+        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::uninit();
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            return Ok(());
+        }
+
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
@@ -368,7 +439,6 @@ fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error:
 }
 
 fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
-    let pid = child.id();
     let mut child_stdout = child.stdout.take().ok_or("missing stdout")?;
     let mut child_stderr = child.stderr.take().ok_or("missing stderr")?;
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
@@ -382,8 +452,7 @@ fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Err
         Ok(stderr)
     });
 
-    let status = wait_child_status(child)?;
-    terminate_child_process_group(pid);
+    let status = wait_child_status_and_cleanup_group(child)?;
     let stdout = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
