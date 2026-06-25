@@ -14,7 +14,7 @@ import type {
   FirewallPermissionMetadataPermission,
   FirewallPermissionSummaryMetadata,
 } from "../../connectors/src/firewall-metadata/types";
-import type { FirewallConnectorType } from "../../connectors/src/firewalls";
+import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
   generatedFirewallFileName,
   loadConnectorFirewallSourceSet,
@@ -602,7 +602,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/connectors",
   );
-  const firewallsIndexFile = path.join(firewallsDir, "index.ts");
   const outputDir = path.resolve(
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
@@ -624,7 +623,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     await loadConnectorFirewallSourceSet({
       firewallsDir,
       connectorsDir,
-      firewallsIndexFile,
     });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
   const executionMetadata: Record<string, FirewallExecutionMetadata> = {};

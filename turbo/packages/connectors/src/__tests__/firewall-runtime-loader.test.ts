@@ -213,33 +213,6 @@ function exportedIdentifierNames(source: string): string[] {
   return names;
 }
 
-function exportedIdentifierNamesFromModule(
-  source: string,
-  moduleSpecifier: string,
-): string[] {
-  const names: string[] = [];
-  for (const statement of parseSource(source).statements) {
-    if (!ts.isExportDeclaration(statement)) {
-      continue;
-    }
-
-    if (stringLiteralText(statement.moduleSpecifier) !== moduleSpecifier) {
-      continue;
-    }
-
-    const clause = statement.exportClause;
-    if (clause === undefined || ts.isNamespaceExport(clause)) {
-      names.push("*");
-      continue;
-    }
-
-    for (const element of clause.elements) {
-      names.push(element.name.text);
-    }
-  }
-  return names;
-}
-
 function expectNoGeneratedRuntimeImports(source: string): void {
   for (const specifier of moduleSpecifiers(source)) {
     expect(specifier).not.toMatch(
@@ -404,37 +377,10 @@ describe("firewall runtime loader", () => {
     );
   });
 
-  it("keeps metadata category helpers out of the eager runtime entrypoint", () => {
-    const defaultEntrypointSource = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../firewalls/index.ts"),
-      "utf-8",
-    );
-    const removedExports = [
-      "ConnectorCategories",
-      "CONNECTOR_CATEGORIES",
-      "getBuiltinConnectorDisplayName",
-      "getPermissionCategories",
-      "groupPermissionsByCategory",
-      "PermissionGroup",
-    ];
-
+  it("does not keep an eager runtime entrypoint", () => {
     expect(
-      exportedIdentifierNames(defaultEntrypointSource).filter((name) => {
-        return removedExports.includes(name);
-      }),
-    ).toStrictEqual([]);
-    expect(
-      exportedIdentifierNamesFromModule(
-        defaultEntrypointSource,
-        "../firewall-metadata",
-      ).sort(compareStrings),
-    ).toStrictEqual(
-      [
-        "FirewallPermissionGrant",
-        "FirewallPermissionGrantAction",
-        "permissionGrantsToFirewallPolicies",
-      ].sort(compareStrings),
-    );
+      fs.existsSync(path.resolve(import.meta.dirname, "../firewalls/index.ts")),
+    ).toBe(false);
   });
 
   it("keeps generated firewall configs independent from the eager registry index", () => {

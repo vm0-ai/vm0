@@ -2,7 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { loadConnectorFirewallSourceSet } from "../connector-firewall-sources";
+import {
+  generatedFirewallExportName,
+  loadConnectorFirewallSourceSet,
+} from "../connector-firewall-sources";
+import {
+  BILLABLE_FIREWALL_CONNECTOR_TYPES,
+  FIREWALL_CONNECTOR_TYPES,
+  type FirewallConnectorType,
+} from "../connector-firewall-manifest";
 
 const FIREWALLS_DIR = path.resolve(
   import.meta.dirname,
@@ -12,9 +20,14 @@ const CONNECTORS_DIR = path.resolve(
   import.meta.dirname,
   "../../../connectors/src/connectors",
 );
-const FIREWALLS_INDEX_FILE = path.join(FIREWALLS_DIR, "index.ts");
+const UNREGISTERED_GENERATED_FIREWALL_TYPES = [
+  "daytona",
+  "lovable",
+  "modal",
+] as const;
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
+  "../connector-firewall-manifest.ts",
   "../connector-firewall-sources.ts",
   "../python-builtin-firewall-catalog-composition.ts",
 ] as const;
@@ -64,44 +77,6 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function firewallRegistryConnectorTypes(source: string): string[] {
-  return [...firewallRegistryExportNames(source).keys()].sort(compareStrings);
-}
-
-function firewallRegistryExportNames(source: string): Map<string, string> {
-  const registryMatch = source.match(
-    /const CONNECTOR_FIREWALLS = defineConnectorFirewalls\(\{\n([\s\S]*?)\n\} satisfies/s,
-  );
-  if (!registryMatch) {
-    throw new Error("Unable to find CONNECTOR_FIREWALLS registry");
-  }
-
-  return new Map(
-    [
-      ...registryMatch[1]!.matchAll(
-        /^\s*(?:"([^"]+)"|([a-zA-Z_$][\w$]*)):\s*([a-zA-Z_$][\w$]*),$/gm,
-      ),
-    ].map((match) => {
-      return [match[1] ?? match[2]!, match[3]!] as const;
-    }),
-  );
-}
-
-function billableConnectorTypes(source: string): string[] {
-  const registryMatch = source.match(
-    /export const BILLABLE_CONNECTORS = \[\n([\s\S]*?)\n\] as const satisfies/s,
-  );
-  if (!registryMatch) {
-    throw new Error("Unable to find BILLABLE_CONNECTORS registry");
-  }
-
-  return [...registryMatch[1]!.matchAll(/^\s*"([^"]+)",$/gm)]
-    .map((match) => {
-      return match[1]!;
-    })
-    .sort(compareStrings);
-}
-
 function runtimeLoaderConnectorTypes(source: string): string[] {
   const manifestMatch = source.match(
     /export const RUNTIME_FIREWALL_CONNECTOR_TYPES = \[\n([\s\S]*?)\n\] as const;/s,
@@ -129,6 +104,14 @@ function runtimeLoaderExportNames(source: string): Map<string, string> {
   );
 }
 
+function manifestFirewallExportNames(): Map<FirewallConnectorType, string> {
+  return new Map(
+    [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings).map((type) => {
+      return [type, generatedFirewallExportName(type)] as const;
+    }),
+  );
+}
+
 describe("firewall metadata generator", () => {
   it("does not import runtime connector registries", () => {
     for (const file of GENERATOR_SOURCE_BOUNDARY_FILES) {
@@ -151,6 +134,9 @@ describe("firewall metadata generator", () => {
       );
       expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
       expect(source, file).not.toMatch(/\bCONNECTOR_TYPES\b/);
+      expect(source, file).not.toContain("CONNECTOR_FIREWALLS");
+      expect(source, file).not.toContain("BILLABLE_CONNECTORS");
+      expect(source, file).not.toContain("firewallsIndexFile");
     }
   });
 
@@ -179,31 +165,53 @@ describe("firewall metadata generator", () => {
   });
 
   it("loads connector sources with sorted and registry order preserved", async () => {
-    const registrySource = fs.readFileSync(FIREWALLS_INDEX_FILE, "utf-8");
-    const registryExportNames = firewallRegistryExportNames(registrySource);
-    const registryTypes = [...registryExportNames.keys()];
+    const manifestTypes = [...FIREWALL_CONNECTOR_TYPES];
     const sourceSet = await loadConnectorFirewallSourceSet({
       firewallsDir: FIREWALLS_DIR,
       connectorsDir: CONNECTORS_DIR,
-      firewallsIndexFile: FIREWALLS_INDEX_FILE,
     });
 
     expect(sourceSet.sources.map((source) => source.type)).toStrictEqual(
-      [...registryTypes].sort(compareStrings),
+      [...manifestTypes].sort(compareStrings),
     );
     expect(
       sourceSet.registryOrderedSources.map((source) => source.type),
-    ).toStrictEqual(registryTypes);
+    ).toStrictEqual(manifestTypes);
     expect([...sourceSet.billableTypes].sort(compareStrings)).toStrictEqual(
-      billableConnectorTypes(registrySource),
+      [...BILLABLE_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
     );
     expect(
       sourceSet.sources.find((source) => source.type === "slack")
         ?.firewallExportName,
-    ).toBe(registryExportNames.get("slack"));
+    ).toBe(generatedFirewallExportName("slack"));
     expect(
       sourceSet.sources.find((source) => source.type === "slack")?.label,
     ).toBe("Slack");
+  });
+
+  it("derives generated firewall export names from connector types", () => {
+    const examples: readonly (readonly [FirewallConnectorType, string])[] = [
+      ["google-drive", "googleDriveFirewall"],
+      ["anthropic-managed-agents", "anthropicManagedAgentsFirewall"],
+      ["altium-365", "altium365Firewall"],
+      ["v0", "v0Firewall"],
+    ];
+
+    for (const [type, exportName] of examples) {
+      expect(generatedFirewallExportName(type)).toBe(exportName);
+    }
+  });
+
+  it("keeps generated-only firewall files out of the runtime manifest", () => {
+    const runtimeTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
+
+    for (const type of UNREGISTERED_GENERATED_FIREWALL_TYPES) {
+      expect(
+        fs.existsSync(path.join(FIREWALLS_DIR, `${type}.generated.ts`)),
+        type,
+      ).toBe(true);
+      expect(runtimeTypes.has(type), type).toBe(false);
+    }
   });
 
   it("keeps generated server metadata host-owner only", () => {
@@ -247,7 +255,6 @@ describe("firewall metadata generator", () => {
   });
 
   it("keeps the generated runtime loader literal and registry-shaped", () => {
-    const registrySource = fs.readFileSync(FIREWALLS_INDEX_FILE, "utf-8");
     const loaderSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -259,10 +266,10 @@ describe("firewall metadata generator", () => {
 
     expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
     expect(runtimeLoaderConnectorTypes(loaderSource)).toStrictEqual(
-      firewallRegistryConnectorTypes(registrySource),
+      [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
     );
     expect(runtimeLoaderExportNames(loaderSource)).toStrictEqual(
-      firewallRegistryExportNames(registrySource),
+      manifestFirewallExportNames(),
     );
     expect(dynamicSpecifiers).toContain("./slack.generated");
     expect(dynamicSpecifiers).toContain("./github.generated");
