@@ -4564,6 +4564,39 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("app.platform.");
     });
 
+    it("should replace api subdomain with app", async () => {
+      vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
+
+      server.use(
+        http.get(
+          "https://api.vm0.ai/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Test" }] },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`https://app.vm0.ai/logs/${RUN_ID}`);
+      expect(logCalls).not.toContain("app.api.");
+    });
+
     it("should transform vm7.ai:8443 to app.vm7.ai:8443", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm7.ai:8443");
 
