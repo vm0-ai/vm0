@@ -113,9 +113,9 @@ describe("so frontend rewrites", () => {
     expect(matchesSoFrontendRewritePath("/assets/vm0-logo.svg")).toBe(true);
 
     expect(matchesSoFrontendRewritePath("/sign-in/sso-callback")).toBe(true);
-    expect(
-      matchesSoFrontendRewritePath("/sign-up/verify-email-address"),
-    ).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
+      true,
+    );
     expect(matchesSoFrontendRewritePath("/connector/success")).toBe(false);
     expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(false);
     expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(
@@ -136,9 +136,9 @@ describe("so frontend rewrites", () => {
     expect(resolveSoFrontendRewritePath("/sign-in/factor-one")).toBe(
       "/sign-in/factor-one",
     );
-    expect(
-      resolveSoFrontendRewritePath("/sign-up/verify-email-address"),
-    ).toBe("/sign-up/verify-email-address");
+    expect(resolveSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
+      "/sign-up/verify-email-address",
+    );
     expect(resolveSoFrontendRewritePath("/connector/success")).toBeUndefined();
   });
 });
