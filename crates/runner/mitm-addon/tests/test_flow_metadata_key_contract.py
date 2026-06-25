@@ -72,6 +72,48 @@ def _argument_names(args: ast.arguments) -> set[str]:
     return names
 
 
+def _argument_annotations(args: ast.arguments) -> list[ast.expr]:
+    annotations = [
+        arg.annotation for arg in [*args.posonlyargs, *args.args] if arg.annotation is not None
+    ]
+    if args.vararg is not None and args.vararg.annotation is not None:
+        annotations.append(args.vararg.annotation)
+    annotations.extend(arg.annotation for arg in args.kwonlyargs if arg.annotation is not None)
+    if args.kwarg is not None and args.kwarg.annotation is not None:
+        annotations.append(args.kwarg.annotation)
+    return annotations
+
+
+def _type_params(node: ast.AST) -> list[ast.AST]:
+    for field_name, value in ast.iter_fields(node):
+        if field_name == "type_params" and isinstance(value, list):
+            return [item for item in value if isinstance(item, ast.AST)]
+    return []
+
+
+def _type_param_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for type_param in _type_params(node):
+        for field_name, value in ast.iter_fields(type_param):
+            if field_name == "name" and isinstance(value, str):
+                names.add(value)
+    return names
+
+
+def _type_alias_target_names(node: ast.AST) -> set[str]:
+    for field_name, value in ast.iter_fields(node):
+        if field_name == "name" and isinstance(value, ast.AST):
+            return _target_names(value)
+    return set()
+
+
+def _type_alias_value(node: ast.AST) -> ast.AST | None:
+    for field_name, value in ast.iter_fields(node):
+        if field_name == "value" and isinstance(value, ast.AST):
+            return value
+    return None
+
+
 class _ScopeBoundNameVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.bound_names: set[str] = set()
@@ -100,10 +142,15 @@ class _ScopeBoundNameVisitor(ast.NodeVisitor):
         self.bound_names.add(node.name)
         for decorator in node.decorator_list:
             self.visit(decorator)
+        for type_param in _type_params(node):
+            self.visit(type_param)
         for base in node.bases:
             self.visit(base)
         for keyword in node.keywords:
             self.visit(keyword)
+
+    def visit_TypeAlias(self, node: ast.AST) -> None:
+        self.bound_names.update(_type_alias_target_names(node))
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         for default in [*node.args.defaults, *node.args.kw_defaults]:
@@ -208,9 +255,13 @@ class _ScopeBoundNameVisitor(ast.NodeVisitor):
     ) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
+        for type_param in _type_params(node):
+            self.visit(type_param)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self.visit(default)
+        for annotation in _argument_annotations(node.args):
+            self.visit(annotation)
         if node.returns is not None:
             self.visit(node.returns)
 
@@ -412,6 +463,23 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_aliases.clear()
         self._metadata_aliases.update(aliases)
 
+    def _visit_definition_expression(
+        self,
+        node: ast.AST,
+        shadowed_names: set[str],
+        *,
+        check_metadata_merge: bool = False,
+    ) -> None:
+        outer_aliases = set(self._metadata_aliases)
+        self._metadata_aliases.difference_update(shadowed_names)
+        if check_metadata_merge:
+            self.violations.extend(self._metadata_merge_key_violations(node))
+        self.visit(node)
+        expression_aliases = set(self._metadata_aliases)
+        self._replace_current_aliases(
+            (expression_aliases - shadowed_names) | (outer_aliases & shadowed_names)
+        )
+
     def _nested_function_base_aliases(self) -> set[str]:
         if self._class_nested_scope_alias_scopes:
             return set(self._class_nested_scope_alias_scopes[-1])
@@ -492,13 +560,27 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         for decorator in node.decorator_list:
-            self.visit(decorator)
+            self._visit_definition_expression(decorator, set(), check_metadata_merge=True)
+        type_param_names = _type_param_names(node)
+        for type_param in _type_params(node):
+            self._visit_definition_expression(
+                type_param, type_param_names, check_metadata_merge=True
+            )
         metadata_defaults = self._metadata_default_argument_names(node.args)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self._visit_default_value(default)
+        for annotation in _argument_annotations(node.args):
+            self._visit_definition_expression(
+                annotation, type_param_names, check_metadata_merge=True
+            )
+        if node.returns is not None:
+            self._visit_definition_expression(
+                node.returns, type_param_names, check_metadata_merge=True
+            )
         shadowed_names = (
-            (_argument_names(node.args) | _scope_bound_names(node.body)) - metadata_defaults
+            (_argument_names(node.args) | _scope_bound_names(node.body) | type_param_names)
+            - metadata_defaults
         ) | {node.name}
         self._visit_scoped_body(
             node.body, shadowed_names, metadata_defaults, self._nested_function_base_aliases()
@@ -507,13 +589,27 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         for decorator in node.decorator_list:
-            self.visit(decorator)
+            self._visit_definition_expression(decorator, set(), check_metadata_merge=True)
+        type_param_names = _type_param_names(node)
+        for type_param in _type_params(node):
+            self._visit_definition_expression(
+                type_param, type_param_names, check_metadata_merge=True
+            )
         metadata_defaults = self._metadata_default_argument_names(node.args)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self._visit_default_value(default)
+        for annotation in _argument_annotations(node.args):
+            self._visit_definition_expression(
+                annotation, type_param_names, check_metadata_merge=True
+            )
+        if node.returns is not None:
+            self._visit_definition_expression(
+                node.returns, type_param_names, check_metadata_merge=True
+            )
         shadowed_names = (
-            (_argument_names(node.args) | _scope_bound_names(node.body)) - metadata_defaults
+            (_argument_names(node.args) | _scope_bound_names(node.body) | type_param_names)
+            - metadata_defaults
         ) | {node.name}
         self._visit_scoped_body(
             node.body, shadowed_names, metadata_defaults, self._nested_function_base_aliases()
@@ -534,12 +630,17 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for decorator in node.decorator_list:
-            self.visit(decorator)
+            self._visit_definition_expression(decorator, set(), check_metadata_merge=True)
+        type_param_names = _type_param_names(node)
+        for type_param in _type_params(node):
+            self._visit_definition_expression(
+                type_param, type_param_names, check_metadata_merge=True
+            )
         for base in node.bases:
-            self.visit(base)
+            self._visit_definition_expression(base, type_param_names, check_metadata_merge=True)
         for keyword in node.keywords:
-            self.visit(keyword)
-        outer_aliases = self._nested_function_base_aliases()
+            self._visit_definition_expression(keyword, type_param_names, check_metadata_merge=True)
+        outer_aliases = self._nested_function_base_aliases() - type_param_names
         class_scope_bindings = _scope_bound_name_visitor(node.body)
         class_body_bound_names = class_scope_bindings.local_names
         class_body_global_names = class_scope_bindings.global_names
@@ -551,6 +652,18 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
         self._class_nested_scope_alias_scopes.pop()
         self._metadata_aliases.discard(node.name)
+
+    def visit_TypeAlias(self, node: ast.AST) -> None:
+        type_param_names = _type_param_names(node)
+        target_names = _type_alias_target_names(node)
+        shadowed_names = type_param_names | target_names
+        for type_param in _type_params(node):
+            self._visit_definition_expression(type_param, shadowed_names, check_metadata_merge=True)
+        value = _type_alias_value(node)
+        if value is not None:
+            self._visit_definition_expression(value, shadowed_names, check_metadata_merge=True)
+        for name in target_names:
+            self._metadata_aliases.discard(name)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if any(_is_metadata_attribute(target) for target in node.targets):
@@ -1077,6 +1190,42 @@ copy_meta["vm_run_id"] = "run-1"
 def function_default_meta(default_meta=flow.metadata):
     default_meta["vm_run_id"] = "run-1"
 lambda_default_meta = lambda default_meta=flow.metadata: default_meta["vm_network_log_path"]
+def function_annotation_meta(
+    arg: flow.metadata["vm_run_id"],
+    *args: flow.metadata["vm_network_log_path"],
+    kw: flow.metadata["firewall_action"],
+    **kwargs: flow.metadata["firewall_name"],
+) -> flow.metadata["firewall_base"]:
+    pass
+async def async_function_annotation_meta(arg: flow.metadata["firewall_error"]):
+    pass
+def function_annotation_alias_leaks():
+    def inner(arg: (annotation_alias_meta := flow.metadata)):
+        pass
+    annotation_alias_meta["vm_run_id"] = "run-1"
+def vararg_annotation_alias_order(
+    *args: (vararg_annotation_meta := flow.metadata),
+    kw: vararg_annotation_meta["vm_run_id"],
+):
+    pass
+def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
+    pass
+async def async_function_type_param_meta[T: flow.metadata["firewall_action"]]():
+    pass
+class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
+    pass
+type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
+type TypeAliasValueMeta = flow.metadata["vm_run_id"]
+type TypeAliasMergeMeta = flow.metadata | {"firewall_action": "ALLOW"}
+default_type_param_shadow_meta = flow.metadata
+def default_type_param_reads_outer[default_type_param_shadow_meta](
+    arg=default_type_param_shadow_meta["vm_run_id"],
+):
+    pass
+type_param_restored_meta = flow.metadata
+def type_param_scope_restores_alias[type_param_restored_meta]():
+    pass
+type_param_restored_meta["firewall_name"] = "github"
 if conditional_meta := flow.metadata:
     conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
 branch_meta = flow.metadata
@@ -1159,7 +1308,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 81
+    assert len(violations) == 97
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1298,6 +1447,36 @@ def late_match_local_shadow(match_payload):
             pass
 lambda_shadow_meta = flow.metadata
 fn = lambda: lambda_shadow_meta["vm_run_id"] if (lambda_shadow_meta := {}) else None
+annotation_shadow_meta = flow.metadata
+def annotation_walrus_local_shadow():
+    value = annotation_shadow_meta["vm_run_id"]
+    def inner(arg: (annotation_shadow_meta := {})):
+        pass
+type_alias_shadow_meta = flow.metadata
+type type_alias_shadow_meta = int
+value = type_alias_shadow_meta["vm_run_id"]
+type_alias_value_shadow_meta = flow.metadata
+type type_alias_value_shadow_meta = type_alias_value_shadow_meta["vm_run_id"]
+function_type_alias_shadow_meta = flow.metadata
+def function_type_alias_local_shadow():
+    value = function_type_alias_shadow_meta["vm_run_id"]
+    type function_type_alias_shadow_meta = int
+class TypeAliasDoesNotSeeClassAlias:
+    class_type_alias_meta = flow.metadata
+    type class_type_alias_meta = int
+    value = class_type_alias_meta["vm_run_id"]
+type_param_shadow_meta = flow.metadata
+def function_type_param_shadows_outer[type_param_shadow_meta](
+    arg: type_param_shadow_meta["vm_run_id"],
+) -> type_param_shadow_meta["firewall_name"]:
+    type_param_shadow_meta["firewall_base"]
+class ClassTypeParamShadowsOuter[type_param_shadow_meta](type_param_shadow_meta):
+    value = type_param_shadow_meta["vm_run_id"]
+    def method(self):
+        type_param_shadow_meta["firewall_name"]
+type TypeAliasTypeParamShadowsOuter[type_param_shadow_meta] = type_param_shadow_meta[
+    "vm_run_id"
+]
 def class_body_late_binding_shadow():
     class_shadow_meta = flow.metadata
     class ShadowsClosure:
