@@ -49,6 +49,26 @@ def _violation(path: Path, node: ast.AST, key_name: str) -> str:
     return f"{location}:{line_number}: use metadata_keys.{key_name} for flow.metadata access"
 
 
+def _target_names(node: ast.AST | None) -> set[str]:
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, ast.List | ast.Tuple):
+        names: set[str] = set()
+        for element in node.elts:
+            names.update(_target_names(element))
+        return names
+    return set()
+
+
+def _argument_names(args: ast.arguments) -> set[str]:
+    names = {arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]}
+    if args.vararg is not None:
+        names.add(args.vararg.arg)
+    if args.kwarg is not None:
+        names.add(args.kwarg.arg)
+    return names
+
+
 class _MetadataKeyVisitor(ast.NodeVisitor):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -64,19 +84,38 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             isinstance(node, ast.Name) and node.id in self._metadata_aliases
         )
 
-    def _visit_scoped_body(self, body: list[ast.stmt]) -> None:
-        self._metadata_alias_scopes.append(set(self._metadata_aliases))
+    def _visit_scoped_body(self, body: list[ast.stmt], shadowed: set[str] | None = None) -> None:
+        aliases = set(self._metadata_aliases)
+        if shadowed is not None:
+            aliases.difference_update(shadowed)
+        self._metadata_alias_scopes.append(aliases)
         for statement in body:
             self.visit(statement)
         self._metadata_alias_scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._visit_scoped_body(node.body)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        self._visit_scoped_body(node.body, _argument_names(node.args))
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._visit_scoped_body(node.body)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        self._visit_scoped_body(node.body, _argument_names(node.args))
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for base in node.bases:
+            self.visit(base)
+        for keyword in node.keywords:
+            self.visit(keyword)
         self._visit_scoped_body(node.body)
 
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -130,19 +169,52 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_Delete(self, node: ast.Delete) -> None:
         for target in node.targets:
-            if isinstance(target, ast.Name):
-                self._metadata_aliases.discard(target.id)
+            for name in _target_names(target):
+                self._metadata_aliases.discard(name)
         self.generic_visit(node)
+
+    def visit_For(self, node: ast.For) -> None:
+        self.visit(node.iter)
+        self._discard_alias_target(node.target)
+        for statement in node.body:
+            self.visit(statement)
+        for statement in node.orelse:
+            self.visit(statement)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self.visit(node.iter)
+        self._discard_alias_target(node.target)
+        for statement in node.body:
+            self.visit(statement)
+        for statement in node.orelse:
+            self.visit(statement)
+
+    def visit_With(self, node: ast.With) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            self._discard_alias_target(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            self._discard_alias_target(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
 
     def _update_aliases_from_assign(self, node: ast.Assign) -> None:
         is_metadata_alias = self._is_metadata_reference(node.value)
         for target in node.targets:
-            if not isinstance(target, ast.Name):
-                continue
-            if is_metadata_alias:
-                self._metadata_aliases.add(target.id)
-            else:
-                self._metadata_aliases.discard(target.id)
+            for name in _target_names(target):
+                if is_metadata_alias:
+                    self._metadata_aliases.add(name)
+                else:
+                    self._metadata_aliases.discard(name)
+
+    def _discard_alias_target(self, target: ast.AST | None) -> None:
+        for name in _target_names(target):
+            self._metadata_aliases.discard(name)
 
 
 def _metadata_key_violations(path: Path) -> list[str]:
@@ -248,12 +320,16 @@ meta.get("vm_network_log_path")
 "firewall_name" in meta
 meta.update({"firewall_permission": "read"})
 meta |= {"firewall_rule_match": "GET /items"}
+def nested_alias():
+    inner_meta = flow.metadata
+    def uses_outer_alias():
+        inner_meta["auth_cache_hit"] = False
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 24
+    assert len(violations) == 25
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -269,6 +345,12 @@ assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
 meta = flow.metadata
 meta = {"vm_run_id": "external payload"}
+def accepts_external_metadata(meta):
+    return meta["vm_proxy_log_path"]
+for meta in [{"firewall_name": "external"}]:
+    value = meta["firewall_name"]
+with context() as meta:
+    value = meta["firewall_action"]
 """
     )
 
