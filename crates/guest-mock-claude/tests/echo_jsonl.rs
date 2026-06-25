@@ -85,11 +85,7 @@ fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::
 fn terminate_child(pid: u32) {
     #[cfg(unix)]
     {
-        if let Some(pgid) = signalable_child_pgid(pid) {
-            unsafe {
-                libc::kill(-pgid, libc::SIGKILL);
-            }
-        }
+        terminate_child_process_group(pid);
 
         if let Ok(pid) = i32::try_from(pid) {
             unsafe {
@@ -101,6 +97,18 @@ fn terminate_child(pid: u32) {
     #[cfg(not(unix))]
     let _ = pid;
 }
+
+#[cfg(unix)]
+fn terminate_child_process_group(pid: u32) {
+    if let Some(pgid) = signalable_child_pgid(pid) {
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_child_process_group(_pid: u32) {}
 
 #[cfg(unix)]
 fn signalable_child_pgid(child_pid: u32) -> Option<libc::pid_t> {
@@ -118,6 +126,7 @@ fn current_process_group() -> i32 {
 fn signalable_child_pgid_rejects_dangerous_values() {
     assert_eq!(signalable_child_pgid(0), None);
     assert_eq!(signalable_child_pgid(1), None);
+    assert_eq!(signalable_child_pgid((i32::MAX as u32) + 1), None);
     if let Ok(current_pgid) = u32::try_from(current_process_group()) {
         assert_eq!(signalable_child_pgid(current_pgid), None);
     }
@@ -306,6 +315,7 @@ fn wait_child(
     mut child: Child,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
+    let pid = child.id();
     let child_stderr = child.stderr.take();
     let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
         let mut stderr = String::new();
@@ -316,6 +326,7 @@ fn wait_child(
     });
 
     let status = wait_child_status(child)?;
+    terminate_child_process_group(pid);
 
     stdout_thread
         .join()
@@ -357,6 +368,7 @@ fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error:
 }
 
 fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
+    let pid = child.id();
     let mut child_stdout = child.stdout.take().ok_or("missing stdout")?;
     let mut child_stderr = child.stderr.take().ok_or("missing stderr")?;
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
@@ -371,6 +383,7 @@ fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Err
     });
 
     let status = wait_child_status(child)?;
+    terminate_child_process_group(pid);
     let stdout = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
@@ -1074,6 +1087,31 @@ fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std:
     assert_eq!(
         events[1].get("is_error").and_then(Value::as_bool),
         Some(false)
+    );
+    Ok(())
+}
+
+#[test]
+fn orphan_pipe_does_not_block_output_wait() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let mut command = mock_claude();
+    command
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", "@orphan-pipe"]);
+    let output = run_mock_output(&mut command)?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        ["system/init", "result/success"]
     );
     Ok(())
 }
