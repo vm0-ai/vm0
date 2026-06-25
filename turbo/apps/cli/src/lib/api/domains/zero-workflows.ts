@@ -166,13 +166,3 @@ export async function disableWorkflowTrigger(
   if (result.status === 200) return result.body;
   handleError(result, `Failed to disable workflow trigger "${id}"`);
 }
-
-export async function runWorkflowTrigger(
-  id: string,
-): Promise<{ readonly runId: string }> {
-  const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
-  const result = await client.run({ params: { id } });
-  if (result.status === 200) return result.body;
-  handleError(result, `Failed to run workflow trigger "${id}"`);
-}

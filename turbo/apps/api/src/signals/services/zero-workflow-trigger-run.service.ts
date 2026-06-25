@@ -31,7 +31,7 @@ export interface DueWorkflowTrigger {
   readonly workflowName: string;
 }
 
-export type RunErrorResponse = {
+type RunErrorResponse = {
   readonly status: number;
   readonly body: {
     readonly error: { readonly message: string; readonly code: string };

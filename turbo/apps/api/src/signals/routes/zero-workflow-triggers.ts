@@ -19,7 +19,6 @@ import {
   listThreadBoundWorkflowTriggers,
   loadWorkflowTriggers,
   setWorkflowTriggerPermissionPolicy$,
-  testRunWorkflowTrigger$,
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
@@ -306,34 +305,6 @@ const disableTriggerInner$ = command(
   },
 );
 
-const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowTriggersContract.run));
-  const result = await set(
-    testRunWorkflowTrigger$,
-    {
-      orgId: auth.orgId,
-      member: memberFromAuth(auth),
-      triggerId: params.id,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-  if (result.kind === "ok") {
-    return { status: 200 as const, body: { runId: result.runId } };
-  }
-  if (result.kind === "forbidden") {
-    return forbidden(result.message);
-  }
-  if (result.kind === "conflict") {
-    return conflict(result.message);
-  }
-  if (result.kind === "run_error") {
-    return { status: 409 as const, body: result.response.body };
-  }
-  return notFound("Workflow trigger not found");
-});
-
 export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.listForChatThread,
@@ -366,10 +337,6 @@ export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.disable,
     handler: authRoute(workflowWriteAuth, disableTriggerInner$),
-  },
-  {
-    route: zeroWorkflowTriggersContract.run,
-    handler: authRoute(workflowWriteAuth, runTriggerInner$),
   },
   {
     route: zeroWorkflowTriggersContract.setPermissionPolicy,
