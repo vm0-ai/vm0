@@ -21,6 +21,8 @@ const CONNECTORS_DIR = path.resolve(
   "../../../connectors/src/connectors",
 );
 const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
+const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
   "../lazy-loader-renderer.ts",
@@ -89,6 +91,21 @@ function runtimeLoaderConnectorTypes(source: string): string[] {
     .sort(compareStrings);
 }
 
+function routingLoaderConnectorTypes(source: string): string[] {
+  const manifestMatch = source.match(
+    /export const FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES = \[\n([\s\S]*?)\n\] as const;/s,
+  );
+  if (!manifestMatch) {
+    throw new Error("Unable to find routing metadata connector manifest");
+  }
+
+  return [...manifestMatch[1]!.matchAll(/^\s*"([^"]+)",$/gm)]
+    .map((match) => {
+      return match[1]!;
+    })
+    .sort(compareStrings);
+}
+
 function runtimeLoaderExportNames(source: string): Map<string, string> {
   return new Map(
     [
@@ -99,6 +116,33 @@ function runtimeLoaderExportNames(source: string): Map<string, string> {
       return [match[1]!, match[2]!] as const;
     }),
   );
+}
+
+function sourceHasObjectKey(source: string, key: string): boolean {
+  return (
+    source.includes(`${JSON.stringify(key)}:`) ||
+    new RegExp(`^\\s*${key}:`, "m").test(source)
+  );
+}
+
+function assertRoutingMetadataSourceExcludesAuthData(
+  source: string,
+  filename: string,
+): void {
+  for (const forbidden of [
+    "auth",
+    "headers",
+    "query",
+    "awsSigv4",
+    "placeholders",
+    "placeholderValues",
+    "secretPlaceholderNames",
+    "description",
+  ]) {
+    expect(sourceHasObjectKey(source, forbidden), filename).toBe(false);
+  }
+  expect(source, filename).not.toContain(DEFAULT_FIREWALL_SECRET_PLACEHOLDER);
+  expect(source, filename).not.toContain("${{ secrets.");
 }
 
 function manifestFirewallExportNames(): Map<FirewallConnectorType, string> {
@@ -320,5 +364,82 @@ describe("firewall metadata generator", () => {
     }
     expect(loaderSource).toContain('["slack"]: async () =>');
     expect(loaderSource).toContain('))["slackFirewall"]');
+  });
+
+  it("keeps the generated routing metadata loader literal and registry-shaped", () => {
+    const loaderSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../connectors/src/firewall-routing-metadata/loader.generated.ts",
+      ),
+      "utf-8",
+    );
+    const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
+
+    expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
+    expect(routingLoaderConnectorTypes(loaderSource)).toStrictEqual(
+      [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
+    );
+    expect(dynamicSpecifiers).toContain("./details/slack.generated");
+    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(dynamicSpecifiers).not.toContain("./details/daytona.generated");
+    expect(loaderSource).toContain(
+      "export const FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES",
+    );
+    expect(loaderSource).toContain(
+      "export function hasGeneratedFirewallRoutingMetadata",
+    );
+    expect(loaderSource).toContain(
+      "export async function loadGeneratedFirewallRoutingMetadata",
+    );
+    expect(loaderSource).toContain("Object.create(null)");
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+    expect(dynamicSpecifiers.length).toBe(
+      routingLoaderConnectorTypes(loaderSource).length,
+    );
+    for (const specifier of dynamicSpecifiers) {
+      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+    }
+    expect(loaderSource).toContain('["slack"]: async () =>');
+    expect(loaderSource).toContain('))["firewallRoutingMetadata"]');
+  });
+
+  it("keeps generated routing metadata route-only", () => {
+    const detailsDir = path.resolve(
+      import.meta.dirname,
+      "../../../connectors/src/firewall-routing-metadata/details",
+    );
+    const files = fs
+      .readdirSync(detailsDir)
+      .filter((fileName) => {
+        return fileName.endsWith(".generated.ts");
+      })
+      .sort(compareStrings);
+
+    expect(files.length).toBe(FIREWALL_CONNECTOR_TYPES.length);
+    expect(files).toContain("slack.generated.ts");
+    expect(files).toContain("google-cloud.generated.ts");
+    expect(files).toContain("stripe.generated.ts");
+    expect(files).not.toContain("daytona.generated.ts");
+    expect(files).not.toContain("modal.generated.ts");
+
+    for (const file of files) {
+      const source = fs.readFileSync(path.join(detailsDir, file), "utf-8");
+      expect(staticValueModuleSpecifiers(source), file).toStrictEqual([]);
+      expect(dynamicImportSpecifiers(source), file).toStrictEqual([]);
+      expect(source, file).toContain("firewallRoutingMetadata");
+      expect(sourceHasObjectKey(source, "base"), file).toBe(true);
+      expect(sourceHasObjectKey(source, "permissions"), file).toBe(true);
+      assertRoutingMetadataSourceExcludesAuthData(source, file);
+    }
+
+    for (const file of [
+      "slack.generated.ts",
+      "google-cloud.generated.ts",
+      "stripe.generated.ts",
+    ]) {
+      const source = fs.readFileSync(path.join(detailsDir, file), "utf-8");
+      expect(sourceHasObjectKey(source, "rules"), file).toBe(true);
+    }
   });
 });
