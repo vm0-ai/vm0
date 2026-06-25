@@ -1514,8 +1514,10 @@ jobs:
           trap cleanup EXIT
 
           # Clean up any residual transient unit from a previous CI run.
-          # stop() returns Ok when no service exists, so no need for || true.
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          # stop() returns Ok when no service exists, so any non-zero exit is
+          # a real cleanup failure.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force \
+            || fail "failed to stop residual balloon service"
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -1694,7 +1696,8 @@ jobs:
           echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
 
           # Stop transient service
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force \
+            || fail "failed to stop balloon service"
           kill "$SUBMIT_PID" 2>/dev/null || true
           wait "$SUBMIT_PID" 2>/dev/null || true
           trap - EXIT
