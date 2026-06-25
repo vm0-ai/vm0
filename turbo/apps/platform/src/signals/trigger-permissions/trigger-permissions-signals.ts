@@ -47,14 +47,14 @@ export const setTriggerPermissionsConnectorSearch$ = command(
   },
 );
 
-export interface TriggerPermissionEditorUiState {
+interface TriggerPermissionEditorUiState {
   readonly key: string | null;
   readonly search: string;
   readonly expandedGroups: ReadonlySet<string>;
   readonly scrolled: boolean;
 }
 
-export interface TriggerPermissionsDrawerConnectorState {
+interface TriggerPermissionsDrawerConnectorState {
   readonly triggerId: string | null;
   readonly connectorRef: string | null;
 }
@@ -285,7 +285,7 @@ export interface TriggerPermissionEditorSignals {
   >;
 }
 
-export function createTriggerPermissionEditorSignals(): TriggerPermissionEditorSignals {
+function createTriggerPermissionEditorSignals(): TriggerPermissionEditorSignals {
   const internalOverrides$ = state<
     Record<string, UnattendedTriggerPermissionAction>
   >({});
