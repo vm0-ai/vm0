@@ -5,7 +5,6 @@ import {
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
   type GmailNewMessageEventConfig,
-  type ZeroWorkflowCreateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
@@ -143,7 +142,7 @@ function createAgentWorkflowsFactory(): (
   };
 }
 
-export const agentWorkflows = createAgentWorkflowsFactory();
+const agentWorkflows = createAgentWorkflowsFactory();
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow
@@ -193,23 +192,6 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
-
-export const createWorkflow$ = command(
-  async (
-    { get, set },
-    input: ZeroWorkflowCreateRequest,
-    signal: AbortSignal,
-  ): Promise<ZeroWorkflowSummary> => {
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(
-      client.create({ body: input, fetchOptions: { signal } }),
-      [201],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-    return result.body;
-  },
-);
 
 export const updateWorkflow$ = command(
   async (

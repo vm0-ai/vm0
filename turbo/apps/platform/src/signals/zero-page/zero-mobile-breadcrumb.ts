@@ -14,6 +14,7 @@ import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signal
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { automationTitleExcerpt } from "./automation-title.ts";
+import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -98,6 +99,25 @@ const automationBreadcrumb$ = computed(
   },
 );
 
+const workflowsBreadcrumb$ = computed(
+  async (get): Promise<MobileBreadcrumb> => {
+    const section = "Workflows";
+    const params = get(pathParams$) as Params;
+    const workflowId = getStringParam(params, "workflowId");
+    if (workflowId) {
+      const detail = await get(workflowDetail(workflowId));
+      if (detail) {
+        return {
+          section,
+          sectionPath: ROUTES.workflows,
+          name: detail.displayName ?? detail.name,
+        };
+      }
+    }
+    return { section, sectionPath: ROUTES.workflows };
+  },
+);
+
 const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const params = get(pathParams$) as Params;
   const displayName = await get(currentChatAgentDisplayName$);
@@ -140,6 +160,10 @@ export const mobileBreadcrumb$ = computed(
 
     if (route === "automations" || route === "automationDetail") {
       return await get(automationBreadcrumb$);
+    }
+
+    if (route === "workflows" || route === "agentWorkflowDetail") {
+      return await get(workflowsBreadcrumb$);
     }
 
     if (
