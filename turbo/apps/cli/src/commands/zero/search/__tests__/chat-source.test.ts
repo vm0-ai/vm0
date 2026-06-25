@@ -248,7 +248,25 @@ describe("zero search --source chat", () => {
       ]),
     ).rejects.toThrow("process.exit called");
 
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--agent",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("Invalid agent ID");
   });
 
@@ -265,7 +283,25 @@ describe("zero search --source chat", () => {
       ]),
     ).rejects.toThrow("process.exit called");
 
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--run is not supported with --source chat");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--run",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("--run is not supported with --source chat");
   });
 
@@ -331,6 +367,42 @@ describe("zero search --source chat", () => {
         "chat",
         "--limit",
         "1abc",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "-C",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--limit",
+        "",
       ]),
     ).rejects.toThrow("process.exit called");
 

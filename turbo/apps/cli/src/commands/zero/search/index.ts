@@ -66,21 +66,24 @@ function parseContextOptions(options: SearchOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context
-    ? parseBoundedLogCount(options.context, "--context", 0, 10)
-    : 0;
-  const before = options.beforeContext
-    ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
-    : contextN;
-  const after = options.afterContext
-    ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
-    : contextN;
+  const contextN =
+    options.context !== undefined
+      ? parseBoundedLogCount(options.context, "--context", 0, 10)
+      : 0;
+  const before =
+    options.beforeContext !== undefined
+      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
+      : contextN;
+  const after =
+    options.afterContext !== undefined
+      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
+      : contextN;
 
   return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+  if (value === undefined) return undefined;
   return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
@@ -145,10 +148,10 @@ async function runChatSource(
   query: string,
   options: SearchOptions,
 ): Promise<void> {
-  if (options.run) {
+  if (options.run !== undefined) {
     throw new Error("--run is not supported with --source chat");
   }
-  if (options.agent && !isUUID(options.agent)) {
+  if (options.agent !== undefined && !isUUID(options.agent)) {
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
     );

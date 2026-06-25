@@ -135,7 +135,16 @@ describe("zero logs list command", () => {
       listCommand.parseAsync(["node", "cli", "--agent", "agent-123"]),
     ).rejects.toThrow("process.exit called");
 
-    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--agent", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid agent ID");
   });
 
@@ -241,6 +250,15 @@ describe("zero logs list command", () => {
   it("should reject partial numeric --limit values", async () => {
     await expect(
       listCommand.parseAsync(["node", "cli", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
+  });
+
+  it("should reject empty --limit values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", ""]),
     ).rejects.toThrow("process.exit called");
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");

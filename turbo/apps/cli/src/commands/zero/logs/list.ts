@@ -61,12 +61,13 @@ Examples:
         since?: string;
         limit?: string;
       }) => {
-        const limit = options.limit
-          ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
-          : undefined;
+        const limit =
+          options.limit !== undefined
+            ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
+            : undefined;
         const since =
           options.since !== undefined ? parseTime(options.since) : undefined;
-        if (options.agent && !isUUID(options.agent)) {
+        if (options.agent !== undefined && !isUUID(options.agent)) {
           console.error(
             chalk.red(
               `✗ Invalid agent ID "${options.agent}" — expected a UUID`,

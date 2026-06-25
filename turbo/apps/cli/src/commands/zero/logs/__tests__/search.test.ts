@@ -330,6 +330,24 @@ describe("zero logs search command", () => {
 
     errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
   });
 
   it("should pass agentId and run filters", async () => {
@@ -424,7 +442,17 @@ describe("zero logs search command", () => {
       searchCommand.parseAsync(["node", "cli", "error", "--run", "6af7eece"]),
     ).rejects.toThrow("process.exit called");
 
-    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--run", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
     expect(errorCalls).toContain("zero logs list");
   });
@@ -440,7 +468,17 @@ describe("zero logs search command", () => {
       ]),
     ).rejects.toThrow("process.exit called");
 
-    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("zero logs list");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--agent", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid agent ID");
     expect(errorCalls).toContain("zero logs list");
   });

@@ -79,15 +79,18 @@ function parseContextOptions(options: SearchOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context
-    ? parseBoundedLogCount(options.context, "--context", 0, 10)
-    : 0;
-  const before = options.beforeContext
-    ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
-    : contextN;
-  const after = options.afterContext
-    ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
-    : contextN;
+  const contextN =
+    options.context !== undefined
+      ? parseBoundedLogCount(options.context, "--context", 0, 10)
+      : 0;
+  const before =
+    options.beforeContext !== undefined
+      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
+      : contextN;
+  const after =
+    options.afterContext !== undefined
+      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
+      : contextN;
 
   return { before, after };
 }
@@ -96,7 +99,7 @@ function parseContextOptions(options: SearchOptions): {
  * Parse --limit option with validation
  */
 function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+  if (value === undefined) return undefined;
   return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
@@ -180,7 +183,7 @@ export const searchCommand = new Command()
   .option("--limit <n>", "Maximum number of matches (default: 20)")
   .action(
     withErrorHandler(async (keyword: string, options: SearchOptions) => {
-      if (options.agent && !isUUID(options.agent)) {
+      if (options.agent !== undefined && !isUUID(options.agent)) {
         console.error(
           chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
         );
@@ -188,7 +191,7 @@ export const searchCommand = new Command()
         process.exit(1);
       }
 
-      if (options.run && !isUUID(options.run)) {
+      if (options.run !== undefined && !isUUID(options.run)) {
         console.error(
           chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
         );

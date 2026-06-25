@@ -79,21 +79,24 @@ function parseContextOptions(options: LogsSearchCliOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context
-    ? parseBoundedLogCount(options.context, "--context", 0, 10)
-    : 0;
-  const before = options.beforeContext
-    ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
-    : contextN;
-  const after = options.afterContext
-    ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
-    : contextN;
+  const contextN =
+    options.context !== undefined
+      ? parseBoundedLogCount(options.context, "--context", 0, 10)
+      : 0;
+  const before =
+    options.beforeContext !== undefined
+      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
+      : contextN;
+  const after =
+    options.afterContext !== undefined
+      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
+      : contextN;
 
   return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+  if (value === undefined) return undefined;
   return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
@@ -165,7 +168,7 @@ export async function runLogsSearch(
 ): Promise<void> {
   const { before, after } = parseContextOptions(options);
 
-  if (options.agentId && !isUUID(options.agentId)) {
+  if (options.agentId !== undefined && !isUUID(options.agentId)) {
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agentId}" — expected a UUID`),
     );
@@ -173,7 +176,7 @@ export async function runLogsSearch(
     process.exit(1);
   }
 
-  if (options.run && !isUUID(options.run)) {
+  if (options.run !== undefined && !isUUID(options.run)) {
     console.error(
       chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
     );
