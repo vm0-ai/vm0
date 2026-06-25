@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.178.0](https://github.com/vm0-ai/vm0/compare/api-v1.177.2...api-v1.178.0) (2026-06-25)
+
+
+### Features
+
+* add OpenStreetMap rendering to zero maps ([#18884](https://github.com/vm0-ai/vm0/issues/18884)) ([6883357](https://github.com/vm0-ai/vm0/commit/68833575af76d583e91f73d14b2f9f8f5b8ff38a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.0
+    * @vm0/core bumped to 8.369.1
+    * @vm0/db bumped to 1.71.0
+
 ## [1.177.2](https://github.com/vm0-ai/vm0/compare/api-v1.177.1...api-v1.177.2) (2026-06-25)
 
 
