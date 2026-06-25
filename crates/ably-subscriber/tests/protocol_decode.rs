@@ -211,6 +211,33 @@ fn decode_msg_accepts_duplicate_field_when_later_value_is_valid() -> TestResult 
 }
 
 #[test]
+fn decode_msg_accepts_duplicate_params_field_when_later_value_is_valid() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::ATTACH)),
+        field(
+            "params",
+            rmpv::Value::Map(vec![
+                field("rewind", rmpv::Value::Array(Vec::new())),
+                field("rewind", str_value("2m")),
+            ]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert_eq!(
+        decoded
+            .params
+            .as_ref()
+            .and_then(|params| params.get("rewind"))
+            .map(String::as_str),
+        Some("2m")
+    );
+    Ok(())
+}
+
+#[test]
 fn decode_msg_accepts_duplicate_messages_key_from_msgpack() -> TestResult {
     let payload = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::MESSAGE)),
