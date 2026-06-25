@@ -146,7 +146,7 @@ function buildPresentationGenerationTemplatePrompt(
       "",
       "When you produce a presentation from the user's request:",
       `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
-      "- After generating the final HTML deck, run: `node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting, or state why the QA script could not run.",
+      "- After generating the final HTML deck, run: `node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting.",
       ...(colorSystem
         ? [
             `- Apply the selected color system (${colorSystem.id}) when authoring the deck.`,
