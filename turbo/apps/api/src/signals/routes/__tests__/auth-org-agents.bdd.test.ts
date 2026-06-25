@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
@@ -183,7 +184,9 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: true,
     });
 
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
+      credits: 1_000,
+    });
     expect(completeLimitedFree.status).toBe(200);
     expect(completeLimitedFree.body).toStrictEqual({
       agentId: defaultAgentId,
@@ -197,6 +200,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 
     const [limitedFreeMetadata] = await writeDb
       .select({
+        credits: orgMetadata.credits,
         tier: orgMetadata.tier,
         onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
       })
@@ -204,8 +208,30 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       .where(eq(orgMetadata.orgId, adminOrgId))
       .limit(1);
     expect(limitedFreeMetadata).toStrictEqual({
+      credits: 1_000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+    });
+    const [onboardingCreditGrant] = await writeDb
+      .select({
+        source: creditExpiresRecord.source,
+        amount: creditExpiresRecord.amount,
+        remaining: creditExpiresRecord.remaining,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          eq(creditExpiresRecord.orgId, adminOrgId),
+          eq(creditExpiresRecord.source, "onboarding"),
+        ),
+      )
+      .limit(1);
+    expect(onboardingCreditGrant).toStrictEqual({
+      source: "onboarding",
+      amount: 1_000,
+      remaining: 1_000,
+      expiresAt: new Date("2999-12-31T00:00:00Z"),
     });
 
     const afterRepeatedSetup = await api.listAgents(admin);

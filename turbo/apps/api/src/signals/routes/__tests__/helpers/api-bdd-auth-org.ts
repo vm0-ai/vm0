@@ -782,14 +782,20 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async completeLimitedFreeOnboarding(actor: ApiTestUser) {
+    async completeLimitedFreeOnboarding(
+      actor: ApiTestUser,
+      body: {
+        readonly credits?: number;
+        readonly creditsExpiresAt?: string | null;
+      } = {},
+    ) {
       const client = setupApp({ context })(
         onboardingCompleteLimitedFreeContract,
       );
       return await accept(
         client.complete({
           headers: authenticate(actor),
-          body: {},
+          body,
         }),
         [200, 403, 409],
       );

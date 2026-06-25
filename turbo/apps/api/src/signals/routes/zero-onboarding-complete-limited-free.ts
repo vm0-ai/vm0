@@ -4,7 +4,12 @@ import { onboardingCompleteLimitedFreeContract } from "@vm0/api-contracts/contra
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { completeLimitedFreeOnboarding$ } from "../services/onboarding.service";
+import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route";
+
+const completeBody$ = bodyResultOf(
+  onboardingCompleteLimitedFreeContract.complete,
+);
 
 const forbidden = Object.freeze({
   status: 403 as const,
@@ -18,14 +23,23 @@ const forbidden = Object.freeze({
 
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const body = await get(completeBody$);
 
   if (auth.orgRole !== "admin") {
     return forbidden;
   }
 
+  if (!body.ok) {
+    return body.response;
+  }
+
   return await set(
     completeLimitedFreeOnboarding$,
-    { orgId: auth.orgId },
+    {
+      orgId: auth.orgId,
+      credits: body.data.credits,
+      creditsExpiresAt: body.data.creditsExpiresAt,
+    },
     signal,
   );
 });

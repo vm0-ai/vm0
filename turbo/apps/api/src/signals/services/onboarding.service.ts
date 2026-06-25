@@ -4,13 +4,14 @@ import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onbo
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { logger } from "../../lib/log";
@@ -26,6 +27,9 @@ import {
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
 const L = logger("onboarding.service");
+const ONBOARDING_CREDIT_SOURCE = "onboarding";
+const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
+const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = new Date("2999-12-31T00:00:00Z");
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -87,6 +91,62 @@ type CompleteLimitedFreeOnboardingResponse =
         };
       };
     };
+
+function onboardingCreditExpiresAt(
+  creditsExpiresAt: string | null | undefined,
+): Date {
+  if (!creditsExpiresAt) {
+    return ONBOARDING_CREDITS_NEVER_EXPIRE_AT;
+  }
+  return new Date(creditsExpiresAt);
+}
+
+async function grantOrgCredits(
+  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${amount}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
+  );
+}
+
+async function grantOnboardingCredits(
+  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  args: {
+    readonly orgId: string;
+    readonly credits: number | undefined;
+    readonly creditsExpiresAt: string | null | undefined;
+  },
+): Promise<void> {
+  const credits = args.credits ?? 0;
+  if (credits <= 0) {
+    return;
+  }
+
+  const rows = await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId: args.orgId,
+      source: ONBOARDING_CREDIT_SOURCE,
+      stripeInvoiceId: ONBOARDING_CREDIT_IDEMPOTENCY_KEY,
+      amount: credits,
+      remaining: credits,
+      expiresAt: onboardingCreditExpiresAt(args.creditsExpiresAt),
+    })
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+
+  if (rows.length === 0) {
+    L.debug("Onboarding credits already granted", { orgId: args.orgId });
+    return;
+  }
+
+  await grantOrgCredits(tx, args.orgId, credits);
+}
 
 function unavailableSelectedConnectorsError(
   unavailableTypes: readonly ConnectorType[],
@@ -724,7 +784,11 @@ export const setupOnboarding$ = command(
 export const completeLimitedFreeOnboarding$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: {
+      readonly orgId: string;
+      readonly credits?: number;
+      readonly creditsExpiresAt?: string | null;
+    },
     signal: AbortSignal,
   ): Promise<CompleteLimitedFreeOnboardingResponse> => {
     const writeDb = set(writeDb$);
@@ -743,24 +807,32 @@ export const completeLimitedFreeOnboarding$ = command(
       };
     }
 
-    await writeDb
-      .insert(orgMetadata)
-      .values({
-        orgId: args.orgId,
-        defaultAgentId: agentId,
-        tier: "limited-free-1",
-        onboardingPaymentPending: false,
-        updatedAt: nowDate(),
-      })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: {
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .insert(orgMetadata)
+        .values({
+          orgId: args.orgId,
           defaultAgentId: agentId,
           tier: "limited-free-1",
           onboardingPaymentPending: false,
           updatedAt: nowDate(),
-        },
+        })
+        .onConflictDoUpdate({
+          target: orgMetadata.orgId,
+          set: {
+            defaultAgentId: agentId,
+            tier: "limited-free-1",
+            onboardingPaymentPending: false,
+            updatedAt: nowDate(),
+          },
+        });
+
+      await grantOnboardingCredits(tx, {
+        orgId: args.orgId,
+        credits: args.credits,
+        creditsExpiresAt: args.creditsExpiresAt,
       });
+    });
     signal.throwIfAborted();
 
     return {
