@@ -728,7 +728,10 @@ def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
     if not raw_content_lengths:
         if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
             return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
-        return _AuthBaseBodyCheck(kind="ok")
+        return _AuthBaseBodyCheck(
+            kind="ok",
+            observed_size=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+        )
 
     parsed_length: int | None = None
     for raw_content_length in raw_content_lengths:

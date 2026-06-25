@@ -949,11 +949,30 @@ async def test_auth_base_requestheaders_accepts_no_body_framing(
         path="/",
         request_headers=headers(("Host", "placeholder.example.com")),
     )
+    token_meta = {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+        fake_forwarder_upstream(status=200, body=b"ok"),
+    ):
         mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+        )
+        await mitm_addon.request(flow)
 
-    assert flow.response is None
+    assert flow.response is not None
+    assert flow.response.status_code == 200
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
 async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow, headers):
