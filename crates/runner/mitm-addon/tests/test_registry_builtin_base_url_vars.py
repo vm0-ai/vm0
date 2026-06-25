@@ -4,10 +4,26 @@ import json
 from unittest.mock import MagicMock, patch
 
 import registry
-from tests.registry_helpers import (
-    install_test_builtin_firewall,
-    write_builtin_firewall_registry,
-)
+from tests.registry_helpers import write_builtin_firewall_registry
+
+
+def install_test_builtin_firewall(monkeypatch, *, name: str, base: str) -> None:
+    monkeypatch.setattr(
+        registry,
+        "BUILTIN_FIREWALLS",
+        {
+            name: {
+                "name": name,
+                "apis": [
+                    {
+                        "base": base,
+                        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+                        "permissions": [],
+                    }
+                ],
+            }
+        },
+    )
 
 
 class TestRegistryBuiltinBaseUrlVars:

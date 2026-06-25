@@ -3,8 +3,6 @@
 import json
 import os
 
-import registry
-
 _FIXED_MTIME_NS = 1_700_000_000_000_000_000
 
 
@@ -81,25 +79,6 @@ def write_builtin_firewall_registry(
                 "updatedAt": 0,
             }
         )
-    )
-
-
-def install_test_builtin_firewall(monkeypatch, *, name: str, base: str) -> None:
-    monkeypatch.setattr(
-        registry,
-        "BUILTIN_FIREWALLS",
-        {
-            name: {
-                "name": name,
-                "apis": [
-                    {
-                        "base": base,
-                        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
-                        "permissions": [],
-                    }
-                ],
-            }
-        },
     )
 
 
