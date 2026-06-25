@@ -1,6 +1,6 @@
 /**
  * Tests for `zero workflow trigger` commands
- * (add / update / list / show / rm / enable / disable / run).
+ * (add / update / list / show / rm / enable / disable).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
  * principles:
@@ -22,7 +22,6 @@ const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
 const TRIGGER_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
-const RUN_ID = "55555555-5555-4555-8555-555555555555";
 
 const workflowSummary = {
   id: WORKFLOW_ID,
@@ -704,27 +703,6 @@ describe("zero workflow trigger commands", () => {
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         `Trigger ${TRIGGER_ID} disabled`,
       );
-    });
-  });
-
-  describe("run", () => {
-    it("should fire a workflow trigger test run", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/workflow-triggers/:id/run",
-          ({ params }) => {
-            expect(params.id).toBe(TRIGGER_ID);
-            return HttpResponse.json({ runId: RUN_ID });
-          },
-        ),
-      );
-
-      await triggerCommand.parseAsync(["node", "cli", "run", TRIGGER_ID]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(`Workflow trigger ${TRIGGER_ID} run started`);
-      expect(logCalls).toContain(RUN_ID);
-      expect(logCalls).toContain(`zero logs ${RUN_ID}`);
     });
   });
 });

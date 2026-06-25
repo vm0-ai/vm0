@@ -377,8 +377,27 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
     });
-    const createTriggerForm = screen.getByRole("form", {
-      name: "Create Gmail new message trigger",
+    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Add trigger";
+    });
+    expect(addTriggerButton).toBeDefined();
+    click(addTriggerButton!);
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((item) => {
+          return item.textContent?.includes("Gmail new message");
+        }),
+      ).toBeTruthy();
+    });
+    const gmailMenuItem = queryAllByRoleFast("menuitem").find((item) => {
+      return item.textContent?.includes("Gmail new message");
+    });
+    expect(gmailMenuItem).toBeDefined();
+    click(gmailMenuItem!);
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Gmail trigger",
     });
     await fill(
       within(createTriggerForm).getByLabelText("From contains"),

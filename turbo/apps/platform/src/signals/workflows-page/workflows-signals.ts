@@ -7,6 +7,7 @@ import {
   type GmailNewMessageEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
   type ZeroWorkflowUpdateRequest,
   type UnattendedTriggerPermissionPolicy,
@@ -37,6 +38,10 @@ const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
+const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
+  null,
+);
+const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
@@ -63,6 +68,29 @@ export const setEditingGmailTriggerId$ = command(
 export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
+  },
+);
+
+export const workflowTriggerCreateDialog$ = computed((get) => {
+  return get(internalWorkflowTriggerCreateDialog$);
+});
+
+export const setWorkflowTriggerCreateDialog$ = command(
+  ({ set }, dialog: "schedule" | "gmail" | null) => {
+    set(internalWorkflowTriggerCreateDialog$, dialog);
+    if (dialog === "schedule") {
+      set(internalScheduleTriggerType$, "cron");
+    }
+  },
+);
+
+export const scheduleTriggerType$ = computed((get) => {
+  return get(internalScheduleTriggerType$);
+});
+
+export const setScheduleTriggerType$ = command(
+  ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
+    set(internalScheduleTriggerType$, scheduleType);
   },
 );
 
@@ -437,16 +465,5 @@ export const deleteWorkflowTrigger$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
-  },
-);
-
-export const runWorkflowTrigger$ = command(
-  async ({ get }, triggerId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.run({ params: { id: triggerId }, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
   },
 );

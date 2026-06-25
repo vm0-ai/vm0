@@ -66,6 +66,7 @@ _CLIENT_CREDENTIAL_HEADER_NAMES: frozenset[str] = frozenset(
         "x-cg-demo-api-key",
         "x-cg-pro-api-key",
         "x-faire-access-token",
+        "x-figma-token",
         "x-goog-api-key",
         "x-hume-api-key",
         "x-key",

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use tracing::{info, warn};
@@ -38,10 +39,9 @@ pub(crate) struct LocalQueue {
     group_dir: PathBuf,
 }
 
-enum JobFileLookup {
-    Found,
-    NotFound,
-    ScanFailed,
+enum CancelTargetLookup {
+    Resolved(CancelTargetState),
+    NeedsJobFile,
 }
 
 enum JobFileScan {
@@ -49,10 +49,26 @@ enum JobFileScan {
     ScanFailed(Vec<PathBuf>),
 }
 
-#[derive(Clone, Copy)]
-enum JobFileScanMode {
-    FirstRegular,
-    AllExisting,
+struct JobProfileDirScan {
+    paths: Vec<PathBuf>,
+    complete: bool,
+}
+
+struct JobPresenceScan {
+    found: HashSet<RunId>,
+    complete: bool,
+}
+
+impl JobPresenceScan {
+    fn target_state(&self, run_id: RunId) -> CancelTargetState {
+        if self.found.contains(&run_id) {
+            CancelTargetState::Pending
+        } else if self.complete {
+            CancelTargetState::NotPending
+        } else {
+            CancelTargetState::Unknown
+        }
+    }
 }
 
 impl LocalQueue {
@@ -421,7 +437,8 @@ impl LocalQueue {
             }
         };
         let mut cancel_markers = Vec::new();
-        let mut seen = std::collections::HashSet::new();
+        let mut unresolved_run_ids = Vec::new();
+        let mut seen = HashSet::new();
         for entry in entries.filter_map(Result::ok) {
             let Ok(file_type) = entry.file_type() else {
                 continue;
@@ -440,10 +457,30 @@ impl LocalQueue {
                 continue;
             };
             if seen.insert(run_id) {
-                cancel_markers.push(LocalCancelMarker {
-                    run_id,
-                    target_state: self.cancel_target_state(run_id),
-                });
+                match self.cancel_target_state_before_job_lookup(run_id) {
+                    CancelTargetLookup::Resolved(target_state) => {
+                        cancel_markers.push(LocalCancelMarker {
+                            run_id,
+                            target_state,
+                        });
+                    }
+                    CancelTargetLookup::NeedsJobFile => {
+                        unresolved_run_ids.push(run_id);
+                        cancel_markers.push(LocalCancelMarker {
+                            run_id,
+                            target_state: CancelTargetState::Unknown,
+                        });
+                    }
+                }
+            }
+        }
+        if !unresolved_run_ids.is_empty() {
+            let job_presence = self.lookup_job_files_for_cancel_targets(&unresolved_run_ids);
+            let unresolved: HashSet<RunId> = unresolved_run_ids.into_iter().collect();
+            for marker in &mut cancel_markers {
+                if unresolved.contains(&marker.run_id) {
+                    marker.target_state = job_presence.target_state(marker.run_id);
+                }
             }
         }
         cancel_markers
@@ -455,23 +492,19 @@ impl LocalQueue {
         }
     }
 
-    fn cancel_target_state(&self, run_id: RunId) -> CancelTargetState {
+    fn cancel_target_state_before_job_lookup(&self, run_id: RunId) -> CancelTargetLookup {
         if self.result_file_has_content(run_id) {
-            return CancelTargetState::NotPending;
+            return CancelTargetLookup::Resolved(CancelTargetState::NotPending);
         }
         match self.claim_marker_exists(run_id) {
-            Ok(true) => return CancelTargetState::Pending,
+            Ok(true) => return CancelTargetLookup::Resolved(CancelTargetState::Pending),
             Ok(false) => {}
             Err(e) => {
                 warn!(run_id = %run_id, error = %e, "local: cannot stat claim marker");
-                return CancelTargetState::Unknown;
+                return CancelTargetLookup::Resolved(CancelTargetState::Unknown);
             }
         }
-        match self.lookup_job_file(run_id) {
-            JobFileLookup::Found => CancelTargetState::Pending,
-            JobFileLookup::NotFound => CancelTargetState::NotPending,
-            JobFileLookup::ScanFailed => CancelTargetState::Unknown,
-        }
+        CancelTargetLookup::NeedsJobFile
     }
 
     fn claim_marker_exists(&self, run_id: RunId) -> std::io::Result<bool> {
@@ -494,11 +527,10 @@ impl LocalQueue {
     }
 
     pub(crate) fn remove_job_files_if_present(&self, run_id: RunId) -> bool {
-        let (paths, mut removed_all) =
-            match self.collect_job_file_paths(run_id, JobFileScanMode::AllExisting) {
-                JobFileScan::Complete(paths) => (paths, true),
-                JobFileScan::ScanFailed(paths) => (paths, false),
-            };
+        let (paths, mut removed_all) = match self.collect_job_file_paths(run_id) {
+            JobFileScan::Complete(paths) => (paths, true),
+            JobFileScan::ScanFailed(paths) => (paths, false),
+        };
 
         for path in paths {
             match std::fs::remove_file(&path) {
@@ -565,36 +597,28 @@ impl LocalQueue {
         let _ = std::fs::remove_file(claim_file);
     }
 
-    fn lookup_job_file(&self, run_id: RunId) -> JobFileLookup {
-        match self.collect_job_file_paths(run_id, JobFileScanMode::FirstRegular) {
-            JobFileScan::Complete(paths) => {
-                if paths.is_empty() {
-                    JobFileLookup::NotFound
-                } else {
-                    JobFileLookup::Found
-                }
-            }
-            JobFileScan::ScanFailed(paths) => {
-                if paths.is_empty() {
-                    JobFileLookup::ScanFailed
-                } else {
-                    JobFileLookup::Found
-                }
-            }
-        }
+    fn lookup_job_files_for_cancel_targets(&self, run_ids: &[RunId]) -> JobPresenceScan {
+        let profile_dirs = self.collect_job_profile_dirs();
+        lookup_job_files_in_profile_dirs(run_ids, &profile_dirs.paths, profile_dirs.complete)
     }
 
-    fn collect_job_file_paths(&self, run_id: RunId, mode: JobFileScanMode) -> JobFileScan {
+    fn collect_job_profile_dirs(&self) -> JobProfileDirScan {
         let jobs_dir = super::jobs_dir(&self.group_dir);
         let mut paths = Vec::new();
         let orgs = match std::fs::read_dir(&jobs_dir) {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return JobFileScan::Complete(paths);
+                return JobProfileDirScan {
+                    paths,
+                    complete: true,
+                };
             }
             Err(e) => {
-                warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir for job file");
-                return JobFileScan::ScanFailed(paths);
+                warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir for job profile dirs");
+                return JobProfileDirScan {
+                    paths,
+                    complete: false,
+                };
             }
         };
 
@@ -602,15 +626,21 @@ impl LocalQueue {
             let org = match org {
                 Ok(entry) => entry,
                 Err(e) => {
-                    warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir entry for job file");
-                    return JobFileScan::ScanFailed(paths);
+                    warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir entry for job profile dirs");
+                    return JobProfileDirScan {
+                        paths,
+                        complete: false,
+                    };
                 }
             };
             let org_file_type = match org.file_type() {
                 Ok(file_type) => file_type,
                 Err(e) => {
-                    warn!(path = %org.path().display(), error = %e, "local: cannot stat profile org dir entry for job file");
-                    return JobFileScan::ScanFailed(paths);
+                    warn!(path = %org.path().display(), error = %e, "local: cannot stat profile org dir entry for job profile dirs");
+                    return JobProfileDirScan {
+                        paths,
+                        complete: false,
+                    };
                 }
             };
             if !org_file_type.is_dir() {
@@ -621,51 +651,104 @@ impl LocalQueue {
                 Ok(entries) => entries,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {
-                    warn!(path = %org_path.display(), error = %e, "local: cannot scan profile org dir for job file");
-                    return JobFileScan::ScanFailed(paths);
+                    warn!(path = %org_path.display(), error = %e, "local: cannot scan profile org dir for job profile dirs");
+                    return JobProfileDirScan {
+                        paths,
+                        complete: false,
+                    };
                 }
             };
             for profile in profiles {
                 let profile = match profile {
                     Ok(entry) => entry,
                     Err(e) => {
-                        warn!(path = %org_path.display(), error = %e, "local: cannot scan profile dir entry for job file");
-                        return JobFileScan::ScanFailed(paths);
+                        warn!(path = %org_path.display(), error = %e, "local: cannot scan profile dir entry for job profile dirs");
+                        return JobProfileDirScan {
+                            paths,
+                            complete: false,
+                        };
                     }
                 };
                 let profile_file_type = match profile.file_type() {
                     Ok(file_type) => file_type,
                     Err(e) => {
-                        warn!(path = %profile.path().display(), error = %e, "local: cannot stat profile dir entry for job file");
-                        return JobFileScan::ScanFailed(paths);
+                        warn!(path = %profile.path().display(), error = %e, "local: cannot stat profile dir entry for job profile dirs");
+                        return JobProfileDirScan {
+                            paths,
+                            complete: false,
+                        };
                     }
                 };
-                if !profile_file_type.is_dir() {
-                    continue;
-                }
-                let path = profile.path().join(format!("{run_id}.job"));
-                match std::fs::symlink_metadata(&path) {
-                    Ok(metadata)
-                        if matches!(mode, JobFileScanMode::AllExisting)
-                            || metadata.file_type().is_file() =>
-                    {
-                        paths.push(path);
-                        if matches!(mode, JobFileScanMode::FirstRegular) {
-                            return JobFileScan::Complete(paths);
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(e) => {
-                        warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
-                        return JobFileScan::ScanFailed(paths);
-                    }
+                if profile_file_type.is_dir() {
+                    paths.push(profile.path());
                 }
             }
         }
 
-        JobFileScan::Complete(paths)
+        JobProfileDirScan {
+            paths,
+            complete: true,
+        }
     }
+
+    fn collect_job_file_paths(&self, run_id: RunId) -> JobFileScan {
+        let profile_dirs = self.collect_job_profile_dirs();
+        let mut paths = Vec::new();
+
+        for profile_dir in profile_dirs.paths {
+            let path = profile_dir.join(format!("{run_id}.job"));
+            match std::fs::symlink_metadata(&path) {
+                Ok(_) => {
+                    paths.push(path);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
+                    return JobFileScan::ScanFailed(paths);
+                }
+            }
+        }
+
+        if profile_dirs.complete {
+            JobFileScan::Complete(paths)
+        } else {
+            JobFileScan::ScanFailed(paths)
+        }
+    }
+}
+
+fn lookup_job_files_in_profile_dirs(
+    run_ids: &[RunId],
+    profile_dirs: &[PathBuf],
+    profile_dir_scan_complete: bool,
+) -> JobPresenceScan {
+    let mut found = HashSet::new();
+    let mut remaining: HashSet<RunId> = run_ids.iter().copied().collect();
+    let mut complete = profile_dir_scan_complete;
+
+    for profile_dir in profile_dirs {
+        if remaining.is_empty() {
+            break;
+        }
+        let targets: Vec<RunId> = remaining.iter().copied().collect();
+        for run_id in targets {
+            let path = profile_dir.join(format!("{run_id}.job"));
+            match std::fs::symlink_metadata(&path) {
+                Ok(metadata) if metadata.file_type().is_file() => {
+                    found.insert(run_id);
+                    remaining.remove(&run_id);
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    complete = false;
+                    warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat cancel target job file");
+                }
+            }
+        }
+    }
+
+    JobPresenceScan { found, complete }
 }
 
 fn validate_optional_cancel_dir(group_dir: &Path, cancel_dir: &Path) -> std::io::Result<()> {
@@ -684,6 +767,7 @@ fn validate_optional_cancel_dir(group_dir: &Path, cancel_dir: &Path) -> std::io:
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
 
@@ -711,6 +795,29 @@ mod tests {
         };
         std::fs::write(&job_path, serde_json::to_vec(&request).unwrap()).unwrap();
         job_path
+    }
+
+    fn write_cancel_marker(group_dir: &Path, run_id: RunId) -> PathBuf {
+        let cancel_path = super::super::cancel_path(group_dir, run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        cancel_path
+    }
+
+    fn collect_marker_states(queue: &LocalQueue) -> HashMap<RunId, CancelTargetState> {
+        queue
+            .collect_cancel_markers_sync()
+            .into_iter()
+            .map(|marker| (marker.run_id, marker.target_state))
+            .collect()
+    }
+
+    fn assert_marker_state(
+        states: &HashMap<RunId, CancelTargetState>,
+        run_id: RunId,
+        expected: CancelTargetState,
+    ) {
+        assert_eq!(states.get(&run_id), Some(&expected));
     }
 
     #[test]
@@ -1092,7 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_target_state_ignores_claim_file_symlink() {
+    fn collect_cancel_markers_ignores_claim_file_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let queue = LocalQueue::new(group_dir.to_path_buf());
@@ -1102,11 +1209,11 @@ mod tests {
         let target = dir.path().join("target-claim");
         std::fs::write(&target, b"").unwrap();
         symlink(&target, super::super::claim_path(group_dir, run_id)).unwrap();
+        write_cancel_marker(group_dir, run_id);
 
-        assert_eq!(
-            queue.cancel_target_state(run_id),
-            CancelTargetState::NotPending
-        );
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, run_id, CancelTargetState::NotPending);
     }
 
     #[test]
@@ -1128,7 +1235,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_target_state_ignores_result_file_symlink() {
+    fn collect_cancel_markers_ignores_result_file_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let queue = LocalQueue::new(group_dir.to_path_buf());
@@ -1140,11 +1247,118 @@ mod tests {
         let target = dir.path().join("target-result");
         std::fs::write(&target, b"terminal").unwrap();
         symlink(&target, &result_path).unwrap();
+        write_cancel_marker(group_dir, run_id);
 
-        assert_eq!(
-            queue.cancel_target_state(run_id),
-            CancelTargetState::Pending
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, run_id, CancelTargetState::Pending);
+    }
+
+    #[test]
+    fn collect_cancel_markers_resolves_batch_job_presence_across_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let default_job = RunId::new_v4();
+        let large_job = RunId::new_v4();
+        let missing = RunId::new_v4();
+        let terminal = RunId::new_v4();
+        let claimed = RunId::new_v4();
+
+        write_job_request(group_dir, default_job, crate::profile::DEFAULT_PROFILE);
+        write_job_request(group_dir, large_job, "vm0/large");
+        write_job_request(group_dir, terminal, crate::profile::DEFAULT_PROFILE);
+        assert!(queue.write_result_sync(terminal, 0, None));
+        std::fs::create_dir_all(super::super::claims_dir(group_dir)).unwrap();
+        std::fs::write(super::super::claim_path(group_dir, claimed), b"").unwrap();
+
+        for run_id in [default_job, large_job, missing, terminal, claimed] {
+            write_cancel_marker(group_dir, run_id);
+        }
+
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, default_job, CancelTargetState::Pending);
+        assert_marker_state(&states, large_job, CancelTargetState::Pending);
+        assert_marker_state(&states, missing, CancelTargetState::NotPending);
+        assert_marker_state(&states, terminal, CancelTargetState::NotPending);
+        assert_marker_state(&states, claimed, CancelTargetState::Pending);
+    }
+
+    #[test]
+    fn collect_cancel_markers_keeps_unresolved_targets_unknown_when_job_scan_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        write_cancel_marker(group_dir, run_id);
+        std::fs::write(super::super::jobs_dir(group_dir), b"not a directory").unwrap();
+
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, run_id, CancelTargetState::Unknown);
+    }
+
+    #[test]
+    fn batch_job_lookup_preserves_found_targets_when_later_path_stat_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let found_run_id = RunId::new_v4();
+        let unresolved_run_id = RunId::new_v4();
+        let profile_dir = dir.path().join("profile");
+        std::fs::create_dir(&profile_dir).unwrap();
+        std::fs::write(profile_dir.join(format!("{found_run_id}.job")), b"{}").unwrap();
+        let not_a_profile_dir = dir.path().join("not-a-profile-dir");
+        std::fs::write(&not_a_profile_dir, b"not a directory").unwrap();
+
+        let scan = lookup_job_files_in_profile_dirs(
+            &[found_run_id, unresolved_run_id],
+            &[profile_dir, not_a_profile_dir],
+            true,
         );
+
+        assert_eq!(scan.target_state(found_run_id), CancelTargetState::Pending);
+        assert_eq!(
+            scan.target_state(unresolved_run_id),
+            CancelTargetState::Unknown
+        );
+    }
+
+    #[test]
+    fn collect_cancel_markers_ignores_job_file_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let job_path =
+            super::super::job_path(group_dir, crate::profile::DEFAULT_PROFILE, run_id).unwrap();
+        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-job");
+        std::fs::write(&target, b"{}").unwrap();
+        symlink(&target, &job_path).unwrap();
+        write_cancel_marker(group_dir, run_id);
+
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, run_id, CancelTargetState::NotPending);
+    }
+
+    #[test]
+    fn collect_cancel_markers_ignores_unrelated_job_filenames() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let run_id = RunId::new_v4();
+        let unrelated_run_id = RunId::new_v4();
+        let profile_dir =
+            super::super::profile_jobs_dir(group_dir, crate::profile::DEFAULT_PROFILE).unwrap();
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(profile_dir.join("not-a-run-id.job"), b"{}").unwrap();
+        std::fs::write(profile_dir.join(format!("{unrelated_run_id}.job")), b"{}").unwrap();
+        write_cancel_marker(group_dir, run_id);
+
+        let states = collect_marker_states(&queue);
+
+        assert_marker_state(&states, run_id, CancelTargetState::NotPending);
     }
 
     #[test]

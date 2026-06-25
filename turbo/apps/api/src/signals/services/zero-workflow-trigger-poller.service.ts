@@ -14,11 +14,9 @@ import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { calculateNextRun } from "./automations/time-trigger";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type DueWorkflowTrigger,
   type RunFailure,
-  type RunWorkflowTriggerResult,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
 
@@ -187,47 +185,6 @@ async function recordPreRunFailure(
     });
   }
 }
-
-/**
- * Fire a one-off TEST run for a workflow schedule trigger. Same execution as a
- * scheduled fire (the workflow skill is injected via the agent's attachment and
- * the run renders in the bound thread), but it carries ONLY the chat callback —
- * no recurrence callback — and the caller does not claim or advance the
- * schedule. Used by the manual "Test run" action so authors can validate the
- * automatic entry point without disturbing `next_run_at`/`last_run_at`.
- */
-export const fireWorkflowTriggerTestRun$ = command(
-  async (
-    { set },
-    args: {
-      readonly trigger: TriggerRow;
-      readonly agentId: string;
-      readonly workflowName: string;
-      readonly apiStartTime: number;
-    },
-    signal: AbortSignal,
-  ): Promise<RunWorkflowTriggerResult> => {
-    return await set(
-      runWorkflowTriggerNow$,
-      {
-        due: {
-          trigger: args.trigger,
-          agentId: args.agentId,
-          workflowName: args.workflowName,
-        },
-        apiStartTime: args.apiStartTime,
-        // Chat callback only: a test run must not advance the schedule.
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          args.trigger,
-          args.agentId,
-        ),
-        recordLastRunId: false,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-      },
-      signal,
-    );
-  },
-);
 
 /**
  * Time poller over `zero_workflow_triggers`, run from the

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.178.4](https://github.com/vm0-ai/vm0/compare/api-v1.178.3...api-v1.178.4) (2026-06-25)
+
+
+### Performance Improvements
+
+* add runner queue-to-claim timing ([#18940](https://github.com/vm0-ai/vm0/issues/18940)) ([ae6564c](https://github.com/vm0-ai/vm0/commit/ae6564cd58f595ec239d6f1c1f4155911ded8655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+    * @vm0/db bumped to 1.71.3
+
 ## [1.178.3](https://github.com/vm0-ai/vm0/compare/api-v1.178.2...api-v1.178.3) (2026-06-25)
 
 

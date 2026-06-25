@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.0...desktop-v0.20.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* **desktop:** avoid repeated web area ancestry reads ([#18952](https://github.com/vm0-ai/vm0/issues/18952)) ([2ede972](https://github.com/vm0-ai/vm0/commit/2ede97216c7a48664245c08af672befd5fec6905))
+
 ## [0.20.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.19.0...desktop-v0.20.0) (2026-06-22)
 
 
