@@ -782,13 +782,15 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
 
 
 def _request_body_for_billing_refinement(flow: http.HTTPFlow) -> bytes | None:
-    raw_content = flow.request.raw_content
-    if raw_content:
-        return raw_content
-    streamed_content = request_streaming.complete_captured_request_stream_body(flow)
-    if streamed_content:
-        return streamed_content
-    return raw_content
+    captured = request_streaming.captured_request_stream_body(flow)
+    if captured is not None:
+        if (
+            flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is True
+            and not captured.truncated
+        ):
+            return bytes(captured.buffer)
+        return None
+    return flow.request.raw_content
 
 
 def _compute_billable_counts(

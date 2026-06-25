@@ -223,6 +223,57 @@ def test_tweet_create_refines_from_complete_stream_capture_when_raw_content_is_e
     assert p["quantity"] == 1
 
 
+def test_tweet_create_complete_stream_capture_overrides_stale_raw_content(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=b'{"text":"https://example.com"}',
+    )
+    flow.request.method = "POST"
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_truncated_stream_capture_ignores_stale_raw_content(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=b'{"text":"hello world"}',
+    )
+    flow.request.method = "POST"
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
+    assert stream(request_body) == request_body
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
 def test_tweet_create_incomplete_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
     flow = x_usage.make_flow(
         real_flow,
