@@ -113,6 +113,51 @@ fn decode_msg_rejects_field_type_mismatches() -> TestResult {
 }
 
 #[test]
+fn decode_msg_rejects_nil_required_fields() -> TestResult {
+    let action_as_nil = rmpv::Value::Map(vec![field("action", rmpv::Value::Nil)]);
+    let encoded = encode_value(action_as_nil)?;
+    expect_bad_request(&encoded)?;
+
+    let error_code_as_nil = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::ERROR)),
+        field(
+            "error",
+            rmpv::Value::Map(vec![field("code", rmpv::Value::Nil)]),
+        ),
+    ]);
+    let encoded = encode_value(error_code_as_nil)?;
+    expect_bad_request(&encoded)?;
+
+    let auth_token_as_nil = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::AUTH)),
+        field(
+            "auth",
+            rmpv::Value::Map(vec![field("accessToken", rmpv::Value::Nil)]),
+        ),
+    ]);
+    let encoded = encode_value(auth_token_as_nil)?;
+    expect_bad_request(&encoded)?;
+
+    Ok(())
+}
+
+#[test]
+fn decode_msg_rejects_integer_fields_outside_target_range() -> TestResult {
+    let action_outside_i32 = rmpv::Value::Map(vec![field("action", rmpv::Value::from(i64::MAX))]);
+    let encoded = encode_value(action_outside_i32)?;
+    expect_bad_request(&encoded)?;
+
+    let timestamp_outside_i64 = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field("timestamp", rmpv::Value::from(u64::MAX)),
+    ]);
+    let encoded = encode_value(timestamp_outside_i64)?;
+    expect_bad_request(&encoded)?;
+
+    Ok(())
+}
+
+#[test]
 fn decode_msg_rejects_nested_field_type_mismatches() -> TestResult {
     let message_name_as_array = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::MESSAGE)),
@@ -170,6 +215,44 @@ fn decode_msg_accepts_unknown_numeric_action() -> TestResult {
     let decoded = decode_msg(&encoded)?;
 
     assert_eq!(decoded.action, 123_456);
+
+    Ok(())
+}
+
+#[test]
+fn decode_msg_preserves_nil_optional_fields_and_empty_nested_defaults() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::CONNECTED)),
+        field("channel", rmpv::Value::Nil),
+        field("messages", rmpv::Value::Nil),
+        field("params", rmpv::Value::Nil),
+        field("connectionDetails", rmpv::Value::Map(Vec::new())),
+        field("error", rmpv::Value::Map(Vec::new())),
+        field("auth", rmpv::Value::Map(Vec::new())),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert!(decoded.channel.is_none());
+    assert!(decoded.messages.is_none());
+    assert!(decoded.params.is_none());
+    let connection_details = decoded
+        .connection_details
+        .as_ref()
+        .ok_or_else(|| io::Error::other("connection details are missing"))?;
+    assert!(connection_details.connection_key.is_none());
+    let error = decoded
+        .error
+        .as_ref()
+        .ok_or_else(|| io::Error::other("error info is missing"))?;
+    assert_eq!(error.code, 0);
+    assert_eq!(error.message, "");
+    let auth = decoded
+        .auth
+        .as_ref()
+        .ok_or_else(|| io::Error::other("auth details are missing"))?;
+    assert_eq!(auth.access_token, "");
 
     Ok(())
 }
