@@ -69,6 +69,37 @@ def _argument_names(args: ast.arguments) -> set[str]:
     return names
 
 
+def _pattern_names(pattern: ast.pattern) -> set[str]:
+    if isinstance(pattern, ast.MatchAs):
+        names = set() if pattern.name is None else {pattern.name}
+        if pattern.pattern is not None:
+            names.update(_pattern_names(pattern.pattern))
+        return names
+    if isinstance(pattern, ast.MatchStar):
+        return set() if pattern.name is None else {pattern.name}
+    if isinstance(pattern, ast.MatchMapping):
+        mapping_names: set[str] = set() if pattern.rest is None else {pattern.rest}
+        for child_pattern in pattern.patterns:
+            mapping_names.update(_pattern_names(child_pattern))
+        return mapping_names
+    if isinstance(pattern, ast.MatchSequence):
+        sequence_names: set[str] = set()
+        for child_pattern in pattern.patterns:
+            sequence_names.update(_pattern_names(child_pattern))
+        return sequence_names
+    if isinstance(pattern, ast.MatchClass):
+        class_names: set[str] = set()
+        for child_pattern in [*pattern.patterns, *pattern.kwd_patterns]:
+            class_names.update(_pattern_names(child_pattern))
+        return class_names
+    if isinstance(pattern, ast.MatchOr):
+        or_names: set[str] = set()
+        for child_pattern in pattern.patterns:
+            or_names.update(_pattern_names(child_pattern))
+        return or_names
+    return set()
+
+
 class _MetadataKeyVisitor(ast.NodeVisitor):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -92,6 +123,34 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             or (isinstance(node, ast.Name) and node.id in self._metadata_aliases)
             or (isinstance(node, ast.NamedExpr) and self._is_metadata_reference(node.value))
         )
+
+    def _contains_metadata_reference(self, node: ast.AST) -> bool:
+        return self._is_metadata_reference(node) or any(
+            self._contains_metadata_reference(child) for child in ast.iter_child_nodes(node)
+        )
+
+    def _is_metadata_merge_value(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            left_contains_metadata = self._contains_metadata_reference(node.left)
+            right_contains_metadata = self._contains_metadata_reference(node.right)
+            return left_contains_metadata or right_contains_metadata
+        if isinstance(node, ast.Dict) and any(
+            key is None and self._contains_metadata_reference(value)
+            for key, value in zip(node.keys, node.values, strict=True)
+        ):
+            return True
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "dict"
+            and len(node.args) > 0
+            and self._contains_metadata_reference(node.args[0])
+        )
+
+    def _metadata_merge_key_violations(self, node: ast.AST) -> list[str]:
+        if self._is_metadata_merge_value(node):
+            return _metadata_dict_key_violations(self.path, node)
+        return []
 
     def _visit_scoped_body(self, body: list[ast.stmt], shadowed: set[str] | None = None) -> None:
         aliases = set(self._metadata_aliases)
@@ -155,18 +214,27 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:
         if any(_is_metadata_attribute(target) for target in node.targets):
             self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
+        else:
+            self.violations.extend(self._metadata_merge_key_violations(node.value))
+        self.visit(node.value)
+        for target in node.targets:
+            self.visit(target)
         self._update_aliases_from_assign(node)
-        self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if _is_metadata_attribute(node.target):
             self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
+        elif node.value is not None:
+            self.violations.extend(self._metadata_merge_key_violations(node.value))
+        if node.value is not None:
+            self.visit(node.value)
+        self.visit(node.annotation)
+        self.visit(node.target)
         if node.value is not None and isinstance(node.target, ast.Name):
-            if self._is_metadata_reference(node.value):
+            if self._is_metadata_reference(node.value) or self._is_metadata_merge_value(node.value):
                 self._metadata_aliases.add(node.target.id)
             else:
                 self._metadata_aliases.discard(node.target.id)
-        self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         if self._is_metadata_reference(node.target):
@@ -175,13 +243,19 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         if isinstance(node.target, ast.Name):
+            is_metadata_alias = self._is_metadata_reference(
+                node.value
+            ) or self._is_metadata_merge_value(node.value)
+            self.violations.extend(self._metadata_merge_key_violations(node.value))
+            self.visit(node.value)
             target_aliases = self._named_expr_target_aliases
-            if self._is_metadata_reference(node.value):
+            if is_metadata_alias:
                 target_aliases.add(node.target.id)
                 self._metadata_aliases.add(node.target.id)
             else:
                 target_aliases.discard(node.target.id)
                 self._metadata_aliases.discard(node.target.id)
+            return
         self.visit(node.value)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
@@ -258,6 +332,22 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if node.name is not None:
             self._metadata_aliases.discard(node.name)
 
+    def visit_Match(self, node: ast.Match) -> None:
+        self.visit(node.subject)
+        matched_names: set[str] = set()
+        for case in node.cases:
+            names = _pattern_names(case.pattern)
+            matched_names.update(names)
+            aliases = set(self._metadata_aliases)
+            aliases.difference_update(names)
+            self._metadata_alias_scopes.append(aliases)
+            if case.guard is not None:
+                self.visit(case.guard)
+            for statement in case.body:
+                self.visit(statement)
+            self._metadata_alias_scopes.pop()
+        self._metadata_aliases.difference_update(matched_names)
+
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self._visit_comprehension(node.generators, [node.elt])
 
@@ -282,7 +372,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._metadata_aliases.discard(alias.asname or alias.name)
 
     def _update_aliases_from_assign(self, node: ast.Assign) -> None:
-        is_metadata_alias = self._is_metadata_reference(node.value)
+        is_metadata_alias = self._is_metadata_reference(
+            node.value
+        ) or self._is_metadata_merge_value(node.value)
         for target in node.targets:
             if is_metadata_alias and isinstance(target, ast.Name):
                 self._metadata_aliases.add(target.id)
@@ -436,6 +528,15 @@ def nested_alias():
 annotated_meta = flow.metadata
 annotated_meta: dict[str, object]
 annotated_meta["auth_url_rewrite"] = True
+annotated_meta: str = annotated_meta["auth_url_rewrite"]
+reassigned_meta = flow.metadata
+reassigned_meta = reassigned_meta["connector_diagnostic_env_names"]
+(named_expr_reassigned_meta := flow.metadata)
+(named_expr_reassigned_meta := named_expr_reassigned_meta["firewall_error"])
+merged_meta = flow.metadata | {"firewall_base": "https://api.example.com"}
+merged_meta = {**merged_meta, "firewall_api_id": "run-1:0"}
+merged_meta = dict(merged_meta, firewall_action="ALLOW")
+(merged_named_expr_meta := flow.metadata | {"firewall_name": "github"})
 (inline_meta := flow.metadata)["connector_diagnostic_type"] = "github"
 (call_meta := flow.metadata).get("connector_diagnostic_reason")
 if conditional_meta := flow.metadata:
@@ -456,12 +557,15 @@ values = [
     for row in rows
     for item in (generator_body_meta := flow.metadata)
 ]
+match payload:
+    case {"payload": payload}:
+        outer_meta["_model_json_usage_finalized"] = True
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 34
+    assert len(violations) == 42
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -475,6 +579,8 @@ entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
+external_meta_value = flow.metadata
+payload = {"vm_run_id": "external", "metadata": external_meta_value}
 meta = flow.metadata
 meta = {"vm_run_id": "external payload"}
 def accepts_external_metadata(meta):
@@ -504,6 +610,17 @@ values = tuple(meta["vm_run_id"] for meta in [{"vm_run_id": "external"}])
 value = lambda_local_meta["vm_run_id"]
 values = [(meta := {"vm_run_id": "external"}) for item in rows]
 value = meta["vm_run_id"]
+match payload:
+    case {"meta": match_meta, **match_rest} if match_rest["vm_run_id"]:
+        value = match_meta["vm_run_id"]
+    case Item(meta=class_meta):
+        value = class_meta["vm_run_id"]
+    case [sequence_meta, *sequence_tail]:
+        value = sequence_meta["vm_run_id"]
+        value = sequence_tail["vm_run_id"]
+    case meta:
+        value = meta["vm_run_id"]
+value = match_meta["vm_run_id"]
 try:
     pass
 except Exception as meta:
