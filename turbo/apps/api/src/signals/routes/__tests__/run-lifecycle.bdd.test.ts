@@ -1161,6 +1161,37 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 });
 
 describe("RUN-02: stored connector injection into claimed runs", () => {
+  it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-unallowed-access",
+      refreshToken: "x-bdd-unallowed-refresh",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without enabled stored connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1171,6 +1202,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       authMethod: "oauth",
       accessToken: "x-bdd-access",
       refreshToken: "x-bdd-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-unenabled-access",
     });
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
@@ -1203,6 +1239,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
 
     // The stored access token is only readable through the firewall-auth
     // webhook with the claimed run's sandbox token.
@@ -1915,7 +1956,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(overridden.unknownPolicy).toBe("allow");
   });
 
-  it("applies connector default named policies to direct runs without explicit policies", async () => {
+  it("loads stored connectors and applies default named policies to direct runs without explicit policies", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1948,6 +1989,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.CLOUDFLARE_TOKEN).toBe(
+      connectorPlaceholder("cloudflare", "CLOUDFLARE_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({
+      CLOUDFLARE_TOKEN: "cloudflare",
+    });
+    expect(findFirewallEntry(claim.firewalls, "cloudflare")).toStrictEqual({
+      kind: "builtin",
+      name: "cloudflare",
+    });
+
     const policy = claim.networkPolicies?.cloudflare;
     if (!policy) {
       throw new Error("Expected a cloudflare network policy on the claim");

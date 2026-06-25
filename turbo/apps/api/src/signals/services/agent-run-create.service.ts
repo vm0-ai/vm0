@@ -2163,6 +2163,14 @@ async function loadStoredConnectorContext(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ConnectorRuntimeContext> {
+  if (args.allowedConnectorTypes?.length === 0) {
+    return emptyConnectorRuntimeContext();
+  }
+
+  const allowedConnectorTypes = args.allowedConnectorTypes
+    ? [...new Set(args.allowedConnectorTypes)]
+    : undefined;
+
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
@@ -2179,6 +2187,9 @@ async function loadStoredConnectorContext(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          allowedConnectorTypes
+            ? inArray(connectors.type, allowedConnectorTypes)
+            : undefined,
         ),
       );
     if (connectorRows.length === 0) {
@@ -2187,7 +2198,7 @@ async function loadStoredConnectorContext(
 
     const allowedConnectorRows = allowedStoredConnectorRows(
       connectorRows,
-      args.allowedConnectorTypes,
+      allowedConnectorTypes,
       nowDate(),
     );
     if (allowedConnectorRows.length === 0) {
