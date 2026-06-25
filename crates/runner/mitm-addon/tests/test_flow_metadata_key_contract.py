@@ -762,7 +762,61 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return
         self.visit(node.value)
 
+    def _visit_sequence_expression(self, node: ast.List | ast.Tuple | ast.Set) -> None:
+        for element in node.elts:
+            self._record_metadata_merge_key_violations(element)
+        self.generic_visit(node)
+
+    def visit_List(self, node: ast.List) -> None:
+        self._visit_sequence_expression(node)
+
+    def visit_Tuple(self, node: ast.Tuple) -> None:
+        self._visit_sequence_expression(node)
+
+    def visit_Set(self, node: ast.Set) -> None:
+        self._visit_sequence_expression(node)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key, value in zip(node.keys, node.values, strict=True):
+            self._record_metadata_merge_key_violations(key)
+            self._record_metadata_merge_key_violations(value)
+        self.generic_visit(node)
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if not self._is_metadata_merge_value(node):
+            self._record_metadata_merge_key_violations(node.left)
+            self._record_metadata_merge_key_violations(node.right)
+        self.generic_visit(node)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
+        self._record_metadata_merge_key_violations(node.operand)
+        self.generic_visit(node)
+
+    def visit_Await(self, node: ast.Await) -> None:
+        self._record_metadata_merge_key_violations(node.value)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        self._record_metadata_merge_key_violations(node.value)
+        self.generic_visit(node)
+
+    def visit_Starred(self, node: ast.Starred) -> None:
+        self._record_metadata_merge_key_violations(node.value)
+        self.generic_visit(node)
+
+    def visit_FormattedValue(self, node: ast.FormattedValue) -> None:
+        self._record_metadata_merge_key_violations(node.value)
+        self.generic_visit(node)
+
+    def visit_Slice(self, node: ast.Slice) -> None:
+        self._record_metadata_merge_key_violations(node.lower)
+        self._record_metadata_merge_key_violations(node.upper)
+        self._record_metadata_merge_key_violations(node.step)
+        self.generic_visit(node)
+
     def visit_Subscript(self, node: ast.Subscript) -> None:
+        self._record_metadata_merge_key_violations(node.value)
+        self._record_metadata_merge_key_violations(node.slice)
         if self._is_metadata_alias_value(node.value):
             key_name = _registered_key_name(node.slice)
             if key_name is not None:
@@ -813,6 +867,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Compare(self, node: ast.Compare) -> None:
+        self._record_metadata_merge_key_violations(node.left)
+        for comparator in node.comparators:
+            self._record_metadata_merge_key_violations(comparator)
         if (
             len(node.comparators) == 1
             and isinstance(node.ops[0], (ast.In, ast.NotIn))
@@ -1259,6 +1316,7 @@ bool_expr_meta = fallback_meta or flow.metadata
 bool_expr_meta["firewall_name"] = "github"
 conditional_merge_meta = (flow.metadata | {"firewall_action": "ALLOW"}) if condition else {}
 conditional_rhs_merge_meta = flow.metadata | ({"firewall_action": "ALLOW"} if condition else {})
+chained_merge_meta = flow.metadata | {"vm_run_id": "run-1"} | {}
 copy_meta = flow.metadata.copy()
 copy_meta["vm_run_id"] = "run-1"
 (flow.metadata if condition else {})["firewall_base"] = "https://api.example.com"
@@ -1317,6 +1375,21 @@ def assert_metadata_merge():
 (flow.metadata | {"firewall_action": "ALLOW"})
 def yield_metadata_merge():
     yield flow.metadata | {"firewall_error": "auth_failed"}
+values = [flow.metadata | {"vm_run_id": "run-1"}]
+values = (flow.metadata | {"firewall_action": "ALLOW"},)
+values = {flow.metadata | {"firewall_error": "auth_failed"}}
+payload = {"metadata": flow.metadata | {"firewall_base": "https://api.example.com"}}
+value = (flow.metadata | {"firewall_permission": "read"})["x"]
+value = rows[flow.metadata | {"firewall_rule_match": "GET /items"}]
+message = f"{flow.metadata | {'network_log_target': {}}}"
+value = (flow.metadata | {"vm_network_log_path": "network.jsonl"}) + other
+async def await_metadata_merge():
+    return await (flow.metadata | {"vm_proxy_log_path": "proxy.jsonl"})
+value = not (flow.metadata | {"auth_cache_hit": False})
+value = other == (flow.metadata | {"firewall_name": "github"})
+value = (flow.metadata | {"firewall_api_id": "run-1:0"}).items
+values = [*(flow.metadata | {"suppress_request_body_capture": True})]
+value = rows[:(flow.metadata | {"capture_body": True})]
 values = [flow.metadata | {"firewall_permission": "read"} for item in rows]
 for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
     pass
@@ -1413,7 +1486,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 110
+    assert len(violations) == 125
     assert all("use metadata_keys." in violation for violation in violations)
 
 
