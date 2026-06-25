@@ -14,7 +14,7 @@ import {
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -61,11 +61,22 @@ const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
-const connectorFirewalls = getAllConnectorFirewalls();
-type ConnectorFirewallType = keyof typeof connectorFirewalls;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_check_org_tier",
   "api_dispatch_prepare_run_context",
+  "api_dispatch_prepare_context_feature_switches",
+  "api_dispatch_prepare_context_resolve_compose",
+  "api_dispatch_prepare_context_load_persisted_environment",
+  "api_dispatch_prepare_context_build_resolved_body",
+  "api_dispatch_prepare_context_resolve_framework",
+  "api_dispatch_prepare_context_resolve_model_provider",
+  "api_dispatch_prepare_context_load_connector_contexts",
+  "api_dispatch_prepare_context_load_stored_connectors",
+  "api_dispatch_prepare_context_load_custom_connectors",
+  "api_dispatch_prepare_context_build_permission_manifest",
+  "api_dispatch_prepare_context_validate_environment",
+  "api_dispatch_prepare_context_load_user_timezone",
+  "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
   "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
@@ -103,11 +114,9 @@ function modelProviderPlaceholder(
   return placeholder;
 }
 
-function connectorPlaceholder(
-  type: ConnectorFirewallType,
-  secretName: string,
-): string {
-  const placeholder = connectorFirewalls[type].placeholders?.[secretName];
+function connectorPlaceholder(type: string, secretName: string): string {
+  const placeholder =
+    getFirewallExecutionMetadata(type)?.placeholderValues[secretName];
   if (!placeholder) {
     throw new Error(`Missing connector placeholder for ${secretName}`);
   }

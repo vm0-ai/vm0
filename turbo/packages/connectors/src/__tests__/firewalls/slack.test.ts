@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
+import type { FirewallConfig } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-} from "../../firewalls";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -16,8 +17,10 @@ const RUNTIME_METHODS = [
   "OPTIONS",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function slackMatches(method: string, path: string): string[] {
-  return findMatchingPermissions(method, path, getConnectorFirewall("slack"), {
+  return findMatchingPermissions(method, path, firewall, {
     apiBase: "https://slack.com/api",
   });
 }
@@ -43,9 +46,13 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("slack firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("slack");
+  });
+
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("slack").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {
@@ -106,8 +113,8 @@ describe("slack firewall", () => {
     ]);
   });
 
-  it("preserves default read access for shared Slack conversation routes", () => {
-    const policies = getDefaultFirewallPolicies("slack").policies;
+  it("preserves default read access for shared Slack conversation routes", async () => {
+    const policies = (await loadDefaultFirewallPolicies("slack")).policies;
 
     expect(policies["assistant.search:read"]).toBe("deny");
     expect(policies["conversations:history"]).toBe("allow");

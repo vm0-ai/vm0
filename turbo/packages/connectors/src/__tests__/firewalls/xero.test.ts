@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
-import { getConnectorFirewall } from "../../firewalls";
+import type { FirewallConfig } from "../../firewall-types";
+import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -13,8 +14,10 @@ const RUNTIME_METHODS = [
   "OPTIONS",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function xeroMatches(apiBase: string, method: string, path: string): string[] {
-  return findMatchingPermissions(method, path, getConnectorFirewall("xero"), {
+  return findMatchingPermissions(method, path, firewall, {
     apiBase,
   });
 }
@@ -41,9 +44,13 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("xero firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("xero");
+  });
+
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("xero").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {

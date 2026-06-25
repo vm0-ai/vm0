@@ -116,6 +116,25 @@ function button(label: string, container?: HTMLElement): HTMLElement {
 const editorPath = `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=slack`;
 
 describe("trigger permissions page", () => {
+  it("shows a connector picker when no connector ref is selected", async () => {
+    mockTriggerPolicyApis(null);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
+    });
+
+    const slackLink = screen.getByText("Slack").closest("a");
+    expect(slackLink).toHaveAttribute(
+      "href",
+      `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=slack`,
+    );
+  });
+
   it("rejects an unknown connector ref", async () => {
     mockTriggerPolicyApis(null);
 

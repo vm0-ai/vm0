@@ -1,15 +1,6 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-/**
- * Whether the blog feature is available.
- *
- * Derived from the presence of a Strapi URL. No Strapi = no blog.
- */
-export function isBlogEnabled(): boolean {
-  return !!(process.env.NEXT_PUBLIC_STRAPI_URL ?? process.env.STRAPI_URL);
-}
-
 function initEnv() {
   return createEnv({
     server: {
@@ -32,9 +23,6 @@ function initEnv() {
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
       NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
-      NEXT_PUBLIC_BASE_URL: z.url().optional(),
-      NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
-      NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       NEXT_PUBLIC_APP_URL: z.url(),
       NEXT_PUBLIC_PAID_ONBOARDING_URL: z.url().optional(),
       NEXT_PUBLIC_STATIC_ASSETS_BASE_URL: z.url().optional(),
@@ -73,12 +61,6 @@ function initEnv() {
         process.env.CLERK_PUBLISHABLE_KEY,
       NEXT_PUBLIC_SENTRY_DSN:
         process.env.NEXT_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN_WEB,
-      NEXT_PUBLIC_BASE_URL:
-        process.env.NEXT_PUBLIC_BASE_URL ?? process.env.BLOG_BASE_URL,
-      NEXT_PUBLIC_DATA_SOURCE:
-        process.env.NEXT_PUBLIC_DATA_SOURCE ?? process.env.BLOG_DATA_SOURCE,
-      NEXT_PUBLIC_STRAPI_URL:
-        process.env.NEXT_PUBLIC_STRAPI_URL ?? process.env.STRAPI_URL,
       NEXT_PUBLIC_APP_URL:
         process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL,
       NEXT_PUBLIC_PAID_ONBOARDING_URL:

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
-import { getConnectorFirewall } from "../../firewalls";
+import type { FirewallConfig } from "../../firewall-types";
+import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -38,8 +39,10 @@ const STRAVA_REMOVED_OAUTH_SCOPE_GROUPS = [
   "read_all",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function stravaMatches(method: string, path: string): string[] {
-  return findMatchingPermissions(method, path, getConnectorFirewall("strava"), {
+  return findMatchingPermissions(method, path, firewall, {
     apiBase: "https://www.strava.com",
   });
 }
@@ -65,9 +68,13 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("strava firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("strava");
+  });
+
   it("replaces broad OAuth scope groups with vm0 resource permissions", () => {
     const permissions = new Set(
-      getConnectorFirewall("strava").apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return (api.permissions ?? []).map((permission) => {
           return permission.name;
         });
@@ -82,7 +89,7 @@ describe("strava firewall", () => {
 
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("strava").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {

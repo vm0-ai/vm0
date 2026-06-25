@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
+import type { FirewallConfig } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-} from "../../firewalls";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -16,8 +17,10 @@ const RUNTIME_METHODS = [
   "OPTIONS",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function clerkMatches(method: string, path: string): string[] {
-  return findMatchingPermissions(method, path, getConnectorFirewall("clerk"));
+  return findMatchingPermissions(method, path, firewall);
 }
 
 function expectClerkMatches(
@@ -41,9 +44,13 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("clerk firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("clerk");
+  });
+
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("clerk").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {
@@ -89,8 +96,8 @@ describe("clerk firewall", () => {
     ]);
   });
 
-  it("keeps billing writes default denied as admin operations", () => {
-    const policies = getDefaultFirewallPolicies("clerk").policies;
+  it("keeps billing writes default denied as admin operations", async () => {
+    const policies = (await loadDefaultFirewallPolicies("clerk")).policies;
 
     expect(policies["billing:read"]).toBe("allow");
     expect(policies["billing:write"]).toBe("deny");
