@@ -39,6 +39,12 @@ class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
             )
 
 
+async def _run_ready_tasks() -> None:
+    ready = asyncio.Event()
+    asyncio.get_running_loop().call_soon(ready.set)
+    await ready.wait()
+
+
 class TestAuthBaseForwarderSecurity:
     @pytest.mark.parametrize(
         ("url", "resolved_address"),
@@ -977,9 +983,17 @@ class TestForwardRequestAsyncWrapper:
                     active -= 1
 
         third_task = None
+        executors: list[_SubmitRecordingThreadPoolExecutor] = []
+
+        def create_executor(*args, **kwargs):
+            executor = _SubmitRecordingThreadPoolExecutor(*args, **kwargs)
+            executors.append(executor)
+            return executor
+
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
+            patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
             fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
@@ -991,6 +1005,9 @@ class TestForwardRequestAsyncWrapper:
             try:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
+                assert len(executors) == 1
+                executor = executors[0]
+                assert executor.submit_count == 1
 
                 waiting_task.cancel()
                 with pytest.raises(asyncio.CancelledError):
@@ -999,11 +1016,9 @@ class TestForwardRequestAsyncWrapper:
                 third_task = asyncio.create_task(
                     forwarder.forward_request("https://example.com", "GET", [], None)
                 )
-                second_started_before_release = await asyncio.to_thread(
-                    second_entered.wait,
-                    0.2,
-                )
-                assert not second_started_before_release
+                await _run_ready_tasks()
+                assert executor.submit_count == 1
+                assert not second_entered.is_set()
 
                 release_first.set()
                 second_started_after_release = await asyncio.to_thread(second_entered.wait, 2)
