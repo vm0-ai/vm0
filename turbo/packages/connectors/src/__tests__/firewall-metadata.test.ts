@@ -14,6 +14,7 @@ import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
 } from "../firewall-metadata";
+import { loadGeneratedFirewallPermissionMetadata } from "../firewall-metadata/loader.generated";
 import type {
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
@@ -701,6 +702,9 @@ describe("firewall metadata", () => {
       expect(isFirewallMetadataConnectorType(unknownType)).toBe(false);
       await expect(
         loadFirewallPermissionMetadata(unknownType),
+      ).resolves.toBeNull();
+      await expect(
+        loadGeneratedFirewallPermissionMetadata(unknownType),
       ).resolves.toBeNull();
     }
   });
