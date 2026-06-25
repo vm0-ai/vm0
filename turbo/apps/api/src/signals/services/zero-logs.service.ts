@@ -855,16 +855,28 @@ export function zeroLogSearch(
     // Determine which run IDs to search (ownership verified via DB)
     let targetRunIds: string[];
     if (runId) {
+      const runConditions = [
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, params.userId),
+        eq(agentRuns.orgId, params.orgId),
+      ];
+      if (params.agentId) {
+        runConditions.push(eq(zeroAgents.id, params.agentId));
+      }
+
       const [run] = await db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.id, runId),
-            eq(agentRuns.userId, params.userId),
-            eq(agentRuns.orgId, params.orgId),
-          ),
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
         )
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
+        .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+        .where(and(...runConditions))
         .limit(1);
 
       if (!run) {

@@ -509,6 +509,32 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(byRunId.body.results[0]?.runId).toBe(runId);
     expect(lastAxiomApl()).toContain(`runId == "${runId}"`);
 
+    const axiomCallsBeforeMismatchedRunAgent =
+      context.mocks.axiom.query.mock.calls.length;
+    const mismatchedRunAgent = await api.requestSearchLogs(
+      actor,
+      { keyword: "Found", runId, agentId: randomUUID() },
+      [200],
+    );
+    expect(mismatchedRunAgent.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
+      axiomCallsBeforeMismatchedRunAgent,
+    );
+
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      axiomEvent(runId, 2, "Found again"),
+    ]);
+    const byRunAndAgent = await api.requestSearchLogs(
+      actor,
+      { keyword: "Found", runId, agentId },
+      [200],
+    );
+    expect(byRunAndAgent.body.results).toHaveLength(1);
+    expect(byRunAndAgent.body.results[0]?.runId).toBe(runId);
+
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 1, "Agent scoped event"),
     ]);
