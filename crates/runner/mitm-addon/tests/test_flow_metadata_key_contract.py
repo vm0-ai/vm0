@@ -225,11 +225,15 @@ class _ScopeBoundNameVisitor(ast.NodeVisitor):
             self.visit(expression)
 
 
-def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
+def _scope_bound_name_visitor(body: list[ast.stmt]) -> _ScopeBoundNameVisitor:
     visitor = _ScopeBoundNameVisitor()
     for statement in body:
         visitor.visit(statement)
-    return visitor.local_names
+    return visitor
+
+
+def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
+    return _scope_bound_name_visitor(body).local_names
 
 
 def _expression_bound_names(expression: ast.AST) -> set[str]:
@@ -535,10 +539,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self.visit(base)
         for keyword in node.keywords:
             self.visit(keyword)
-        outer_aliases = set(self._metadata_aliases)
-        class_body_aliases = set(outer_aliases)
-        class_body_aliases.difference_update(_scope_bound_names(node.body))
-        class_body_aliases.update(self._metadata_alias_scopes[0])
+        outer_aliases = self._nested_function_base_aliases()
+        class_scope_bindings = _scope_bound_name_visitor(node.body)
+        class_body_bound_names = class_scope_bindings.local_names
+        class_body_global_names = class_scope_bindings.global_names
+        class_body_aliases = outer_aliases - class_body_bound_names - class_body_global_names
+        class_body_aliases.update(
+            self._metadata_alias_scopes[0] & (class_body_bound_names | class_body_global_names)
+        )
         self._class_nested_scope_alias_scopes.append(outer_aliases)
         self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
         self._class_nested_scope_alias_scopes.pop()
@@ -1009,6 +1017,28 @@ def class_body_reads_closure_metadata():
     class_closure_meta = flow.metadata
     class ReadsClosure:
         class_closure_meta["vm_run_id"] = "run-1"
+class_module_fallback_meta = flow.metadata
+def class_body_binding_reads_module_metadata():
+    class_module_fallback_meta = {}
+    class ReadsModuleFallback:
+        class_module_fallback_meta["vm_run_id"] = "run-1"
+        class_module_fallback_meta = {}
+class_global_meta = flow.metadata
+def class_body_global_reads_module_metadata():
+    class_global_meta = {}
+    class ReadsGlobal:
+        global class_global_meta
+        class_global_meta["vm_run_id"] = "run-1"
+def nested_class_reads_closure_metadata():
+    nested_class_closure_meta = flow.metadata
+    class Outer:
+        class Inner:
+            nested_class_closure_meta["vm_run_id"] = "run-1"
+nested_class_module_meta = flow.metadata
+class NestedClassReadsModuleFallback:
+    nested_class_module_meta = {}
+    class Inner:
+        nested_class_module_meta["vm_run_id"] = "run-1"
 def class_method_reads_outer_metadata():
     method_outer_meta = flow.metadata
     class MethodReadsOuter:
@@ -1129,7 +1159,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 77
+    assert len(violations) == 81
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1273,6 +1303,20 @@ def class_body_late_binding_shadow():
     class ShadowsClosure:
         value = class_shadow_meta["vm_run_id"]
         class_shadow_meta = {}
+module_shadowed_in_class_meta = flow.metadata
+def class_body_outer_external_shadows_module_alias():
+    module_shadowed_in_class_meta = {}
+    class ReadsOuterExternal:
+        value = module_shadowed_in_class_meta["vm_run_id"]
+def class_body_nonlocal_reads_outer_external():
+    class_nonlocal_meta = {}
+    class ReadsNonlocal:
+        nonlocal class_nonlocal_meta
+        value = class_nonlocal_meta["vm_run_id"]
+class NestedClassDoesNotSeeOuterClassAlias:
+    nested_class_shadow_meta = flow.metadata
+    class Inner:
+        nested_class_shadow_meta["vm_run_id"]
 class MethodDoesNotSeeClassAlias:
     method_class_meta = flow.metadata
     def method(self):
