@@ -29,7 +29,8 @@ import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 const L = logger("onboarding.service");
 const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
-const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = new Date("2999-12-31T00:00:00Z");
+const ONBOARDING_CREDIT_AMOUNT = 1000;
+const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -92,15 +93,6 @@ type CompleteLimitedFreeOnboardingResponse =
       };
     };
 
-function onboardingCreditExpiresAt(
-  creditsExpiresAt: string | null | undefined,
-): Date {
-  if (!creditsExpiresAt) {
-    return ONBOARDING_CREDITS_NEVER_EXPIRE_AT;
-  }
-  return new Date(creditsExpiresAt);
-}
-
 async function grantOrgCredits(
   tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
   orgId: string,
@@ -116,36 +108,27 @@ async function grantOrgCredits(
 
 async function grantOnboardingCredits(
   tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-  args: {
-    readonly orgId: string;
-    readonly credits: number | undefined;
-    readonly creditsExpiresAt: string | null | undefined;
-  },
+  orgId: string,
 ): Promise<void> {
-  const credits = args.credits ?? 0;
-  if (credits <= 0) {
-    return;
-  }
-
   const rows = await tx
     .insert(creditExpiresRecord)
     .values({
-      orgId: args.orgId,
+      orgId,
       source: ONBOARDING_CREDIT_SOURCE,
       stripeInvoiceId: ONBOARDING_CREDIT_IDEMPOTENCY_KEY,
-      amount: credits,
-      remaining: credits,
-      expiresAt: onboardingCreditExpiresAt(args.creditsExpiresAt),
+      amount: ONBOARDING_CREDIT_AMOUNT,
+      remaining: ONBOARDING_CREDIT_AMOUNT,
+      expiresAt: new Date(ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
     })
     .onConflictDoNothing()
     .returning({ id: creditExpiresRecord.id });
 
   if (rows.length === 0) {
-    L.debug("Onboarding credits already granted", { orgId: args.orgId });
+    L.debug("Onboarding credits already granted", { orgId });
     return;
   }
 
-  await grantOrgCredits(tx, args.orgId, credits);
+  await grantOrgCredits(tx, orgId, ONBOARDING_CREDIT_AMOUNT);
 }
 
 function unavailableSelectedConnectorsError(
@@ -786,8 +769,6 @@ export const completeLimitedFreeOnboarding$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly credits?: number;
-      readonly creditsExpiresAt?: string | null;
     },
     signal: AbortSignal,
   ): Promise<CompleteLimitedFreeOnboardingResponse> => {
@@ -827,11 +808,7 @@ export const completeLimitedFreeOnboarding$ = command(
           },
         });
 
-      await grantOnboardingCredits(tx, {
-        orgId: args.orgId,
-        credits: args.credits,
-        creditsExpiresAt: args.creditsExpiresAt,
-      });
+      await grantOnboardingCredits(tx, args.orgId);
     });
     signal.throwIfAborted();
 

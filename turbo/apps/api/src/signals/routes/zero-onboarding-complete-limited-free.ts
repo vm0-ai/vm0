@@ -24,6 +24,7 @@ const forbidden = Object.freeze({
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const body = await get(completeBody$);
+  signal.throwIfAborted();
 
   if (auth.orgRole !== "admin") {
     return forbidden;
@@ -37,8 +38,6 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeLimitedFreeOnboarding$,
     {
       orgId: auth.orgId,
-      credits: body.data.credits,
-      creditsExpiresAt: body.data.creditsExpiresAt,
     },
     signal,
   );

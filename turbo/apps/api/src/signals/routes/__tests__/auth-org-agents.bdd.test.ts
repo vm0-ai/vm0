@@ -184,9 +184,15 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: true,
     });
 
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
-      credits: 1_000,
-    });
+    const forgedLimitedFree = await api.requestCompleteLimitedFreeOnboarding(
+      admin,
+      { credits: 999_999 },
+      [400],
+    );
+    expectApiError(forgedLimitedFree.body);
+    expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
+
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
     expect(completeLimitedFree.status).toBe(200);
     expect(completeLimitedFree.body).toStrictEqual({
       agentId: defaultAgentId,
@@ -195,7 +201,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     });
 
     const afterLimitedFree = await api.readOnboardingStatus(admin);
-    expect(afterLimitedFree.needsOnboarding).toBe(false);
+    expect(afterLimitedFree.needsOnboarding).toBeFalsy();
     expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
 
     const [limitedFreeMetadata] = await writeDb
@@ -208,7 +214,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       .where(eq(orgMetadata.orgId, adminOrgId))
       .limit(1);
     expect(limitedFreeMetadata).toStrictEqual({
-      credits: 1_000,
+      credits: 1000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
@@ -229,8 +235,8 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       .limit(1);
     expect(onboardingCreditGrant).toStrictEqual({
       source: "onboarding",
-      amount: 1_000,
-      remaining: 1_000,
+      amount: 1000,
+      remaining: 1000,
       expiresAt: new Date("2999-12-31T00:00:00Z"),
     });
 

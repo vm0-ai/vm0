@@ -782,12 +782,23 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async completeLimitedFreeOnboarding(
+    async completeLimitedFreeOnboarding(actor: ApiTestUser) {
+      const client = setupApp({ context })(
+        onboardingCompleteLimitedFreeContract,
+      );
+      return await accept(
+        client.complete({
+          headers: authenticate(actor),
+          body: {},
+        }),
+        [200, 403, 409],
+      );
+    },
+
+    async requestCompleteLimitedFreeOnboarding<S extends 200 | 400 | 403 | 409>(
       actor: ApiTestUser,
-      body: {
-        readonly credits?: number;
-        readonly creditsExpiresAt?: string | null;
-      } = {},
+      body: Record<string, unknown>,
+      statuses: readonly S[],
     ) {
       const client = setupApp({ context })(
         onboardingCompleteLimitedFreeContract,
@@ -797,7 +808,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           headers: authenticate(actor),
           body,
         }),
-        [200, 403, 409],
+        statuses,
       );
     },
 
