@@ -11,7 +11,12 @@ import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 // Route params
 // ---------------------------------------------------------------------------
 
-const triggerPermissionsWorkflowId$ = computed((get) => {
+export const triggerPermissionsAgentId$ = computed((get) => {
+  const agentId = get(pathParams$)?.agentId;
+  return typeof agentId === "string" ? agentId : null;
+});
+
+export const triggerPermissionsWorkflowId$ = computed((get) => {
   const workflowId = get(pathParams$)?.workflowId;
   return typeof workflowId === "string" ? workflowId : null;
 });
@@ -24,6 +29,18 @@ export const triggerPermissionsTriggerId$ = computed((get) => {
 export const triggerPermissionsRef$ = computed((get) => {
   return get(searchParams$).get("ref") ?? null;
 });
+
+const internalTriggerPermissionsConnectorSearch$ = state("");
+
+export const triggerPermissionsConnectorSearch$ = computed((get) => {
+  return get(internalTriggerPermissionsConnectorSearch$);
+});
+
+export const setTriggerPermissionsConnectorSearch$ = command(
+  ({ set }, value: string) => {
+    set(internalTriggerPermissionsConnectorSearch$, value);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Trigger data (derived from the workflow detail's trigger list)
