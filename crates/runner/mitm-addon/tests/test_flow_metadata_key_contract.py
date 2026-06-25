@@ -165,11 +165,6 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             or (isinstance(node, ast.NamedExpr) and self._is_metadata_alias_value(node.value))
         )
 
-    def _contains_metadata_reference(self, node: ast.AST) -> bool:
-        return self._is_metadata_reference(node) or any(
-            self._contains_metadata_reference(child) for child in ast.iter_child_nodes(node)
-        )
-
     def _is_metadata_alias_value(self, node: ast.AST) -> bool:
         if self._is_metadata_reference(node) or self._is_metadata_merge_value(node):
             return True
@@ -188,11 +183,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def _is_metadata_merge_value(self, node: ast.AST) -> bool:
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-            left_contains_metadata = self._contains_metadata_reference(node.left)
-            right_contains_metadata = self._contains_metadata_reference(node.right)
-            return left_contains_metadata or right_contains_metadata
+            left_is_metadata = self._is_metadata_alias_value(node.left)
+            right_is_metadata = self._is_metadata_alias_value(node.right)
+            return left_is_metadata or right_is_metadata
         if isinstance(node, ast.Dict) and any(
-            key is None and self._contains_metadata_reference(value)
+            key is None and self._is_metadata_alias_value(value)
             for key, value in zip(node.keys, node.values, strict=True)
         ):
             return True
@@ -202,10 +197,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             and node.func.id == "dict"
         ):
             positional_metadata = any(
-                self._contains_metadata_reference(argument) for argument in node.args
+                self._is_metadata_alias_value(argument) for argument in node.args
             )
             unpacked_keyword_metadata = any(
-                keyword.arg is None and self._contains_metadata_reference(keyword.value)
+                keyword.arg is None and self._is_metadata_alias_value(keyword.value)
                 for keyword in node.keywords
             )
             return positional_metadata or unpacked_keyword_metadata
@@ -706,6 +701,18 @@ def _metadata_update_violations(path: Path, node: ast.Call) -> list[str]:
 def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]:
     if node is None:
         return []
+    if isinstance(node, ast.NamedExpr):
+        return _metadata_dict_key_violations(path, node.value)
+    if isinstance(node, ast.IfExp):
+        return [
+            *_metadata_dict_key_violations(path, node.body),
+            *_metadata_dict_key_violations(path, node.orelse),
+        ]
+    if isinstance(node, ast.BoolOp):
+        boolop_violations: list[str] = []
+        for value in node.values:
+            boolop_violations.extend(_metadata_dict_key_violations(path, value))
+        return boolop_violations
     if isinstance(node, ast.List | ast.Tuple):
         return _metadata_pair_sequence_violations(path, node)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -774,6 +781,12 @@ flow.metadata.update({"firewall_base": "https://api.example.com"})
 flow.metadata.update(firewall_permission="read")
 flow.metadata |= {"vm_network_log_path": "network.jsonl"}
 flow.metadata = dict(vm_proxy_log_path="proxy.jsonl")
+flow.metadata = {"vm_run_id": "run-1"} if condition else {}
+flow.metadata.update({"vm_run_id": "run-1"} if condition else {})
+flow.metadata.update(fallback_update or {"vm_run_id": "run-1"})
+flow.metadata.update([("vm_run_id", "run-1")] if condition else [])
+flow.metadata.update((named_update := {"vm_run_id": "run-1"}))
+flow.metadata = {**({"vm_run_id": "run-1"} if condition else {})}
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
@@ -814,6 +827,7 @@ conditional_expr_meta["vm_run_id"] = "run-1"
 bool_expr_meta = fallback_meta or flow.metadata
 bool_expr_meta["firewall_name"] = "github"
 conditional_merge_meta = (flow.metadata | {"firewall_action": "ALLOW"}) if condition else {}
+conditional_rhs_merge_meta = flow.metadata | ({"firewall_action": "ALLOW"} if condition else {})
 copy_meta = flow.metadata.copy()
 copy_meta["vm_run_id"] = "run-1"
 (flow.metadata if condition else {})["firewall_base"] = "https://api.example.com"
@@ -908,7 +922,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 66
+    assert len(violations) == 73
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -937,6 +951,14 @@ external_aug_meta |= {"vm_run_id": "external"}
 value = external_aug_meta["vm_run_id"]
 external_keyword_meta = dict(metadata=flow.metadata, vm_run_id="external")
 value = external_keyword_meta["vm_run_id"]
+external_union_meta = {"metadata": flow.metadata} | {"vm_run_id": "external"}
+value = external_union_meta["vm_run_id"]
+external_unpack_meta = {**{"metadata": flow.metadata}, "vm_run_id": "external"}
+value = external_unpack_meta["vm_run_id"]
+external_positional_dict_meta = dict({"metadata": flow.metadata, "vm_run_id": "external"})
+value = external_positional_dict_meta["vm_run_id"]
+external_unpack_dict_meta = dict(**{"metadata": flow.metadata, "vm_run_id": "external"})
+value = external_unpack_dict_meta["vm_run_id"]
 external_conditional_meta = {"vm_run_id": "external"} if condition else {}
 value = external_conditional_meta["vm_run_id"]
 external_bool_meta = fallback_meta or {"vm_run_id": "external"}
