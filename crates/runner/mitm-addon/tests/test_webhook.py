@@ -293,6 +293,43 @@ class TestUsageWebhookDelivery:
         assert [entry["level"] for entry in entries] == ["info", "info"]
         assert entries[-1]["delivery_outcome"] == "retryable_failure"
 
+    def test_url_error_is_retryable(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        payload = {"runId": "run-1", "events": []}
+        payload_bytes = len(json.dumps(payload).encode())
+
+        with (
+            patch.object(
+                usage.webhook._opener,
+                "open",
+                side_effect=urllib.error.URLError("connection refused"),
+            ) as mock_open,
+            patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        ):
+            outcome = usage.webhook._do_post_webhook_attempts(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                payload,
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
+
+        assert outcome == "retryable_failure"
+        assert mock_open.call_count == 2
+        mock_sleep.assert_called_once_with(0.5)
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        assert [entry["level"] for entry in entries] == ["info", "info"]
+        assert [entry["attempt"] for entry in entries] == [1, 2]
+        assert entries[-1]["delivery_outcome"] == "retryable_failure"
+        for entry in entries:
+            _assert_body_free_webhook_entry(
+                entry,
+                run_id="run-1",
+                event_count=0,
+                payload_bytes=payload_bytes,
+            )
+
     def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(400)

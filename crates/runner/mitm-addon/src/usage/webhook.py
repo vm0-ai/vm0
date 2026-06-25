@@ -28,6 +28,7 @@ _RETRYABLE_FAILURE: WebhookDeliveryOutcome = "retryable_failure"
 _PERMANENT_FAILURE: WebhookDeliveryOutcome = "permanent_failure"
 _MIN_RETRYABLE_HTTP_STATUS_CODE = 500
 _RETRYABLE_HTTP_STATUS_CODES = {408, 429}
+_WEBHOOK_RETRY_DELAY_SECONDS = 0.5
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -129,6 +130,48 @@ def _post_webhook_with_retry(
         decrement_pending_reports()
 
 
+def _handle_retryable_webhook_failure(
+    *,
+    proxy_log_path: str,
+    url: str,
+    log_type: str,
+    payload: dict,
+    payload_bytes: int,
+    attempt: int,
+    max_retries: int,
+    exc: Exception,
+) -> WebhookDeliveryOutcome | None:
+    attempt_number = attempt + 1
+    if attempt < max_retries:
+        _log_webhook_entry(
+            proxy_log_path,
+            "info",
+            f"Webhook POST to {url} attempt {attempt_number} failed, retrying: {exc}",
+            url,
+            log_type,
+            payload,
+            payload_bytes=payload_bytes,
+            attempt=attempt_number,
+            error=str(exc),
+        )
+        time.sleep(_WEBHOOK_RETRY_DELAY_SECONDS)
+        return None
+
+    _log_webhook_entry(
+        proxy_log_path,
+        "info",
+        f"Webhook POST to {url} failed after {attempt_number} attempts: {exc}",
+        url,
+        log_type,
+        payload,
+        payload_bytes=payload_bytes,
+        attempt=attempt_number,
+        error=str(exc),
+        extra_fields={"delivery_outcome": _RETRYABLE_FAILURE},
+    )
+    return _RETRYABLE_FAILURE
+
+
 def _do_post_webhook_attempts(
     url: str,
     sandbox_token: str,
@@ -181,61 +224,31 @@ def _do_post_webhook_attempts(
                     error=str(exc),
                 )
                 return _PERMANENT_FAILURE
-            if attempt < max_retries:
-                _log_webhook_entry(
-                    proxy_log_path,
-                    "info",
-                    f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
-                    url,
-                    log_type,
-                    payload,
-                    payload_bytes=payload_bytes,
-                    attempt=attempt + 1,
-                    error=str(exc),
-                )
-                time.sleep(0.5)
-            else:
-                _log_webhook_entry(
-                    proxy_log_path,
-                    "info",
-                    f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
-                    url,
-                    log_type,
-                    payload,
-                    payload_bytes=payload_bytes,
-                    attempt=attempt + 1,
-                    error=str(exc),
-                    extra_fields={"delivery_outcome": _RETRYABLE_FAILURE},
-                )
-                return _RETRYABLE_FAILURE
+            outcome = _handle_retryable_webhook_failure(
+                proxy_log_path=proxy_log_path,
+                url=url,
+                log_type=log_type,
+                payload=payload,
+                payload_bytes=payload_bytes,
+                attempt=attempt,
+                max_retries=max_retries,
+                exc=exc,
+            )
+            if outcome is not None:
+                return outcome
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            if attempt < max_retries:
-                _log_webhook_entry(
-                    proxy_log_path,
-                    "info",
-                    f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
-                    url,
-                    log_type,
-                    payload,
-                    payload_bytes=payload_bytes,
-                    attempt=attempt + 1,
-                    error=str(exc),
-                )
-                time.sleep(0.5)
-            else:
-                _log_webhook_entry(
-                    proxy_log_path,
-                    "info",
-                    f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
-                    url,
-                    log_type,
-                    payload,
-                    payload_bytes=payload_bytes,
-                    attempt=attempt + 1,
-                    error=str(exc),
-                    extra_fields={"delivery_outcome": _RETRYABLE_FAILURE},
-                )
-                return _RETRYABLE_FAILURE
+            outcome = _handle_retryable_webhook_failure(
+                proxy_log_path=proxy_log_path,
+                url=url,
+                log_type=log_type,
+                payload=payload,
+                payload_bytes=payload_bytes,
+                attempt=attempt,
+                max_retries=max_retries,
+                exc=exc,
+            )
+            if outcome is not None:
+                return outcome
         except Exception as exc:
             # Catch-all by design: non-retryable failures (TypeError on
             # non-serializable payload, AttributeError, ValueError, or any
