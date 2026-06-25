@@ -152,10 +152,61 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return _metadata_dict_key_violations(self.path, node)
         return []
 
-    def _visit_scoped_body(self, body: list[ast.stmt], shadowed: set[str] | None = None) -> None:
+    def _metadata_default_argument_names(self, args: ast.arguments) -> set[str]:
+        metadata_defaults: set[str] = set()
+        positional_args = [*args.posonlyargs, *args.args]
+        default_offset = len(positional_args) - len(args.defaults)
+        for arg, default in zip(positional_args[default_offset:], args.defaults, strict=True):
+            if self._is_metadata_reference(default) or self._is_metadata_merge_value(default):
+                metadata_defaults.add(arg.arg)
+        for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
+            if default is not None and (
+                self._is_metadata_reference(default) or self._is_metadata_merge_value(default)
+            ):
+                metadata_defaults.add(arg.arg)
+        return metadata_defaults
+
+    def _visit_default_value(self, node: ast.AST) -> None:
+        self.violations.extend(self._metadata_merge_key_violations(node))
+        self.visit(node)
+
+    def _replace_current_aliases(self, aliases: set[str]) -> None:
+        self._metadata_aliases.clear()
+        self._metadata_aliases.update(aliases)
+
+    def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> set[str]:
+        self._metadata_alias_scopes.append(set(aliases))
+        for statement in body:
+            self.visit(statement)
+        result = set(self._metadata_aliases)
+        self._metadata_alias_scopes.pop()
+        return result
+
+    def _visit_except_handler_branch(
+        self, handler: ast.ExceptHandler, aliases: set[str]
+    ) -> set[str]:
+        self._metadata_alias_scopes.append(set(aliases))
+        if handler.type is not None:
+            self.visit(handler.type)
+        if handler.name is not None:
+            self._metadata_aliases.discard(handler.name)
+        for statement in handler.body:
+            self.visit(statement)
+        result = set(self._metadata_aliases)
+        self._metadata_alias_scopes.pop()
+        return result
+
+    def _visit_scoped_body(
+        self,
+        body: list[ast.stmt],
+        shadowed: set[str] | None = None,
+        added: set[str] | None = None,
+    ) -> None:
         aliases = set(self._metadata_aliases)
         if shadowed is not None:
             aliases.difference_update(shadowed)
+        if added is not None:
+            aliases.update(added)
         self._metadata_alias_scopes.append(aliases)
         previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
         self._named_expr_target_scope_indexes = []
@@ -165,11 +216,16 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.pop()
 
     def _visit_scoped_expression(
-        self, expression: ast.AST, shadowed: set[str] | None = None
+        self,
+        expression: ast.AST,
+        shadowed: set[str] | None = None,
+        added: set[str] | None = None,
     ) -> None:
         aliases = set(self._metadata_aliases)
         if shadowed is not None:
             aliases.difference_update(shadowed)
+        if added is not None:
+            aliases.update(added)
         self._metadata_alias_scopes.append(aliases)
         previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
         self._named_expr_target_scope_indexes = []
@@ -180,26 +236,33 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
+        metadata_defaults = self._metadata_default_argument_names(node.args)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
-                self.visit(default)
-        self._visit_scoped_body(node.body, _argument_names(node.args) | {node.name})
+                self._visit_default_value(default)
+        shadowed_names = (_argument_names(node.args) - metadata_defaults) | {node.name}
+        self._visit_scoped_body(node.body, shadowed_names, metadata_defaults)
         self._metadata_aliases.discard(node.name)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
+        metadata_defaults = self._metadata_default_argument_names(node.args)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
-                self.visit(default)
-        self._visit_scoped_body(node.body, _argument_names(node.args) | {node.name})
+                self._visit_default_value(default)
+        shadowed_names = (_argument_names(node.args) - metadata_defaults) | {node.name}
+        self._visit_scoped_body(node.body, shadowed_names, metadata_defaults)
         self._metadata_aliases.discard(node.name)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
+        metadata_defaults = self._metadata_default_argument_names(node.args)
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
-                self.visit(default)
-        self._visit_scoped_expression(node.body, _argument_names(node.args))
+                self._visit_default_value(default)
+        self._visit_scoped_expression(
+            node.body, _argument_names(node.args) - metadata_defaults, metadata_defaults
+        )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for decorator in node.decorator_list:
@@ -237,9 +300,20 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._metadata_aliases.discard(node.target.id)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        if self._is_metadata_reference(node.target):
+        target_is_metadata = self._is_metadata_reference(node.target)
+        value_is_metadata_merge = self._is_metadata_merge_value(node.value)
+        if target_is_metadata:
             self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
-        self.generic_visit(node)
+        elif value_is_metadata_merge:
+            self.violations.extend(self._metadata_merge_key_violations(node.value))
+        self.visit(node.target)
+        self.visit(node.value)
+        if (
+            isinstance(node.op, ast.BitOr)
+            and isinstance(node.target, ast.Name)
+            and (target_is_metadata or value_is_metadata_merge)
+        ):
+            self._metadata_aliases.add(node.target.id)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         if isinstance(node.target, ast.Name):
@@ -292,45 +366,117 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._metadata_aliases.discard(name)
         self.generic_visit(node)
 
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        base_aliases = set(self._metadata_aliases)
+        body_aliases = self._visit_branch_body(node.body, base_aliases)
+        orelse_aliases = (
+            self._visit_branch_body(node.orelse, base_aliases) if node.orelse else base_aliases
+        )
+        self._replace_current_aliases(body_aliases | orelse_aliases)
+
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
+        base_aliases = set(self._metadata_aliases)
         self._discard_alias_target(node.target)
-        for statement in node.body:
-            self.visit(statement)
-        for statement in node.orelse:
-            self.visit(statement)
+        body_aliases = self._visit_branch_body(node.body, set(self._metadata_aliases))
+        loop_exit_aliases = base_aliases | body_aliases
+        orelse_aliases = (
+            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            if node.orelse
+            else loop_exit_aliases
+        )
+        self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
         self.visit(node.iter)
+        base_aliases = set(self._metadata_aliases)
         self._discard_alias_target(node.target)
-        for statement in node.body:
-            self.visit(statement)
-        for statement in node.orelse:
-            self.visit(statement)
+        body_aliases = self._visit_branch_body(node.body, set(self._metadata_aliases))
+        loop_exit_aliases = base_aliases | body_aliases
+        orelse_aliases = (
+            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            if node.orelse
+            else loop_exit_aliases
+        )
+        self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
+
+    def visit_While(self, node: ast.While) -> None:
+        self.visit(node.test)
+        base_aliases = set(self._metadata_aliases)
+        body_aliases = self._visit_branch_body(node.body, base_aliases)
+        loop_exit_aliases = base_aliases | body_aliases
+        orelse_aliases = (
+            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            if node.orelse
+            else loop_exit_aliases
+        )
+        self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
 
     def visit_With(self, node: ast.With) -> None:
         for item in node.items:
             self.visit(item.context_expr)
+        base_aliases = set(self._metadata_aliases)
+        body_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.append(body_aliases)
+        for item in node.items:
             self._discard_alias_target(item.optional_vars)
         for statement in node.body:
             self.visit(statement)
+        body_result_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.pop()
+        self._replace_current_aliases(base_aliases | body_result_aliases)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
         for item in node.items:
             self.visit(item.context_expr)
+        base_aliases = set(self._metadata_aliases)
+        body_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.append(body_aliases)
+        for item in node.items:
             self._discard_alias_target(item.optional_vars)
         for statement in node.body:
             self.visit(statement)
+        body_result_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.pop()
+        self._replace_current_aliases(base_aliases | body_result_aliases)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if node.type is not None:
             self.visit(node.type)
+        base_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.append(base_aliases)
         if node.name is not None:
             self._metadata_aliases.discard(node.name)
         for statement in node.body:
             self.visit(statement)
-        if node.name is not None:
-            self._metadata_aliases.discard(node.name)
+        result_aliases = set(self._metadata_aliases)
+        self._metadata_alias_scopes.pop()
+        self._replace_current_aliases(base_aliases | result_aliases)
+
+    def _visit_try_statement(self, node: ast.Try) -> None:
+        base_aliases = set(self._metadata_aliases)
+        body_aliases = self._visit_branch_body(node.body, base_aliases)
+        handler_start_aliases = base_aliases | body_aliases
+        handler_aliases = [
+            self._visit_except_handler_branch(handler, handler_start_aliases)
+            for handler in node.handlers
+        ]
+        orelse_aliases = (
+            self._visit_branch_body(node.orelse, body_aliases) if node.orelse else body_aliases
+        )
+        exit_aliases = base_aliases | body_aliases | orelse_aliases
+        for aliases in handler_aliases:
+            exit_aliases.update(aliases)
+        if node.finalbody:
+            exit_aliases = self._visit_branch_body(node.finalbody, exit_aliases)
+        self._replace_current_aliases(exit_aliases)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._visit_try_statement(node)
+
+    def visit_TryStar(self, node: ast.Try) -> None:
+        self._visit_try_statement(node)
 
     def visit_Match(self, node: ast.Match) -> None:
         self.visit(node.subject)
@@ -539,8 +685,48 @@ merged_meta = dict(merged_meta, firewall_action="ALLOW")
 (merged_named_expr_meta := flow.metadata | {"firewall_name": "github"})
 (inline_meta := flow.metadata)["connector_diagnostic_type"] = "github"
 (call_meta := flow.metadata).get("connector_diagnostic_reason")
+def function_default_meta(default_meta=flow.metadata):
+    default_meta["vm_run_id"] = "run-1"
+lambda_default_meta = lambda default_meta=flow.metadata: default_meta["vm_network_log_path"]
 if conditional_meta := flow.metadata:
     conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
+branch_meta = flow.metadata
+if condition:
+    branch_meta = {}
+branch_meta["vm_proxy_log_path"] = "proxy.jsonl"
+while_meta = flow.metadata
+while condition:
+    while_meta = {}
+while_meta["capture_body"] = True
+loop_meta = flow.metadata
+for loop_meta in rows:
+    pass
+loop_meta["vm_sandbox_token"] = "sandbox"
+try_meta = flow.metadata
+try:
+    try_meta = {}
+except Exception:
+    pass
+try_meta["original_url"] = "https://api.example.com"
+except_meta = flow.metadata
+try:
+    pass
+except Exception as except_meta:
+    pass
+except_meta["suppress_request_body_capture"] = True
+except_star_meta = flow.metadata
+try:
+    pass
+except* Exception as except_star_meta:
+    pass
+except_star_meta["firewall_error"] = "auth_failed"
+with_meta = flow.metadata
+with context() as with_meta:
+    pass
+with_meta["network_log_target"] = {}
+aug_merged_meta = {}
+aug_merged_meta |= flow.metadata | {"firewall_action": "ALLOW"}
+aug_merged_meta["firewall_name"] = "github"
 outer_meta = flow.metadata
 values = [outer_meta["auth_refreshed_connectors"] for item in rows]
 values = [(leaked_meta := flow.metadata) for item in rows]
@@ -565,7 +751,7 @@ match payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 42
+    assert len(violations) == 53
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -583,6 +769,15 @@ external_meta_value = flow.metadata
 payload = {"vm_run_id": "external", "metadata": external_meta_value}
 meta = flow.metadata
 meta = {"vm_run_id": "external payload"}
+both_branch_meta = flow.metadata
+if condition:
+    both_branch_meta = {}
+else:
+    both_branch_meta = {}
+value = both_branch_meta["vm_run_id"]
+external_aug_meta = {}
+external_aug_meta |= {"vm_run_id": "external"}
+value = external_aug_meta["vm_run_id"]
 def accepts_external_metadata(meta):
     return meta["vm_proxy_log_path"]
 for meta in [{"firewall_name": "external"}]:
