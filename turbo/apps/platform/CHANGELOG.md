@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.491.0](https://github.com/vm0-ai/vm0/compare/app-v0.490.1...app-v0.491.0) (2026-06-25)
+
+
+### Features
+
+* add html artifact edit feature switch ([#18894](https://github.com/vm0-ai/vm0/issues/18894)) ([6797974](https://github.com/vm0-ai/vm0/commit/6797974850c27f69612175bd33a0d5dbd2137a5e))
+
+
+### Bug Fixes
+
+* align trigger permissions with metadata defaults ([#18929](https://github.com/vm0-ai/vm0/issues/18929)) ([e4bbbb1](https://github.com/vm0-ai/vm0/commit/e4bbbb19502919a33655c19ec9bf1b7052c66a51))
+* cap connectors popover list height so it scrolls ([#18868](https://github.com/vm0-ai/vm0/issues/18868)) ([a4ccebc](https://github.com/vm0-ai/vm0/commit/a4ccebc18c438de91c01e6f39d8dd3a549721668))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.1
+    * @vm0/connectors bumped to 1.108.0
+    * @vm0/core bumped to 8.370.0
+
 ## [0.490.1](https://github.com/vm0-ai/vm0/compare/app-v0.490.0...app-v0.490.1) (2026-06-25)
 
 
