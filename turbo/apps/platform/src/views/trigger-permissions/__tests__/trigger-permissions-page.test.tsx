@@ -22,7 +22,9 @@ const CURRENT_USER_ID = "test-user-123";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000301";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000401";
 const TRIGGER_ID = "workflow-trigger-perm-editor";
-const PERMISSION_LABEL = "Access workspace analytics data";
+const SLACK_PERMISSION_LABEL = "Access workspace analytics data";
+const GMAIL_DRAFTS_WRITE_LABEL = "Create, update, and delete Gmail drafts.";
+const GMAIL_MESSAGES_SEND_LABEL = "Send Gmail messages directly.";
 
 function trigger(
   unattendedPermissionPolicy: ZeroWorkflowTriggerSummary["unattendedPermissionPolicy"],
@@ -94,8 +96,8 @@ function mockTriggerPolicyApis(
   return bodies;
 }
 
-function permissionRow(): HTMLElement {
-  const label = screen.getByText(PERMISSION_LABEL);
+function permissionRow(labelText: string): HTMLElement {
+  const label = screen.getByText(labelText);
   const row = label.parentElement;
   if (!row) {
     throw new Error("Expected a permission row");
@@ -113,7 +115,9 @@ function button(label: string, container?: HTMLElement): HTMLElement {
   return match;
 }
 
-const editorPath = `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=slack`;
+function editorPath(connectorRef: string): string {
+  return `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=${connectorRef}`;
+}
 
 describe("trigger permissions page", () => {
   it("shows a connector picker when no connector ref is selected", async () => {
@@ -153,16 +157,16 @@ describe("trigger permissions page", () => {
   it("allows a permission and saves the merged policy", async () => {
     const bodies = mockTriggerPolicyApis(null);
 
-    detachedSetupPage({ context, path: editorPath });
+    detachedSetupPage({ context, path: editorPath("slack") });
 
     await waitFor(() => {
-      expect(screen.getByText(PERMISSION_LABEL)).toBeInTheDocument();
+      expect(screen.getByText(SLACK_PERMISSION_LABEL)).toBeInTheDocument();
     });
 
     // Save is disabled until something changes.
     expect(button("Save")).toBeDisabled();
 
-    await user.click(button("Allow", permissionRow()));
+    await user.click(button("Allow", permissionRow(SLACK_PERMISSION_LABEL)));
     await user.click(button("Save"));
 
     await waitFor(() => {
@@ -183,13 +187,77 @@ describe("trigger permissions page", () => {
       slack: { policies: { "admin.analytics:read": "allow" } },
     });
 
-    detachedSetupPage({ context, path: editorPath });
+    detachedSetupPage({ context, path: editorPath("slack") });
 
     await waitFor(() => {
-      expect(screen.getByText(PERMISSION_LABEL)).toBeInTheDocument();
+      expect(screen.getByText(SLACK_PERMISSION_LABEL)).toBeInTheDocument();
     });
 
-    await user.click(button("Deny", permissionRow()));
+    await user.click(button("Deny", permissionRow(SLACK_PERMISSION_LABEL)));
+    await user.click(button("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+
+    expect(bodies).toStrictEqual([{ unattendedPermissionPolicy: null }]);
+  });
+
+  it("shows Gmail connector metadata defaults when no trigger policy is saved", async () => {
+    mockTriggerPolicyApis(null);
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    expect(
+      button("Allow", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      button("Deny", permissionRow(GMAIL_MESSAGES_SEND_LABEL)),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(button("Save")).toBeDisabled();
+  });
+
+  it("preserves an explicit Gmail deny override for metadata-default allowed permissions", async () => {
+    const bodies = mockTriggerPolicyApis(null);
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    await user.click(button("Deny", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)));
+    await user.click(button("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+
+    expect(bodies).toStrictEqual([
+      {
+        unattendedPermissionPolicy: {
+          gmail: { policies: { "drafts.write": "deny" } },
+        },
+      },
+    ]);
+  });
+
+  it("clears a Gmail override when restored to the metadata default", async () => {
+    const bodies = mockTriggerPolicyApis({
+      gmail: { policies: { "drafts.write": "deny" } },
+    });
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    await user.click(button("Allow", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)));
     await user.click(button("Save"));
 
     await waitFor(() => {

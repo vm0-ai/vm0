@@ -4,6 +4,11 @@ import type {
   UnattendedTriggerPermissionPolicy,
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import {
+  createFirewallMetadataPolicyResolver,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
+import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 
@@ -69,37 +74,42 @@ export const triggerPermissionsTrigger$ = computed(
 // Policy helpers
 // ---------------------------------------------------------------------------
 
-/**
- * The unattended default is "deny": a permission absent from the trigger's
- * policy is treated as denied until explicitly allowed.
- */
-const UNATTENDED_PERMISSION_DEFAULT: UnattendedTriggerPermissionAction = "deny";
+function toUnattendedPermissionAction(
+  value: FirewallPolicyValue,
+): UnattendedTriggerPermissionAction {
+  return value === "allow" ? "allow" : "deny";
+}
 
 /**
  * Resolve the current action for a single connector permission from the
- * trigger's full policy, falling back to the unattended default.
+ * trigger's sparse policy overlaid on connector metadata defaults.
  */
 export function resolveTriggerPermissionAction(
   policy: UnattendedTriggerPermissionPolicy | null,
   connectorRef: string,
+  metadata: FirewallPermissionDetailMetadata,
   permission: string,
 ): UnattendedTriggerPermissionAction {
-  return (
-    policy?.[connectorRef]?.policies[permission] ??
-    UNATTENDED_PERMISSION_DEFAULT
+  const resolver = createFirewallMetadataPolicyResolver(
+    metadata,
+    policy?.[connectorRef]
+      ? { permissionOverrides: policy[connectorRef].policies }
+      : undefined,
   );
+  return toUnattendedPermissionAction(resolver.permission(permission));
 }
 
 /**
  * Merge an edited connector's permission map into the trigger's full existing
  * policy, preserving every other connector. Permissions set back to the
- * unattended default are dropped so the stored policy stays minimal; a
+ * connector metadata default are dropped so the stored policy stays minimal; a
  * connector left with no explicit permissions is removed entirely, and an empty
  * overall policy collapses to `null` (which clears the policy server-side).
  */
 export function mergeConnectorPolicy(
   policy: UnattendedTriggerPermissionPolicy | null,
   connectorRef: string,
+  metadata: FirewallPermissionDetailMetadata,
   policies: Record<string, UnattendedTriggerPermissionAction>,
 ): UnattendedTriggerPermissionPolicy | null {
   const next: UnattendedTriggerPermissionPolicy = {};
@@ -108,9 +118,13 @@ export function mergeConnectorPolicy(
       next[ref] = entry;
     }
   }
+  const defaultResolver = createFirewallMetadataPolicyResolver(metadata);
   const nextPolicies: Record<string, UnattendedTriggerPermissionAction> = {};
   for (const [permission, action] of Object.entries(policies)) {
-    if (action !== UNATTENDED_PERMISSION_DEFAULT) {
+    const defaultAction = toUnattendedPermissionAction(
+      defaultResolver.permission(permission),
+    );
+    if (action !== defaultAction) {
       nextPolicies[permission] = action;
     }
   }
