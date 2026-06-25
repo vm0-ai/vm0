@@ -3,6 +3,7 @@ import {
   gmailNewMessageEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailNewMessageEventConfig,
+  type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
@@ -196,6 +197,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
       chatThreadId: row.chatThreadId,
       nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
       lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+      unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
       unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
     };
   }
@@ -210,6 +212,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+    unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
     unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
   };
 }
@@ -254,6 +257,38 @@ async function loadAgent(
  */
 function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
   return agent.visibility === "public" || agent.owner === member.userId;
+}
+
+function uniqueConnectorRefs(
+  connectorRefs: readonly string[],
+): UnattendedTriggerConnectorRefs {
+  return Array.from(new Set(connectorRefs));
+}
+
+async function loadAgentConnectorRefs(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<UnattendedTriggerConnectorRefs> {
+  const rows = await db
+    .select({ connectorType: userConnectors.connectorType })
+    .from(userConnectors)
+    .where(
+      and(
+        eq(userConnectors.orgId, args.orgId),
+        eq(userConnectors.userId, args.userId),
+        eq(userConnectors.agentId, args.agentId),
+      ),
+    );
+
+  return uniqueConnectorRefs(
+    rows.map((row) => {
+      return row.connectorType;
+    }),
+  );
 }
 
 /**
@@ -477,6 +512,11 @@ async function insertGmailEventTrigger(
       userId: args.input.member.userId,
       agentId: args.agentId,
     });
+    const connectorRefs = await loadAgentConnectorRefs(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      agentId: args.agentId,
+    });
 
     const [thread] = await tx
       .insert(chatThreads)
@@ -510,6 +550,7 @@ async function insertGmailEventTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: null,
+        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -533,6 +574,12 @@ async function insertScheduleTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
+    const connectorRefs = await loadAgentConnectorRefs(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      agentId: args.agentId,
+    });
+
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -565,6 +612,7 @@ async function insertScheduleTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: args.nextRunAt,
+        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -805,7 +853,23 @@ interface SetTriggerPermissionPolicyInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly triggerId: string;
+  readonly connectorRefs?: readonly string[];
   readonly policy: UnattendedTriggerPermissionPolicy | null;
+}
+
+async function validateUnattendedConnectorRefs(
+  connectorRefs: readonly string[],
+): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
+  for (const connectorRef of uniqueConnectorRefs(connectorRefs)) {
+    const index = await loadFirewallPermissionIndex(connectorRef);
+    if (!index) {
+      return {
+        kind: "bad-request",
+        message: `Unknown connector ref: ${connectorRef}`,
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -844,6 +908,15 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     args: SetTriggerPermissionPolicyInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
+    if (args.connectorRefs !== undefined) {
+      const connectorRefsError = await validateUnattendedConnectorRefs(
+        args.connectorRefs,
+      );
+      signal.throwIfAborted();
+      if (connectorRefsError) {
+        return connectorRefsError;
+      }
+    }
     if (args.policy !== null) {
       const policyError = await validateUnattendedPermissionPolicy(args.policy);
       signal.throwIfAborted();
@@ -861,9 +934,17 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     if ("kind" in owned) {
       return owned;
     }
+    const values =
+      args.connectorRefs === undefined
+        ? { unattendedPermissionPolicy: args.policy, updatedAt: nowDate() }
+        : {
+            unattendedConnectorRefs: uniqueConnectorRefs(args.connectorRefs),
+            unattendedPermissionPolicy: args.policy,
+            updatedAt: nowDate(),
+          };
     const [row] = await writeDb
       .update(zeroWorkflowTriggers)
-      .set({ unattendedPermissionPolicy: args.policy, updatedAt: nowDate() })
+      .set(values)
       .where(eq(zeroWorkflowTriggers.id, owned.trigger.id))
       .returning();
     signal.throwIfAborted();
