@@ -131,6 +131,35 @@ type ImageIoStatus = 200 | 202 | 400 | 401 | 402 | 403 | 500 | 502 | 503;
 type VideoIoStatus = 200 | 202 | 400 | 401 | 402 | 403 | 500 | 502 | 503 | 504;
 type VoiceSpeechStatus = 200 | 400 | 401 | 402 | 403 | 500 | 502 | 503;
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
+type OsmLayer = "roads" | "buildings" | "water" | "parks";
+type OsmStyle = "standard" | "guide";
+
+interface OsmAreaBody {
+  readonly bbox?: {
+    readonly west: number;
+    readonly south: number;
+    readonly east: number;
+    readonly north: number;
+  };
+  readonly center?: {
+    readonly lat: number;
+    readonly lng: number;
+  };
+  readonly radiusMeters?: number;
+  readonly layers?: readonly OsmLayer[];
+}
+
+interface OsmRenderBody extends OsmAreaBody {
+  readonly width?: number;
+  readonly height?: number;
+  readonly style?: OsmStyle;
+  readonly title?: string;
+  readonly markers?: readonly {
+    readonly lat: number;
+    readonly lng: number;
+    readonly label?: string;
+  }[];
+}
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -801,6 +830,30 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({ context })(zeroMapsContract);
       return await accept(
         client.placesDetails({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestMapsOsmDownload(
+      actor: ApiTestUser | null,
+      body: OsmAreaBody,
+      statuses: readonly MapsStatus[],
+    ) {
+      const client = setupApp({ context })(zeroMapsContract);
+      return await accept(
+        client.osmDownload({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestMapsOsmRender(
+      actor: ApiTestUser | null,
+      body: OsmRenderBody,
+      statuses: readonly MapsStatus[],
+    ) {
+      const client = setupApp({ context })(zeroMapsContract);
+      return await accept(
+        client.osmRender({ headers: authenticate(actor), body }),
         statuses,
       );
     },

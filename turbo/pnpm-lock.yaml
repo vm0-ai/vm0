@@ -8944,9 +8944,6 @@ packages:
   rehype-autolink-headings@7.1.0:
     resolution: {integrity: sha512-rItO/pSdvnvsP4QRB1pmPiNHUskikqtPojZKJPPPAVx9Hj8i8TwMBhofrrAYRhYOOBZH9tgmG5lPqDLuIWPWmw==}
 
-  rehype-highlight@7.0.2:
-    resolution: {integrity: sha512-k158pK7wdC2qL3M5NcZROZ2tR/l7zOzjxXd5VGdcfIyoijjQqpHd3JKtYSBDpDZ38UI2WJWuFAtkMDxmx5kstA==}
-
   rehype-ignore@2.0.3:
     resolution: {integrity: sha512-IzhP6/u/6sm49sdktuYSmeIuObWB+5yC/5eqVws8BhuGA9kY25/byz6uCy/Ravj6lXUShEd2ofHM5MyAIj86Sg==}
     engines: {node: '>=16'}
@@ -19012,14 +19009,6 @@ snapshots:
       hast-util-is-element: 3.0.0
       unified: 11.0.5
       unist-util-visit: 5.1.0
-
-  rehype-highlight@7.0.2:
-    dependencies:
-      '@types/hast': 3.0.4
-      hast-util-to-text: 4.0.2
-      lowlight: 3.3.0
-      unist-util-visit: 5.1.0
-      vfile: 6.0.3
 
   rehype-ignore@2.0.3:
     dependencies:
