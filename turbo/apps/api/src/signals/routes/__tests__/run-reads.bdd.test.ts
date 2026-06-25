@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
   expectApiError,
@@ -41,6 +45,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -79,6 +84,14 @@ async function createClaudeCompose(
       },
     },
   });
+}
+
+async function setRunCreatedAt(runId: string, createdAt: Date): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentRuns)
+    .set({ createdAt })
+    .where(eq(agentRuns.id, runId));
 }
 
 function sandboxHeaders(token: string): { readonly authorization: string } {
@@ -3255,9 +3268,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
-    if (pageOne.status !== 200) {
-      throw new Error("Expected the first log page to succeed");
-    }
+    mustOk(pageOne, "the first log page");
     expect(pageOne.body.data).toHaveLength(1);
     expect(pageOne.body.pagination.hasMore).toBeTruthy();
     const cursor = pageOne.body.pagination.nextCursor;
@@ -3269,9 +3280,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { limit: 1, cursor },
       [200],
     );
-    if (pageTwo.status !== 200) {
-      throw new Error("Expected the second log page to succeed");
-    }
+    mustOk(pageTwo, "the second log page");
     expect(pageTwo.body.data).toHaveLength(1);
     expect(pageTwo.body.data[0]?.id).not.toBe(pageOne.body.data[0]?.id);
 
@@ -3280,10 +3289,26 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { limit: 1, cursor: "garbage" },
       [200],
     );
-    if (malformedCursor.status !== 200) {
-      throw new Error("Expected the malformed-cursor list to succeed");
-    }
+    mustOk(malformedCursor, "malformed cursor list");
     expect(malformedCursor.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
+
+    const malformedStructuredCursor = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "not-a-date|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedStructuredCursor, "malformed structured cursor list");
+    expect(malformedStructuredCursor.body.data[0]?.id).toBe(
+      pageOne.body.data[0]?.id,
+    );
+
+    const malformedCursorId = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "2026-01-15T10:30:00.000Z|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedCursorId, "malformed cursor id list");
+    expect(malformedCursorId.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
 
     const agentOneRunIds = [webRun.runId, scheduleRun.body.runId].sort();
     const fuzzy = await reads.requestListLogs(
@@ -3291,9 +3316,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { search: agentOneName.toUpperCase() },
       [200],
     );
-    if (fuzzy.status !== 200) {
-      throw new Error("Expected the fuzzy search list to succeed");
-    }
+    mustOk(fuzzy, "the fuzzy search list");
     expect(
       fuzzy.body.data
         .map((entry) => {
@@ -3307,9 +3330,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { name: agentOneName },
       [200],
     );
-    if (byName.status !== 200) {
-      throw new Error("Expected the name-filtered list to succeed");
-    }
+    mustOk(byName, "the name-filtered list");
     expect(
       byName.body.data
         .map((entry) => {
@@ -3323,9 +3344,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { agentId: agentOne.agentId, search: "zzz-no-such-agent" },
       [200],
     );
-    if (byAgentId.status !== 200) {
-      throw new Error("Expected the agent-id list to succeed");
-    }
+    mustOk(byAgentId, "the agent-id list");
     expect(
       byAgentId.body.data
         .map((entry) => {
@@ -3339,9 +3358,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { status: "cancelled", triggerSource: "web" },
       [200],
     );
-    if (byStatusAndSource.status !== 200) {
-      throw new Error("Expected the status+source list to succeed");
-    }
+    mustOk(byStatusAndSource, "the status+source list");
     expect(
       byStatusAndSource.body.data
         .map((entry) => {
@@ -3367,9 +3384,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { triggerSource: "telegram" },
       [200],
     );
-    if (noSourceMatch.status !== 200) {
-      throw new Error("Expected the empty source list to succeed");
-    }
+    mustOk(noSourceMatch, "the empty source list");
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
     const byAutomationId = await reads.requestListLogs(
@@ -3377,9 +3392,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { automationId: schedule.automation.id, limit: 1 },
       [200],
     );
-    if (byAutomationId.status !== 200) {
-      throw new Error("Expected the automation-filtered list to succeed");
-    }
+    mustOk(byAutomationId, "the automation-filtered list");
     expect(byAutomationId.body.data).toStrictEqual([
       expect.objectContaining({ id: scheduleRun.body.runId }),
     ]);
@@ -3461,9 +3474,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       {},
       [200],
     );
-    if (tokenList.status !== 200) {
-      throw new Error("Expected the zero-token log list to succeed");
-    }
+    mustOk(tokenList, "the zero-token log list");
     expect(
       tokenList.body.data.map((entry) => {
         return entry.id;
@@ -3477,6 +3488,35 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(tokenDetail.body).toMatchObject({ id: webRun.runId });
 
     await api.requestCancelRun(actor, tokenRun.runId, [200]);
+
+    const sinceBoundaryRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary visible run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, sinceBoundaryRun.runId, [200]);
+    const beforeEpochRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary hidden run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, beforeEpochRun.runId, [200]);
+    await setRunCreatedAt(
+      beforeEpochRun.runId,
+      new Date("1969-12-31T23:59:59.000Z"),
+    );
+
+    const sinceEpoch = await reads.requestListLogs(
+      actor,
+      { since: 0, limit: 100 },
+      [200],
+    );
+    mustOk(sinceEpoch, "the epoch-boundary log list");
+    const sinceEpochIds = sinceEpoch.body.data.map((entry) => {
+      return entry.id;
+    });
+    expect(sinceEpochIds).toContain(sinceBoundaryRun.runId);
+    expect(sinceEpochIds).not.toContain(beforeEpochRun.runId);
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {

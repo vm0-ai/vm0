@@ -20,6 +20,8 @@ import {
 } from "../../lib/utils/log-pagination";
 import { searchCommand } from "./search";
 import { withErrorHandler } from "../../lib/command";
+import { isSupportedFramework } from "@vm0/core/frameworks";
+import { isUUID } from "../run/shared";
 
 /**
  * Maximum entries per API request
@@ -40,9 +42,15 @@ function buildPlatformLogsUrl(apiUrl: string, runId: string): string {
   }
 
   // Transform: www.vm0.ai → app.vm0.ai
+  //            api.vm0.ai → app.vm0.ai
   //            vm0.ai → app.vm0.ai
   const parts = hostname.split(".");
-  if (parts[0] === "www" || parts[0] === "app" || parts[0] === "platform") {
+  if (
+    parts[0] === "www" ||
+    parts[0] === "app" ||
+    parts[0] === "platform" ||
+    parts[0] === "api"
+  ) {
     parts[0] = "app";
   } else {
     parts.unshift("app");
@@ -57,6 +65,22 @@ function buildPlatformLogsUrl(apiUrl: string, runId: string): string {
  * Log type for mutually exclusive options
  */
 type LogType = "agent" | "system" | "metrics" | "network";
+
+interface AgentEventWithFramework {
+  readonly event: RunEvent;
+  readonly framework?: string;
+  readonly useDefaultFramework: boolean;
+}
+
+function supportedLogFramework(
+  framework: string | undefined,
+): string | undefined {
+  return isSupportedFramework(framework) ? framework : undefined;
+}
+
+function hasLogFramework(framework: string | null | undefined): boolean {
+  return framework !== undefined && framework !== null;
+}
 
 /**
  * Format a single metric line
@@ -304,7 +328,7 @@ function renderAgentEvent(
   event: RunEvent,
   renderer: EventRenderer,
   normalizer: EventStreamNormalizer,
-  framework: string,
+  framework: string | undefined,
 ): void {
   const parsedEvents = normalizer.process(
     event.eventData,
@@ -380,6 +404,14 @@ export const logsCommand = new Command()
           return;
         }
 
+        if (!isUUID(runId)) {
+          console.error(
+            chalk.red(`✗ Invalid run ID "${runId}" — expected a UUID`),
+          );
+          console.error(chalk.dim("  Run: vm0 run list    to find run IDs"));
+          process.exit(1);
+        }
+
         const logType = getLogType(options);
 
         // Validate --tail, --head, and --all are mutually exclusive
@@ -396,7 +428,7 @@ export const logsCommand = new Command()
 
         // Parse since option
         let since: number | undefined;
-        if (options.since) {
+        if (options.since !== undefined) {
           since = parseTime(options.since);
         }
 
@@ -459,13 +491,21 @@ async function showAgentEvents(
   },
   platformUrl: string,
 ): Promise<void> {
-  let framework = "claude-code";
-  const events = await collectLogItems<RunEvent>({
+  const events = await collectLogItems<AgentEventWithFramework>({
     fetchPage: async (request) => {
       const response = await getAgentEvents(runId, request);
-      framework = response.framework;
+      const responseFramework: string | null | undefined = response.framework;
       return {
-        items: response.events,
+        items: response.events.map((event) => {
+          const framework = supportedLogFramework(
+            responseFramework ?? undefined,
+          );
+          return {
+            event,
+            ...(framework ? { framework } : {}),
+            useDefaultFramework: !hasLogFramework(responseFramework),
+          };
+        }),
         hasMore: response.hasMore,
         nextCursor: response.nextCursor,
       };
@@ -482,15 +522,24 @@ async function showAgentEvents(
   }
 
   // Create renderer for log viewing (with timestamps, always verbose)
+  const framework = events.find((item) => {
+    return item.framework !== undefined;
+  })?.framework;
   const renderer = createLogRenderer(true);
   const normalizer = new EventStreamNormalizer();
 
-  for (const event of events) {
-    renderAgentEvent(event, renderer, normalizer, framework);
+  for (const item of events) {
+    renderAgentEvent(
+      item.event,
+      renderer,
+      normalizer,
+      item.framework ?? (item.useDefaultFramework ? framework : undefined),
+    );
   }
   for (const parsed of normalizer.flush()) {
     renderer.render(parsed);
   }
+  renderer.flush();
 
   console.log(chalk.dim(`View on platform: ${platformUrl}`));
 }

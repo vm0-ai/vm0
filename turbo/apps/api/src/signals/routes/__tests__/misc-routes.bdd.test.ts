@@ -167,8 +167,50 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
 
     const logs = await api.listLogs(admin);
     expect(logs.body.data).toStrictEqual([]);
+    const invalidListLimit = await api.requestListLogs(
+      admin,
+      { limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidListLimit.body);
     const searched = await api.searchLogs(admin, "nothing-here");
     expect(searched.body.results).toStrictEqual([]);
+    const invalidSearchLimit = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchLimit.body);
+    const invalidSearchBefore = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", before: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchBefore.body);
+    const invalidSearchAfter = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", after: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchAfter.body);
+    const blankSearchContext = await api.rawSearchLogs(
+      admin,
+      "?keyword=nothing-here&before=&after=",
+    );
+    expect(blankSearchContext.status).toBe(400);
+    expectApiError(blankSearchContext.body);
+    const blankSearchKeyword = await api.rawSearchLogs(
+      admin,
+      "?keyword=%20%20",
+    );
+    expect(blankSearchKeyword.status).toBe(400);
+    expectApiError(blankSearchKeyword.body);
+    const invalidSearchRunId = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", runId: "not-a-uuid" },
+      [400],
+    );
+    expectApiError(invalidSearchRunId.body);
     const missingLog = await api.readLog(admin, randomUUID(), [404]);
     expectApiError(missingLog.body);
   });

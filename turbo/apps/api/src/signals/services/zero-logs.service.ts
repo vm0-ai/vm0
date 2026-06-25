@@ -7,10 +7,12 @@ import {
   type LogsFilters,
   type TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
-import type {
-  LogsSearchResponse,
-  RunEvent,
+import {
+  MAX_EVENT_SEQUENCE_NUMBER,
+  type LogsSearchResponse,
+  type RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 import {
   agentComposes,
   agentComposeVersions,
@@ -46,17 +48,36 @@ const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const AXIOM_RUN_ID_FILTER_CHUNK_SIZE = 500;
 const AXIOM_SEARCH_QUERY_CONCURRENCY = 4;
-
-interface AgentComposeContent {
-  agents: Record<string, { framework: string }>;
-}
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function extractFramework(composeContent: unknown): string | null {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-  return firstAgent?.framework ?? null;
+  if (
+    !composeContent ||
+    typeof composeContent !== "object" ||
+    Array.isArray(composeContent)
+  ) {
+    return null;
+  }
+
+  const agents = (composeContent as { readonly agents?: unknown }).agents;
+  if (!agents || typeof agents !== "object" || Array.isArray(agents)) {
+    return null;
+  }
+
+  const [firstAgent] = Object.values(agents);
+  if (
+    !firstAgent ||
+    typeof firstAgent !== "object" ||
+    Array.isArray(firstAgent)
+  ) {
+    return null;
+  }
+
+  const framework = (firstAgent as { readonly framework?: unknown }).framework;
+  return typeof framework === "string" && isSupportedFramework(framework)
+    ? framework
+    : null;
 }
 
 function normalizeTriggerSource(
@@ -68,13 +89,16 @@ function normalizeTriggerSource(
 
 function buildCursorCondition(cursor: string): SQL | null {
   const separatorIndex = cursor.lastIndexOf("|");
-  if (separatorIndex <= 0) {
+  if (separatorIndex <= 0 || separatorIndex >= cursor.length - 1) {
     return null;
   }
 
   const cursorTime = cursor.slice(0, separatorIndex);
   const cursorId = cursor.slice(separatorIndex + 1);
   const cursorDate = new Date(cursorTime);
+  if (!Number.isFinite(cursorDate.getTime()) || !UUID_PATTERN.test(cursorId)) {
+    return null;
+  }
 
   return or(
     lt(agentRuns.createdAt, cursorDate),
@@ -145,7 +169,7 @@ export function zeroLogsList(
 
     conditions.push(...buildAgentFilterConditions(params));
 
-    if (params.since) {
+    if (params.since !== undefined) {
       conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
     }
     if (params.status) {
@@ -251,7 +275,7 @@ async function getLogsTotalCount(
 
   conditions.push(...buildAgentFilterConditions(params));
 
-  if (params.since) {
+  if (params.since !== undefined) {
     conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
   }
   if (params.status) {
@@ -338,16 +362,7 @@ async function getAvailableFilters(
       return r.triggerSource;
     })
     .filter((s): s is TriggerSource => {
-      return [
-        "automation",
-        "web",
-        "slack",
-        "email",
-        "telegram",
-        "github",
-        "cli",
-        "agent",
-      ].includes(s as string);
+      return triggerSourceSchema.safeParse(s).success;
     });
 
   const agents = agentRows
@@ -447,8 +462,7 @@ export function zeroLogDetail(
     } = result;
     const runResult = run.result as RunResult | null;
     const agentSessionId = runResult?.agentSessionId ?? null;
-    const composeContent =
-      composeVersion?.content as AgentComposeContent | null;
+    const composeContent = composeVersion?.content ?? null;
 
     return {
       id: run.id,
@@ -492,6 +506,58 @@ interface AxiomAgentEvent {
   sequenceNumber: number;
   eventType: string;
   eventData: unknown;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseAxiomAgentEvent(value: unknown): AxiomAgentEvent | null {
+  const event = asRecord(value);
+  if (!event) {
+    return null;
+  }
+
+  const time = event._time;
+  const runId = event.runId;
+  const userId = event.userId;
+  const sequenceNumber = event.sequenceNumber;
+  const eventType = event.eventType;
+  if (
+    typeof time !== "string" ||
+    typeof runId !== "string" ||
+    typeof userId !== "string" ||
+    typeof eventType !== "string" ||
+    typeof sequenceNumber !== "number" ||
+    !Number.isSafeInteger(sequenceNumber) ||
+    sequenceNumber < 0 ||
+    sequenceNumber > MAX_EVENT_SEQUENCE_NUMBER
+  ) {
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(time))) {
+    return null;
+  }
+
+  return {
+    _time: time,
+    runId,
+    userId,
+    sequenceNumber,
+    eventType,
+    eventData: event.eventData,
+  };
+}
+
+function parseAxiomAgentEvents(values: readonly unknown[]): AxiomAgentEvent[] {
+  return values
+    .map(parseAxiomAgentEvent)
+    .filter((event): event is AxiomAgentEvent => {
+      return event !== null;
+    });
 }
 
 function toRunEvent(event: AxiomAgentEvent): RunEvent {
@@ -629,9 +695,7 @@ function queryMatchingEvents(params: {
             keyword: params.keyword,
             limit: params.limit + 1,
           });
-          return (
-            await get(queryAxiom(searchApl))
-          ).slice() as unknown as AxiomAgentEvent[];
+          return parseAxiomAgentEvents(await get(queryAxiom(searchApl)));
         }),
       );
 
@@ -666,9 +730,9 @@ function getSearchContextMap(params: {
 | where ${contextConditions.join("\n  or ")}
 | order by runId asc, sequenceNumber asc`;
 
-    const contextEvents = (
-      await get(queryAxiom(contextApl))
-    ).slice() as unknown as AxiomAgentEvent[];
+    const contextEvents = parseAxiomAgentEvents(
+      await get(queryAxiom(contextApl)),
+    );
 
     for (const event of contextEvents) {
       contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
@@ -683,11 +747,15 @@ function buildSearchResults(params: {
   readonly before: number;
   readonly after: number;
   readonly contextMap: Map<string, AxiomAgentEvent>;
-  readonly agentNames: Map<string, string>;
+  readonly runMetadata: Map<
+    string,
+    { readonly agentName: string; readonly framework: string | null }
+  >;
 }): LogsSearchResponse["results"] {
   return params.matches.map((match) => {
     const contextBefore: RunEvent[] = [];
     const contextAfter: RunEvent[] = [];
+    const metadata = params.runMetadata.get(match.runId);
 
     for (
       let i = match.sequenceNumber - params.before;
@@ -713,7 +781,8 @@ function buildSearchResults(params: {
 
     return {
       runId: match.runId,
-      agentName: params.agentNames.get(match.runId) || "unknown",
+      agentName: metadata?.agentName ?? "unknown",
+      framework: metadata?.framework ?? null,
       matchedEvent: toRunEvent(match),
       contextBefore,
       contextAfter,
@@ -721,13 +790,18 @@ function buildSearchResults(params: {
   });
 }
 
-async function getAgentNames(
+async function getSearchRunMetadata(
   db: ServiceDb,
   runIds: string[],
   userId: string,
   orgId: string,
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+): Promise<
+  Map<string, { readonly agentName: string; readonly framework: string | null }>
+> {
+  const result = new Map<
+    string,
+    { readonly agentName: string; readonly framework: string | null }
+  >();
   if (runIds.length === 0) {
     return result;
   }
@@ -736,6 +810,7 @@ async function getAgentNames(
     .select({
       runId: agentRuns.id,
       composeId: agentComposes.id,
+      composeContent: agentComposeVersions.content,
       displayName: zeroAgents.displayName,
     })
     .from(agentRuns)
@@ -757,7 +832,10 @@ async function getAgentNames(
     );
 
   for (const row of rows) {
-    result.set(row.runId, row.displayName ?? row.composeId ?? "unknown");
+    result.set(row.runId, {
+      agentName: row.displayName ?? row.composeId ?? "unknown",
+      framework: extractFramework(row.composeContent),
+    });
   }
 
   return result;
@@ -777,16 +855,28 @@ export function zeroLogSearch(
     // Determine which run IDs to search (ownership verified via DB)
     let targetRunIds: string[];
     if (runId) {
+      const runConditions = [
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, params.userId),
+        eq(agentRuns.orgId, params.orgId),
+      ];
+      if (params.agentId) {
+        runConditions.push(eq(zeroAgents.id, params.agentId));
+      }
+
       const [run] = await db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.id, runId),
-            eq(agentRuns.userId, params.userId),
-            eq(agentRuns.orgId, params.orgId),
-          ),
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
         )
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
+        .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+        .where(and(...runConditions))
         .limit(1);
 
       if (!run) {
@@ -837,7 +927,7 @@ export function zeroLogSearch(
         }),
       ),
     ];
-    const agentNames = await getAgentNames(
+    const runMetadata = await getSearchRunMetadata(
       db,
       matchedRunIds,
       params.userId,
@@ -849,7 +939,7 @@ export function zeroLogSearch(
       before,
       after,
       contextMap,
-      agentNames,
+      runMetadata,
     });
     return { results, hasMore };
   });

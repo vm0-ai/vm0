@@ -53,6 +53,15 @@ describe("zero search --source chat", () => {
     vi.unstubAllEnvs();
   });
 
+  it("rejects whitespace-only queries", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "chat"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Query cannot be empty");
+  });
+
   it("renders chat search results grouped by thread", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/chat/search", () => {
@@ -84,6 +93,40 @@ describe("zero search --source chat", () => {
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logs).toContain("thread-abc");
     expect(logs).toContain("my-agent");
+    expect(logs).toContain("OOM killed the build");
+  });
+
+  it("tolerates invalid chat message timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/chat/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              chatThreadId: "thread-abc",
+              agentName: "my-agent",
+              matchedMessage: makeMessage({
+                content: "OOM killed the build",
+                createdAt: "not-a-timestamp",
+              }),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await zeroSearchCommand.parseAsync([
+      "node",
+      "cli",
+      "OOM",
+      "--source",
+      "chat",
+    ]);
+
+    const logs = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logs).toContain("invalid-date");
     expect(logs).toContain("OOM killed the build");
   });
 
@@ -129,6 +172,28 @@ describe("zero search --source chat", () => {
     expect(capturedUrl?.searchParams.get("keyword")).toBe("error");
     expect(capturedUrl?.searchParams.get("before")).toBe("3");
     expect(capturedUrl?.searchParams.get("after")).toBe("3");
+  });
+
+  it("passes epoch --since to API instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await zeroSearchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "--source",
+      "chat",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
   });
 
   it("passes -A and -B independently", async () => {
@@ -179,6 +244,41 @@ describe("zero search --source chat", () => {
     expect(capturedUrl?.searchParams.get("agentId")).toBe(agentId);
   });
 
+  it("rejects non-UUID --agent values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--agent",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
+  });
+
   it("rejects --run flag for chat source with clear error", async () => {
     await expect(
       zeroSearchCommand.parseAsync([
@@ -188,11 +288,29 @@ describe("zero search --source chat", () => {
         "--source",
         "chat",
         "--run",
-        "abc12345-1234-1234-1234-123456789abc",
+        "550e8400-e29b-41d4-a716-446655440001",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--run is not supported with --source chat");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--run",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("--run is not supported with --source chat");
   });
 
@@ -228,6 +346,77 @@ describe("zero search --source chat", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("--before-context must be between 0 and 10");
+  });
+
+  it("rejects partial numeric context and limit values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "-C",
+        "2x",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--limit",
+        "1abc",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "-C",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--limit",
+        "",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--limit must be between 1 and 50");
   });
 
   it("shows the hasMore hint when the API reports more results", async () => {

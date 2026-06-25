@@ -30,6 +30,60 @@ function makeEvent(
   };
 }
 
+function makeCodexMessageEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: `item-${sequenceNumber}`,
+        type: "agent_message",
+        text,
+      },
+    },
+  };
+}
+
+function makeCodexErrorEvent(
+  sequenceNumber: number,
+  message: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "error",
+    createdAt,
+    eventData: {
+      type: "error",
+      turn_id: "turn-1",
+      message,
+    },
+  };
+}
+
+function makeCodexTurnFailedEvent(
+  sequenceNumber: number,
+  message: string,
+  createdAt = "2024-01-15T10:30:01Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "turn.failed",
+    createdAt,
+    eventData: {
+      type: "turn.failed",
+      turn_id: "turn-1",
+      error: { message },
+    },
+  };
+}
+
 describe("logs search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -50,13 +104,22 @@ describe("logs search command", () => {
     mockConsoleError.mockClear();
   });
 
+  it("should reject whitespace-only keywords", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "   "]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Keyword cannot be empty");
+  });
+
   it("should display search results grouped by run", async () => {
     server.use(
       http.get("http://localhost:3000/api/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "my-agent",
               matchedEvent: makeEvent(3, "Build failed: OOM killed"),
               contextBefore: [],
@@ -71,9 +134,112 @@ describe("logs search command", () => {
     await searchCommand.parseAsync(["node", "cli", "OOM"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345");
+    expect(logCalls).toContain("550e8400");
     expect(logCalls).toContain("my-agent");
     expect(logCalls).toContain("OOM killed");
+  });
+
+  it("should tolerate invalid search result timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "my-agent",
+              matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Build"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("Build failed");
+  });
+
+  it("should render codex search result events with the result framework", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Codex"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("codex-agent");
+    expect(logCalls).toContain("Codex found the issue");
+  });
+
+  it("should tolerate unsupported search result framework values", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "future-agent",
+              framework: "future-framework",
+              matchedEvent: makeEvent(3, "Legacy parser fallback output"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "fallback"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("future-agent");
+    expect(logCalls).toContain("Legacy parser fallback output");
+  });
+
+  it("should collapse paired codex error and terminal failure events in search context", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "550e8400-e29b-41d4-a716-446655440001",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexTurnFailedEvent(4, "Turn failed"),
+              contextBefore: [makeCodexErrorEvent(3, "Sandbox terminated")],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "terminated"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Sandbox terminated");
+    expect(logCalls.match(/Codex Failed/g) ?? []).toHaveLength(1);
   });
 
   it("should pass context params to API", async () => {
@@ -115,9 +281,46 @@ describe("logs search command", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("5");
   });
 
+  it("should reject partial numeric context and limit values", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", "2x"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+  });
+
   it("should pass --agent as agentId and --run filters to API", async () => {
     let capturedUrl: URL | undefined;
     const agentId = "550e8400-e29b-41d4-a716-446655440001";
+    const runId = "550e8400-e29b-41d4-a716-446655440002";
     server.use(
       http.get("http://localhost:3000/api/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
@@ -132,11 +335,53 @@ describe("logs search command", () => {
       "--agent",
       agentId,
       "--run",
-      "run-123",
+      runId,
     ]);
 
     expect(capturedUrl?.searchParams.get("agentId")).toBe(agentId);
-    expect(capturedUrl?.searchParams.get("runId")).toBe("run-123");
+    expect(capturedUrl?.searchParams.get("runId")).toBe(runId);
+  });
+
+  it("should reject non-UUID --run values", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "deploy", "--run", "run-123"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "deploy", "--run", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+  });
+
+  it("should reject non-UUID --agent values", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "deploy",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "deploy", "--agent", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
   });
 
   it("should parse --since and send as timestamp", async () => {
@@ -156,6 +401,26 @@ describe("logs search command", () => {
     const sinceMs = Number(since);
     const expectedMs = Date.now() - 24 * 60 * 60 * 1000;
     expect(Math.abs(sinceMs - expectedMs)).toBeLessThan(5000);
+  });
+
+  it("should send epoch --since instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
   });
 
   it("should show guided message for empty results", async () => {
@@ -197,7 +462,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "test-agent",
               matchedEvent: makeEvent(
                 5,
@@ -235,7 +500,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "agent",
               matchedEvent: makeEvent(1, "match"),
               contextBefore: [],

@@ -1,228 +1,843 @@
 /**
- * Event parser for OpenAI Codex CLI JSONL events
- * Converts raw JSONL events into simplified, user-friendly format
+ * Event parser for OpenAI Codex CLI JSONL events.
  *
- * Codex event types:
- * - thread.started: Session initialization
- * - turn.started/turn.completed/turn.failed: Turn lifecycle
- * - item.started/item.updated/item.completed: Individual items (messages, commands, etc.)
- * - error: Unrecoverable errors
+ * The parser accepts both legacy `codex exec --json` events and the
+ * Codex-style compatibility events produced by the vm0 guest-agent app-server
+ * adapter. It deliberately does not consume raw app-server JSON-RPC
+ * notifications.
  */
 
 import type { ParsedEvent } from "./claude-event-parser";
 
-interface ThreadStartedEvent {
-  type: "thread.started";
-  thread_id: string;
+type JsonRecord = Record<string, unknown>;
+
+const MAX_FORMATTED_ARRAY_ITEMS = 6;
+const MAX_FORMATTED_ARRAY_DEPTH = 4;
+const MAX_FORMATTED_OBJECT_FIELDS = 8;
+const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
+const MAX_FORMATTED_TEXT_LENGTH = 240;
+const MAX_ERROR_SIGNAL_DEPTH = 8;
+const MAX_FORMATTED_PLAN_STEPS = 20;
+const MAX_FORMATTED_FILE_CHANGES = 20;
+
+function asRecord(value: unknown): JsonRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as JsonRecord;
 }
 
-interface TurnStartedEvent {
-  type: "turn.started";
+function hasOwnKey(record: JsonRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }
 
-interface TurnCompletedEvent {
-  type: "turn.completed";
-  usage?: {
-    input_tokens?: number;
-    cached_input_tokens?: number;
-    output_tokens?: number;
-  };
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
-interface TurnFailedEvent {
-  type: "turn.failed";
-  error?: string;
+function nonEmptyStringValue(value: unknown): string | undefined {
+  const valueString = stringValue(value);
+  return valueString && valueString.length > 0 ? valueString : undefined;
 }
 
-interface FileChange {
-  kind: "add" | "modify" | "delete";
-  path: string;
+function trimmedStringValue(value: unknown): string | undefined {
+  const valueString = stringValue(value)?.trim();
+  return valueString && valueString.length > 0 ? valueString : undefined;
 }
 
-interface CodexItem {
-  id: string;
-  type: string;
-  status?: string;
-  // For command_execution
-  command?: string;
-  exit_code?: number;
-  output?: string;
-  aggregated_output?: string;
-  // For agent_message
-  text?: string;
-  // For file operations
-  path?: string;
-  diff?: string;
-  // For file_change
-  changes?: FileChange[];
-  // For reasoning (text field is used)
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
-interface ItemEvent {
-  type: "item.started" | "item.updated" | "item.completed";
-  item: CodexItem;
+function getFirstString(
+  record: JsonRecord,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = trimmedStringValue(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
-interface ErrorEvent {
-  type: "error";
-  message?: string;
-  error?: string;
+function getFirstNumber(
+  record: JsonRecord,
+  keys: readonly string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = numberValue(record[key]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
-type RawCodexEvent =
-  | ThreadStartedEvent
-  | TurnStartedEvent
-  | TurnCompletedEvent
-  | TurnFailedEvent
-  | ItemEvent
-  | ErrorEvent
-  | Record<string, unknown>;
+function truncate(text: string): string {
+  if (text.length <= MAX_FORMATTED_TEXT_LENGTH) {
+    return text;
+  }
+  return `${text.slice(0, MAX_FORMATTED_TEXT_LENGTH - 3)}...`;
+}
+
+function formatScalar(value: unknown): string | undefined {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? truncate(value) : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return truncate(String(value));
+  }
+  return undefined;
+}
+
+function hasSignalValue(value: unknown, depth = 0): boolean {
+  if (value === null || value === undefined || value === false) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (typeof value === "boolean") {
+    return true;
+  }
+
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+      return false;
+    }
+
+    return value.slice(0, MAX_FORMATTED_ARRAY_ITEMS).some((item) => {
+      return hasSignalValue(item, depth + 1);
+    });
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return false;
+  }
+
+  let inspectedFields = 0;
+  for (const key in record) {
+    if (!hasOwnKey(record, key)) {
+      continue;
+    }
+    if (inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS) {
+      return false;
+    }
+    inspectedFields += 1;
+    if (hasSignalValue(record[key], depth + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function formatUnknownValue(value: unknown, depth = 0): string | undefined {
+  const scalar = formatScalar(value);
+  if (scalar !== undefined) {
+    return scalar;
+  }
+
+  if (Array.isArray(value)) {
+    if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+      return "...";
+    }
+
+    const items = value
+      .slice(0, MAX_FORMATTED_ARRAY_ITEMS)
+      .map((item) => {
+        return formatUnknownValue(item, depth + 1);
+      })
+      .filter((item): item is string => {
+        return item !== undefined && item.length > 0;
+      });
+    if (items.length === 0) {
+      return undefined;
+    }
+    const suffix = value.length > MAX_FORMATTED_ARRAY_ITEMS ? ", ..." : "";
+    return `[${items.join(", ")}${suffix}]`;
+  }
+
+  const record = asRecord(value);
+  if (!record || depth > 0) {
+    return undefined;
+  }
+
+  const fields: string[] = [];
+  let inspectedFields = 0;
+  for (const key in record) {
+    if (!hasOwnKey(record, key)) {
+      continue;
+    }
+    if (
+      fields.length >= MAX_FORMATTED_OBJECT_FIELDS ||
+      inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+    ) {
+      fields.push("...");
+      break;
+    }
+    inspectedFields += 1;
+    const fieldValue = record[key];
+    const formatted = formatUnknownValue(fieldValue, depth + 1);
+    if (formatted !== undefined) {
+      fields.push(`${key}=${formatted}`);
+    }
+  }
+  return fields.length > 0 ? `{${fields.join(", ")}}` : undefined;
+}
+
+function formatSignalValue(
+  value: unknown,
+  includeBoundedPlaceholder = false,
+): string | undefined {
+  if (value === null || value === undefined || value === false) {
+    return undefined;
+  }
+  const formatted = formatUnknownValue(value);
+  if (!formatted) {
+    return undefined;
+  }
+  if (hasSignalValue(value)) {
+    return formatted;
+  }
+  return includeBoundedPlaceholder && formatted.includes("...")
+    ? formatted
+    : undefined;
+}
+
+function combineDistinctMessages(
+  first: string | undefined,
+  second: string | undefined,
+): string | undefined {
+  const messages: string[] = [];
+  for (const message of [first, second]) {
+    const trimmed = message?.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const containingIndex = messages.findIndex((existing) => {
+      return existing === trimmed || existing.includes(trimmed);
+    });
+    if (containingIndex !== -1) {
+      continue;
+    }
+
+    const containedIndex = messages.findIndex((existing) => {
+      return trimmed.includes(existing);
+    });
+    if (containedIndex !== -1) {
+      messages[containedIndex] = trimmed;
+      continue;
+    }
+
+    messages.push(trimmed);
+  }
+  return messages.length > 0 ? messages.join("\n") : undefined;
+}
+
+function isGenericFailureMessage(message: string): boolean {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.:!?]+$/u, "");
+  return (
+    normalized === "error" ||
+    normalized === "turn failed" ||
+    normalized === "turn interrupted" ||
+    normalized === "unknown error" ||
+    normalized === "codex error"
+  );
+}
+
+function combineResultWithError(
+  result: string | undefined,
+  errorMessage: string | undefined,
+): string | undefined {
+  if (result === undefined || result.length === 0) {
+    return errorMessage;
+  }
+  if (!errorMessage) {
+    return result;
+  }
+
+  const trimmedResult = result.trim();
+  if (!trimmedResult) {
+    return errorMessage;
+  }
+  if (trimmedResult === errorMessage || trimmedResult.includes(errorMessage)) {
+    return result;
+  }
+  if (errorMessage.includes(trimmedResult)) {
+    return errorMessage;
+  }
+
+  return `${result}\n${errorMessage}`;
+}
+
+function formatDetailSuffix(details: readonly string[]): string {
+  return details.length > 0 ? ` (${details.join("; ")})` : "";
+}
+
+function extractErrorMessage(value: unknown, depth = 0): string | undefined {
+  if (value === null || value === undefined || value === false) {
+    return undefined;
+  }
+
+  const direct = trimmedStringValue(value);
+  if (direct) {
+    return direct;
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return hasSignalValue(value, depth) ? formatUnknownValue(value) : undefined;
+  }
+
+  const message =
+    getFirstString(record, ["message"]) ??
+    getFirstString(record, ["error", "code", "failureReason"]);
+  const details = [
+    getFirstString(record, ["additional_details", "additionalDetails"]),
+    getFirstString(record, ["codex_error_info", "codexErrorInfo"]),
+    formatSignalValue(record.connectors, message !== undefined),
+  ].filter((detail): detail is string => {
+    return detail !== undefined && detail.length > 0;
+  });
+
+  if (message) {
+    const uniqueDetails = details.filter((detail) => {
+      return !message.includes(detail);
+    });
+    return `${message}${formatDetailSuffix(uniqueDetails)}`;
+  }
+
+  if (details.length > 0) {
+    return details.join("; ");
+  }
+
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
+    return undefined;
+  }
+
+  const nested = extractErrorMessage(record.error, depth + 1);
+  if (nested) {
+    return nested;
+  }
+
+  return hasSignalValue(record, depth) ? formatUnknownValue(record) : undefined;
+}
+
+function extractEventErrorMessage(event: JsonRecord): string | undefined {
+  return combineDistinctMessages(
+    trimmedStringValue(event.message),
+    extractErrorMessage(event.error),
+  );
+}
+
+function getTurnRecord(event: JsonRecord): JsonRecord | null {
+  return asRecord(event.turn);
+}
+
+function getTurnId(event: JsonRecord): string | undefined {
+  const topLevelId = getFirstString(event, ["turn_id", "turnId"]);
+  if (topLevelId) {
+    return topLevelId;
+  }
+  const turn = getTurnRecord(event);
+  return turn ? getFirstString(turn, ["id"]) : undefined;
+}
+
+function getTurnStatus(event: JsonRecord): string | undefined {
+  const turn = getTurnRecord(event);
+  return (
+    (turn ? getFirstString(turn, ["status"]) : undefined) ??
+    getFirstString(event, ["status"])
+  );
+}
+
+const FAILED_STATUSES = new Set([
+  "aborted",
+  "cancelled",
+  "canceled",
+  "declined",
+  "error",
+  "failed",
+  "interrupted",
+  "timed_out",
+  "timeout",
+]);
+
+const SUCCESSFUL_TURN_COMPLETION_STATUSES = new Set([
+  "completed",
+  "success",
+  "succeeded",
+]);
+
+function isFailedStatus(status: string | undefined): boolean {
+  return status !== undefined && FAILED_STATUSES.has(status.toLowerCase());
+}
+
+function isUnsuccessfulTurnCompletionStatus(
+  status: string | undefined,
+): boolean {
+  return (
+    status !== undefined &&
+    !SUCCESSFUL_TURN_COMPLETION_STATUSES.has(status.toLowerCase())
+  );
+}
+
+function hasExtractableError(value: unknown): boolean {
+  return extractErrorMessage(value) !== undefined;
+}
+
+function hasTurnCompletionError(
+  event: JsonRecord,
+  turn: JsonRecord | null,
+): boolean {
+  return (
+    (turn !== null && hasExtractableError(turn.error)) ||
+    hasExtractableError(event.error)
+  );
+}
+
+function getTurnErrorMessage(
+  event: JsonRecord,
+  turn: JsonRecord | null,
+): string | undefined {
+  const turnMessage =
+    turn !== null ? extractErrorMessage(turn.error) : undefined;
+  const eventMessage = extractEventErrorMessage(event);
+  if (turnMessage && eventMessage && isGenericFailureMessage(eventMessage)) {
+    return turnMessage;
+  }
+  return combineDistinctMessages(turnMessage, eventMessage);
+}
+
+function getUsage(event: JsonRecord): JsonRecord {
+  const turn = getTurnRecord(event);
+  return asRecord(event.usage) ?? (turn ? asRecord(turn.usage) : null) ?? {};
+}
+
+function getTurnDurationMs(event: JsonRecord, turn: JsonRecord | null): number {
+  return (
+    (turn ? getFirstNumber(turn, ["duration_ms", "durationMs"]) : undefined) ??
+    getFirstNumber(event, ["duration_ms", "durationMs"]) ??
+    0
+  );
+}
+
+function getItem(event: JsonRecord): JsonRecord | null {
+  return asRecord(event.item);
+}
+
+function getItemId(item: JsonRecord): string | undefined {
+  return getFirstString(item, ["id"]);
+}
+
+function getItemType(item: JsonRecord): string | undefined {
+  return getFirstString(item, ["type"]);
+}
+
+function getItemStatus(item: JsonRecord): string | undefined {
+  return getFirstString(item, ["status"]);
+}
+
+function getItemErrorMessage(item: JsonRecord): string | undefined {
+  return extractErrorMessage(item.error);
+}
+
+function shouldRenderGenericItemFailure(
+  eventType: string,
+  item: JsonRecord,
+): boolean {
+  return (
+    eventType === "item.completed" &&
+    (isFailedStatus(getItemStatus(item)) ||
+      getItemErrorMessage(item) !== undefined)
+  );
+}
+
+function formatPlanStatus(status: string | undefined): string {
+  if (status === "completed") return "completed";
+  if (status === "in_progress") return "in progress";
+  if (status === "pending") return "pending";
+  return status ?? "step";
+}
+
+function formatPlanLines(plan: unknown): string[] {
+  if (!Array.isArray(plan)) {
+    return [];
+  }
+  const lines = plan
+    .slice(0, MAX_FORMATTED_PLAN_STEPS)
+    .map((step) => {
+      const stepRecord = asRecord(step);
+      if (!stepRecord) {
+        return undefined;
+      }
+      const text = trimmedStringValue(stepRecord.step);
+      if (!text) {
+        return undefined;
+      }
+      const status = formatPlanStatus(trimmedStringValue(stepRecord.status));
+      return `- ${status}: ${text}`;
+    })
+    .filter((line): line is string => {
+      return line !== undefined;
+    });
+  const remaining = plan.length - MAX_FORMATTED_PLAN_STEPS;
+  if (remaining > 0) {
+    lines.push(`- ... +${remaining} more steps`);
+  }
+  return lines;
+}
+
+function formatGenericItem(item: JsonRecord): string | undefined {
+  const itemType = getItemType(item);
+  if (!itemType) {
+    return undefined;
+  }
+
+  const fields: string[] = [itemType];
+  const id = getItemId(item);
+  if (id) {
+    fields.push(`id=${id}`);
+  }
+  const status = getItemStatus(item);
+  if (status) {
+    fields.push(`status=${status}`);
+  }
+
+  let inspectedFields = 0;
+  for (const key in item) {
+    if (!hasOwnKey(item, key)) {
+      continue;
+    }
+    if (key === "id" || key === "type" || key === "status") {
+      continue;
+    }
+    if (
+      fields.length >= MAX_FORMATTED_OBJECT_FIELDS + 3 ||
+      inspectedFields >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+    ) {
+      fields.push("...");
+      break;
+    }
+    inspectedFields += 1;
+    const value = item[key];
+    const formatted = formatUnknownValue(value);
+    if (formatted !== undefined) {
+      fields.push(`${key}=${formatted}`);
+    }
+  }
+
+  return `[item] ${fields.join(" ")}`;
+}
+
+function formatFileChangeAction(kind: string | undefined): string {
+  if (kind === "add") return "Created";
+  if (kind === "modify") return "Modified";
+  if (kind === "delete") return "Deleted";
+  return "Changed";
+}
 
 export class CodexEventParser {
   /**
-   * Parse a raw Codex CLI JSONL event into a simplified format
-   * Returns null if the event type is unknown or malformed
+   * Parse a raw Codex JSONL event into the shared CLI parsed-event format.
+   * Returns null if the event type is unknown or too malformed to display.
    */
-  static parse(rawEvent: RawCodexEvent): ParsedEvent | null {
-    if (!rawEvent || typeof rawEvent !== "object" || !("type" in rawEvent)) {
+  static parse(rawEvent: unknown): ParsedEvent | null {
+    const event = asRecord(rawEvent);
+    if (!event) {
       return null;
     }
 
-    const eventType = rawEvent.type as string;
+    const eventType = stringValue(event.type);
+    if (!eventType) {
+      return null;
+    }
 
-    // Thread started = init event
     if (eventType === "thread.started") {
-      return this.parseThreadStarted(rawEvent as ThreadStartedEvent);
+      return this.parseThreadStarted(event);
     }
 
-    // Turn completed = result event
     if (eventType === "turn.completed") {
-      return this.parseTurnCompleted(rawEvent as TurnCompletedEvent);
+      return this.parseTurnCompleted(event);
     }
 
-    // Turn failed = result event with error
     if (eventType === "turn.failed") {
-      return this.parseTurnFailed(rawEvent as TurnFailedEvent);
+      return this.parseTurnFailed(event);
     }
 
-    // Item events (started, updated, completed)
+    if (eventType === "turn.plan.updated") {
+      return this.parseTurnPlanUpdated(event);
+    }
+
+    if (eventType === "warning") {
+      return this.parseWarning(event);
+    }
+
     if (eventType.startsWith("item.")) {
-      return this.parseItemEvent(rawEvent as ItemEvent);
+      return this.parseItemEvent(event, eventType);
     }
 
-    // Error event
     if (eventType === "error") {
-      return this.parseErrorEvent(rawEvent as ErrorEvent);
+      return this.parseErrorEvent(event);
     }
 
-    // Turn started - we skip this, not useful for display
     return null;
   }
 
-  private static parseThreadStarted(
-    event: ThreadStartedEvent,
-  ): ParsedEvent | null {
+  private static parseThreadStarted(event: JsonRecord): ParsedEvent | null {
+    const threadId = getFirstString(event, ["thread_id", "threadId"]);
+    if (!threadId) {
+      return null;
+    }
+
     return {
       type: "init",
       timestamp: new Date(),
       data: {
         framework: "codex",
-        sessionId: event.thread_id,
+        sessionId: threadId,
         tools: [],
       },
     };
   }
 
-  private static parseTurnCompleted(
-    event: TurnCompletedEvent,
-  ): ParsedEvent | null {
+  private static parseTurnCompleted(event: JsonRecord): ParsedEvent | null {
+    const status = getTurnStatus(event);
+    const turn = getTurnRecord(event);
+    const turnId = getTurnId(event);
+    const durationMs = getTurnDurationMs(event, turn);
+
+    if (
+      isUnsuccessfulTurnCompletionStatus(status) ||
+      hasTurnCompletionError(event, turn)
+    ) {
+      const result =
+        getTurnErrorMessage(event, turn) ??
+        (status ? `Turn ${status}` : "Turn failed");
+      return {
+        type: "result",
+        timestamp: new Date(),
+        data: {
+          success: false,
+          result,
+          durationMs,
+          numTurns: 1,
+          cost: 0,
+          usage: getUsage(event),
+          ...(turnId ? { turnId } : {}),
+        },
+      };
+    }
+
     return {
       type: "result",
       timestamp: new Date(),
       data: {
         success: true,
         result: "",
-        durationMs: 0,
+        durationMs,
         numTurns: 1,
         cost: 0,
-        usage: event.usage || {},
+        usage: getUsage(event),
+        ...(turnId ? { turnId } : {}),
       },
     };
   }
 
-  private static parseTurnFailed(event: TurnFailedEvent): ParsedEvent | null {
+  private static parseTurnFailed(event: JsonRecord): ParsedEvent | null {
+    const turn = getTurnRecord(event);
+    const turnId = getTurnId(event);
     return {
       type: "result",
       timestamp: new Date(),
       data: {
         success: false,
-        result: event.error || "Turn failed",
-        durationMs: 0,
+        result: getTurnErrorMessage(event, turn) ?? "Turn failed",
+        durationMs: getTurnDurationMs(event, turn),
         numTurns: 1,
         cost: 0,
-        usage: {},
+        usage: getUsage(event),
+        ...(turnId ? { turnId } : {}),
       },
     };
   }
 
-  private static parseItemEvent(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseTurnPlanUpdated(event: JsonRecord): ParsedEvent | null {
+    const lines = formatPlanLines(event.plan);
+    const explanation = trimmedStringValue(event.explanation);
+    if (lines.length === 0 && !explanation) {
+      return null;
+    }
+
+    return {
+      type: "text",
+      timestamp: new Date(),
+      data: {
+        text: ["[plan]", explanation, ...lines]
+          .filter((line): line is string => {
+            return line !== undefined && line.length > 0;
+          })
+          .join("\n"),
+      },
+    };
+  }
+
+  private static parseWarning(event: JsonRecord): ParsedEvent | null {
+    const message = extractEventErrorMessage(event);
+    if (!message) {
+      return null;
+    }
+
+    return {
+      type: "text",
+      timestamp: new Date(),
+      data: { text: `[warning] ${message}` },
+    };
+  }
+
+  private static parseItemEvent(
+    event: JsonRecord,
+    eventType: string,
+  ): ParsedEvent | null {
+    const item = getItem(event);
     if (!item) {
       return null;
     }
 
-    const itemType = item.type;
+    const itemType = getItemType(item);
+    if (!itemType) {
+      return null;
+    }
 
-    if (itemType === "agent_message" && item.text) {
-      return { type: "text", timestamp: new Date(), data: { text: item.text } };
+    if (itemType === "agent_message") {
+      return this.parseTextItem(eventType, item, (text) => {
+        return text;
+      });
     }
     if (itemType === "command_execution") {
-      return this.parseCommandExecution(event);
+      return this.parseCommandExecution(eventType, item);
     }
     if (itemType === "file_edit" || itemType === "file_write") {
-      return this.parseFileEditOrWrite(event);
+      return this.parseFileEditOrWrite(eventType, item);
     }
     if (itemType === "file_read") {
-      return this.parseFileRead(event);
+      return this.parseFileRead(eventType, item);
     }
     if (itemType === "file_change") {
       return this.parseFileChange(item);
     }
-    if (itemType === "reasoning" && item.text) {
-      return {
-        type: "text",
-        timestamp: new Date(),
-        data: { text: `[thinking] ${item.text}` },
-      };
+    if (itemType === "reasoning") {
+      return this.parseTextItem(eventType, item, (text) => {
+        return `[thinking] ${text}`;
+      });
+    }
+    if (itemType === "plan") {
+      return this.parseTextItem(eventType, item, (text) => {
+        return `[plan]\n${text}`;
+      });
+    }
+
+    if (eventType === "item.completed") {
+      return this.parseGenericCompletedItem(item);
     }
 
     return null;
   }
 
-  private static parseCommandExecution(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseTextItem(
+    eventType: string,
+    item: JsonRecord,
+    formatText: (text: string) => string,
+  ): ParsedEvent | null {
+    const text = trimmedStringValue(item.text);
+    if (text) {
+      return {
+        type: "text",
+        timestamp: new Date(),
+        data: { text: formatText(text) },
+      };
+    }
 
-    if (event.type === "item.started" && item.command) {
+    return shouldRenderGenericItemFailure(eventType, item)
+      ? this.parseGenericCompletedItem(item)
+      : null;
+  }
+
+  private static parseGenericCompletedItem(
+    item: JsonRecord,
+  ): ParsedEvent | null {
+    const text = formatGenericItem(item);
+    return text
+      ? { type: "text", timestamp: new Date(), data: { text } }
+      : null;
+  }
+
+  private static parseCommandExecution(
+    eventType: string,
+    item: JsonRecord,
+  ): ParsedEvent | null {
+    const itemId = getItemId(item);
+    const command = trimmedStringValue(item.command);
+    if (!itemId) {
+      return null;
+    }
+
+    if (eventType === "item.started" && command) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
           tool: "Bash",
-          toolUseId: item.id,
-          input: { command: item.command },
+          toolUseId: itemId,
+          input: { command },
         },
       };
     }
 
-    if (event.type === "item.completed") {
-      const output = item.aggregated_output ?? item.output ?? "";
+    if (eventType === "item.completed") {
+      const output =
+        nonEmptyStringValue(item.aggregated_output) ??
+        nonEmptyStringValue(item.output) ??
+        "";
+      const status = getItemStatus(item);
+      const exitCode = numberValue(item.exit_code);
+      const errorMessage = getItemErrorMessage(item);
+      const isError =
+        (exitCode !== undefined ? exitCode !== 0 : false) ||
+        isFailedStatus(status) ||
+        errorMessage !== undefined;
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
-          result: output,
-          isError: item.exit_code !== 0,
+          tool: "Bash",
+          toolUseId: itemId,
+          input: command ? { command } : {},
+          result:
+            combineResultWithError(output, errorMessage) ??
+            (isFailedStatus(status) ? `Command ${status}` : ""),
+          isError,
         },
       };
     }
@@ -230,29 +845,48 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileEditOrWrite(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseFileEditOrWrite(
+    eventType: string,
+    item: JsonRecord,
+  ): ParsedEvent | null {
+    const itemId = getItemId(item);
+    const path = trimmedStringValue(item.path);
+    if (!itemId) {
+      return null;
+    }
 
-    if (event.type === "item.started" && item.path) {
+    if (eventType === "item.started" && path) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
-          tool: item.type === "file_edit" ? "Edit" : "Write",
-          toolUseId: item.id,
-          input: { file_path: item.path },
+          tool: getItemType(item) === "file_edit" ? "Edit" : "Write",
+          toolUseId: itemId,
+          input: { file_path: path },
         },
       };
     }
 
-    if (event.type === "item.completed") {
+    if (eventType === "item.completed") {
+      const status = getItemStatus(item);
+      const tool = getItemType(item) === "file_edit" ? "Edit" : "Write";
+      const errorMessage = getItemErrorMessage(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
-          result: item.diff || "File operation completed",
-          isError: false,
+          tool,
+          toolUseId: itemId,
+          input: path ? { file_path: path } : {},
+          result:
+            combineResultWithError(
+              nonEmptyStringValue(item.diff),
+              errorMessage,
+            ) ??
+            (isFailedStatus(status)
+              ? `File operation ${status}`
+              : "File operation completed"),
+          isError: isFailedStatus(status) || errorMessage !== undefined,
         },
       };
     }
@@ -260,29 +894,45 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileRead(event: ItemEvent): ParsedEvent | null {
-    const item = event.item;
+  private static parseFileRead(
+    eventType: string,
+    item: JsonRecord,
+  ): ParsedEvent | null {
+    const itemId = getItemId(item);
+    const path = trimmedStringValue(item.path);
+    if (!itemId) {
+      return null;
+    }
 
-    if (event.type === "item.started" && item.path) {
+    if (eventType === "item.started" && path) {
       return {
         type: "tool_use",
         timestamp: new Date(),
         data: {
           tool: "Read",
-          toolUseId: item.id,
-          input: { file_path: item.path },
+          toolUseId: itemId,
+          input: { file_path: path },
         },
       };
     }
 
-    if (event.type === "item.completed") {
+    if (eventType === "item.completed") {
+      const status = getItemStatus(item);
+      const output = nonEmptyStringValue(item.output);
+      const errorMessage = getItemErrorMessage(item);
       return {
         type: "tool_result",
         timestamp: new Date(),
         data: {
-          toolUseId: item.id,
-          result: "File read completed",
-          isError: false,
+          tool: "Read",
+          toolUseId: itemId,
+          input: path ? { file_path: path } : {},
+          result:
+            combineResultWithError(output, errorMessage) ??
+            (isFailedStatus(status)
+              ? `File read ${status}`
+              : "File read completed"),
+          isError: isFailedStatus(status) || errorMessage !== undefined,
         },
       };
     }
@@ -290,41 +940,73 @@ export class CodexEventParser {
     return null;
   }
 
-  private static parseFileChange(item: CodexItem): ParsedEvent | null {
-    if (!item.changes || item.changes.length === 0) {
+  private static parseFileChange(item: JsonRecord): ParsedEvent | null {
+    const status = getItemStatus(item);
+    const errorMessage = getItemErrorMessage(item);
+    const lines = Array.isArray(item.changes)
+      ? item.changes
+          .slice(0, MAX_FORMATTED_FILE_CHANGES)
+          .map((change) => {
+            const changeRecord = asRecord(change);
+            if (!changeRecord) {
+              return undefined;
+            }
+            const path = trimmedStringValue(changeRecord.path);
+            if (!path) {
+              return undefined;
+            }
+            const action = formatFileChangeAction(
+              trimmedStringValue(changeRecord.kind),
+            );
+            return `${action}: ${path}`;
+          })
+          .filter((line): line is string => {
+            return line !== undefined;
+          })
+      : [];
+    if (
+      Array.isArray(item.changes) &&
+      item.changes.length > MAX_FORMATTED_FILE_CHANGES
+    ) {
+      lines.push(
+        `... +${item.changes.length - MAX_FORMATTED_FILE_CHANGES} more changes`,
+      );
+    }
+
+    if (lines.length === 0 && !isFailedStatus(status) && !errorMessage) {
       return null;
     }
 
-    const changes = item.changes
-      .map((c) => {
-        const action =
-          c.kind === "add"
-            ? "Created"
-            : c.kind === "modify"
-              ? "Modified"
-              : "Deleted";
-        return `${action}: ${c.path}`;
-      })
-      .join("\n");
-
+    const statusLine = isFailedStatus(status) ? `Status: ${status}` : undefined;
+    const errorLine = errorMessage ? `Error: ${errorMessage}` : undefined;
     return {
       type: "text",
       timestamp: new Date(),
-      data: { text: `[files]\n${changes}` },
+      data: {
+        text: ["[files]", statusLine, errorLine, ...lines]
+          .filter((line): line is string => {
+            return line !== undefined && line.length > 0;
+          })
+          .join("\n"),
+      },
     };
   }
 
-  private static parseErrorEvent(event: ErrorEvent): ParsedEvent | null {
+  private static parseErrorEvent(event: JsonRecord): ParsedEvent | null {
+    const turn = getTurnRecord(event);
+    const turnId = getTurnId(event);
+    const hasTurnContext = turn !== null || turnId !== undefined;
     return {
       type: "result",
       timestamp: new Date(),
       data: {
         success: false,
-        result: event.message || event.error || "Unknown error",
-        durationMs: 0,
-        numTurns: 0,
+        result: getTurnErrorMessage(event, turn) ?? "Unknown error",
+        durationMs: getTurnDurationMs(event, turn),
+        numTurns: hasTurnContext ? 1 : 0,
         cost: 0,
-        usage: {},
+        usage: getUsage(event),
+        ...(turnId ? { turnId } : {}),
       },
     };
   }
