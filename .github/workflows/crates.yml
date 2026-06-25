@@ -1522,12 +1522,24 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true \
+            || fail "failed to start balloon service"
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 360 && echo done' &
           SUBMIT_PID=$!
+
+          # Helper: fail fast if the keepalive job exits before the balloon
+          # assertions finish. Otherwise a dead sandbox can look like
+          # actual_mib=0 and produce misleading follow-on failures.
+          ensure_submit_running() {
+            if ! kill -0 "$SUBMIT_PID" 2>/dev/null; then
+              wait "$SUBMIT_PID" 2>/dev/null || true
+              SUBMIT_PID=""
+              fail "keepalive submit exited before balloon test completed"
+            fi
+          }
 
           # Wait for sandbox control socket. Socket and api.sock paths use
           # sandbox_id (distinct from run_id after #9552). `runner exec`
@@ -1535,6 +1547,7 @@ jobs:
           # is what we need here.
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
+            ensure_submit_running
             SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
               "$RUNNER_DIR/status.json" 2>/dev/null)
             [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
@@ -1569,17 +1582,6 @@ jobs:
           # Helper: check if VM is still alive
           vm_alive() {
             sudo curl -sf --unix-socket "$API_SOCK" http://localhost/ >/dev/null 2>&1
-          }
-
-          # Helper: fail fast if the keepalive job exits before the balloon
-          # assertions finish. Otherwise a dead sandbox can look like
-          # actual_mib=0 and produce misleading follow-on failures.
-          ensure_submit_running() {
-            if ! kill -0 "$SUBMIT_PID" 2>/dev/null; then
-              wait "$SUBMIT_PID" 2>/dev/null || true
-              SUBMIT_PID=""
-              fail "keepalive submit exited before balloon test completed"
-            fi
           }
 
           # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
