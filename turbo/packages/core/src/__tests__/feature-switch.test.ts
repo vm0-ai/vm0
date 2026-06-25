@@ -28,6 +28,9 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -128,6 +131,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
+      false,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -142,6 +148,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {
