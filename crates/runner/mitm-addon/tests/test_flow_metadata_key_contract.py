@@ -414,6 +414,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return any(self._is_metadata_alias_value(value) for value in node.values)
         if isinstance(node, ast.Await):
             return self._is_metadata_alias_value(node.value)
+        if isinstance(node, ast.UnaryOp) and not isinstance(node.op, ast.Not):
+            return self._is_metadata_alias_value(node.operand)
         return (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
@@ -1468,6 +1470,9 @@ async def await_metadata_merge():
     return await (flow.metadata | {"vm_proxy_log_path": "proxy.jsonl"})
 async def await_metadata_precedence_merge():
     await flow.metadata | {"vm_run_id": "run-1"}
+value = +flow.metadata | {"firewall_base": "https://api.example.com"}
+value = -flow.metadata | {"firewall_action": "ALLOW"}
+value = ~flow.metadata | {"firewall_error": "auth_failed"}
 value = not (flow.metadata | {"auth_cache_hit": False})
 value = other == (flow.metadata | {"firewall_name": "github"})
 value = (flow.metadata | {"firewall_api_id": "run-1:0"}).items
@@ -1571,7 +1576,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 140
+    assert len(violations) == 143
     assert all("use metadata_keys." in violation for violation in violations)
 
 
