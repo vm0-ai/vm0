@@ -436,6 +436,11 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::ProviderOverloaded);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_result_provider_stream_timeout(source, &normalized)
+    {
+        return Some(FailureReason::ProviderStreamTimeout);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_provider_server_error(source, &normalized)
     {
         return Some(FailureReason::ProviderServerError);
@@ -504,6 +509,12 @@ fn is_claude_result_simple_provider_overloaded_error(
     normalized: &str,
 ) -> bool {
     source == FailureDetailSource::ClaudeResult && normalized.trim() == "api error: overloaded"
+}
+
+fn is_claude_result_provider_stream_timeout(source: FailureDetailSource, normalized: &str) -> bool {
+    source == FailureDetailSource::ClaudeResult
+        && normalized.contains("api error: stream idle timeout")
+        && normalized.contains("partial response received")
 }
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
@@ -1604,11 +1615,44 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_claude_result_stream_idle_timeout() {
+    fn cli_failure_reason_classifies_claude_result_stream_idle_timeout() {
         let reason = super::classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             FailureDetailSource::ClaudeResult,
             "API Error: Stream idle timeout - partial response received",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_stream_idle_timeout_from_stderr() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::Stderr,
+            "API Error: Stream idle timeout - partial response received",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_stream_idle_timeout() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::ClaudeResult,
+            "API Error: Stream idle timeout - partial response received",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_claude_timeout() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            "API Error: request timed out",
         );
 
         assert_eq!(reason, None);
