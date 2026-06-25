@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.18...runner-rs-v0.129.19) (2026-06-25)
+
+
+### Refactoring
+
+* **mitm-addon:** centralize webhook retry handling ([#18901](https://github.com/vm0-ai/vm0/issues/18901)) ([a0c096f](https://github.com/vm0-ai/vm0/commit/a0c096fe40b67864d24d38851f2e22f65267ce6b))
+
 ## [0.129.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.17...runner-rs-v0.129.18) (2026-06-25)
 
 

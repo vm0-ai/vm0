@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.178.1](https://github.com/vm0-ai/vm0/compare/api-v1.178.0...api-v1.178.1) (2026-06-25)
+
+
+### Performance Improvements
+
+* **api:** split runner job queue persistence timing ([#18892](https://github.com/vm0-ai/vm0/issues/18892)) ([be15828](https://github.com/vm0-ai/vm0/commit/be1582845c5b01c96441c303956ac6b3c65d4698))
+
 ## [1.178.0](https://github.com/vm0-ai/vm0/compare/api-v1.177.2...api-v1.178.0) (2026-06-25)
 
 
