@@ -1261,7 +1261,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("uses Figma personal access tokens in the X-Figma-Token firewall header", async () => {
+  it("uses the builtin Figma firewall for personal access tokens", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -1294,12 +1294,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).toMatchObject({ FIGMA_TOKEN: "figma" });
 
     const figmaEntry = findFirewallEntry(claim.firewalls, "figma");
-    expect(figmaEntry?.kind).toBe("inline");
-    expect(
-      inlineFirewallApis(claim.firewalls, "figma")[0]?.auth.headers,
-    ).toStrictEqual({
-      "X-Figma-Token": figmaTokenTemplate,
-    });
+    expect(figmaEntry).toStrictEqual({ kind: "builtin", name: "figma" });
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected the figma claim to carry encrypted secrets");

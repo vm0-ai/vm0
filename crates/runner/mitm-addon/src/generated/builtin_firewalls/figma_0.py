@@ -8,7 +8,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "Authorization": "Bearer ${{ secrets.FIGMA_TOKEN }}"
+          "X-Figma-Token": "${{ secrets.FIGMA_TOKEN }}"
         }
       },
       "base": "https://api.figma.com",
