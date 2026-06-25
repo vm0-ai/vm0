@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.12](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.11...sandbox-v0.19.12) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+
 ## [0.19.11](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.10...sandbox-v0.19.11) (2026-06-23)
 
 

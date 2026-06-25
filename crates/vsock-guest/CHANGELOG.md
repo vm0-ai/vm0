@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.5...vsock-guest-v0.19.6) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+
 ## [0.19.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.4...vsock-guest-v0.19.5) (2026-06-23)
 
 ## [0.19.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.3...vsock-guest-v0.19.4) (2026-06-23)
