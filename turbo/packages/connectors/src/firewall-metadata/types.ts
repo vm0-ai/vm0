@@ -52,3 +52,29 @@ export interface FirewallPermissionDetailMetadata {
   readonly categories?: FirewallPermissionCategoryMetadata;
   readonly defaultPolicy: FirewallPermissionDefaultPolicyMetadata;
 }
+
+export interface FirewallRoutingRouteMetadata {
+  readonly permissionName: string;
+  readonly rule: string;
+}
+
+export interface FirewallRoutingIndexApiMetadata {
+  readonly base: string;
+}
+
+export interface FirewallRoutingIndexMetadata {
+  readonly type: ConnectorType;
+  readonly label: string;
+  readonly apis: readonly FirewallRoutingIndexApiMetadata[];
+}
+
+export interface FirewallRoutingApiMetadata {
+  readonly base: string;
+  readonly routes: readonly FirewallRoutingRouteMetadata[];
+}
+
+export interface FirewallRoutingMetadata {
+  readonly type: ConnectorType;
+  readonly label: string;
+  readonly apis: readonly FirewallRoutingApiMetadata[];
+}

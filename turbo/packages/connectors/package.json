@@ -48,9 +48,9 @@
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
     },
-    "./firewall-routing-metadata": {
-      "import": "./src/firewall-routing-metadata/index.ts",
-      "types": "./src/firewall-routing-metadata/index.ts"
+    "./firewall-metadata/routing": {
+      "import": "./src/firewall-metadata/routing.ts",
+      "types": "./src/firewall-metadata/routing.ts"
     },
     "./firewalls": null,
     "./firewalls/runtime": {

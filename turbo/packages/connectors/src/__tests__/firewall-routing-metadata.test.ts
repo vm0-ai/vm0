@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "../firewall-metadata";
 import {
   FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES,
+  getFirewallRoutingIndexMetadata,
   isFirewallRoutingMetadataConnectorType,
   loadFirewallRoutingMetadata,
   type FirewallRoutingMetadata,
-} from "../firewall-routing-metadata";
+} from "../firewall-metadata/routing";
 import type { FirewallConfig } from "../firewall-types";
 import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
 
@@ -70,11 +71,13 @@ function runtimeRoutingProjection(
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
-        permissions: (api.permissions ?? []).map((permission) => {
-          return {
-            name: permission.name,
-            rules: [...permission.rules],
-          };
+        routes: (api.permissions ?? []).flatMap((permission) => {
+          return permission.rules.map((rule) => {
+            return {
+              permissionName: permission.name,
+              rule,
+            };
+          });
         }),
       };
     }),
@@ -104,11 +107,51 @@ describe("firewall routing metadata", () => {
       "utf-8",
     );
 
-    expect(packageJson.exports["./firewall-routing-metadata"]).toStrictEqual({
-      import: "./src/firewall-routing-metadata/index.ts",
-      types: "./src/firewall-routing-metadata/index.ts",
+    const routingEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-metadata/routing.ts"),
+      "utf-8",
+    );
+    const routingIndexGenerated = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../firewall-metadata/routing-index.generated.ts",
+      ),
+      "utf-8",
+    );
+    const routingLoaderGenerated = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../firewall-metadata/routing-loader.generated.ts",
+      ),
+      "utf-8",
+    );
+
+    expect(packageJson.exports["./firewall-metadata/routing"]).toStrictEqual({
+      import: "./src/firewall-metadata/routing.ts",
+      types: "./src/firewall-metadata/routing.ts",
     });
-    expect(rootEntrypoint).not.toContain("firewall-routing-metadata");
+    expect(packageJson.exports).not.toHaveProperty(
+      "./firewall-routing-metadata",
+    );
+    expect(rootEntrypoint).not.toContain("firewall-metadata/routing");
+    expect(routingEntrypoint).toContain("./routing-index.generated");
+    expect(routingEntrypoint).toContain("./routing-loader.generated");
+    expect(routingEntrypoint).not.toContain("./routing.generated");
+    expect(routingEntrypoint).not.toContain("import(");
+    expect(routingEntrypoint).not.toContain("loadAll");
+    expect(routingIndexGenerated).toContain("FIREWALL_ROUTING_METADATA_INDEX");
+    expect(routingIndexGenerated).not.toContain("import(");
+    expect(routingIndexGenerated).not.toContain('"routes"');
+    expect(routingIndexGenerated).not.toContain('"permissionName"');
+    expect(routingIndexGenerated).not.toContain('"rule"');
+    expect(routingLoaderGenerated).toContain(
+      "loadGeneratedFirewallRoutingMetadata",
+    );
+    expect(routingLoaderGenerated).toContain(
+      "./routing-details/slack.generated",
+    );
+    expect(routingLoaderGenerated).toContain("Object.create(null)");
+    expect(routingLoaderGenerated).not.toContain("loadAll");
   });
 
   it("keeps the routing manifest synchronized with generated permission metadata", () => {
@@ -119,7 +162,7 @@ describe("firewall routing metadata", () => {
     );
   });
 
-  it("loads and caches generated routing metadata", async () => {
+  it("gets generated routing metadata", async () => {
     expect(isFirewallRoutingMetadataConnectorType("slack")).toBe(true);
     for (const unknownType of [
       "cloudinary",
@@ -128,33 +171,35 @@ describe("firewall routing metadata", () => {
       "toString",
     ]) {
       expect(isFirewallRoutingMetadataConnectorType(unknownType)).toBe(false);
+      expect(getFirewallRoutingIndexMetadata(unknownType)).toBeNull();
       await expect(
         loadFirewallRoutingMetadata(unknownType),
       ).resolves.toBeNull();
     }
 
-    const [firstSlack, secondSlack] = await Promise.all([
-      loadFirewallRoutingMetadata("slack"),
-      loadFirewallRoutingMetadata("slack"),
-    ]);
-    expect(firstSlack).toBe(secondSlack);
-    expect(firstSlack).not.toBeNull();
-    expect(firstSlack!.type).toBe("slack");
-    expect(firstSlack!.label).toBe("Slack");
-    expect(firstSlack!.apis.length).toBeGreaterThan(1);
+    const slack = getFirewallRoutingIndexMetadata("slack");
+    expect(slack).not.toBeNull();
+    expect(slack!.type).toBe("slack");
+    expect(slack!.label).toBe("Slack");
+    expect(slack!.apis.length).toBeGreaterThan(1);
     expect(
-      firstSlack!.apis.map((api) => {
+      slack!.apis.map((api) => {
         return api.base;
       }),
     ).toContain("https://slack.com/api");
     expect(
-      firstSlack!.apis.map((api) => {
+      slack!.apis.map((api) => {
         return api.base;
       }),
     ).toContain("https://files.slack.com");
 
-    const repeatedSlack = await loadFirewallRoutingMetadata("slack");
-    expect(repeatedSlack).toBe(firstSlack);
+    const slackDetail = await loadFirewallRoutingMetadata("slack");
+    expect(slackDetail).not.toBeNull();
+    expect(
+      slackDetail!.apis.flatMap((api) => {
+        return api.routes;
+      }).length,
+    ).toBeGreaterThan(100);
   });
 
   it("preserves route-only data from runtime firewall configs", async () => {
@@ -166,23 +211,19 @@ describe("firewall routing metadata", () => {
   });
 
   it("represents large and shared routing surfaces", async () => {
-    const [googleCloud, stripe, cloudflare] = await Promise.all([
-      loadRequiredRoutingMetadata("google-cloud"),
-      loadRequiredRoutingMetadata("stripe"),
-      loadRequiredRoutingMetadata("cloudflare"),
-    ]);
+    const googleCloud = await loadRequiredRoutingMetadata("google-cloud");
+    const stripe = await loadRequiredRoutingMetadata("stripe");
+    const cloudflare = await loadRequiredRoutingMetadata("cloudflare");
 
     expect(googleCloud.apis.length).toBeGreaterThan(10);
     expect(
       stripe.apis.flatMap((api) => {
-        return api.permissions;
+        return api.routes;
       }).length,
     ).toBeGreaterThan(100);
     expect(
       cloudflare.apis.flatMap((api) => {
-        return api.permissions.flatMap((permission) => {
-          return permission.rules;
-        });
+        return api.routes;
       }).length,
     ).toBeGreaterThan(100);
 
@@ -196,8 +237,8 @@ describe("firewall routing metadata", () => {
       const apiCounts = new Map<string, number>();
       for (const api of metadata.apis) {
         const names = new Set(
-          api.permissions.map((permission) => {
-            return permission.name;
+          api.routes.map((route) => {
+            return route.permissionName;
           }),
         );
         for (const name of names) {

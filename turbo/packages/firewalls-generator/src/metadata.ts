@@ -13,8 +13,9 @@ import type {
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
   FirewallPermissionSummaryMetadata,
+  FirewallRoutingIndexMetadata,
+  FirewallRoutingMetadata,
 } from "../../connectors/src/firewall-metadata/types";
-import type { FirewallRoutingMetadata } from "../../connectors/src/firewall-routing-metadata/types";
 import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
   generatedFirewallFileName,
@@ -86,14 +87,14 @@ function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
   return `./details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
 }
 
-function generatedRuntimeModuleSpecifier(type: FirewallConnectorType): string {
-  return `./${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
-}
-
 function generatedRoutingDetailModuleSpecifier(
   type: FirewallConnectorType,
 ): string {
-  return `./details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+  return `./routing-details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+}
+
+function generatedRuntimeModuleSpecifier(type: FirewallConnectorType): string {
+  return `./${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function replaceGeneratedPath(
@@ -494,12 +495,28 @@ function buildRoutingMetadata(
     apis: source.firewall.apis.map((api) => {
       return {
         base: api.base,
-        permissions: (api.permissions ?? []).map((permission) => {
-          return {
-            name: permission.name,
-            rules: [...permission.rules],
-          };
+        routes: (api.permissions ?? []).flatMap((permission) => {
+          return permission.rules.map((rule) => {
+            return {
+              permissionName: permission.name,
+              rule,
+            };
+          });
         }),
+      };
+    }),
+  };
+}
+
+function buildRoutingIndexMetadata(
+  source: ConnectorFirewallSource,
+): FirewallRoutingIndexMetadata {
+  return {
+    type: source.type as FirewallConnectorType & ConnectorType,
+    label: source.label,
+    apis: source.firewall.apis.map((api) => {
+      return {
+        base: api.base,
       };
     }),
   };
@@ -516,6 +533,15 @@ function renderRoutingDetailFile(metadata: FirewallRoutingMetadata): string {
   return `${generatedHeader()}import type { FirewallRoutingMetadata } from "../types";
 
 export const firewallRoutingMetadata = ${stableJson(metadata)} as const satisfies FirewallRoutingMetadata;
+`;
+}
+
+function renderRoutingIndexFile(
+  metadata: Record<string, FirewallRoutingIndexMetadata>,
+): string {
+  return `${generatedHeader()}import type { FirewallRoutingIndexMetadata } from "./types";
+
+export const FIREWALL_ROUTING_METADATA_INDEX = ${stableJson(metadata)} as const satisfies Readonly<Record<string, FirewallRoutingIndexMetadata>>;
 `;
 }
 
@@ -575,6 +601,37 @@ export async function loadGeneratedFirewallPermissionMetadata(
 `;
 }
 
+function renderRoutingLoaderFile(
+  types: readonly FirewallConnectorType[],
+): string {
+  const loaderEntries = types.map((type): LazyLoaderEntry => {
+    return {
+      key: type,
+      moduleSpecifier: generatedRoutingDetailModuleSpecifier(type),
+      exportName: "firewallRoutingMetadata",
+    };
+  });
+
+  return `${generatedHeader()}import type { FirewallRoutingMetadata } from "./types";
+
+${renderLazyLoaderRecord({
+  constName: "FIREWALL_ROUTING_METADATA_LOADERS",
+  recordType: "Record<string, () => Promise<FirewallRoutingMetadata>>",
+  entries: loaderEntries,
+})}
+
+export async function loadGeneratedFirewallRoutingMetadata(
+  type: string,
+): Promise<FirewallRoutingMetadata | null> {
+  const load = FIREWALL_ROUTING_METADATA_LOADERS[type];
+  if (!load) {
+    return null;
+  }
+  return await load();
+}
+`;
+}
+
 function renderRuntimeLoaderFile(
   sources: readonly ConnectorFirewallSource[],
 ): string {
@@ -626,55 +683,6 @@ export async function loadGeneratedRuntimeFirewall(
 `;
 }
 
-function renderRoutingLoaderFile(
-  types: readonly FirewallConnectorType[],
-): string {
-  const connectorTypes = types
-    .map((type) => {
-      return `  ${JSON.stringify(type)},`;
-    })
-    .join("\n");
-  const loaderEntries = types.map((type): LazyLoaderEntry => {
-    return {
-      key: type,
-      moduleSpecifier: generatedRoutingDetailModuleSpecifier(type),
-      exportName: "firewallRoutingMetadata",
-    };
-  });
-
-  return `${generatedHeader()}import type { FirewallRoutingMetadata } from "./types";
-
-export const FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES = [
-${connectorTypes}
-] as const;
-
-export type GeneratedFirewallRoutingMetadataConnectorType =
-  (typeof FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES)[number];
-
-${renderLazyLoaderRecord({
-  constName: "FIREWALL_ROUTING_METADATA_LOADERS",
-  recordType:
-    "Record<GeneratedFirewallRoutingMetadataConnectorType, () => Promise<FirewallRoutingMetadata>>",
-  entries: loaderEntries,
-})}
-
-export function hasGeneratedFirewallRoutingMetadata(
-  type: string,
-): type is GeneratedFirewallRoutingMetadataConnectorType {
-  return Object.prototype.hasOwnProperty.call(
-    FIREWALL_ROUTING_METADATA_LOADERS,
-    type,
-  );
-}
-
-export async function loadGeneratedFirewallRoutingMetadata(
-  type: GeneratedFirewallRoutingMetadataConnectorType,
-): Promise<FirewallRoutingMetadata> {
-  return await FIREWALL_ROUTING_METADATA_LOADERS[type]();
-}
-`;
-}
-
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -690,20 +698,18 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
   );
-  const routingOutputDir = path.resolve(
-    import.meta.dirname,
-    "../../connectors/src/firewall-routing-metadata",
-  );
   const summaryFile = path.join(outputDir, "summary.generated.ts");
   const loaderFile = path.join(outputDir, "loader.generated.ts");
+  const routingIndexFile = path.join(outputDir, "routing-index.generated.ts");
+  const routingLoaderFile = path.join(outputDir, "routing-loader.generated.ts");
+  const obsoleteRoutingFile = path.join(outputDir, "routing.generated.ts");
   const serverFile = path.join(outputDir, "server.generated.ts");
   const serverExecutionFile = path.join(
     outputDir,
     "server-execution.generated.ts",
   );
   const detailsDir = path.join(outputDir, "details");
-  const routingLoaderFile = path.join(routingOutputDir, "loader.generated.ts");
-  const routingDetailsDir = path.join(routingOutputDir, "details");
+  const routingDetailsDir = path.join(outputDir, "routing-details");
   const runtimeLoaderFile = path.join(
     firewallsDir,
     "runtime-loader.generated.ts",
@@ -715,6 +721,7 @@ export async function generateFirewallMetadata(): Promise<void> {
       connectorsDir,
     });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
+  const routingIndexMetadata: Record<string, FirewallRoutingIndexMetadata> = {};
   const executionMetadata: Record<string, FirewallExecutionMetadata> = {};
   const permissionDetails: {
     readonly type: FirewallConnectorType;
@@ -728,16 +735,16 @@ export async function generateFirewallMetadata(): Promise<void> {
   for (const source of sources) {
     const detail = buildDetailMetadata(source);
     const executionDetail = buildExecutionMetadata(source, billableTypes);
-    const routingDetail = buildRoutingMetadata(source);
     summaries[source.type] = buildSummaryMetadata(detail);
     executionMetadata[source.type] = executionDetail;
     permissionDetails.push({
       type: source.type,
       content: renderDetailFile(detail),
     });
+    routingIndexMetadata[source.type] = buildRoutingIndexMetadata(source);
     routingDetails.push({
       type: source.type,
-      content: renderRoutingDetailFile(routingDetail),
+      content: renderRoutingDetailFile(buildRoutingMetadata(source)),
     });
   }
 
@@ -762,6 +769,18 @@ export async function generateFirewallMetadata(): Promise<void> {
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
+    path.join(nextOutputDir, "routing-index.generated.ts"),
+    renderRoutingIndexFile(routingIndexMetadata),
+  );
+  writeGeneratedFile(
+    path.join(nextOutputDir, "routing-loader.generated.ts"),
+    renderRoutingLoaderFile(
+      sources.map((source) => {
+        return source.type;
+      }),
+    ),
+  );
+  writeGeneratedFile(
     path.join(nextOutputDir, "server-execution.generated.ts"),
     renderServerExecutionFile(executionMetadata),
   );
@@ -780,14 +799,6 @@ export async function generateFirewallMetadata(): Promise<void> {
   writeGeneratedFile(
     path.join(nextOutputDir, "runtime-loader.generated.ts"),
     renderRuntimeLoaderFile(sources),
-  );
-  writeGeneratedFile(
-    path.join(nextOutputDir, "routing-loader.generated.ts"),
-    renderRoutingLoaderFile(
-      sources.map((source) => {
-        return source.type;
-      }),
-    ),
   );
 
   const replacements: GeneratedPathReplacement[] = [];
@@ -810,6 +821,18 @@ export async function generateFirewallMetadata(): Promise<void> {
     );
     replacements.push(
       replaceGeneratedPath(
+        routingIndexFile,
+        path.join(nextOutputDir, "routing-index.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        routingLoaderFile,
+        path.join(nextOutputDir, "routing-loader.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
         serverFile,
         path.join(nextOutputDir, "server.generated.ts"),
       ),
@@ -826,12 +849,6 @@ export async function generateFirewallMetadata(): Promise<void> {
         path.join(nextOutputDir, "runtime-loader.generated.ts"),
       ),
     );
-    replacements.push(
-      replaceGeneratedPath(
-        routingLoaderFile,
-        path.join(nextOutputDir, "routing-loader.generated.ts"),
-      ),
-    );
   } catch (error) {
     rollbackGeneratedReplacements(replacements);
     throw error;
@@ -842,6 +859,7 @@ export async function generateFirewallMetadata(): Promise<void> {
   for (const replacement of replacements) {
     replacement.commit();
   }
+  fs.rmSync(obsoleteRoutingFile, { force: true });
 
   console.error(`  Written ${sources.length} metadata detail files`);
 }
