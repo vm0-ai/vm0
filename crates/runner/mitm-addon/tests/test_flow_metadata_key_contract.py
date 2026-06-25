@@ -86,33 +86,61 @@ def _argument_annotations(args: ast.arguments) -> list[ast.expr]:
 
 
 def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AST]:
-    if index >= len(args):
-        return []
-    argument = args[index]
-    if isinstance(argument, ast.Starred):
-        return _static_starred_argument_nodes(argument.value)
-    return [argument]
+    result: list[ast.AST] = []
+    consumed_counts = [0]
+    for argument in args:
+        next_consumed_counts: list[int] = []
+        if isinstance(argument, ast.Starred):
+            expansions = _static_starred_argument_expansions(argument.value)
+            if expansions is None:
+                next_consumed_counts.extend(
+                    consumed for consumed in consumed_counts if consumed > index
+                )
+            else:
+                for consumed in consumed_counts:
+                    for expansion in expansions:
+                        for offset, expanded_argument in enumerate(expansion):
+                            if consumed + offset == index:
+                                result.append(expanded_argument)
+                        next_consumed_counts.append(consumed + len(expansion))
+        else:
+            for consumed in consumed_counts:
+                if consumed == index:
+                    result.append(argument)
+                next_consumed_counts.append(consumed + 1)
+        consumed_counts = next_consumed_counts
+    return result
 
 
-def _static_starred_argument_nodes(node: ast.AST) -> list[ast.AST]:
+def _static_starred_argument_expansions(node: ast.AST) -> list[list[ast.AST]] | None:
     if isinstance(node, ast.NamedExpr):
-        return _static_starred_argument_nodes(node.value)
+        return _static_starred_argument_expansions(node.value)
     if isinstance(node, ast.IfExp):
         return [
-            *_static_starred_argument_nodes(node.body),
-            *_static_starred_argument_nodes(node.orelse),
+            *(_static_starred_argument_expansions(node.body) or []),
+            *(_static_starred_argument_expansions(node.orelse) or []),
         ]
     if isinstance(node, ast.BoolOp):
-        nodes: list[ast.AST] = []
+        expansions: list[list[ast.AST]] = []
         for value in node.values:
-            nodes.extend(_static_starred_argument_nodes(value))
-        return nodes
-    if not isinstance(node, ast.List | ast.Tuple) or not node.elts:
-        return []
-    first_arg = node.elts[0]
-    if isinstance(first_arg, ast.Starred):
-        return _static_starred_argument_nodes(first_arg.value)
-    return [first_arg]
+            value_expansions = _static_starred_argument_expansions(value)
+            if value_expansions is not None:
+                expansions.extend(value_expansions)
+        return expansions
+    if not isinstance(node, ast.List | ast.Tuple):
+        return None
+    expansions = [[]]
+    for element in node.elts:
+        if isinstance(element, ast.Starred):
+            nested_expansions = _static_starred_argument_expansions(element.value)
+            if nested_expansions is None:
+                return None
+            expansions = [
+                [*prefix, *nested] for prefix in expansions for nested in nested_expansions
+            ]
+        else:
+            expansions = [[*prefix, element] for prefix in expansions]
+    return expansions
 
 
 def _type_params(node: ast.AST) -> list[ast.AST]:
@@ -1610,6 +1638,11 @@ flow.metadata = dict(*[{"firewall_permission": "read"}])
 flow.metadata.get(*["firewall_base"])
 flow.metadata.update(dict.fromkeys(*[["firewall_error"], "auth_failed"]))
 flow.metadata.update(dict.fromkeys(*[["auth_cache_hit"]], False))
+flow.metadata.update(*[], {"vm_run_id": "run-1"})
+flow.metadata.update(*[], [("firewall_name", "github")])
+flow.metadata = dict(*[], {"firewall_action": "ALLOW"})
+flow.metadata.get(*[], "firewall_permission")
+flow.metadata.update(dict.fromkeys(*[], ["firewall_base"], "base"))
 flow.metadata.update((("firewall_action", value) for value in rows))
 flow.metadata.update([("firewall_permission", value) for value in rows])
 flow.metadata.update({("firewall_base", value) for value in rows})
@@ -1917,7 +1950,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 211
+    assert len(violations) == 216
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -2007,6 +2040,11 @@ flow.metadata = dict(*[{metadata_keys.FIREWALL_PERMISSION: "read"}])
 flow.metadata.get(*[metadata_keys.FIREWALL_BASE])
 flow.metadata.update(dict.fromkeys(*[[metadata_keys.FIREWALL_ERROR], "auth_failed"]))
 flow.metadata.update(dict.fromkeys(*[[metadata_keys.AUTH_CACHE_HIT]], False))
+flow.metadata.update(*[], {metadata_keys.VM_RUN_ID: "run-1"})
+flow.metadata.update(*[], [(metadata_keys.FIREWALL_NAME, "github")])
+flow.metadata = dict(*[], {metadata_keys.FIREWALL_ACTION: "ALLOW"})
+flow.metadata.get(*[], metadata_keys.FIREWALL_PERMISSION)
+flow.metadata.update(dict.fromkeys(*[], [metadata_keys.FIREWALL_BASE], "base"))
 flow.metadata.update(((metadata_keys.FIREWALL_ACTION, value) for value in rows))
 flow.metadata.update([(metadata_keys.FIREWALL_PERMISSION, value) for value in rows])
 flow.metadata.update({(metadata_keys.FIREWALL_BASE, value) for value in rows})
