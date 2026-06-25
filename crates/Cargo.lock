@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.86"
+version = "0.16.87"
 dependencies = [
  "libc",
  "nix",
@@ -2749,7 +2749,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.60"
+version = "0.37.61"
 dependencies = [
  "async-trait",
  "base64",
@@ -3028,7 +3028,7 @@ dependencies = [
 
 [[package]]
 name = "shell-quote"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "shlex"
@@ -3672,7 +3672,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.6"
+version = "0.19.7"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3683,7 +3683,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.42"
+version = "0.17.43"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3701,7 +3701,7 @@ version = "0.18.17"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.111"
+version = "0.9.112"
 dependencies = [
  "guest-write-file",
  "libc",
