@@ -109,8 +109,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export function isTaskEventData(data: unknown): data is TaskEventData {
   return isRecord(data) && typeof data.task_id === "string";
+}
+
+function toTaskEventData(data: TaskEventData): TaskEventData {
+  return {
+    task_id: data.task_id,
+    subtype: stringValue(data.subtype),
+    tool_use_id: stringValue(data.tool_use_id),
+    description: stringValue(data.description),
+    status: stringValue(data.status),
+    summary: stringValue(data.summary),
+    task_status: stringValue(data.task_status),
+    task_summary: stringValue(data.task_summary),
+    task_completed_at: stringValue(data.task_completed_at),
+  };
 }
 
 function toGroupingEventData(data: unknown): GroupingEventData {
@@ -388,7 +406,7 @@ interface GroupingContext {
 
 function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
   const eventData = toGroupingEventData(event.eventData);
-  const subtype = eventData.subtype;
+  const subtype = stringValue(eventData.subtype);
 
   if (subtype === "thinking_tokens") {
     return;
@@ -404,7 +422,7 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
     return;
   }
 
-  const taskData = event.eventData;
+  const taskData = toTaskEventData(event.eventData);
   const taskId = taskData.task_id;
 
   // Merge task_started + task_notification into a single row by task_id

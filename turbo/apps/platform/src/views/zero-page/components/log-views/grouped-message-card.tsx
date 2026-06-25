@@ -29,6 +29,10 @@ function MarkdownContent({ text }: { text: string }) {
   return <Markdown source={text} />;
 }
 
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 function CollapsibleText({ text }: { text: string }) {
   // Check if text is long (more than ~100 characters or contains newlines)
   const isLong = text.length > 100 || text.includes("\n");
@@ -197,8 +201,11 @@ function TaskMessageCard({
   const taskData = isTaskEventData(message.eventData)
     ? message.eventData
     : null;
-  const description = taskData?.description ?? taskData?.task_summary ?? "";
-  const taskStatus = taskData?.task_status;
+  const description =
+    stringValue(taskData?.description) ??
+    stringValue(taskData?.task_summary) ??
+    "";
+  const taskStatus = stringValue(taskData?.task_status);
   const isFailed = taskStatus === "error" || taskStatus === "failed";
   const isRunning = !taskStatus;
   const timestamp = formatEventTime(message.createdAt);
@@ -537,6 +544,26 @@ function shouldShowAssistantConnector(params: {
   // Default to solid lines - dashed lines only for same tool types
   const isDashed = false;
   return { showConnector, isDashed };
+}
+
+function countLiteralMatches(text: string, searchTerm: string): number {
+  if (!searchTerm.trim()) {
+    return 0;
+  }
+
+  const lowered = text.toLowerCase();
+  const target = searchTerm.toLowerCase();
+  let count = 0;
+  let cursor = 0;
+
+  for (;;) {
+    const idx = lowered.indexOf(target, cursor);
+    if (idx === -1) {
+      return count;
+    }
+    count += 1;
+    cursor = idx + target.length;
+  }
 }
 
 /**

@@ -260,6 +260,69 @@ function codexInspectFile(): File {
   );
 }
 
+function malformedInspectFile(): File {
+  return new File(
+    [
+      JSON.stringify({
+        meta: {
+          displayName: { nested: true },
+          status: "not-a-status",
+          triggerSource: "not-a-source",
+          prompt: { nested: true },
+          appendSystemPrompt: { nested: true },
+          createdAt: { nested: true },
+          startedAt: { nested: true },
+          completedAt: { nested: true },
+        },
+        events: [
+          null,
+          {
+            sequenceNumber: "bad-sequence",
+            eventType: "assistant",
+            eventData: {
+              message: {
+                content: [{ type: "text", text: "Invalid event is dropped." }],
+              },
+            },
+            createdAt: "2026-03-10T17:00:01Z",
+          },
+          {
+            sequenceNumber: 0,
+            eventType: "assistant",
+            eventData: {
+              message: {
+                content: [
+                  {
+                    type: "text",
+                    text: "Valid imported event survives.",
+                  },
+                ],
+              },
+            },
+            createdAt: "2026-03-10T17:00:02Z",
+          },
+        ],
+        context: { bad: true },
+        networkLogs: [
+          null,
+          {
+            timestamp: "2026-03-10T17:00:03.000Z",
+            type: "http",
+            method: "GET",
+            url: "https://example.com/imported-valid-network-log",
+          },
+          {
+            timestamp: { nested: true },
+            url: "https://example.com/invalid-network-log",
+          },
+        ],
+      }),
+    ],
+    "malformed-activity-log.json",
+    { type: "application/json" },
+  );
+}
+
 function getFileInput(): HTMLInputElement {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) {
@@ -406,6 +469,53 @@ describe("activity inspect page", () => {
           element.textContent?.includes("Inspect normalized plan") === true
         );
       }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("loads malformed imported logs without crashing", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(getFileInput(), malformedInspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Log" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(
+      screen.getByText("Valid imported event survives."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Invalid event is dropped."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+    click(getTabByText("Context"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Log" }),
+      ).toBeInTheDocument();
+    });
+
+    click(getTabByText("Network"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://example.com/imported-valid-network-log"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("https://example.com/invalid-network-log"),
     ).not.toBeInTheDocument();
   });
 });

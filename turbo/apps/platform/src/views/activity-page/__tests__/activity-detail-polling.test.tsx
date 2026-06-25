@@ -2492,6 +2492,21 @@ describe("activity detail polling", () => {
               eventData: {
                 message: {
                   content: [
+                    {
+                      type: "text",
+                      text: "Literal [ bracket assistant output",
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T16:20:04Z",
+            },
+            {
+              sequenceNumber: 4,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [
                     null,
                     1,
                     {
@@ -2518,10 +2533,10 @@ describe("activity detail polling", () => {
                   ],
                 },
               },
-              createdAt: "2026-03-10T16:20:04Z",
+              createdAt: "2026-03-10T16:20:05Z",
             },
             {
-              sequenceNumber: 4,
+              sequenceNumber: 5,
               eventType: "user",
               eventData: {
                 message: {
@@ -2537,16 +2552,16 @@ describe("activity detail polling", () => {
                 },
                 tool_use_result: { durationMs: "5", bytes: { nested: true } },
               },
-              createdAt: "2026-03-10T16:20:05Z",
-            },
-            {
-              sequenceNumber: 5,
-              eventType: "result",
-              eventData: null,
               createdAt: "2026-03-10T16:20:06Z",
             },
             {
               sequenceNumber: 6,
+              eventType: "result",
+              eventData: null,
+              createdAt: "2026-03-10T16:20:07Z",
+            },
+            {
+              sequenceNumber: 7,
               eventType: "result",
               eventData: {
                 type: "result",
@@ -2555,7 +2570,29 @@ describe("activity detail polling", () => {
                 num_turns: 1,
                 duration_ms: 100,
               },
-              createdAt: "2026-03-10T16:20:07Z",
+              createdAt: "2026-03-10T16:20:08Z",
+            },
+            {
+              sequenceNumber: 8,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "task-malformed",
+                tool_use_id: "task-tool-malformed",
+                description: { nested: true },
+              },
+              createdAt: "2026-03-10T16:20:09Z",
+            },
+            {
+              sequenceNumber: 9,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "task-malformed",
+                status: { nested: true },
+                summary: { nested: true },
+              },
+              createdAt: "2026-03-10T16:20:10Z",
             },
           ],
           hasMore: false,
@@ -2581,6 +2618,18 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Survived malformed payloads."),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+    await fill(screen.getByPlaceholderText("Search steps"), "[");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Literal [ bracket assistant output"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("normalizes codex app-server adapter events in activity details", async () => {

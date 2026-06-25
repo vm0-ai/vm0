@@ -37,6 +37,65 @@ import { Link } from "../router/link.tsx";
 
 type InspectTab = "steps" | "context" | "network";
 
+const LOG_STATUSES = [
+  "queued",
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+] as const satisfies readonly LogStatus[];
+
+const TRIGGER_SOURCES = [
+  "automation",
+  "web",
+  "slack",
+  "email",
+  "telegram",
+  "agentphone",
+  "github",
+  "cli",
+  "agent",
+  "webhook",
+  "workflow-schedule",
+  "workflow-event",
+] as const satisfies readonly TriggerSource[];
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function isLogStatus(value: unknown): value is LogStatus {
+  return (
+    typeof value === "string" &&
+    LOG_STATUSES.some((status) => {
+      return status === value;
+    })
+  );
+}
+
+function isTriggerSource(value: unknown): value is TriggerSource {
+  return (
+    typeof value === "string" &&
+    TRIGGER_SOURCES.some((source) => {
+      return source === value;
+    })
+  );
+}
+
+function logStatusValue(value: unknown): LogStatus {
+  return isLogStatus(value) ? value : "completed";
+}
+
+function triggerSourceValue(value: unknown): TriggerSource | null {
+  return isTriggerSource(value) ? value : null;
+}
+
 function InspectBreadcrumb({ title }: { title: string }) {
   return (
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
@@ -93,33 +152,34 @@ function InspectEmptyState() {
 
 function buildInspectDetail(meta: InspectLogData["meta"]) {
   return {
-    id: meta?.id ?? "inspect",
-    modelProvider: meta?.modelProvider ?? null,
-    selectedModel: meta?.selectedModel ?? null,
-    framework: meta?.framework ?? null,
-    error: meta?.error ?? null,
-    automationId: meta?.automationId ?? null,
+    id: stringValue(meta?.id) ?? "inspect",
+    modelProvider: nullableStringValue(meta?.modelProvider),
+    selectedModel: nullableStringValue(meta?.selectedModel),
+    framework: nullableStringValue(meta?.framework),
+    error: nullableStringValue(meta?.error),
+    automationId: nullableStringValue(meta?.automationId),
   };
 }
 
 function prepareInspectData(data: InspectLogData) {
   const { meta, events } = data;
   const detail = buildInspectDetail(meta);
+  const createdAt = stringValue(meta?.createdAt);
 
   return {
     events,
-    displayName: meta?.displayName ?? "Imported Log",
-    status: (meta?.status as LogStatus) ?? ("completed" as const),
-    triggerSource: (meta?.triggerSource as TriggerSource) ?? null,
-    triggerAgentName: meta?.triggerAgentName ?? null,
+    displayName: stringValue(meta?.displayName) ?? "Imported Log",
+    status: logStatusValue(meta?.status),
+    triggerSource: triggerSourceValue(meta?.triggerSource),
+    triggerAgentName: nullableStringValue(meta?.triggerAgentName),
     detail,
     duration: formatDuration(
-      meta?.startedAt ?? null,
-      meta?.completedAt ?? null,
+      nullableStringValue(meta?.startedAt),
+      nullableStringValue(meta?.completedAt),
     ),
-    time: meta?.createdAt ? formatLogTime(meta.createdAt) : "—",
-    prompt: meta?.prompt ?? "",
-    appendSystemPrompt: meta?.appendSystemPrompt ?? "",
+    time: createdAt ? formatLogTime(createdAt) : "—",
+    prompt: stringValue(meta?.prompt) ?? "",
+    appendSystemPrompt: stringValue(meta?.appendSystemPrompt) ?? "",
   };
 }
 
