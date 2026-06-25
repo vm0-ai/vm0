@@ -78,7 +78,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_firewall_rewrite_forwarding.py` | Firewall auth URL rewrite forwarding behavior |
 | `test_firewall_rewrite_safety.py` | Firewall auth URL rewrite fail-closed and safety behavior |
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
-| `test_url_utils.py` | URL reconstruction and rewrite utility cases |
+| `test_url_utils.py` | Rewrite URL, path, query, and auth-base URL utility cases |
+| `test_url_utils_trusted_authority.py` | Trusted request authority success and URL reconstruction |
+| `test_url_utils_trusted_authority_rejection.py` | Trusted request authority rejection matrices |
 | `test_auth_cache.py` | Firewall auth cache behavior |
 | `test_body_capture_decompression.py` | Capture-level body decompression integration |
 | `test_body_capture_encoding.py` | Body capture text detection, encoding, and UTF-8 truncation helpers |
@@ -102,7 +104,6 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
 | `test_webhook.py` | Usage webhook delivery |
 | `test_counters.py` | Usage pending counters |
-| `test_utils.py` | Utility functions |
 
 ## Patterns
 
