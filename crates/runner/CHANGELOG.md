@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.129.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.17...runner-rs-v0.129.18) (2026-06-25)
+
+
+### Bug Fixes
+
+* **runner:** downgrade claude overload result logs ([#18890](https://github.com/vm0-ai/vm0/issues/18890)) ([2751ac3](https://github.com/vm0-ai/vm0/commit/2751ac3631d328965a032a20e6b51dd0a8e358cb))
+
+
+### Refactoring
+
+* **runner:** split proxy module by boundary ([#18885](https://github.com/vm0-ai/vm0/issues/18885)) ([f6b45b1](https://github.com/vm0-ai/vm0/commit/f6b45b190c2e8c13d802910197bc6226fe66b5ad))
+
 ## [0.129.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.16...runner-rs-v0.129.17) (2026-06-25)
 
 

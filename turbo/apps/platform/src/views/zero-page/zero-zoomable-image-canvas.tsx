@@ -1,36 +1,23 @@
-import type { CSSProperties, ReactNode, Ref } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+  Ref,
+  SyntheticEvent,
+} from "react";
 import { useGet, useSet } from "ccstate-react";
-import {
-  TransformComponent,
-  TransformWrapper,
-  type ReactZoomPanPinchContentRef,
-  type ReactZoomPanPinchRef,
-} from "react-zoom-pan-pinch";
 import { cn } from "@vm0/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
   resetZoomableImageCanvasZoom$,
+  setZoomableImageCanvasFitWidth$,
   setZoomableImageCanvasZoom$,
+  zoomableImageCanvasFitWidthByKey$,
+  zoomableImageCanvasWheelRef$,
   zoomableImageCanvasZoomByKey$,
 } from "../../signals/view-component-state.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
-const IMAGE_ZOOM_ANIMATION_MS = 180;
-const IMAGE_ZOOM_ANIMATION_TYPE = "linear";
-const NATIVE_MEDIA_INTERACTION_CLASS = "zero-native-media-interaction";
-const ZOOMABLE_IMAGE_WRAPPER_STYLE = {
-  height: "100%",
-  width: "100%",
-} satisfies CSSProperties;
-const ZOOMABLE_IMAGE_CONTENT_STYLE = {
-  alignItems: "center",
-  boxSizing: "border-box",
-  display: "flex",
-  justifyContent: "center",
-  maxHeight: "100%",
-  maxWidth: "100%",
-} satisfies CSSProperties;
 
 type ZoomableArtifactImageSurface =
   | "attachment-lightbox"
@@ -47,6 +34,12 @@ export function zoomableArtifactImageKey(
 
 type SetZoomHandler = (key: string, zoom: number) => void;
 type ResetZoomHandler = (key: string) => void;
+type DragStartState = {
+  clientX: number;
+  clientY: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
 
 export type ZoomableImageControls = {
   canZoomIn: boolean;
@@ -72,18 +65,12 @@ type ZoomableArtifactImageCanvasProps = {
   zoomKey?: string;
 };
 
-function controlsFromTransform({
+function controlsFromZoomState({
   displayZoom,
   resetDisplayZoom,
-  resetTransform,
   setDisplayZoom,
-  zoomIn,
   zoomKey,
-  zoomOut,
-}: Pick<
-  ReactZoomPanPinchContentRef,
-  "resetTransform" | "zoomIn" | "zoomOut"
-> & {
+}: {
   displayZoom: number;
   resetDisplayZoom: ResetZoomHandler;
   setDisplayZoom: SetZoomHandler;
@@ -96,37 +83,51 @@ function controlsFromTransform({
     canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM + 0.001,
     resetZoom: () => {
       resetDisplayZoom(zoomKey);
-      resetTransform(IMAGE_ZOOM_ANIMATION_MS, IMAGE_ZOOM_ANIMATION_TYPE);
     },
     zoom,
     zoomIn: () => {
       setDisplayZoom(zoomKey, zoom + IMAGE_ZOOM_STEP);
-      zoomIn(
-        IMAGE_ZOOM_STEP,
-        IMAGE_ZOOM_ANIMATION_MS,
-        IMAGE_ZOOM_ANIMATION_TYPE,
-      );
     },
     zoomOut: () => {
       setDisplayZoom(zoomKey, zoom - IMAGE_ZOOM_STEP);
-      zoomOut(
-        IMAGE_ZOOM_STEP,
-        IMAGE_ZOOM_ANIMATION_MS,
-        IMAGE_ZOOM_ANIMATION_TYPE,
-      );
     },
   };
 }
 
-function hasMeasurableCanvas(ref: ReactZoomPanPinchRef) {
-  const { contentComponent, wrapperComponent } = ref.instance;
-
+function shouldIgnoreDragStart(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return true;
+  }
   return Boolean(
-    wrapperComponent?.offsetWidth ||
-    wrapperComponent?.offsetHeight ||
-    contentComponent?.offsetWidth ||
-    contentComponent?.offsetHeight,
+    target.closest("button, a, input, textarea, select, [role='button']"),
   );
+}
+
+function calculateImageFitWidth(image: HTMLImageElement) {
+  const content = image.parentElement;
+  const scrollContainer = content?.parentElement;
+  if (!content || !scrollContainer) {
+    return image.naturalWidth || null;
+  }
+
+  const contentStyle = getComputedStyle(content);
+  const paddingLeft = Number.parseFloat(contentStyle.paddingLeft);
+  const paddingRight = Number.parseFloat(contentStyle.paddingRight);
+  const horizontalPadding =
+    (Number.isFinite(paddingLeft) ? paddingLeft : 0) +
+    (Number.isFinite(paddingRight) ? paddingRight : 0);
+  const availableWidth = scrollContainer.clientWidth - horizontalPadding;
+  const naturalWidth = image.naturalWidth;
+
+  if (naturalWidth > 0 && availableWidth > 0) {
+    return Math.min(naturalWidth, availableWidth);
+  }
+
+  if (availableWidth > 0) {
+    return availableWidth;
+  }
+
+  return naturalWidth > 0 ? naturalWidth : null;
 }
 
 export function ZoomableArtifactImageCanvas({
@@ -144,113 +145,109 @@ export function ZoomableArtifactImageCanvas({
   zoomKey = src,
 }: ZoomableArtifactImageCanvasProps) {
   const zoomByKey = useGet(zoomableImageCanvasZoomByKey$);
+  const fitWidthByKey = useGet(zoomableImageCanvasFitWidthByKey$);
   const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
+  const setFitWidth = useSet(setZoomableImageCanvasFitWidth$);
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
+  const setZoomableImageCanvasWheelRef = useSet(zoomableImageCanvasWheelRef$);
   const displayZoom = zoomByKey[zoomKey] ?? 1;
+  const fitWidth = fitWidthByKey[zoomKey];
+  const imageWidth =
+    fitWidth !== undefined
+      ? `${Math.round(fitWidth * displayZoom)}px`
+      : `${displayZoom * 100}%`;
+  const controls = controlsFromZoomState({
+    displayZoom,
+    resetDisplayZoom,
+    setDisplayZoom,
+    zoomKey,
+  });
 
-  const syncDisplayZoom = (ref: ReactZoomPanPinchRef) => {
-    if (!hasMeasurableCanvas(ref)) {
+  const handleMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || shouldIgnoreDragStart(event.target)) {
       return;
     }
 
-    setDisplayZoom(zoomKey, ref.state.scale);
+    const scrollContainer = event.currentTarget;
+    event.preventDefault();
+    const dragStart: DragStartState = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: scrollContainer.scrollLeft,
+      scrollTop: scrollContainer.scrollTop,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      scrollContainer.scrollLeft =
+        dragStart.scrollLeft - (moveEvent.clientX - dragStart.clientX);
+      scrollContainer.scrollTop =
+        dragStart.scrollTop - (moveEvent.clientY - dragStart.clientY);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const fitWidthValue = calculateImageFitWidth(event.currentTarget);
+    if (fitWidthValue !== null) {
+      setFitWidth(zoomKey, fitWidthValue);
+    }
+    resetDisplayZoom(zoomKey);
+    onLoad?.();
   };
 
   return (
-    <TransformWrapper
-      key={zoomKey}
-      initialScale={1}
-      minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
-      maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
-      limitToBounds
-      centerZoomedOut
-      centerOnInit
-      smooth
-      wheel={{ step: 0.008, wheelDisabled: true }}
-      trackPadPanning={{
-        disabled: false,
-        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
-      }}
-      panning={{
-        allowLeftClickPan: true,
-        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
-      }}
-      pinch={{
-        allowPanning: false,
-        step: 5,
-        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
-      }}
-      doubleClick={{
-        mode: "toggle",
-        step: IMAGE_ZOOM_STEP,
-        animationTime: IMAGE_ZOOM_ANIMATION_MS,
-        animationType: IMAGE_ZOOM_ANIMATION_TYPE,
-        excluded: [NATIVE_MEDIA_INTERACTION_CLASS],
-      }}
-      zoomAnimation={{
-        animationTime: IMAGE_ZOOM_ANIMATION_MS,
-        animationType: IMAGE_ZOOM_ANIMATION_TYPE,
-        size: 0.2,
-      }}
-      onPinchStop={(ref) => {
-        syncDisplayZoom(ref);
-      }}
-      onWheelStop={(ref) => {
-        syncDisplayZoom(ref);
-      }}
-      onZoomStop={(ref) => {
-        syncDisplayZoom(ref);
-      }}
-      onInit={() => {
-        resetDisplayZoom(zoomKey);
-      }}
+    <div
+      className={cn(
+        "relative h-full min-h-0 w-full flex-1 overflow-hidden bg-muted/30",
+        className,
+      )}
     >
-      {(transform) => {
-        const controls = controlsFromTransform({
-          ...transform,
-          displayZoom,
-          resetDisplayZoom,
-          setDisplayZoom,
-          zoomKey,
-        });
-
-        return (
-          <div
+      {children?.(controls)}
+      <div
+        ref={setZoomableImageCanvasWheelRef}
+        className={cn(
+          "h-full min-h-0 w-full overflow-auto overscroll-contain",
+          "cursor-grab active:cursor-grabbing",
+        )}
+        data-testid={canvasTestId}
+        data-zoom-key={zoomKey}
+        onMouseDown={handleMouseDown}
+      >
+        <div
+          className={cn(
+            "flex min-h-full min-w-full items-start justify-center",
+            contentClassName,
+          )}
+          data-testid={`${canvasTestId}-content`}
+        >
+          <img
+            ref={imageRef}
+            src={src}
+            alt={alt}
+            data-testid={imageTestId}
+            onLoad={handleImageLoad}
+            onError={onError}
+            draggable={false}
+            style={{
+              WebkitTouchCallout: "default",
+              pointerEvents: "auto",
+              userSelect: "none",
+              width: imageWidth,
+            }}
             className={cn(
-              "relative flex h-full min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-muted/30 touch-none",
-              className,
+              "block h-auto max-w-none shrink-0 select-none object-contain",
+              imageClassName,
             )}
-            data-testid={canvasTestId}
-          >
-            {children?.(controls)}
-            <TransformComponent
-              contentClass={contentClassName}
-              wrapperStyle={ZOOMABLE_IMAGE_WRAPPER_STYLE}
-              contentStyle={ZOOMABLE_IMAGE_CONTENT_STYLE}
-            >
-              <img
-                ref={imageRef}
-                src={src}
-                alt={alt}
-                data-testid={imageTestId}
-                onLoad={onLoad}
-                onError={onError}
-                style={{
-                  WebkitTouchCallout: "default",
-                  WebkitUserSelect: "auto",
-                  pointerEvents: "auto",
-                  userSelect: "auto",
-                }}
-                className={cn(
-                  "block max-h-full max-w-full object-contain",
-                  NATIVE_MEDIA_INTERACTION_CLASS,
-                  imageClassName,
-                )}
-              />
-            </TransformComponent>
-          </div>
-        );
-      }}
-    </TransformWrapper>
+          />
+        </div>
+      </div>
+    </div>
   );
 }
