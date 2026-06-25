@@ -81,10 +81,6 @@ export async function collectLogItems<T>(
 
     collected.push(...page.items);
 
-    if (page.items.length === 0) {
-      break;
-    }
-
     if (
       options.targetCount !== "all" &&
       collected.length >= options.targetCount

@@ -242,6 +242,54 @@ describe("logs command", () => {
       expect(requestCount).toBe(2);
     });
 
+    it("should continue agent pagination past empty pages with cursors", async () => {
+      const capturedCursors: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+            capturedCursors.push(cursor);
+
+            if (!cursor) {
+              return HttpResponse.json({
+                events: [],
+                framework: "claude-code",
+                hasMore: true,
+                nextCursor: "cursor-page-2",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:31:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [{ type: "text", text: "After empty page" }],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("After empty page");
+      expect(logCalls).not.toContain("No agent events found");
+      expect(capturedCursors).toStrictEqual([null, "cursor-page-2"]);
+    });
+
     it("should preserve per-page framework when a later page omits it", async () => {
       server.use(
         http.get(
