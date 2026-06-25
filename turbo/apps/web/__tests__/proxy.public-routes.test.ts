@@ -335,6 +335,91 @@ describe("proxy middleware: public routes", () => {
     expect(response.status).toBe(202);
   });
 
+  it("normalizes compression headers for proxied sign-up verification responses", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("verification proxied", {
+        status: 202,
+        headers: {
+          "content-encoding": "br",
+          "content-length": "123",
+          "content-type": "text/x-component",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest(
+      "https://www.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+      {
+        method: "POST",
+        headers: {
+          "accept-encoding": "gzip, deflate, br, zstd",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [targetUrl, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(targetUrl)).toBe(
+      "https://so.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+    );
+    expect((init?.headers as Headers).get("accept-encoding")).toBe("identity");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected verification proxy response");
+    }
+    expect(response.status).toBe(202);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/x-component");
+    await expect(response.text()).resolves.toBe("verification proxied");
+  });
+
+  it("normalizes compression headers for proxied locale page action responses", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("locale action proxied", {
+        status: 200,
+        headers: {
+          "content-encoding": "br",
+          "content-length": "123",
+          "content-type": "text/x-component",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "accept-encoding": "gzip, deflate, br, zstd",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [targetUrl, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(targetUrl)).toBe("https://so.vm0.ai/en");
+    expect((init?.headers as Headers).get("accept-encoding")).toBe("identity");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected locale page proxy response");
+    }
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/x-component");
+    await expect(response.text()).resolves.toBe("locale action proxied");
+  });
+
   it("does not proxy app-only functional routes when so forwarding is enabled", async () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
     reloadEnv();
