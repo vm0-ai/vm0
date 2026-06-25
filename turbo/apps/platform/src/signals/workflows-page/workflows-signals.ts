@@ -35,6 +35,9 @@ const internalWorkflowReload$ = state(0);
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
+const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
+  null,
+);
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
@@ -48,9 +51,19 @@ export const editingGmailTriggerId$ = computed((get) => {
   return get(internalEditingGmailTriggerId$);
 });
 
+export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
+  return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
+});
+
 export const setEditingGmailTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingGmailTriggerId$, triggerId);
+  },
+);
+
+export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
   },
 );
 
