@@ -310,8 +310,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         request_stream_body = request_streaming.captured_request_stream_body(flow)
         if request_stream_body is not None:
             request_stream_incomplete = (
-                bool(request_stream_body.buffer)
-                and flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True
+                flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True
             )
             req_ct = flow.request.headers.get("content-type", "")
             request_body = body_decoding.decode_body_bounded(
