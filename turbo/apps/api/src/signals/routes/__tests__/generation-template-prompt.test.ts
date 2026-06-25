@@ -35,6 +35,12 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`(${item.templateId})`);
     expect(result.prompt).toContain(`Template preview URL: ${item.embedUrl}`);
     expect(result.prompt).toContain(
+      "Use selected template references only for structure, layout devices, spacing, and visual language",
+    );
+    expect(result.prompt).toContain(
+      "Derive every presentation image/media choice from the user's requested topic",
+    );
+    expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );
   });
@@ -62,6 +68,10 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("color-system:carnival");
     expect(result.prompt).toContain(
       "Apply the selected color system (color-system:carnival)",
+    );
+    expect(result.prompt).toContain("media seed names");
+    expect(result.prompt).toContain(
+      "For top-news or story decks, pick visuals from the story topics",
     );
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
