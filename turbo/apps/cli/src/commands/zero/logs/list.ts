@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { listZeroLogs } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
-import { parsePositiveLogCount } from "../../../lib/utils/log-pagination";
+import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
 
 function formatStatus(status: string): string {
@@ -61,7 +61,7 @@ Examples:
         limit?: string;
       }) => {
         const limit = options.limit
-          ? parsePositiveLogCount(options.limit, "--limit")
+          ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
           : undefined;
         const since = options.since ? parseTime(options.since) : undefined;
 

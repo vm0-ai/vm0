@@ -212,7 +212,16 @@ describe("zero logs list command", () => {
     ).rejects.toThrow("process.exit called");
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errorCalls).toContain("Option --limit must be a positive integer");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
+  });
+
+  it("should reject --limit values above the API maximum", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", "101"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
   });
 
   it("should fall back to agentId when displayName is null", async () => {

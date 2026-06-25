@@ -315,6 +315,15 @@ describe("logs search command", () => {
     expect(capturedUrl?.searchParams.get("runId")).toBe(runId);
   });
 
+  it("should reject non-UUID --run values", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "deploy", "--run", "run-123"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+  });
+
   it("should parse --since and send as timestamp", async () => {
     let capturedUrl: URL | undefined;
     server.use(

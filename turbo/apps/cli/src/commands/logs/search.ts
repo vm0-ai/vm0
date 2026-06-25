@@ -12,6 +12,7 @@ import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer"
 import { withErrorHandler } from "../../lib/command";
 import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
 import { isSupportedFramework } from "@vm0/core/frameworks";
+import { isUUID } from "../run/shared";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -179,6 +180,14 @@ export const searchCommand = new Command()
   .option("--limit <n>", "Maximum number of matches (default: 20)")
   .action(
     withErrorHandler(async (keyword: string, options: SearchOptions) => {
+      if (options.run && !isUUID(options.run)) {
+        console.error(
+          chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
+        );
+        console.error(chalk.dim("  Run: vm0 run list    to find run IDs"));
+        process.exit(1);
+      }
+
       const { before, after } = parseContextOptions(options);
       const since = options.since
         ? parseTime(options.since)
