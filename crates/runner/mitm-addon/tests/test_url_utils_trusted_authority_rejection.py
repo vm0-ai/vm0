@@ -2,7 +2,7 @@
 
 import pytest
 
-from url_utils import AuthorityValidationError, get_trusted_authority
+from url_utils import AuthorityValidationError, get_original_url, get_trusted_authority
 
 
 def _request_headers(headers, host_header):
@@ -29,6 +29,19 @@ def _assert_authority_error(
 
 
 class TestTrustedAuthorityRejection:
+    def test_get_original_url_propagates_authority_validation_error(self, real_flow, headers):
+        flow = real_flow(
+            host="203.0.113.10",
+            sni="attacker.example.com",
+            path="/v1/data",
+            request_headers=headers(("Host", "api.example.com")),
+        )
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_original_url(flow)
+
+        assert exc_info.value.reason == "authority_mismatch"
+
     def test_https_rejects_host_sni_mismatch(self, real_flow, headers):
         flow = real_flow(
             host="203.0.113.10",
