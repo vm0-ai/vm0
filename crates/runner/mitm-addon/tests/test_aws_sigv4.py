@@ -42,6 +42,21 @@ def _header_auth_headers_with_content_hash(value: str) -> list[tuple[str, str]]:
     ]
 
 
+def _header_auth_headers_with_signed_test_header(value: str) -> list[tuple[str, str]]:
+    return [
+        (
+            "Authorization",
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+            "SignedHeaders=host;x-amz-date;x-test, "
+            "Signature=placeholder",
+        ),
+        ("X-Amz-Date", "20260101T000000Z"),
+        ("Host", "sts.amazonaws.com"),
+        ("X-Test", value),
+    ]
+
+
 def _presigned_url(host: str) -> str:
     placeholder_credential = urllib.parse.quote(
         "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
@@ -243,6 +258,18 @@ def test_signed_header_invalid_unicode_raises_signing_error() -> None:
         )
 
 
+@pytest.mark.parametrize("header_value", ["a\n b", "a\r b"])
+def test_signed_header_control_character_raises_signing_error(header_value: str) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request header contains invalid text"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers_with_signed_test_header(header_value),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 @pytest.mark.parametrize(
     "header",
     [
@@ -261,6 +288,44 @@ def test_unsigned_header_invalid_unicode_raises_signing_error(
             body=None,
             credentials=_credentials(),
         )
+
+
+@pytest.mark.parametrize("header_value", ["a\n b", "a\r b"])
+def test_unsigned_header_control_character_raises_signing_error(header_value: str) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request header contains invalid text"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=[*_header_auth_headers(), ("x-other", header_value)],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize("header_name", ["", "x other", "x:other", "x\nother"])
+def test_header_invalid_name_raises_signing_error(header_name: str) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request header contains invalid text"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=[*_header_auth_headers(), (header_name, "value")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_signed_header_tab_value_signs() -> None:
+    _url, headers = sign_request(
+        method="GET",
+        url="https://sts.amazonaws.com/",
+        headers=_header_auth_headers_with_signed_test_header("a\t b"),
+        body=None,
+        credentials=_credentials(),
+    )
+
+    by_name = {name.lower(): value for name, value in headers}
+    assert by_name["x-test"] == "a\t b"
+    assert "SignedHeaders=host;x-amz-date;x-test" in by_name["authorization"]
 
 
 def test_invalid_unicode_secret_key_raises_signing_error() -> None:
