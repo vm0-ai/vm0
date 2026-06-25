@@ -142,12 +142,16 @@ describe("firewall routing metadata", () => {
     expect(firstSlack!.type).toBe("slack");
     expect(firstSlack!.label).toBe("Slack");
     expect(firstSlack!.apis.length).toBeGreaterThan(1);
-    expect(firstSlack!.apis.map((api) => api.base)).toContain(
-      "https://slack.com/api",
-    );
-    expect(firstSlack!.apis.map((api) => api.base)).toContain(
-      "https://files.slack.com",
-    );
+    expect(
+      firstSlack!.apis.map((api) => {
+        return api.base;
+      }),
+    ).toContain("https://slack.com/api");
+    expect(
+      firstSlack!.apis.map((api) => {
+        return api.base;
+      }),
+    ).toContain("https://files.slack.com");
 
     const repeatedSlack = await loadFirewallRoutingMetadata("slack");
     expect(repeatedSlack).toBe(firstSlack);
