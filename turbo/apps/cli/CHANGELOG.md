@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.209.0](https://github.com/vm0-ai/vm0/compare/cli-v9.208.2...cli-v9.209.0) (2026-06-25)
+
+
+### Features
+
+* add OpenStreetMap rendering to zero maps ([#18884](https://github.com/vm0-ai/vm0/issues/18884)) ([6883357](https://github.com/vm0-ai/vm0/commit/68833575af76d583e91f73d14b2f9f8f5b8ff38a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.114.0
+    * @vm0/core bumped to 8.369.1
+
 ## [9.208.2](https://github.com/vm0-ai/vm0/compare/cli-v9.208.1...cli-v9.208.2) (2026-06-25)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.5...guest-agent-v0.41.6) (2026-06-25)
+
+
+### Bug Fixes
+
+* **runner:** downgrade claude overload result logs ([#18890](https://github.com/vm0-ai/vm0/issues/18890)) ([2751ac3](https://github.com/vm0-ai/vm0/commit/2751ac3631d328965a032a20e6b51dd0a8e358cb))
+
 ## [0.41.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.4...guest-agent-v0.41.5) (2026-06-25)
 
 
