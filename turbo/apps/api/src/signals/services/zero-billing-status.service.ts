@@ -139,7 +139,7 @@ function labelForCreditRecord(
     }
     return "Plan credits";
   }
-  if (record.source === "starter_grant") {
+  if (record.source === "starter_grant" || record.source === "onboarding") {
     return "Free plan";
   }
   if (record.source === "one_time_purchase") {
@@ -192,7 +192,10 @@ function buildCreditBreakdown(args: {
         credits: record.remaining,
         tier: planTier,
       });
-    } else if (record.source === "starter_grant") {
+    } else if (
+      record.source === "starter_grant" ||
+      record.source === "onboarding"
+    ) {
       addSegment({
         category: "free",
         label: "Free plan",
@@ -215,9 +218,10 @@ function buildCreditBreakdown(args: {
 
   const untracked = Math.max(displayedCredits - trackedTotal, 0);
   if (untracked > 0) {
+    const isFreeTier = tier === "free" || tier === "limited-free-1";
     addSegment({
-      category: tier === "free" ? "free" : "payAsYouGo",
-      label: tier === "free" ? "Free plan" : "Pay as you go",
+      category: isFreeTier ? "free" : "payAsYouGo",
+      label: isFreeTier ? "Free plan" : "Pay as you go",
       credits: untracked,
     });
   }

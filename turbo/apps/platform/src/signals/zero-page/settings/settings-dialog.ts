@@ -78,6 +78,17 @@ export const setSettingsActiveSection$ = command(
   },
 );
 
+export const openSettingsBillingPlans$ = command(({ get, set }) => {
+  set(internalActiveSection$, "billing");
+  set(setBillingSubPage$, true);
+  set(setBillingScrollTarget$, null);
+
+  const params = new URLSearchParams(get(searchParams$));
+  params.set("settings", "billing");
+  params.set("billingView", "plans");
+  set(updateSearchParams$, params);
+});
+
 export const setSettingsDialogOpen$ = command(
   async ({ get, set }, open: boolean, signal: AbortSignal) => {
     set(internalSettingsDialogOpen$, open);

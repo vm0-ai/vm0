@@ -31,6 +31,10 @@ import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/ze
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import {
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -215,6 +219,34 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
       modelProviderId: ZAI_PROVIDER_ID,
     }),
   ]);
+}
+
+function billingStatus(tier: string): BillingStatusResponse {
+  return {
+    tier,
+    credits: 20_000,
+    onboardingPaymentPending: false,
+    subscriptionStatus: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: false,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: {
+      expiringNextCycle: 0,
+      nextExpiryDate: null,
+    },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 0,
+    concurrencySubscriptions: [],
+  };
+}
+
+function mockBillingTier(tier: string): void {
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus(tier));
+  });
 }
 
 function mockAgent(options?: {
@@ -1062,6 +1094,41 @@ describe("chat composer models", () => {
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
+  });
+
+  it("opens compare plans from limited-free-1 Pro composer model items", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockBillingTier("limited-free-1");
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000701",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000702",
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
+    await user.click(
+      await screen.findByRole("option", { name: /GPT-5\.5.*Pro/u }),
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("opens the model picker directly to options and labels BYOK routes", async () => {

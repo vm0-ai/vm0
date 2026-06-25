@@ -3,7 +3,7 @@ import {
   triggerSourceSchema,
   type TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { isOrgTier, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import {
   ALL_RUN_STATUSES,
   type GetRunResponse,
@@ -53,6 +53,7 @@ const RECENT_RUNS_FOR_ETA = 10;
 const PROMPT_TRUNCATE_LENGTH = 200;
 const TIER_CONCURRENCY_LIMITS = Object.freeze<Record<OrgTier, number>>({
   free: 1,
+  "limited-free-1": 1,
   "pro-suspend": 0,
   pro: 2,
   team: 10,
@@ -450,12 +451,7 @@ export function zeroOrgTier(orgId: string): Computed<Promise<OrgTier>> {
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
 
-    if (
-      row?.tier === "free" ||
-      row?.tier === "pro-suspend" ||
-      row?.tier === "pro" ||
-      row?.tier === "team"
-    ) {
+    if (isOrgTier(row?.tier)) {
       return row.tier;
     }
     return "pro-suspend";

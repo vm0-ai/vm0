@@ -395,6 +395,7 @@ export {
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
+  isOrgTier,
   type OrgDefaultAgentContract,
   type OrgResponse,
   type UpdateOrgRequest,
@@ -496,6 +497,7 @@ export {
   getVm0ApiModel,
   getVm0VisibleModels,
   normalizeVm0ModelId,
+  isLimitedFree1RestrictedRunModel,
 } from "./model-providers";
 export {
   sessionsByIdContract,
@@ -824,9 +826,11 @@ export {
 export {
   onboardingStatusContract,
   onboardingSetupContract,
+  onboardingCompleteLimitedFreeContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
   type OnboardingSetupContract,
+  type OnboardingCompleteLimitedFreeContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
 export { skillFrontmatterSchema } from "./skills";

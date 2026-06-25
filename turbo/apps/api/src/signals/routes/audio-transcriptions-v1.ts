@@ -30,12 +30,14 @@ const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
 const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
   free: 10,
+  "limited-free-1": 10,
   "pro-suspend": 0,
   pro: 300,
   team: 500,
 };
 const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
   free: 10 * 60,
+  "limited-free-1": 10 * 60,
   "pro-suspend": 0,
   pro: 200 * 60,
   team: 500 * 60,

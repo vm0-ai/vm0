@@ -530,6 +530,16 @@ export function videoInsufficientCredits() {
   };
 }
 
+export function videoRequiresPro() {
+  return {
+    status: 402 as const,
+    body: errorBody(
+      "Upgrade to Pro to generate videos.",
+      "INSUFFICIENT_CREDITS",
+    ),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

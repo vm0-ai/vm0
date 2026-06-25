@@ -39,6 +39,7 @@ import {
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isLimitedFree1RestrictedRunModel,
   type ModelProviderResponse,
   type ModelProviderType,
   type OrgModelPolicy,
@@ -67,6 +68,12 @@ import {
   type ModelPolicyDialogMode,
   type ModelPolicyRouteKind,
 } from "../../../../signals/zero-page/settings/org-model-policy-dialog.ts";
+import {
+  billingStatusAsync$,
+  startCheckout$,
+} from "../../../../signals/zero-page/billing.ts";
+import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   hasTokenInputValue,
   sanitizeTokenInput,
@@ -242,16 +249,58 @@ function makePolicyDefault(
   });
 }
 
+function modelAllowedForTier(
+  model: SupportedRunModel,
+  limitedFree1: boolean,
+): boolean {
+  return !limitedFree1 || !isLimitedFree1RestrictedRunModel(model);
+}
+
+function filterPolicyUpdatesForTier(
+  policies: UpdateOrgModelPolicy[],
+  limitedFree1: boolean,
+): UpdateOrgModelPolicy[] {
+  if (!limitedFree1) {
+    return policies;
+  }
+
+  const allowed = policies.filter((policy) => {
+    return modelAllowedForTier(policy.model, true);
+  });
+  if (
+    allowed.some((policy) => {
+      return policy.isDefault;
+    })
+  ) {
+    return allowed;
+  }
+  return allowed.map((policy, index) => {
+    return { ...policy, isDefault: index === 0 };
+  });
+}
+
+function ProBadge() {
+  return (
+    <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
+      Pro
+    </span>
+  );
+}
+
 function DefaultModelRow({
   policies,
   workspaceDefaultModel,
   disabled,
+  limitedFree1,
   onChange,
+  onUpgrade,
 }: {
   policies: OrgModelPolicy[];
   workspaceDefaultModel: SupportedRunModel | null;
   disabled: boolean;
+  limitedFree1: boolean;
   onChange: (model: SupportedRunModel) => void;
+  onUpgrade: () => void;
 }) {
   const selectItems = policies.filter((policy) => {
     return policy.routeStatus === "valid";
@@ -282,7 +331,12 @@ function DefaultModelRow({
         <Select
           value={currentDefault}
           onValueChange={(value) => {
-            onChange(value as SupportedRunModel);
+            const model = value as SupportedRunModel;
+            if (limitedFree1 && isLimitedFree1RestrictedRunModel(model)) {
+              onUpgrade();
+              return;
+            }
+            onChange(model);
           }}
           disabled={disabled}
         >
@@ -295,11 +349,18 @@ function DefaultModelRow({
           <SelectContent>
             {selectItems.map((policy) => {
               const iconType = getModelIconType(policy.model);
+              const restricted = !modelAllowedForTier(
+                policy.model,
+                limitedFree1,
+              );
               return (
                 <SelectItem key={policy.id} value={policy.model}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full min-w-0 items-center gap-2">
                     {iconType && <ProviderIcon type={iconType} size={16} />}
-                    <span>{policy.modelLabel}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {policy.modelLabel}
+                    </span>
+                    {restricted && <ProBadge />}
                   </div>
                 </SelectItem>
               );
@@ -764,9 +825,22 @@ function buildPolicyUpdate(params: {
   };
 }
 
+function modelRequiresProUpgrade(
+  model: SupportedRunModel | null,
+  limitedFree1: boolean,
+): boolean {
+  return (
+    model !== null && limitedFree1 && isLimitedFree1RestrictedRunModel(model)
+  );
+}
+
 function getDialogPrimaryLabel(params: {
   mode: ModelPolicyDialogMode;
+  upgradeRequired: boolean;
 }): string {
+  if (params.upgradeRequired) {
+    return "Upgrade to Pro";
+  }
   return params.mode === "add" ? "Add model" : "Save changes";
 }
 
@@ -774,11 +848,21 @@ function isSubmitDisabled(params: {
   selectedModel: SupportedRunModel | null;
   saving: boolean;
   inlineSaving: boolean;
+  checkoutLoading: boolean;
+  upgradeRequired: boolean;
   routeKind: ModelPolicyRouteKind;
   selectedProviderType: ModelProviderType | null;
 }): boolean {
-  if (!params.selectedModel || params.saving || params.inlineSaving) {
+  if (
+    !params.selectedModel ||
+    params.saving ||
+    params.inlineSaving ||
+    params.checkoutLoading
+  ) {
     return true;
+  }
+  if (params.upgradeRequired) {
+    return false;
   }
   if (params.routeKind === "built-in") {
     return false;
@@ -836,12 +920,14 @@ function ModelPolicyRouteDialog({
   addableModels,
   providers,
   saving,
+  limitedFree1,
   onSubmit,
 }: {
   policies: OrgModelPolicy[];
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
   saving: boolean;
+  limitedFree1: boolean;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
   const dialog = useGet(modelPolicyDialogState$);
@@ -858,9 +944,16 @@ function ModelPolicyRouteDialog({
   const [inlineSaveLoadable, submitInlineApiKeyRoute] = useLoadableSet(
     submitModelPolicyApiKeyRoute$,
   );
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const inlineSaving = inlineSaveLoadable.state === "loading";
-  const busy = saving || inlineSaving;
-  const selectedModel = dialog.model ?? addableModels[0] ?? null;
+  const checkoutLoading = checkoutLoadable.state === "loading";
+  const busy = saving || inlineSaving || checkoutLoading;
+  const firstAllowedModel =
+    addableModels.find((model) => {
+      return modelAllowedForTier(model, limitedFree1);
+    }) ?? null;
+  const selectedModel = dialog.model ?? firstAllowedModel ?? null;
+  const upgradeRequired = modelRequiresProUpgrade(selectedModel, limitedFree1);
   const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
   const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
   const selectedProviderType = getSelectedProviderType({
@@ -894,8 +987,20 @@ function ModelPolicyRouteDialog({
     });
   };
 
-  const handleSubmit = () => {
+  const handleModelChange = (model: SupportedRunModel) => {
+    setModel(model);
+  };
+
+  const handleSubmit = (newTab: boolean) => {
     if (!selectedModel || busy) {
+      return;
+    }
+
+    if (upgradeRequired) {
+      detach(
+        checkout("pro", newTab, undefined, pageSignal),
+        Reason.DomCallback,
+      );
       return;
     }
 
@@ -938,11 +1043,16 @@ function ModelPolicyRouteDialog({
     close();
   };
 
-  const primaryLabel = getDialogPrimaryLabel({ mode: dialog.mode });
+  const primaryLabel = getDialogPrimaryLabel({
+    mode: dialog.mode,
+    upgradeRequired,
+  });
   const submitDisabled = isSubmitDisabled({
     selectedModel,
     saving,
     inlineSaving,
+    checkoutLoading,
+    upgradeRequired,
     routeKind: dialog.routeKind,
     selectedProviderType,
   });
@@ -972,7 +1082,7 @@ function ModelPolicyRouteDialog({
             <Select
               value={selectedModel ?? undefined}
               onValueChange={(next) => {
-                setModel(next as SupportedRunModel);
+                handleModelChange(next as SupportedRunModel);
               }}
               disabled={dialog.mode === "edit"}
             >
@@ -991,11 +1101,15 @@ function ModelPolicyRouteDialog({
               <SelectContent>
                 {addableModels.map((model) => {
                   const iconType = getModelIconType(model);
+                  const restricted = !modelAllowedForTier(model, limitedFree1);
                   return (
                     <SelectItem key={model} value={model}>
-                      <div className="flex items-center gap-2">
+                      <div className="flex w-full min-w-0 items-center gap-2">
                         {iconType && <ProviderIcon type={iconType} size={16} />}
-                        <span>{getCanonicalModelDisplayName(model)}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {getCanonicalModelDisplayName(model)}
+                        </span>
+                        {restricted && <ProBadge />}
                       </div>
                     </SelectItem>
                   );
@@ -1064,7 +1178,12 @@ function ModelPolicyRouteDialog({
           <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={submitDisabled}>
+          <Button
+            onClick={(event) => {
+              handleSubmit(event.metaKey || event.ctrlKey);
+            }}
+            disabled={submitDisabled}
+          >
             {primaryLabel}
           </Button>
         </DialogFooter>
@@ -1078,9 +1197,13 @@ export function OrgModelPoliciesSection() {
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
+  const billingLoadable = useLoadable(billingStatusAsync$);
+  const lastBilling = useLastResolved(billingStatusAsync$);
   const pageSignal = useGet(pageSignal$);
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
+  const openOrgBillingPlans = useSet(openBillingPlans$);
+  const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
   const [updateLoadable, updatePolicies] = useLoadableSet(
     updateOrgModelPolicies$,
   );
@@ -1094,10 +1217,15 @@ export function OrgModelPoliciesSection() {
       : (lastProviders ?? []);
   const providersReady =
     providersLoadable.state === "hasData" || lastProviders !== undefined;
+  const billing =
+    billingLoadable.state === "hasData" ? billingLoadable.data : lastBilling;
+  const billingReady =
+    billingLoadable.state === "hasData" || lastBilling !== undefined;
 
   if (
     (!data && policiesLoadable.state === "loading") ||
-    (!providersReady && providersLoadable.state === "loading")
+    (!providersReady && providersLoadable.state === "loading") ||
+    (!billingReady && billingLoadable.state === "loading")
   ) {
     return <ModelPoliciesSkeleton />;
   }
@@ -1106,6 +1234,7 @@ export function OrgModelPoliciesSection() {
     return null;
   }
 
+  const limitedFree1 = billing?.tier === "limited-free-1";
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
     return SUPPORTED_RUN_MODELS.includes(policy.model);
@@ -1120,7 +1249,17 @@ export function OrgModelPoliciesSection() {
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
-    detach(updatePolicies({ policies: next }, pageSignal), Reason.DomCallback);
+    detach(
+      updatePolicies(
+        { policies: filterPolicyUpdatesForTier(next, limitedFree1) },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+  const openComparePlans = () => {
+    openSettingsBillingPlans();
+    openOrgBillingPlans();
   };
   const handleDefaultModelChange = (model: SupportedRunModel) => {
     if (saving || model === data.workspaceDefaultModel) {
@@ -1132,7 +1271,13 @@ export function OrgModelPoliciesSection() {
     if (saving) {
       return;
     }
-    openAddModelDialog(addableModels[0] ?? null);
+    const initialModel =
+      addableModels.find((model) => {
+        return modelAllowedForTier(model, limitedFree1);
+      }) ??
+      addableModels[0] ??
+      null;
+    openAddModelDialog(initialModel);
   };
   const handleEditPolicy = (policy: OrgModelPolicy) => {
     if (saving) {
@@ -1164,7 +1309,9 @@ export function OrgModelPoliciesSection() {
         policies={visiblePolicies}
         workspaceDefaultModel={data.workspaceDefaultModel}
         disabled={saving}
+        limitedFree1={limitedFree1}
         onChange={handleDefaultModelChange}
+        onUpgrade={openComparePlans}
       />
       <div
         className="overflow-hidden rounded-xl bg-card"
@@ -1191,6 +1338,7 @@ export function OrgModelPoliciesSection() {
         addableModels={addableModels}
         providers={providers}
         saving={saving}
+        limitedFree1={limitedFree1}
         onSubmit={submit}
       />
     </section>

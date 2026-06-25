@@ -6,7 +6,11 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 
-import { badRequestMessage, providerDeleted } from "../../lib/error";
+import {
+  badRequestMessage,
+  insufficientCredits,
+  providerDeleted,
+} from "../../lib/error";
 import type { Db } from "../external/db";
 import {
   publishThreadListChanged,
@@ -28,7 +32,8 @@ type AutomationChatThreadModelPin = ModelFirstPin;
 type AutomationChatThreadModelPinResult =
   | AutomationChatThreadModelPin
   | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>;
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>;
 
 async function getStoredThreadModelPin(
   db: Db,

@@ -165,6 +165,7 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -284,6 +285,7 @@ async function measureApiDispatchTiming<T>(
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
+  "limited-free-1": 1,
   pro: 2,
   team: 10,
 });
@@ -5006,6 +5008,17 @@ export const createAgentRun$ = command(
     signal.throwIfAborted();
     if (isRouteError(context)) {
       return context;
+    }
+
+    const modelTierGate = await checkLimitedFreeRunModelAdmission({
+      db,
+      orgId: args.orgId,
+      selectedModel:
+        context.modelProvider?.selectedModel ?? args.selectedModelOverride,
+    });
+    signal.throwIfAborted();
+    if (modelTierGate) {
+      return modelTierGate;
     }
 
     if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {

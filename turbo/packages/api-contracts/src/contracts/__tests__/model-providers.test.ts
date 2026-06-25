@@ -23,6 +23,7 @@ import {
   getAuthMethodsForType,
   getSecretNameForType,
   getSecretsForAuthMethod,
+  isLimitedFree1RestrictedRunModel,
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -111,6 +112,18 @@ describe("model-first canonical catalog", () => {
     expect(
       modelProviderCredentialScopeSchema.safeParse("personal").success,
     ).toBe(false);
+  });
+
+  it("identifies models blocked on limited-free-1", () => {
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("claude-opus-4-8")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-4.8")).toBe(
+      true,
+    );
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel(null)).toBe(false);
   });
 
   it("surfaces display labels for canonical models", () => {
@@ -293,7 +306,9 @@ describe("model-first canonical catalog", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-opus-4-8",
       "claude-sonnet-4-6",
+      "deepseek-v4-pro",
       "kimi-k2.7-code",
+      "glm-5.2",
       "gpt-5.5",
     ]);
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("kimi-k2.7-code");

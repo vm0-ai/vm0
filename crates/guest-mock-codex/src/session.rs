@@ -295,7 +295,7 @@ fn find_session_file_for_thread(codex_home: &Path, thread_id: &str) -> io::Resul
             path.file_name()
                 .is_some_and(|name| codex_jsonl_session_filename_matches(name, &id_norm))
         })
-        .filter_map(|path| match is_real_jsonl_file_candidate(&path) {
+        .filter_map(|path| match is_real_session_file_candidate(&path) {
             Ok(true) => Some(Ok(path)),
             Ok(false) => None,
             Err(err) => Some(Err(err)),
@@ -316,7 +316,7 @@ fn codex_jsonl_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
     name_norm.contains(id_norm)
 }
 
-fn is_real_jsonl_file_candidate(path: &Path) -> io::Result<bool> {
+fn is_real_session_file_candidate(path: &Path) -> io::Result<bool> {
     match path.symlink_metadata() {
         Ok(metadata) => Ok(metadata.file_type().is_file()),
         Err(err) if should_skip_unusable_session_entry(&err) => Ok(false),
@@ -331,19 +331,11 @@ pub fn session_files(codex_home: &Path) -> io::Result<Vec<PathBuf>> {
         if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
             continue;
         }
-        if is_jsonl_file_candidate(&path)? {
+        if is_real_session_file_candidate(&path)? {
             found.push(path);
         }
     }
     Ok(found)
-}
-
-fn is_jsonl_file_candidate(path: &Path) -> io::Result<bool> {
-    match path.symlink_metadata() {
-        Ok(metadata) => Ok(metadata.file_type().is_file()),
-        Err(err) if should_skip_unusable_session_entry(&err) => Ok(false),
-        Err(err) => Err(err),
-    }
 }
 
 fn ambiguous_session_files_error(thread_id: &str, matches: &[PathBuf]) -> io::Error {
@@ -361,11 +353,12 @@ fn ambiguous_session_files_error(thread_id: &str, matches: &[PathBuf]) -> io::Er
 fn session_artifacts_for_resume(codex_home: &Path) -> io::Result<Vec<PathBuf>> {
     let root = codex_home.join("sessions");
     let mut found = Vec::new();
+    // Resume should surface a corrupt sessions root instead of starting a fresh session.
     if !ensure_existing_real_session_dir(&root)? {
         return Ok(found);
     }
     found.push(root.clone());
-    walk_existing_root(&root, &mut |path| {
+    walk(&root, &mut |path| {
         found.push(path.to_path_buf());
     })?;
     found.sort();
@@ -403,10 +396,6 @@ pub fn session_artifacts(codex_home: &Path) -> io::Result<Vec<PathBuf>> {
     })?;
     found.sort();
     Ok(found)
-}
-
-fn walk_existing_root(dir: &Path, f: &mut dyn FnMut(&Path)) -> io::Result<()> {
-    walk(dir, f)
 }
 
 fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) -> io::Result<()> {

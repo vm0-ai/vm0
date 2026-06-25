@@ -68,5 +68,28 @@ export const onboardingSetupContract = c.router({
   },
 });
 
+export const onboardingCompleteLimitedFreeContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/onboarding/complete-limited-free",
+    headers: authHeadersSchema,
+    body: z.object({}).strict(),
+    responses: {
+      200: z.object({
+        agentId: z.string(),
+        tier: z.literal("limited-free-1"),
+        needsOnboarding: z.literal(false),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Complete onboarding and enter the limited free tier",
+  },
+});
+
 export type OnboardingStatusContract = typeof onboardingStatusContract;
 export type OnboardingSetupContract = typeof onboardingSetupContract;
+export type OnboardingCompleteLimitedFreeContract =
+  typeof onboardingCompleteLimitedFreeContract;

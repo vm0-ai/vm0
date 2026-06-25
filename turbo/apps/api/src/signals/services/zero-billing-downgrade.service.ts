@@ -23,6 +23,7 @@ const L = logger("BillingDowngrade");
 
 const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
   free: 0,
+  "limited-free-1": 0,
   "pro-suspend": 0,
   pro: 1,
   team: 2,
