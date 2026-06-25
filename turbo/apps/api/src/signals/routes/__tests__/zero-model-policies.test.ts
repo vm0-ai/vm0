@@ -472,9 +472,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toStrictEqual([
       "claude-opus-4-8",
       "claude-opus-4-6",
-      "claude-sonnet-4-6",
-      "kimi-k2.7-code",
-      "gpt-5.5",
+      ...DEFAULT_ORG_MODEL_POLICY_MODELS.slice(1),
     ]);
   });
 
@@ -531,16 +529,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
-        defaultProviderType: "openrouter-api-key",
-        credentialScope: "org",
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openrouter-api-key" as const,
+        credentialScope: "org" as const,
         modelProviderId: openRouterProviderId,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const openRouterResponse = await accept(
       client.update({
@@ -677,16 +676,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
         defaultProviderType: "anthropic-api-key" as const,
         credentialScope: "org" as const,
         modelProviderId: providerId,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const response = await client.update({
       headers: { authorization: "Bearer clerk-session" },
@@ -707,16 +707,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
-        defaultProviderType: "openrouter-api-key",
-        credentialScope: "org",
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openrouter-api-key" as const,
+        credentialScope: "org" as const,
         modelProviderId: null,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const response = await client.update({
       headers: { authorization: "Bearer clerk-session" },

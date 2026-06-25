@@ -184,8 +184,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: true,
     });
 
-    const forgedLimitedFree = await api.requestCompleteLimitedFreeOnboarding(
+    const forgedLimitedFree = await api.requestRawJson(
       admin,
+      "/api/zero/onboarding/complete-limited-free",
+      "POST",
       { credits: 999_999 },
       [400],
     );

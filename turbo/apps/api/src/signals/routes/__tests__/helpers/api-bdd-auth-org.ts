@@ -795,23 +795,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async requestCompleteLimitedFreeOnboarding<S extends 200 | 400 | 403 | 409>(
-      actor: ApiTestUser,
-      body: Record<string, unknown>,
-      statuses: readonly S[],
-    ) {
-      const client = setupApp({ context })(
-        onboardingCompleteLimitedFreeContract,
-      );
-      return await accept(
-        client.complete({
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
     async requestSetupOnboarding<S extends 200 | 401 | 403 | 409 | 422>(
       actor: ApiTestUser | null,
       body: OnboardingSetupBody,
