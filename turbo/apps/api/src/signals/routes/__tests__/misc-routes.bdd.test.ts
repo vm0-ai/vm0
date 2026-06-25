@@ -193,6 +193,12 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       [400],
     );
     expectApiError(invalidSearchAfter.body);
+    const blankSearchContext = await api.rawSearchLogs(
+      admin,
+      "?keyword=nothing-here&before=&after=",
+    );
+    expect(blankSearchContext.status).toBe(400);
+    expectApiError(blankSearchContext.body);
     const invalidSearchRunId = await api.requestSearchLogs(
       admin,
       { keyword: "nothing-here", runId: "not-a-uuid" },

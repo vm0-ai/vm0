@@ -36,6 +36,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { createApp } from "../../../../app-factory";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -542,6 +543,23 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await requestZeroLogsSearch(context, actor, query, statuses);
+    },
+
+    async rawSearchLogs(
+      actor: ApiTestUser,
+      queryString: string,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request(
+        `/api/zero/logs/search${queryString}`,
+        {
+          method: "GET",
+          headers: authorization === undefined ? {} : { authorization },
+        },
+      );
+      const body: unknown = await response.json();
+      return { status: response.status, body };
     },
 
     async searchLogs(actor: ApiTestUser, keyword: string) {

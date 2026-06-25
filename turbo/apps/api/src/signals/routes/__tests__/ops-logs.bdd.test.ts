@@ -416,6 +416,13 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     );
     expectApiError(invalidAfter.body);
 
+    const blankContext = await api.rawSearchLogs(
+      actor,
+      "?keyword=OOM&before=&after=",
+    );
+    expect(blankContext.status).toBe(400);
+    expectApiError(blankContext.body);
+
     const invalidRunId = await api.requestSearchLogs(
       actor,
       { keyword: "OOM", runId: "not-a-uuid" },

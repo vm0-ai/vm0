@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  authHeadersSchema,
-  initContract,
-  timestampQueryNumberSchema,
-} from "./base";
+import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
@@ -17,6 +13,7 @@ import {
   queueResponseSchema,
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
+  logsSearchQuerySchema,
   logsSearchResponseSchema,
   createLogPaginationQuerySchema,
 } from "./runs";
@@ -315,15 +312,7 @@ export const zeroLogsSearchContract = c.router({
     method: "GET",
     path: "/api/zero/logs/search",
     headers: authHeadersSchema,
-    query: z.object({
-      keyword: z.string().min(1),
-      agentId: z.string().uuid().optional(),
-      runId: z.string().uuid().optional(),
-      since: timestampQueryNumberSchema.optional(),
-      limit: z.coerce.number().int().min(1).max(50).default(20),
-      before: z.coerce.number().int().min(0).max(10).default(0),
-      after: z.coerce.number().int().min(0).max(10).default(0),
-    }),
+    query: logsSearchQuerySchema,
     responses: {
       200: logsSearchResponseSchema,
       400: apiErrorSchema,

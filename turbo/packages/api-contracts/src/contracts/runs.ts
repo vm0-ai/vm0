@@ -463,6 +463,13 @@ const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
     { message: "Sequence cursor is out of range" },
   );
 
+function boundedIntegerQueryNumberSchema(min: number, max: number) {
+  return z.preprocess(
+    rejectBlankQueryNumber,
+    z.coerce.number().int().min(min).max(max),
+  );
+}
+
 function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
   return cursorKind === "time"
     ? timestampQueryNumberSchema
@@ -938,6 +945,16 @@ const logsSearchResponseSchema = z.object({
   hasMore: z.boolean(),
 });
 
+const logsSearchQuerySchema = z.object({
+  keyword: z.string().min(1),
+  agentId: z.string().uuid().optional(),
+  runId: z.string().uuid().optional(),
+  since: timestampQueryNumberSchema.optional(),
+  limit: boundedIntegerQueryNumberSchema(1, 50).default(20),
+  before: boundedIntegerQueryNumberSchema(0, 10).default(0),
+  after: boundedIntegerQueryNumberSchema(0, 10).default(0),
+});
+
 /**
  * Logs search route contract (/api/logs/search)
  * Search agent events across runs
@@ -951,15 +968,7 @@ export const logsSearchContract = c.router({
     method: "GET",
     path: "/api/logs/search",
     headers: authHeadersSchema,
-    query: z.object({
-      keyword: z.string().min(1),
-      agentId: z.string().uuid().optional(),
-      runId: z.string().uuid().optional(),
-      since: timestampQueryNumberSchema.optional(),
-      limit: z.coerce.number().int().min(1).max(50).default(20),
-      before: z.coerce.number().int().min(0).max(10).default(0),
-      after: z.coerce.number().int().min(0).max(10).default(0),
-    }),
+    query: logsSearchQuerySchema,
     responses: {
       200: logsSearchResponseSchema,
       400: apiErrorSchema,
@@ -1067,6 +1076,7 @@ export {
   networkLogEntrySchema,
   networkLogsResponseSchema,
   searchResultSchema,
+  logsSearchQuerySchema,
   logsSearchResponseSchema,
   queueEntrySchema,
   runningTaskSchema,
