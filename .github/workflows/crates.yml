@@ -1608,21 +1608,26 @@ jobs:
 
           # Test 2: deflate under memory pressure — allocate anonymous memory
           # in the guest to push available below deflate threshold (192 MiB).
-          # Refuse to allocate when the idle balloon state already leaves too
-          # little guest headroom; otherwise the allocator can starve the
+          # Scale the allocator down when the idle balloon state already leaves
+          # limited guest headroom; otherwise the allocator can starve the
           # keepalive job and mask the assertion as "cancelled by user".
           # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
           # match on to terminate the guest-side allocator below.
           echo "--- Test 2: balloon deflate under memory pressure ---"
-          PRESSURE_ALLOC_MIB=300
-          PRESSURE_SAFETY_MARGIN_MIB=128
-          MIN_PRESSURE_AVAIL_MIB=$(( PRESSURE_ALLOC_MIB + PRESSURE_SAFETY_MARGIN_MIB ))
-          MIN_PRESSURE_AVAIL_KB=$(( MIN_PRESSURE_AVAIL_MIB * 1024 ))
+          MAX_PRESSURE_ALLOC_MIB=300
+          MIN_PRESSURE_REMAINING_MIB=128
+          MIN_PRESSURE_AVAIL_KB=$(( MIN_PRESSURE_REMAINING_MIB * 1024 ))
           ensure_submit_running
           PRE_PRESSURE_AVAIL_KB=$(guest_avail_kb) || fail "failed to read guest MemAvailable before pressure allocation"
-          if [ "$PRE_PRESSURE_AVAIL_KB" -lt "$MIN_PRESSURE_AVAIL_KB" ]; then
-            fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need >= ${MIN_PRESSURE_AVAIL_KB}kB; allocation=${PRESSURE_ALLOC_MIB}MiB, margin=${PRESSURE_SAFETY_MARGIN_MIB}MiB)"
+          if [ "$PRE_PRESSURE_AVAIL_KB" -le "$MIN_PRESSURE_AVAIL_KB" ]; then
+            fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need > ${MIN_PRESSURE_AVAIL_KB}kB)"
           fi
+          PRE_PRESSURE_AVAIL_MIB=$(( PRE_PRESSURE_AVAIL_KB / 1024 ))
+          PRESSURE_ALLOC_MIB=$(( PRE_PRESSURE_AVAIL_MIB - MIN_PRESSURE_REMAINING_MIB ))
+          if [ "$PRESSURE_ALLOC_MIB" -gt "$MAX_PRESSURE_ALLOC_MIB" ]; then
+            PRESSURE_ALLOC_MIB=$MAX_PRESSURE_ALLOC_MIB
+          fi
+          [ "$PRESSURE_ALLOC_MIB" -gt 0 ] || fail "pressure allocation would be zero: ${PRE_PRESSURE_AVAIL_KB}kB available"
           echo "Pre-pressure guest MemAvailable: ${PRE_PRESSURE_AVAIL_KB}kB; allocating ${PRESSURE_ALLOC_MIB}MiB"
           sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "import ctypes,time; b=bytearray(${PRESSURE_ALLOC_MIB}*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER" &
           ALLOC_PID=$!
@@ -1654,8 +1659,8 @@ jobs:
           # Verify VM survived the memory pressure test
           vm_alive || fail "VM crashed during memory pressure test"
 
-          # Kill guest-side allocator — balloon has already deflated (Test 2
-          # passed), so guest has ~250 MiB available, enough for pkill exec.
+          # Kill guest-side allocator — Test 2 passing means the controller has
+          # already returned memory to the guest, enough for pkill exec.
           sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
 
           # Wait for balloon to re-inflate past midpoint between deflate and original inflate
