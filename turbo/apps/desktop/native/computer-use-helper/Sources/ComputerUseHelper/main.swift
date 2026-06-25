@@ -57,6 +57,7 @@ func startSentry() {
         options.tracesSampleRate = NSNumber(value: 0)
         options.enableAutoPerformanceTracing = false
         options.enableUncaughtNSExceptionReporting = true
+        options.appHangTimeoutInterval = 5
         options.initialScope = { scope in
             scope.setTag(value: "desktop", key: "app")
             scope.setTag(value: "computer-use-helper", key: "component")

@@ -21,6 +21,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type {
+  UnattendedTriggerConnectorRefs,
   UnattendedTriggerPermissionAction,
   UnattendedTriggerPermissionPolicy,
   ZeroWorkflowTriggerSummary,
@@ -63,6 +64,7 @@ import { setWorkflowTriggerPermissionPolicy$ } from "../../signals/workflows-pag
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
@@ -183,6 +185,21 @@ function visibleTriggerPermissionConnectors(query: string): readonly string[] {
   return matches.slice(0, TRIGGER_PERMISSION_CONNECTOR_LIMIT);
 }
 
+function toggleConnectorRef(
+  connectorRefs: readonly string[],
+  connectorRef: string,
+  enabled: boolean,
+): UnattendedTriggerConnectorRefs {
+  if (enabled) {
+    return connectorRefs.includes(connectorRef)
+      ? [...connectorRefs]
+      : [...connectorRefs, connectorRef];
+  }
+  return connectorRefs.filter((ref) => {
+    return ref !== connectorRef;
+  });
+}
+
 function LoadingCard() {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
@@ -229,22 +246,44 @@ function ConnectorPicker({
   agentId,
   workflowId,
   triggerId,
+  trigger: providedTrigger,
   layout = "page",
   onSelectConnector,
 }: {
   readonly agentId: string;
   readonly workflowId: string;
   readonly triggerId: string;
+  readonly trigger?: ZeroWorkflowTriggerSummary;
   readonly layout?: "page" | "drawer";
   readonly onSelectConnector?: (connectorRef: ConnectorType) => void;
 }) {
   const query = useGet(triggerPermissionsConnectorSearch$);
   const setQuery = useSet(setTriggerPermissionsConnectorSearch$);
+  const pageSignal = useGet(pageSignal$);
+  const triggerLoadable = useLastLoadable(triggerPermissionsTrigger$);
+  const [saveLoadable, save] = useLoadableSet(
+    setWorkflowTriggerPermissionPolicy$,
+  );
   const visibleConnectors = visibleTriggerPermissionConnectors(query);
   const containerClass =
     layout === "page"
       ? "mx-auto flex w-full max-w-[640px] flex-col gap-4 px-6 py-10"
       : "flex min-h-0 flex-1 flex-col gap-4";
+
+  if (!providedTrigger && triggerLoadable.state === "loading") {
+    return <LoadingCard />;
+  }
+  if (!providedTrigger && triggerLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load trigger" />;
+  }
+
+  const trigger = providedTrigger ?? triggerLoadable.data;
+  if (!trigger) {
+    return <ErrorMessage message="Trigger not found" />;
+  }
+
+  const connectorRefs = trigger.unattendedConnectorRefs;
+  const saving = saveLoadable.state === "loading";
 
   return (
     <div className={containerClass}>
@@ -269,8 +308,9 @@ function ConnectorPicker({
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/70">
         {visibleConnectors.map((type) => {
           const config = CONNECTOR_TYPES[type as ConnectorType];
+          const connectorEnabled = connectorRefs.includes(type);
           const rowClass =
-            "flex w-full items-center gap-3 border-b border-border/50 px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/40";
+            "flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/40";
           const content = (
             <>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
@@ -286,39 +326,75 @@ function ConnectorPicker({
                   </span>
                 )}
               </span>
+            </>
+          );
+          const toggle = (
+            <LoadingSwitch
+              checked={connectorEnabled}
+              loading={saving}
+              ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${
+                config.label
+              }`}
+              onCheckedChange={(enabled) => {
+                detach(
+                  save(
+                    {
+                      triggerId,
+                      unattendedConnectorRefs: toggleConnectorRef(
+                        connectorRefs,
+                        type,
+                        enabled,
+                      ),
+                      unattendedPermissionPolicy:
+                        trigger.unattendedPermissionPolicy,
+                    },
+                    pageSignal,
+                  ),
+                  Reason.DomCallback,
+                );
+              }}
+            />
+          );
+          if (onSelectConnector) {
+            return (
+              <div key={type} className={rowClass}>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  onClick={() => {
+                    onSelectConnector(type as ConnectorType);
+                  }}
+                >
+                  {content}
+                </button>
+                {toggle}
+                <IconChevronRight
+                  size={16}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+              </div>
+            );
+          }
+          return (
+            <div key={type} className={rowClass}>
+              <Link
+                pathname={ROUTES.agentWorkflowTriggerPermissions}
+                options={{
+                  pathParams: { agentId, workflowId, triggerId },
+                  searchParams: new URLSearchParams({ ref: type }),
+                }}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                {content}
+              </Link>
+              {toggle}
               <IconChevronRight
                 size={16}
                 stroke={1.5}
                 className="shrink-0 text-muted-foreground"
               />
-            </>
-          );
-          if (onSelectConnector) {
-            return (
-              <button
-                key={type}
-                type="button"
-                className={rowClass}
-                onClick={() => {
-                  onSelectConnector(type as ConnectorType);
-                }}
-              >
-                {content}
-              </button>
-            );
-          }
-          return (
-            <Link
-              key={type}
-              pathname={ROUTES.agentWorkflowTriggerPermissions}
-              options={{
-                pathParams: { agentId, workflowId, triggerId },
-                searchParams: new URLSearchParams({ ref: type }),
-              }}
-              className={rowClass}
-            >
-              {content}
-            </Link>
+            </div>
           );
         })}
         {visibleConnectors.length === 0 ? (
@@ -424,6 +500,39 @@ function materializeTriggerPermissionPolicies(
     policies[permission.name] = actionFor(permission.name);
   }
   return policies;
+}
+
+function ConnectorAccessCard({
+  connectorEnabled,
+  connectorLabel,
+  saving,
+  onToggle,
+}: {
+  readonly connectorEnabled: boolean;
+  readonly connectorLabel: string;
+  readonly saving: boolean;
+  readonly onToggle: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+      <div className="min-w-0 flex flex-col gap-1">
+        <p className="text-sm font-medium text-foreground">Connector access</p>
+        <p className="text-xs text-muted-foreground">
+          {connectorEnabled
+            ? "Enabled for unattended trigger runs"
+            : "Disabled for unattended trigger runs"}
+        </p>
+      </div>
+      <LoadingSwitch
+        checked={connectorEnabled}
+        loading={saving}
+        ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${
+          connectorLabel
+        }`}
+        onCheckedChange={onToggle}
+      />
+    </div>
+  );
 }
 
 function groupActionFor(
@@ -874,6 +983,7 @@ function ConnectorPermissionEditorCard({
   triggerId,
   connectorRef,
   metadata,
+  connectorRefs,
   savedPolicy,
   editor,
   layout = "page",
@@ -883,6 +993,7 @@ function ConnectorPermissionEditorCard({
   triggerId: string;
   connectorRef: string;
   metadata: FirewallPermissionDetailMetadata;
+  connectorRefs: UnattendedTriggerConnectorRefs;
   savedPolicy: UnattendedTriggerPermissionPolicy | null;
   editor: TriggerPermissionEditorSignals;
   layout?: "page" | "drawer";
@@ -900,6 +1011,7 @@ function ConnectorPermissionEditorCard({
     : undefined;
   const connectorLabel = connectorConfig?.label ?? metadata.label;
   const connectorHelpText = connectorConfig?.helpText ?? "";
+  const connectorEnabled = connectorRefs.includes(connectorRef);
   const model = useTriggerPermissionEditorModel({
     connectorRef,
     editor,
@@ -921,11 +1033,32 @@ function ConnectorPermissionEditorCard({
     detach(
       (async () => {
         await save(
-          { triggerId, unattendedPermissionPolicy: merged },
+          {
+            triggerId,
+            unattendedConnectorRefs: connectorRefs,
+            unattendedPermissionPolicy: merged,
+          },
           pageSignal,
         );
         onApplied?.();
       })(),
+      Reason.DomCallback,
+    );
+  };
+  const handleToggleConnector = (enabled: boolean) => {
+    detach(
+      save(
+        {
+          triggerId,
+          unattendedConnectorRefs: toggleConnectorRef(
+            connectorRefs,
+            connectorRef,
+            enabled,
+          ),
+          unattendedPermissionPolicy: savedPolicy,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -942,6 +1075,12 @@ function ConnectorPermissionEditorCard({
         connectorHelpText={connectorHelpText}
         layout={layout}
         onBackToConnectors={onBackToConnectors}
+      />
+      <ConnectorAccessCard
+        connectorEnabled={connectorEnabled}
+        connectorLabel={connectorLabel}
+        saving={saving}
+        onToggle={handleToggleConnector}
       />
       <TriggerPermissionSearchBar
         search={model.search}
@@ -1021,6 +1160,7 @@ function LoadedTriggerPermissionsEditor({
       triggerId={triggerId}
       connectorRef={connectorRef}
       metadata={metadata}
+      connectorRefs={trigger.unattendedConnectorRefs}
       savedPolicy={trigger.unattendedPermissionPolicy}
       editor={editor}
       layout={layout}
@@ -1133,6 +1273,7 @@ function TriggerPermissionsDrawerContent({
           agentId={agentId}
           workflowId={workflowId}
           triggerId={trigger.id}
+          trigger={trigger}
           layout="drawer"
           onSelectConnector={(nextConnectorRef) => {
             setConnectorRef(nextConnectorRef);
