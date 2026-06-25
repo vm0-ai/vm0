@@ -924,6 +924,7 @@ export type RunNetworkLogsContract = typeof runNetworkLogsContract;
 const searchResultSchema = z.object({
   runId: z.string(),
   agentName: z.string(),
+  framework: z.string().nullable().optional(),
   matchedEvent: runEventSchema,
   contextBefore: z.array(runEventSchema),
   contextAfter: z.array(runEventSchema),

@@ -404,6 +404,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(matched.body.results).toHaveLength(1);
     expect(matched.body.results[0]?.runId).toBe(runId);
     expect(matched.body.results[0]?.agentName).toBe("BDD ops-logs agent");
+    expect(matched.body.results[0]?.framework).toBe("claude-code");
     expect(matched.body.results[0]?.matchedEvent.sequenceNumber).toBe(3);
     expect(matched.body.results[0]?.contextBefore).toStrictEqual([]);
     expect(matched.body.results[0]?.contextAfter).toStrictEqual([]);

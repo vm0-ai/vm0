@@ -11,6 +11,7 @@ import type {
   LogsSearchResponse,
   RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 import {
   agentComposes,
   agentComposeVersions,
@@ -47,16 +48,33 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const AXIOM_RUN_ID_FILTER_CHUNK_SIZE = 500;
 const AXIOM_SEARCH_QUERY_CONCURRENCY = 4;
 
-interface AgentComposeContent {
-  agents: Record<string, { framework: string }>;
-}
-
 function extractFramework(composeContent: unknown): string | null {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-  return firstAgent?.framework ?? null;
+  if (
+    !composeContent ||
+    typeof composeContent !== "object" ||
+    Array.isArray(composeContent)
+  ) {
+    return null;
+  }
+
+  const agents = (composeContent as { readonly agents?: unknown }).agents;
+  if (!agents || typeof agents !== "object" || Array.isArray(agents)) {
+    return null;
+  }
+
+  const [firstAgent] = Object.values(agents);
+  if (
+    !firstAgent ||
+    typeof firstAgent !== "object" ||
+    Array.isArray(firstAgent)
+  ) {
+    return null;
+  }
+
+  const framework = (firstAgent as { readonly framework?: unknown }).framework;
+  return typeof framework === "string" && isSupportedFramework(framework)
+    ? framework
+    : null;
 }
 
 function normalizeTriggerSource(
@@ -447,8 +465,7 @@ export function zeroLogDetail(
     } = result;
     const runResult = run.result as RunResult | null;
     const agentSessionId = runResult?.agentSessionId ?? null;
-    const composeContent =
-      composeVersion?.content as AgentComposeContent | null;
+    const composeContent = composeVersion?.content ?? null;
 
     return {
       id: run.id,
@@ -683,11 +700,15 @@ function buildSearchResults(params: {
   readonly before: number;
   readonly after: number;
   readonly contextMap: Map<string, AxiomAgentEvent>;
-  readonly agentNames: Map<string, string>;
+  readonly runMetadata: Map<
+    string,
+    { readonly agentName: string; readonly framework: string | null }
+  >;
 }): LogsSearchResponse["results"] {
   return params.matches.map((match) => {
     const contextBefore: RunEvent[] = [];
     const contextAfter: RunEvent[] = [];
+    const metadata = params.runMetadata.get(match.runId);
 
     for (
       let i = match.sequenceNumber - params.before;
@@ -713,7 +734,8 @@ function buildSearchResults(params: {
 
     return {
       runId: match.runId,
-      agentName: params.agentNames.get(match.runId) || "unknown",
+      agentName: metadata?.agentName ?? "unknown",
+      framework: metadata?.framework ?? null,
       matchedEvent: toRunEvent(match),
       contextBefore,
       contextAfter,
@@ -721,13 +743,18 @@ function buildSearchResults(params: {
   });
 }
 
-async function getAgentNames(
+async function getSearchRunMetadata(
   db: ServiceDb,
   runIds: string[],
   userId: string,
   orgId: string,
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+): Promise<
+  Map<string, { readonly agentName: string; readonly framework: string | null }>
+> {
+  const result = new Map<
+    string,
+    { readonly agentName: string; readonly framework: string | null }
+  >();
   if (runIds.length === 0) {
     return result;
   }
@@ -736,6 +763,7 @@ async function getAgentNames(
     .select({
       runId: agentRuns.id,
       composeId: agentComposes.id,
+      composeContent: agentComposeVersions.content,
       displayName: zeroAgents.displayName,
     })
     .from(agentRuns)
@@ -757,7 +785,10 @@ async function getAgentNames(
     );
 
   for (const row of rows) {
-    result.set(row.runId, row.displayName ?? row.composeId ?? "unknown");
+    result.set(row.runId, {
+      agentName: row.displayName ?? row.composeId ?? "unknown",
+      framework: extractFramework(row.composeContent),
+    });
   }
 
   return result;
@@ -837,7 +868,7 @@ export function zeroLogSearch(
         }),
       ),
     ];
-    const agentNames = await getAgentNames(
+    const runMetadata = await getSearchRunMetadata(
       db,
       matchedRunIds,
       params.userId,
@@ -849,7 +880,7 @@ export function zeroLogSearch(
       before,
       after,
       contextMap,
-      agentNames,
+      runMetadata,
     });
     return { results, hasMore };
   });

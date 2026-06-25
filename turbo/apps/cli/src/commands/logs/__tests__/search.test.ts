@@ -30,6 +30,26 @@ function makeEvent(
   };
 }
 
+function makeCodexMessageEvent(
+  sequenceNumber: number,
+  text: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: `item-${sequenceNumber}`,
+        type: "agent_message",
+        text,
+      },
+    },
+  };
+}
+
 describe("logs search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -99,6 +119,32 @@ describe("logs search command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("invalid-date");
     expect(logCalls).toContain("Build failed");
+  });
+
+  it("should render codex search result events with the result framework", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "abc12345-1234-1234-1234-123456789abc",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "Codex"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("codex-agent");
+    expect(logCalls).toContain("Codex found the issue");
   });
 
   it("should pass context params to API", async () => {

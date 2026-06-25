@@ -24,16 +24,13 @@ interface SearchOptions {
   limit?: string;
 }
 
-/**
- * Render a single agent event using EventRenderer.
- *
- * Search responses do not yet carry a per-result framework, so we let the
- * factory default to claude-code. Codex events in search results render as
- * nothing until the search contract is extended (tracked separately).
- */
-function renderEvent(event: RunEvent, renderer: EventRenderer): void {
+function renderSearchEvent(
+  event: RunEvent,
+  framework: string | null | undefined,
+  renderer: EventRenderer,
+): void {
   const eventData = event.eventData as Record<string, unknown>;
-  const parsed = parseEvent(eventData);
+  const parsed = parseEvent(eventData, framework ?? undefined);
   if (parsed) {
     parsed.timestamp = new Date(event.createdAt);
     renderer.render(parsed);
@@ -123,11 +120,11 @@ function renderResults(response: LogsSearchResponse): void {
       });
 
       for (const event of result.contextBefore) {
-        renderEvent(event, renderer);
+        renderSearchEvent(event, result.framework, renderer);
       }
-      renderEvent(result.matchedEvent, renderer);
+      renderSearchEvent(result.matchedEvent, result.framework, renderer);
       for (const event of result.contextAfter) {
-        renderEvent(event, renderer);
+        renderSearchEvent(event, result.framework, renderer);
       }
     }
   }
