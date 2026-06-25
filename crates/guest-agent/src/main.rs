@@ -430,7 +430,8 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::InvalidCredentials);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_provider_overloaded_error(&normalized)
+        && (is_claude_provider_overloaded_error(&normalized)
+            || is_claude_result_simple_provider_overloaded_error(source, &normalized))
     {
         return Some(FailureReason::ProviderOverloaded);
     }
@@ -496,6 +497,13 @@ fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
             starts_with_overloaded_word(detail) || contains_overloaded_error_type(detail)
         })
     })
+}
+
+fn is_claude_result_simple_provider_overloaded_error(
+    source: FailureDetailSource,
+    normalized: &str,
+) -> bool {
+    source == FailureDetailSource::ClaudeResult && normalized.trim() == "api error: overloaded"
 }
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
@@ -1543,6 +1551,67 @@ mod tests {
             diagnostic.failure_detail_source,
             Some(FailureDetailSource::ClaudeResult)
         );
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_simple_provider_overloaded() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            "API Error: Overloaded",
+        );
+
+        assert_eq!(reason, Some(FailureReason::ProviderOverloaded));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_simple_provider_overloaded_diagnostic() {
+        let message = "API Error: Overloaded";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_simple_claude_overloaded_from_stderr() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::Stderr,
+            "API Error: Overloaded",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_claude_result_stream_idle_timeout() {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            "API Error: Stream idle timeout - partial response received",
+        );
+
+        assert_eq!(reason, None);
     }
 
     #[test]
