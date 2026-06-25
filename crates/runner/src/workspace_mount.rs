@@ -728,6 +728,7 @@ exit 32
         assert!(cmd.contains("WORKSPACE_HOLDER_VALUE_LIMIT=240"));
         assert!(cmd.contains("WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1"));
         assert!(cmd.contains("wait_for_fast_workspace_holders_to_clear()"));
+        assert!(cmd.contains("wait_for_maps_workspace_holders_to_clear()"));
         assert!(cmd.contains("diagnostics truncated after $WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT"));
         assert!(cmd.contains("workspace holder cleanup: fast scan started"));
         assert!(cmd.contains("workspace holder cleanup: TERM started"));
@@ -780,6 +781,21 @@ exit 32
             "scan_workspace_maps_holder_refs | collect_and_log_workspace_holders",
             kill_retry,
         );
+        let maps_kill = find_after(
+            &cmd,
+            "kill_workspace_holder_record_pids \"$maps_holder_records\" maps",
+            maps_scan,
+        );
+        let maps_wait = find_after(
+            &cmd,
+            "wait_for_maps_workspace_holders_to_clear \"$maps_holder_records\" \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"",
+            maps_kill,
+        );
+        let maps_retry = find_after(
+            &cmd,
+            "retry_workspace_unmount \"slow maps diagnostics\"",
+            maps_wait,
+        );
 
         assert!(
             clean_unmount < fast_scan,
@@ -810,6 +826,14 @@ exit 32
         assert!(
             kill_retry < maps_scan,
             "slow maps scan must run after fast TERM/KILL retries"
+        );
+        assert!(
+            maps_kill < maps_wait,
+            "maps KILL must wait for maps refs to clear"
+        );
+        assert!(
+            maps_wait < maps_retry,
+            "maps wait must happen before final retry unmount"
         );
     }
 

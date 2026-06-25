@@ -324,6 +324,33 @@ wait_for_fast_workspace_holders_to_clear() {
   [ -z "$(workspace_fast_holder_pids)" ]
 }
 
+holder_records_have_maps_workspace_ref() {
+  records_file=$1
+  for pid in $(holder_record_pids "$records_file"); do
+    if pid_has_maps_workspace_ref "$pid"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+wait_for_maps_workspace_holders_to_clear() {
+  records_file=$1
+  grace_seconds=$2
+  attempts=$((grace_seconds * 10))
+  [ "$attempts" -gt 0 ] || attempts=1
+
+  while [ "$attempts" -gt 0 ]; do
+    if ! holder_records_have_maps_workspace_ref "$records_file"; then
+      return 0
+    fi
+    attempts=$((attempts - 1))
+    sleep 0.1
+  done
+
+  ! holder_records_have_maps_workspace_ref "$records_file"
+}
+
 retry_workspace_unmount() {
   stage=$1
   echo "workspace holder cleanup: retry umount after $stage started" >&2
@@ -380,6 +407,7 @@ echo "workspace holder cleanup: slow maps scan holder_pid_count=$maps_holder_pid
 if [ "$maps_holder_pid_count" -gt 0 ]; then
   echo "workspace holder cleanup: maps KILL started holder_pid_count=$maps_holder_pid_count" >&2
   kill_workspace_holder_record_pids "$maps_holder_records" maps
+  wait_for_maps_workspace_holders_to_clear "$maps_holder_records" "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
   echo "workspace holder cleanup: maps KILL completed" >&2
 else
   echo "no workspace maps holder processes found" >&2
