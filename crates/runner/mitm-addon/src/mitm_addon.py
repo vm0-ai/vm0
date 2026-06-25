@@ -1444,10 +1444,10 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             flow.kill()
-            return
+            return None
         flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
-        return
+        return None
 
     if _should_stream_capture_request(classification):
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
