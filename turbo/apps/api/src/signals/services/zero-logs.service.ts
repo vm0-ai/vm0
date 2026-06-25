@@ -362,16 +362,7 @@ async function getAvailableFilters(
       return r.triggerSource;
     })
     .filter((s): s is TriggerSource => {
-      return [
-        "automation",
-        "web",
-        "slack",
-        "email",
-        "telegram",
-        "github",
-        "cli",
-        "agent",
-      ].includes(s as string);
+      return triggerSourceSchema.safeParse(s).success;
     });
 
   const agents = agentRows
