@@ -46,6 +46,12 @@ export const runnerClaimPollReasonSchema = z.enum([
 const runnerClaimTelemetrySchema = z.object({
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+  pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
+  pollHttpRequestMs: z.number().int().nonnegative().optional(),
+  pollReason: runnerClaimPollReasonSchema.optional(),
+});
+
+const runnerPollTelemetrySchema = z.object({
   pollReason: runnerClaimPollReasonSchema.optional(),
 });
 
@@ -101,6 +107,7 @@ export const runnersPollContract = c.router({
       group: runnerGroupSchema,
       profiles: z.array(z.string()).optional(),
       heldSessionStates: z.array(heldSessionStateSchema).max(1024).optional(),
+      telemetry: runnerPollTelemetrySchema.optional(),
     }),
     responses: {
       200: z.object({

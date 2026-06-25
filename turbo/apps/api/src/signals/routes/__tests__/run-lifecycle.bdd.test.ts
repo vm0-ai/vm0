@@ -85,6 +85,15 @@ const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
+const RUNNER_POLL_TIMING_ACTION_TYPES = [
+  "runner_poll_pending_job_lookup",
+  "runner_poll_request_to_job_response",
+  "runner_queue_to_poll_response",
+] as const;
+const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+  "runner_poll_due_to_job_discovered",
+  "runner_poll_http_request",
+] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
@@ -126,6 +135,16 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "environment",
   "execution_context",
   "presigned_url",
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "sandbox_token",
+  "sandboxToken",
+  "api_key",
+  "apiKey",
 ] as const;
 const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
   "org_id",
@@ -257,7 +276,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function apiDispatchTimingEventsForRun(
+function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
@@ -267,12 +286,7 @@ function apiDispatchTimingEventsForRun(
       return [];
     }
     return events.filter((event): event is Record<string, unknown> => {
-      return (
-        isRecord(event) &&
-        event.run_id === runId &&
-        typeof event.op_type === "string" &&
-        event.op_type.startsWith("api_dispatch_")
-      );
+      return isRecord(event) && event.run_id === runId;
     });
   });
 }
@@ -280,20 +294,22 @@ function apiDispatchTimingEventsForRun(
 function claimRouteTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter((event): event is Record<string, unknown> => {
-      return (
-        isRecord(event) &&
-        event.run_id === runId &&
-        typeof event.op_type === "string" &&
-        event.op_type.startsWith("claim_route_")
-      );
-    });
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("claim_route_")
+    );
+  });
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("api_dispatch_")
+    );
   });
 }
 
@@ -2200,7 +2216,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     const polled = await api.requestPollRunnerAs(
       bearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      {
+        group: runnerGroup,
+        profiles: ["vm0/default"],
+        telemetry: { pollReason: "deferred" },
+      },
       [200],
     );
     if (polled.status !== 200) {
@@ -2216,6 +2236,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         telemetry: {
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
+          pollDueToJobDiscoveredMs: 789,
+          pollHttpRequestMs: 321,
           pollReason: "deferred",
         },
       },
@@ -2313,6 +2335,89 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         }),
       ],
     );
+    const timingEvents = sandboxOperationEventsForRun(first.runId);
+    for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    }
+    for (const actionType of RUNNER_CLAIM_TELEMETRY_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      );
+    }
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_due_to_job_discovered";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 789,
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_http_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 321,
+      }),
+    );
+    const newRunnerTimingActionTypes = new Set<string>([
+      ...RUNNER_POLL_TIMING_ACTION_TYPES,
+      ...RUNNER_CLAIM_TELEMETRY_ACTION_TYPES,
+    ]);
+    for (const event of timingEvents.filter((timingEvent) => {
+      return (
+        typeof timingEvent.op_type === "string" &&
+        newRunnerTimingActionTypes.has(timingEvent.op_type)
+      );
+    })) {
+      for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain("user runner job one");
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 
