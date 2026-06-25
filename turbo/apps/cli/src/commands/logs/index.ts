@@ -21,6 +21,7 @@ import {
 import { searchCommand } from "./search";
 import { withErrorHandler } from "../../lib/command";
 import { isSupportedFramework } from "@vm0/core/frameworks";
+import { isUUID } from "../run/shared";
 
 /**
  * Maximum entries per API request
@@ -395,6 +396,14 @@ export const logsCommand = new Command()
         if (!runId) {
           logsCommand.help();
           return;
+        }
+
+        if (!isUUID(runId)) {
+          console.error(
+            chalk.red(`✗ Invalid run ID "${runId}" — expected a UUID`),
+          );
+          console.error(chalk.dim("  Run: vm0 run list    to find run IDs"));
+          process.exit(1);
         }
 
         const logType = getLogType(options);
