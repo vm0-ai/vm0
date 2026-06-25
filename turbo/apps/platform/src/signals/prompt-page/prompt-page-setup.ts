@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import { findVideoTemplateItem } from "@vm0/core";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -22,6 +24,23 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-default-selection.ts";
 
+function generationTemplateFromSearchParam(
+  template: string | null,
+): GenerationTemplateRequest | undefined {
+  const id = template?.trim();
+  if (!id) {
+    return undefined;
+  }
+  const videoTemplate = findVideoTemplateItem(id);
+  if (!videoTemplate) {
+    return undefined;
+  }
+  return {
+    type: "video",
+    selection: { stylePresetId: videoTemplate.id },
+  };
+}
+
 /**
  * Lightweight prompt deep-link endpoint.
  *
@@ -37,6 +56,9 @@ export const setupPromptPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt")?.trim();
     const requestedModel = params.get("model")?.trim();
+    const generationTemplate = generationTemplateFromSearchParam(
+      params.get("template"),
+    );
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
@@ -72,6 +94,7 @@ export const setupPromptPage$ = command(
     const cleaned = new URLSearchParams(params);
     cleaned.delete("prompt");
     cleaned.delete("model");
+    cleaned.delete("template");
     cleaned.delete("connector");
     set(updateSearchParams$, cleaned);
 
@@ -82,7 +105,7 @@ export const setupPromptPage$ = command(
         agentId,
         prompt,
         modelSelection,
-        generationTemplate: undefined,
+        generationTemplate,
         computerUseHostId: null,
       },
       rootSignal,

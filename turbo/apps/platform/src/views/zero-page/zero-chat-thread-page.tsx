@@ -5627,12 +5627,17 @@ function InsufficientCreditsCard() {
   );
 }
 
+function isBillingRecoveryError(error: string): boolean {
+  const normalized = error.trim().toLowerCase();
+  return normalized === "insufficient_credits" || normalized === "pro_required";
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
 
-  if (error === "insufficient_credits") {
+  if (isBillingRecoveryError(error)) {
     return <InsufficientCreditsCard />;
   }
 

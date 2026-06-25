@@ -203,6 +203,39 @@ describe("proxy middleware: public routes", () => {
     expect(response?.status).toBe(202);
   });
 
+  it("uses the SO origin as forwarded host for SO frontend server actions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "next-action": "abc123",
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://so.vm0.ai/en");
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("so.vm0.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response?.status).toBe(202);
+  });
+
   it("does not proxy non-GET requests when so frontend forwarding is disabled", async () => {
     const request = new NextRequest("https://www.vm0.ai/en", {
       method: "POST",
@@ -268,6 +301,36 @@ describe("proxy middleware: public routes", () => {
     expect(response).toBeDefined();
     if (!response) {
       throw new Error("Expected auth proxy response");
+    }
+    expect(response.status).toBe(202);
+  });
+
+  it("proxies sign-up verification routes to so while preserving redirect_url", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/sign-up/verify-email-address",
+      new HttpResponse("verification proxied", { status: 202 }),
+    );
+
+    const request = new NextRequest(
+      "https://www.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+      {
+        method: "POST",
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(forwardedRequests).toHaveLength(1);
+    expect(forwardedRequests[0]?.url).toBe(
+      "https://so.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+    );
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected verification proxy response");
     }
     expect(response.status).toBe(202);
   });

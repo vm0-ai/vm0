@@ -116,6 +116,10 @@ const HOP_BY_HOP_HEADERS = [
   "upgrade",
 ];
 
+function isServerActionRequest(request: NextRequest): boolean {
+  return request.headers.has("next-action");
+}
+
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-forwarded-host", request.nextUrl.host);
@@ -172,13 +176,19 @@ async function proxySoFrontendRequest(
   targetUrl: URL,
 ): Promise<Response> {
   const requestHeaders = new Headers(request.headers);
+  const serverActionRequest = isServerActionRequest(request);
   for (const header of HOP_BY_HOP_HEADERS) {
     requestHeaders.delete(header);
   }
-  requestHeaders.set("x-forwarded-host", request.nextUrl.host);
+  requestHeaders.set(
+    "x-forwarded-host",
+    serverActionRequest ? targetUrl.host : request.nextUrl.host,
+  );
   requestHeaders.set(
     "x-forwarded-proto",
-    request.nextUrl.protocol.slice(0, -1),
+    serverActionRequest
+      ? targetUrl.protocol.slice(0, -1)
+      : request.nextUrl.protocol.slice(0, -1),
   );
 
   if (requestHeaders.get("origin") === request.nextUrl.origin) {
@@ -332,8 +342,7 @@ export const config = {
     // - _vercel (Vercel internals)
     // - assets (static assets)
     // - files with extensions (images, fonts, etc.)
-    // - sign-in and sign-up (Clerk auth pages, no i18n)
-    "/((?!_next|_vercel|assets|sign-in|sign-up|.*\\..*).*)",
+    "/((?!_next|_vercel|assets|.*\\..*).*)",
     // Match API routes for CORS handling
     "/(api|v1|trpc)(.*)",
   ],
