@@ -873,6 +873,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                     key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
                     if key_name is not None:
                         self.violations.append(_violation(self.path, keyword, key_name))
+        self.visit(node.func)
+        for argument in node.args:
+            self.visit(argument)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+
+    def visit_keyword(self, node: ast.keyword) -> None:
+        self._record_metadata_merge_key_violations(node.value)
         self.generic_visit(node)
 
     def visit_Expr(self, node: ast.Expr) -> None:
@@ -1397,6 +1405,8 @@ class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
     pass
 class ClassTypeParamMergeMeta[T: flow.metadata | {"firewall_name": "github"}]:
     pass
+class ClassKeywordMergeMeta(Base, option=flow.metadata | {"vm_run_id": "run-1"}):
+    pass
 type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
 type TypeAliasParamMergeMeta[T: flow.metadata | {"firewall_base": "https://api.example.com"}] = int
 type TypeAliasValueMeta = flow.metadata["vm_run_id"]
@@ -1540,7 +1550,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 138
+    assert len(violations) == 139
     assert all("use metadata_keys." in violation for violation in violations)
 
 
