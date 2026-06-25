@@ -167,12 +167,14 @@ flow.metadata = dict(vm_proxy_log_path="proxy.jsonl")
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
+flow.metadata.update(**{"trusted_authority_host": "api.example.com"})
+flow.metadata.update([("http_request_start_monotonic", 1.0)])
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 11
+    assert len(violations) == 13
     assert all("use metadata_keys." in violation for violation in violations)
 
 
