@@ -33,13 +33,8 @@ def _python_files() -> list[Path]:
     return sorted(files)
 
 
-def _is_flow_metadata_attribute(node: ast.AST) -> bool:
-    return (
-        isinstance(node, ast.Attribute)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "flow"
-        and node.attr == "metadata"
-    )
+def _is_metadata_attribute(node: ast.AST) -> bool:
+    return isinstance(node, ast.Attribute) and node.attr == "metadata"
 
 
 def _registered_key_name(node: ast.AST) -> str | None:
@@ -59,7 +54,7 @@ def _metadata_key_violations(path: Path) -> list[str]:
     violations: list[str] = []
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.Subscript) and _is_flow_metadata_attribute(node.value):
+        if isinstance(node, ast.Subscript) and _is_metadata_attribute(node.value):
             key_name = _registered_key_name(node.slice)
             if key_name is not None:
                 violations.append(_violation(path, node, key_name))
@@ -67,7 +62,7 @@ def _metadata_key_violations(path: Path) -> list[str]:
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and _is_flow_metadata_attribute(node.func.value)
+            and _is_metadata_attribute(node.func.value)
         ):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
                 key_name = _registered_key_name(node.args[0])
@@ -76,21 +71,21 @@ def _metadata_key_violations(path: Path) -> list[str]:
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
                 violations.extend(_metadata_update_violations(path, node))
 
-        if isinstance(node, ast.AugAssign) and _is_flow_metadata_attribute(node.target):
+        if isinstance(node, ast.AugAssign) and _is_metadata_attribute(node.target):
             violations.extend(_metadata_dict_key_violations(path, node.value))
 
         if isinstance(node, ast.Assign) and any(
-            _is_flow_metadata_attribute(target) for target in node.targets
+            _is_metadata_attribute(target) for target in node.targets
         ):
             violations.extend(_metadata_dict_key_violations(path, node.value))
 
-        if isinstance(node, ast.AnnAssign) and _is_flow_metadata_attribute(node.target):
+        if isinstance(node, ast.AnnAssign) and _is_metadata_attribute(node.target):
             violations.extend(_metadata_dict_key_violations(path, node.value))
 
         if isinstance(node, ast.Compare) and len(node.comparators) == 1:
             if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
                 continue
-            if not _is_flow_metadata_attribute(node.comparators[0]):
+            if not _is_metadata_attribute(node.comparators[0]):
                 continue
             key_name = _registered_key_name(node.left)
             if key_name is not None:
@@ -188,12 +183,13 @@ flow.metadata.__setitem__("firewall_api_id", "run-1:0")
 flow.metadata.__delitem__("network_log_target")
 flow.metadata.__contains__("browser_user_agent")
 flow.metadata.__ior__({"suppress_request_body_capture": True})
+http_flow.metadata["vm_run_id"] = "run-2"
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 18
+    assert len(violations) == 19
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -205,7 +201,6 @@ def test_registered_flow_metadata_guard_ignores_external_schema_and_private_mark
         """
 entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
-record.metadata["vm_run_id"] = "external id"
 assert "connector_response_finish" in flow.metadata
 flow.metadata["firewall_rule"] = "domain:*.example.com"
 """
