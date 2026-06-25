@@ -890,6 +890,63 @@ describe("logs command", () => {
       expect(logCalls).toContain("finished");
     });
 
+    it("should show done for empty TodoWrite todo lists", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "TodoWrite",
+                          id: "todo-empty",
+                          input: { todos: [] },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "todo-empty",
+                          content: "ok",
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("TodoWrite");
+      expect(logCalls).toContain("Done");
+    });
+
     it("should handle tool_result events", async () => {
       server.use(
         http.get(

@@ -364,6 +364,11 @@ function formatTodoList(input: Record<string, unknown>): string[] {
     return lines;
   }
 
+  if (todos.length === 0) {
+    lines.push("└ ✓ Done");
+    return lines;
+  }
+
   for (let i = 0; i < todos.length; i++) {
     const todo = recordValue(todos[i]);
     const content = nonEmptyDisplayValue(todo?.content) ?? "Unknown task";
