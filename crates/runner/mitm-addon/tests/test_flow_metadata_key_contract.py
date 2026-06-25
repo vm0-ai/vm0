@@ -130,7 +130,7 @@ def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AS
             expansions = _static_starred_argument_expansions(argument.value)
             if expansions is None:
                 next_consumed_counts.extend(
-                    consumed for consumed in consumed_counts if consumed > index
+                    consumed for consumed in consumed_counts if consumed <= index
                 )
             else:
                 for consumed in consumed_counts:
@@ -2005,6 +2005,27 @@ def function_type_param_global_reads_module[function_type_param_global_meta]():
         expected_violation_count += 13
     assert len(violations) == expected_violation_count
     assert all("use metadata_keys." in violation for violation in violations)
+
+
+def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(tmp_path):
+    source_path = tmp_path / "dynamic_star_args.py"
+    _write_python_source(
+        source_path,
+        """
+flow.metadata.get(*args, "vm_run_id")
+flow.metadata.update(*args, {"firewall_name": "github"})
+flow.metadata.update(dict.fromkeys(*args, ["firewall_action"], "ALLOW"))
+flow.metadata.get(*args, metadata_keys.VM_RUN_ID)
+flow.metadata.update(*args, {metadata_keys.FIREWALL_NAME: "github"})
+""",
+    )
+
+    violations = _metadata_key_violations(source_path)
+
+    assert len(violations) == 3
+    assert any("metadata_keys.VM_RUN_ID" in violation for violation in violations)
+    assert any("metadata_keys.FIREWALL_NAME" in violation for violation in violations)
+    assert any("metadata_keys.FIREWALL_ACTION" in violation for violation in violations)
 
 
 def test_registered_flow_metadata_guard_ignores_external_schema_and_private_markers(
