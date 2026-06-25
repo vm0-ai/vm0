@@ -542,6 +542,9 @@ function parseAxiomAgentEvent(value: unknown): AxiomAgentEvent | null {
   ) {
     return null;
   }
+  if (!Number.isFinite(Date.parse(time))) {
+    return null;
+  }
 
   return {
     _time: time,

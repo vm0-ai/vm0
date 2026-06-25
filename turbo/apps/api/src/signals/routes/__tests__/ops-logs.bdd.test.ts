@@ -395,6 +395,27 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     );
     expectApiError(invalidSince.body);
 
+    const invalidLimit = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidLimit.body);
+
+    const invalidBefore = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", before: 1.5 },
+      [400],
+    );
+    expectApiError(invalidBefore.body);
+
+    const invalidAfter = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", after: 1.5 },
+      [400],
+    );
+    expectApiError(invalidAfter.body);
+
     const axiomCallsBeforeMalformed =
       context.mocks.axiom.query.mock.calls.length;
     context.mocks.axiom.query.mockResolvedValueOnce([
@@ -403,6 +424,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
         ...axiomEvent(runId, 4, "Error: OOM killed"),
         sequenceNumber: MAX_EVENT_SEQUENCE_NUMBER + 1,
       },
+      { ...axiomEvent(runId, 5, "Error: OOM killed"), _time: "not-a-date" },
     ]);
     const malformedAxiomRow = await api.requestSearchLogs(
       actor,
