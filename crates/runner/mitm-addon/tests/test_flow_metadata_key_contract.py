@@ -72,6 +72,172 @@ def _argument_names(args: ast.arguments) -> set[str]:
     return names
 
 
+class _ScopeBoundNameVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.bound_names: set[str] = set()
+        self.global_names: set[str] = set()
+        self.nonlocal_names: set[str] = set()
+
+    @property
+    def local_names(self) -> set[str]:
+        return self.bound_names - self.global_names - self.nonlocal_names
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.global_names.update(node.names)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+        self.nonlocal_names.update(node.names)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.bound_names.add(node.name)
+        self._visit_function_definition_expressions(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.bound_names.add(node.name)
+        self._visit_function_definition_expressions(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.bound_names.add(node.name)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for base in node.bases:
+            self.visit(base)
+        for keyword in node.keywords:
+            self.visit(keyword)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        for target in node.targets:
+            self.bound_names.update(_target_names(target))
+            self.visit(target)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+        self.visit(node.annotation)
+        self.bound_names.update(_target_names(node.target))
+        self.visit(node.target)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.bound_names.update(_target_names(node.target))
+        self.visit(node.target)
+        self.visit(node.value)
+
+    def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> None:
+        self.visit(node.iter)
+        self.bound_names.update(_target_names(node.target))
+        self.visit(node.target)
+        for statement in [*node.body, *node.orelse]:
+            self.visit(statement)
+
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for_statement(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._visit_for_statement(node)
+
+    def _visit_with_statement(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            self.bound_names.update(_target_names(item.optional_vars))
+            if item.optional_vars is not None:
+                self.visit(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with_statement(node)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._visit_with_statement(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.type is not None:
+            self.visit(node.type)
+        if node.name is not None:
+            self.bound_names.add(node.name)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_Delete(self, node: ast.Delete) -> None:
+        for target in node.targets:
+            self.bound_names.update(_target_names(target))
+            self.visit(target)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.bound_names.update(_target_names(node.target))
+        self.visit(node.value)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.bound_names.add(alias.asname or alias.name.split(".", maxsplit=1)[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name != "*":
+                self.bound_names.add(alias.asname or alias.name)
+
+    def visit_Match(self, node: ast.Match) -> None:
+        self.visit(node.subject)
+        for case in node.cases:
+            self.bound_names.update(_pattern_names(case.pattern))
+            if case.guard is not None:
+                self.visit(case.guard)
+            for statement in case.body:
+                self.visit(statement)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension_expressions(node.generators, [node.elt])
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension_expressions(node.generators, [node.elt])
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension_expressions(node.generators, [node.elt])
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension_expressions(node.generators, [node.key, node.value])
+
+    def _visit_function_definition_expressions(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        if node.returns is not None:
+            self.visit(node.returns)
+
+    def _visit_comprehension_expressions(
+        self, generators: list[ast.comprehension], body_expressions: list[ast.AST]
+    ) -> None:
+        for generator in generators:
+            self.visit(generator.iter)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for expression in body_expressions:
+            self.visit(expression)
+
+
+def _scope_bound_names(body: list[ast.stmt]) -> set[str]:
+    visitor = _ScopeBoundNameVisitor()
+    for statement in body:
+        visitor.visit(statement)
+    return visitor.local_names
+
+
+def _expression_bound_names(expression: ast.AST) -> set[str]:
+    visitor = _ScopeBoundNameVisitor()
+    visitor.visit(expression)
+    return visitor.local_names
+
+
 def _pattern_names(pattern: ast.pattern) -> set[str]:
     if isinstance(pattern, ast.MatchAs):
         names = set() if pattern.name is None else {pattern.name}
@@ -146,6 +312,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.path = path
         self.violations: list[str] = []
         self._metadata_alias_scopes: list[set[str]] = [set()]
+        self._class_nested_scope_alias_scopes: list[set[str]] = []
         self._named_expr_target_scope_indexes: list[int] = []
 
     @property
@@ -241,6 +408,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_aliases.clear()
         self._metadata_aliases.update(aliases)
 
+    def _nested_function_base_aliases(self) -> set[str]:
+        if self._class_nested_scope_alias_scopes:
+            return set(self._class_nested_scope_alias_scopes[-1])
+        return set(self._metadata_aliases)
+
     def _visit_current_scope_body(self, body: list[ast.stmt]) -> bool:
         for statement in body:
             self.visit(statement)
@@ -281,8 +453,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         body: list[ast.stmt],
         shadowed: set[str] | None = None,
         added: set[str] | None = None,
+        base_aliases: set[str] | None = None,
     ) -> None:
-        aliases = set(self._metadata_aliases)
+        aliases = set(self._metadata_aliases if base_aliases is None else base_aliases)
         if shadowed is not None:
             aliases.difference_update(shadowed)
         if added is not None:
@@ -299,8 +472,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         expression: ast.AST,
         shadowed: set[str] | None = None,
         added: set[str] | None = None,
+        base_aliases: set[str] | None = None,
     ) -> None:
-        aliases = set(self._metadata_aliases)
+        aliases = set(self._metadata_aliases if base_aliases is None else base_aliases)
         if shadowed is not None:
             aliases.difference_update(shadowed)
         if added is not None:
@@ -319,8 +493,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self._visit_default_value(default)
-        shadowed_names = (_argument_names(node.args) - metadata_defaults) | {node.name}
-        self._visit_scoped_body(node.body, shadowed_names, metadata_defaults)
+        shadowed_names = (
+            (_argument_names(node.args) | _scope_bound_names(node.body)) - metadata_defaults
+        ) | {node.name}
+        self._visit_scoped_body(
+            node.body, shadowed_names, metadata_defaults, self._nested_function_base_aliases()
+        )
         self._metadata_aliases.discard(node.name)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
@@ -330,8 +508,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self._visit_default_value(default)
-        shadowed_names = (_argument_names(node.args) - metadata_defaults) | {node.name}
-        self._visit_scoped_body(node.body, shadowed_names, metadata_defaults)
+        shadowed_names = (
+            (_argument_names(node.args) | _scope_bound_names(node.body)) - metadata_defaults
+        ) | {node.name}
+        self._visit_scoped_body(
+            node.body, shadowed_names, metadata_defaults, self._nested_function_base_aliases()
+        )
         self._metadata_aliases.discard(node.name)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
@@ -340,7 +522,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             if default is not None:
                 self._visit_default_value(default)
         self._visit_scoped_expression(
-            node.body, _argument_names(node.args) - metadata_defaults, metadata_defaults
+            node.body,
+            (_argument_names(node.args) | _expression_bound_names(node.body)) - metadata_defaults,
+            metadata_defaults,
+            self._nested_function_base_aliases(),
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -350,7 +535,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self.visit(base)
         for keyword in node.keywords:
             self.visit(keyword)
-        self._visit_scoped_body(node.body)
+        outer_aliases = set(self._metadata_aliases)
+        class_body_aliases = set(outer_aliases)
+        class_body_aliases.difference_update(_scope_bound_names(node.body))
+        class_body_aliases.update(self._metadata_alias_scopes[0])
+        self._class_nested_scope_alias_scopes.append(outer_aliases)
+        self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
+        self._class_nested_scope_alias_scopes.pop()
         self._metadata_aliases.discard(node.name)
 
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -667,7 +858,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             if self._named_expr_target_scope_indexes
             else len(self._metadata_alias_scopes) - 1
         )
-        self._metadata_alias_scopes.append(set(self._metadata_aliases))
+        self._metadata_alias_scopes.append(self._nested_function_base_aliases())
         self._named_expr_target_scope_indexes.append(named_expr_target_scope_index)
         self._discard_alias_target(first_generator.target)
         for condition in first_generator.ifs:
@@ -808,6 +999,22 @@ def nested_alias():
     inner_meta = flow.metadata
     def uses_outer_alias():
         inner_meta["auth_cache_hit"] = False
+def local_function_assigns_metadata():
+    local_function_meta = flow.metadata
+    local_function_meta["vm_run_id"] = "run-1"
+class ClassBodyAssignsMetadata:
+    class_body_meta = flow.metadata
+    class_body_meta["vm_run_id"] = "run-1"
+def class_body_reads_closure_metadata():
+    class_closure_meta = flow.metadata
+    class ReadsClosure:
+        class_closure_meta["vm_run_id"] = "run-1"
+def class_method_reads_outer_metadata():
+    method_outer_meta = flow.metadata
+    class MethodReadsOuter:
+        method_outer_meta = {}
+        def method(self):
+            method_outer_meta["vm_run_id"] = "run-1"
 annotated_meta = flow.metadata
 annotated_meta: dict[str, object]
 annotated_meta["auth_url_rewrite"] = True
@@ -922,7 +1129,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 73
+    assert len(violations) == 77
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1036,6 +1243,43 @@ def continue_skips_unreachable_metadata_access():
         unreachable_continue_meta = flow.metadata
         continue
         unreachable_continue_meta["vm_run_id"]
+late_assignment_meta = flow.metadata
+def late_assignment_local_shadow():
+    value = late_assignment_meta["vm_run_id"]
+    late_assignment_meta = {}
+late_import_meta = flow.metadata
+def late_import_local_shadow():
+    value = late_import_meta["vm_run_id"]
+    import json as late_import_meta
+late_loop_meta = flow.metadata
+def late_loop_local_shadow():
+    value = late_loop_meta["vm_run_id"]
+    for late_loop_meta in rows:
+        pass
+late_delete_meta = flow.metadata
+def late_delete_local_shadow():
+    value = late_delete_meta["vm_run_id"]
+    del late_delete_meta
+late_match_meta = flow.metadata
+def late_match_local_shadow(match_payload):
+    value = late_match_meta["vm_run_id"]
+    match match_payload:
+        case late_match_meta:
+            pass
+lambda_shadow_meta = flow.metadata
+fn = lambda: lambda_shadow_meta["vm_run_id"] if (lambda_shadow_meta := {}) else None
+def class_body_late_binding_shadow():
+    class_shadow_meta = flow.metadata
+    class ShadowsClosure:
+        value = class_shadow_meta["vm_run_id"]
+        class_shadow_meta = {}
+class MethodDoesNotSeeClassAlias:
+    method_class_meta = flow.metadata
+    def method(self):
+        method_class_meta["vm_run_id"]
+class ComprehensionDoesNotSeeClassAlias:
+    comp_class_meta = flow.metadata
+    values = [comp_class_meta["vm_run_id"] for item in rows]
 def accepts_external_metadata(meta):
     return meta["vm_proxy_log_path"]
 for meta in [{"firewall_name": "external"}]:
