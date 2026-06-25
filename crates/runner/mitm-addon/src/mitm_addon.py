@@ -1052,6 +1052,37 @@ def _log_connector_diagnostic_proxy_entry(
     )
 
 
+def _maybe_make_connector_diagnostic_local_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> bool:
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
+        return False
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
+    if candidate is None:
+        return False
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return False
+
+    _start_request_timing(flow)
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        _connector_diagnostic_response_body(candidate, upstream_status=0),
+        {"Content-Type": "application/json"},
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=0,
+    )
+    return True
+
+
 def _maybe_replace_connector_diagnostic_response(
     flow: http.HTTPFlow,
     *,
@@ -1404,8 +1435,18 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         flow.kill()
         return
 
-    if _should_stream_capture_request(classification):
+    if classification.kind == "allow":
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
+        original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+        if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
+            flow,
+            original_url=original_url,
+        ):
+            flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            return
+
+    if _should_stream_capture_request(classification):
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
@@ -1538,6 +1579,12 @@ async def request(flow: http.HTTPFlow) -> None:
         if vm_info is None:
             return
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
+        original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+        if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
+            flow,
+            original_url=original_url,
+        ):
+            return
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)

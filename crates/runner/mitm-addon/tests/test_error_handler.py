@@ -21,11 +21,23 @@ from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
+def _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, *, capture_body: bool = False):
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = capture_body
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        f"https://{flow.request.pretty_host}{flow.request.path}"
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[mitm_addon._CONNECTOR_DIAGNOSTIC_ELIGIBLE] = True
+    flow.metadata[mitm_addon._CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = ()
+
+
 class TestErrorHandler:
     async def test_connector_candidate_error_gets_local_diagnostic_response(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -33,9 +45,9 @@ class TestErrorHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
 
@@ -66,10 +78,6 @@ class TestErrorHandler:
     def test_streamed_connector_candidate_error_before_request_gets_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        reg_path = _write_registry(
-            tmp_path,
-            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
-        )
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -77,9 +85,10 @@ class TestErrorHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, capture_body=True)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            mitm_addon.requestheaders(flow)
+        with mitm_ctx():
+            request_streaming.configure_request_stream(flow)
             stream = flow.request.stream
             assert callable(stream)
             assert stream(b"partial request") == b"partial request"

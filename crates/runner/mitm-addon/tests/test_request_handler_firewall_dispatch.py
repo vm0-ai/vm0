@@ -28,6 +28,35 @@ _BROWSER_USER_AGENT = (
 )
 
 
+def _assert_fal_local_connector_diagnostic(flow):
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    content = flow.response.content
+    assert content is not None
+    body = json.loads(content)
+    assert body == {
+        "error": "connector_not_configured_for_run",
+        "connector": "fal",
+        "reason": "not_configured_for_run",
+        "message": (
+            "fal is not configured for this run. FAL_TOKEN is unavailable, "
+            "so credentials cannot be injected."
+        ),
+        "envNames": ["FAL_TOKEN"],
+        "base": "https://fal.run",
+        "upstreamStatus": 0,
+    }
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://fal.run"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == "not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
+
+
 def _write_auth_base_firewall_registry(
     tmp_path,
     *,
@@ -77,8 +106,8 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata["firewall_permission"] == "full-access"
 
 
-async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
-    tmp_path, real_flow, mitm_ctx, monkeypatch
+async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
+    tmp_path, real_flow, mitm_ctx
 ):
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
@@ -89,13 +118,69 @@ async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
         method="POST",
     )
 
-    def fail_find_candidate(*_args, **_kwargs):
-        raise AssertionError("request hook should not run connector diagnostic lookup")
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
-    monkeypatch.setattr(
-        mitm_addon.builtin_connector_diagnostics,
-        "find_candidate",
-        fail_find_candidate,
+    _assert_fal_local_connector_diagnostic(flow)
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert entry["action"] == "ALLOW"
+    assert entry["status"] == 502
+    assert entry["firewall_error"] == "connector_not_configured_for_run"
+    assert entry["connector_diagnostic_type"] == "fal"
+    [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_entry["type"] == "connector_diagnostic"
+    assert proxy_entry["connector"] == "fal"
+    assert proxy_entry["upstream_status"] == 0
+    assert http_error_entry["type"] == "http_error"
+    assert http_error_entry["status"] == 502
+
+
+@pytest.mark.parametrize(
+    ("path", "request_header_pairs"),
+    [
+        ("/fal-ai/nano-banana-pro", [("Authorization", "Bearer ")]),
+        ("/fal-ai/nano-banana-pro", [("Authorization", "Key ")]),
+        ("/fal-ai/nano-banana-pro", [("Proxy-Authorization", "Basic proxy-secret")]),
+        ("/fal-ai/nano-banana-pro?api_key=", []),
+    ],
+)
+async def test_inactive_builtin_connector_url_with_empty_auth_gets_local_diagnostic(
+    tmp_path, real_flow, mitm_ctx, headers, path, request_header_pairs
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path=path,
+        method="POST",
+        request_headers=headers(
+            ("Host", "fal.run"),
+            *request_header_pairs,
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    _assert_fal_local_connector_diagnostic(flow)
+
+
+async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+        request_headers=headers(
+            ("Host", "fal.run"),
+            ("Authorization", "Key user-provided"),
+        ),
     )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
@@ -105,9 +190,37 @@ async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
+
+
+async def test_inactive_builtin_connector_requestheaders_without_auth_gets_local_diagnostic(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    _assert_fal_local_connector_diagnostic(flow)
+    assert not callable(flow.request.stream)
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert entry["status"] == 502
+    assert entry["request_size"] == 0
+    assert entry["connector_diagnostic_type"] == "fal"
 
 
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(

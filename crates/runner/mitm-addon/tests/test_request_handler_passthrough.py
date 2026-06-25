@@ -644,7 +644,7 @@ async def test_registered_vm_null_firewalls_passes_through_without_auth_injectio
     )
     vm_info["firewalls"] = None
     reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
-    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="unconfigured.example.com")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
