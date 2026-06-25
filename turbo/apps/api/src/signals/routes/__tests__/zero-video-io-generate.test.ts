@@ -601,8 +601,9 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(response.status).toBe(402);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Upgrade to Pro to generate videos.",
-        code: "INSUFFICIENT_CREDITS",
+        message:
+          "Built-in video generation requires Pro. Return `pro_required` as the assistant error marker so the app can show the Pro upgrade card. Do not retry video generation until the workspace upgrades.",
+        code: "PRO_REQUIRED",
       },
     });
     expect(calledBytePlus).toBeFalsy();

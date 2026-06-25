@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -52,6 +53,36 @@ describe("prompt query parameter injection", () => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
       expect(selectedModel).toBe("deepseek-v4-pro");
+    });
+  });
+
+  it("starts an optimistic video template chat from the prompt route", async () => {
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "video-template:luxury-product";
+    });
+    expect(videoTemplate).toBeDefined();
+
+    let runPrompt: string | undefined;
+    let stylePresetId: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+        stylePresetId =
+          body.generationTemplate?.type === "video"
+            ? body.generationTemplate.selection.stylePresetId
+            : undefined;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/prompt?prompt=Make%20a%20product%20spot&template=video-template%3Aluxury-product",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Make a product spot")).toBeInTheDocument();
+      expect(runPrompt).toBe("Make a product spot");
+      expect(stylePresetId).toBe(videoTemplate?.id);
     });
   });
 });

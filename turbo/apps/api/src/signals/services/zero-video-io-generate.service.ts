@@ -534,8 +534,8 @@ export function videoRequiresPro() {
   return {
     status: 402 as const,
     body: errorBody(
-      "Upgrade to Pro to generate videos.",
-      "INSUFFICIENT_CREDITS",
+      "Built-in video generation requires Pro. Return `pro_required` as the assistant error marker so the app can show the Pro upgrade card. Do not retry video generation until the workspace upgrades.",
+      "PRO_REQUIRED",
     ),
   };
 }

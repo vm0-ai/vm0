@@ -4718,6 +4718,36 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows Pro upgrade guidance when built-in video requires Pro", async () => {
+    const threadId = "failed-guidance-video-pro";
+    mockFailedAssistantThread({ threadId, error: "pro_required" });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Upgrade to Pro"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/recover?tier=pro",
+      );
+    });
+  });
+
   it("shows Pro upgrade guidance for limited-free-1 even with credits", async () => {
     const threadId = "failed-guidance-limited-free";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
