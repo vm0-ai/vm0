@@ -76,7 +76,7 @@ export class EventRenderer {
     { toolUse: ToolUseData; prefix: string; rendered: boolean }
   >();
   private ambiguousToolUseIds = new Set<string>();
-  private ambiguousRenderedToolUse = new Map<string, ToolUseData>();
+  private ambiguousRenderedToolUses = new Map<string, ToolUseData[]>();
   private options: EventRendererOptions;
   private lastEventType: string | null = null;
   private frameworkDisplayName: string = "Agent";
@@ -143,7 +143,7 @@ export class EventRenderer {
     this.renderPendingToolUses();
     this.pendingToolUse.clear();
     this.ambiguousToolUseIds.clear();
-    this.ambiguousRenderedToolUse.clear();
+    this.ambiguousRenderedToolUses.clear();
   }
 
   private renderPendingToolUses(): void {
@@ -235,13 +235,16 @@ export class EventRenderer {
     if (this.options.buffered !== false && toolUseId.length > 0) {
       const existing = this.pendingToolUse.get(toolUseId);
       if (existing || this.ambiguousToolUseIds.has(toolUseId)) {
-        if (existing && !existing.rendered) {
-          this.renderToolUseOnly(existing.toolUse, existing.prefix);
+        if (existing) {
+          if (!existing.rendered) {
+            this.renderToolUseOnly(existing.toolUse, existing.prefix);
+          }
+          this.rememberAmbiguousRenderedToolUse(toolUseId, existing.toolUse);
         }
         this.pendingToolUse.delete(toolUseId);
         this.ambiguousToolUseIds.add(toolUseId);
         this.renderToolUseOnly(toolUseData, prefix);
-        this.ambiguousRenderedToolUse.set(toolUseId, toolUseData);
+        this.rememberAmbiguousRenderedToolUse(toolUseId, toolUseData);
         return;
       }
       this.pendingToolUse.set(toolUseId, {
@@ -289,12 +292,10 @@ export class EventRenderer {
 
     if (toolUseId.length > 0 && this.ambiguousToolUseIds.has(toolUseId)) {
       const orphanToolUse = this.getToolUseFromResultEvent(event);
-      const renderedToolUse = this.ambiguousRenderedToolUse.get(toolUseId);
-      if (
-        renderedToolUse &&
-        orphanToolUse &&
-        this.hasSameToolHeader(renderedToolUse, orphanToolUse)
-      ) {
+      const renderedToolUse = orphanToolUse
+        ? this.getMatchingAmbiguousRenderedToolUse(toolUseId, orphanToolUse)
+        : undefined;
+      if (renderedToolUse) {
         this.renderToolResultOnly(renderedToolUse, { result, isError }, prefix);
         return;
       }
@@ -334,6 +335,39 @@ export class EventRenderer {
       tool,
       input: recordData(event.data.input),
     };
+  }
+
+  private rememberAmbiguousRenderedToolUse(
+    toolUseId: string,
+    toolUse: ToolUseData,
+  ): void {
+    const renderedToolUses = this.ambiguousRenderedToolUses.get(toolUseId);
+    if (renderedToolUses) {
+      renderedToolUses.push(toolUse);
+      return;
+    }
+    this.ambiguousRenderedToolUses.set(toolUseId, [toolUse]);
+  }
+
+  private getMatchingAmbiguousRenderedToolUse(
+    toolUseId: string,
+    toolUse: ToolUseData,
+  ): ToolUseData | undefined {
+    const renderedToolUses = this.ambiguousRenderedToolUses.get(toolUseId);
+    if (!renderedToolUses) {
+      return undefined;
+    }
+
+    for (let index = renderedToolUses.length - 1; index >= 0; index -= 1) {
+      const renderedToolUse = renderedToolUses[index];
+      if (
+        renderedToolUse !== undefined &&
+        this.hasSameToolHeader(renderedToolUse, toolUse)
+      ) {
+        return renderedToolUse;
+      }
+    }
+    return undefined;
   }
 
   private hasSameToolHeader(first: ToolUseData, second: ToolUseData): boolean {

@@ -942,6 +942,21 @@ describe("logs command", () => {
                     item: {
                       id: "duplicate-id",
                       type: "command_execution",
+                      command: "first command",
+                      aggregated_output: "first result",
+                      exit_code: 0,
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "duplicate-id",
+                      type: "command_execution",
                       command: "second command",
                       aggregated_output: "second result",
                       exit_code: 0,
@@ -959,8 +974,9 @@ describe("logs command", () => {
       await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("first command");
+      expect(logCalls).toContain("first result");
       expect(logCalls).toContain("second result");
+      expect(countOccurrences(logCalls, "first command")).toBe(1);
       expect(countOccurrences(logCalls, "second command")).toBe(1);
     });
 
