@@ -146,11 +146,6 @@ const nextConfig = {
     // Public static assets CDN
     NEXT_PUBLIC_STATIC_ASSETS_BASE_URL: STATIC_ASSETS_BASE_URL,
 
-    // Blog configuration
-    NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
-    NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
-    NEXT_PUBLIC_DATA_SOURCE: process.env.BLOG_DATA_SOURCE,
-
     // Analytics (Plausible)
     NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: process.env.PLAUSIBLE_SCRIPT_URL,
 
@@ -170,31 +165,11 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**.strapiapp.com",
-      },
-      {
-        protocol: "https",
-        hostname: "**.media.strapiapp.com",
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.vm0.io",
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.vm7.io",
-      },
-      {
-        protocol: "https",
         hostname: "static.vm0.io",
       },
       {
         protocol: "https",
         hostname: "static.vm7.io",
-      },
-      {
-        protocol: "https",
-        hostname: "**.sites.vm0.io",
       },
     ],
   },
@@ -211,7 +186,6 @@ const nextConfig = {
       "next-intl",
       "@tabler/icons-react",
       "@radix-ui/react-dialog",
-      "@radix-ui/react-popover",
       "@radix-ui/react-select",
       "@radix-ui/react-tooltip",
       "@sentry/nextjs",
