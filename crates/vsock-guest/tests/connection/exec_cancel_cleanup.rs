@@ -74,7 +74,7 @@ fn exec_operation_stream_disconnect_cancels_child() {
     );
 
     drop(host_stream);
-    let _ = handle.join();
+    join_guest_connection(handle);
     wait_for_pid_exit(pid, "exec operation stream host disconnect");
     child_guard.disarm();
 }
@@ -164,7 +164,7 @@ fn exec_operation_connection_close_cancels_child() {
     );
 
     drop(host_stream);
-    let _ = handle.join();
+    join_guest_connection(handle);
     wait_for_pid_exit(pid, "exec operation host disconnect");
     child_guard.disarm();
 }
