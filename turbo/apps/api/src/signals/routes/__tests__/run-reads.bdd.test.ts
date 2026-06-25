@@ -3255,9 +3255,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
-    if (pageOne.status !== 200) {
-      throw new Error("Expected the first log page to succeed");
-    }
+    mustOk(pageOne, "the first log page");
     expect(pageOne.body.data).toHaveLength(1);
     expect(pageOne.body.pagination.hasMore).toBeTruthy();
     const cursor = pageOne.body.pagination.nextCursor;
@@ -3269,9 +3267,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { limit: 1, cursor },
       [200],
     );
-    if (pageTwo.status !== 200) {
-      throw new Error("Expected the second log page to succeed");
-    }
+    mustOk(pageTwo, "the second log page");
     expect(pageTwo.body.data).toHaveLength(1);
     expect(pageTwo.body.data[0]?.id).not.toBe(pageOne.body.data[0]?.id);
 
@@ -3293,15 +3289,21 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       pageOne.body.data[0]?.id,
     );
 
+    const malformedCursorId = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "2026-01-15T10:30:00.000Z|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedCursorId, "malformed cursor id list");
+    expect(malformedCursorId.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
+
     const agentOneRunIds = [webRun.runId, scheduleRun.body.runId].sort();
     const fuzzy = await reads.requestListLogs(
       actor,
       { search: agentOneName.toUpperCase() },
       [200],
     );
-    if (fuzzy.status !== 200) {
-      throw new Error("Expected the fuzzy search list to succeed");
-    }
+    mustOk(fuzzy, "the fuzzy search list");
     expect(
       fuzzy.body.data
         .map((entry) => {
@@ -3315,9 +3317,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { name: agentOneName },
       [200],
     );
-    if (byName.status !== 200) {
-      throw new Error("Expected the name-filtered list to succeed");
-    }
+    mustOk(byName, "the name-filtered list");
     expect(
       byName.body.data
         .map((entry) => {
@@ -3331,9 +3331,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { agentId: agentOne.agentId, search: "zzz-no-such-agent" },
       [200],
     );
-    if (byAgentId.status !== 200) {
-      throw new Error("Expected the agent-id list to succeed");
-    }
+    mustOk(byAgentId, "the agent-id list");
     expect(
       byAgentId.body.data
         .map((entry) => {
@@ -3347,9 +3345,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { status: "cancelled", triggerSource: "web" },
       [200],
     );
-    if (byStatusAndSource.status !== 200) {
-      throw new Error("Expected the status+source list to succeed");
-    }
+    mustOk(byStatusAndSource, "the status+source list");
     expect(
       byStatusAndSource.body.data
         .map((entry) => {
@@ -3375,9 +3371,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { triggerSource: "telegram" },
       [200],
     );
-    if (noSourceMatch.status !== 200) {
-      throw new Error("Expected the empty source list to succeed");
-    }
+    mustOk(noSourceMatch, "the empty source list");
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
     const byAutomationId = await reads.requestListLogs(
@@ -3385,9 +3379,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { automationId: schedule.automation.id, limit: 1 },
       [200],
     );
-    if (byAutomationId.status !== 200) {
-      throw new Error("Expected the automation-filtered list to succeed");
-    }
+    mustOk(byAutomationId, "the automation-filtered list");
     expect(byAutomationId.body.data).toStrictEqual([
       expect.objectContaining({ id: scheduleRun.body.runId }),
     ]);
@@ -3469,9 +3461,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       {},
       [200],
     );
-    if (tokenList.status !== 200) {
-      throw new Error("Expected the zero-token log list to succeed");
-    }
+    mustOk(tokenList, "the zero-token log list");
     expect(
       tokenList.body.data.map((entry) => {
         return entry.id;

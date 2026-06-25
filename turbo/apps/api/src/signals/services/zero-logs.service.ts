@@ -48,6 +48,8 @@ const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const AXIOM_RUN_ID_FILTER_CHUNK_SIZE = 500;
 const AXIOM_SEARCH_QUERY_CONCURRENCY = 4;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function extractFramework(composeContent: unknown): string | null {
   if (
@@ -94,7 +96,7 @@ function buildCursorCondition(cursor: string): SQL | null {
   const cursorTime = cursor.slice(0, separatorIndex);
   const cursorId = cursor.slice(separatorIndex + 1);
   const cursorDate = new Date(cursorTime);
-  if (!Number.isFinite(cursorDate.getTime())) {
+  if (!Number.isFinite(cursorDate.getTime()) || !UUID_PATTERN.test(cursorId)) {
     return null;
   }
 
