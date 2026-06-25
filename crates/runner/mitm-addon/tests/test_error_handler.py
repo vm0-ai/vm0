@@ -52,7 +52,7 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response is not None
-        assert flow.response.status_code == 502
+        assert flow.response.status_code == 424
         content = flow.response.content
         assert content is not None
         body = json.loads(content)
@@ -99,7 +99,7 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response is not None
-        assert flow.response.status_code == 502
+        assert flow.response.status_code == 424
         content = flow.response.content
         assert content is not None
         body = json.loads(content)

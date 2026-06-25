@@ -74,6 +74,7 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
+_HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _HTTP_DEFAULT_PORT = 80
@@ -1071,7 +1072,7 @@ def _maybe_make_connector_diagnostic_local_response(
     _set_connector_diagnostic_failure_metadata(flow, candidate)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.response = http.Response.make(
-        _HTTP_STATUS_BAD_GATEWAY,
+        _HTTP_STATUS_FAILED_DEPENDENCY,
         _connector_diagnostic_response_body(candidate, upstream_status=0),
         {"Content-Type": "application/json"},
     )
@@ -1136,7 +1137,7 @@ def _maybe_make_connector_diagnostic_error_response(
         return
     _set_connector_diagnostic_failure_metadata(flow, candidate)
     flow.response = http.Response.make(
-        _HTTP_STATUS_BAD_GATEWAY,
+        _HTTP_STATUS_FAILED_DEPENDENCY,
         _connector_diagnostic_response_body(candidate, upstream_status=0),
         {"Content-Type": "application/json"},
     )

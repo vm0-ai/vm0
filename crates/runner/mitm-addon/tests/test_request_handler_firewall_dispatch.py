@@ -31,7 +31,7 @@ _BROWSER_USER_AGENT = (
 
 def _assert_fal_local_connector_diagnostic(flow):
     assert flow.response is not None
-    assert flow.response.status_code == 502
+    assert flow.response.status_code == 424
     content = flow.response.content
     assert content is not None
     body = json.loads(content)
@@ -126,7 +126,7 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
     _assert_fal_local_connector_diagnostic(flow)
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["action"] == "ALLOW"
-    assert entry["status"] == 502
+    assert entry["status"] == 424
     assert entry["firewall_error"] == "connector_not_configured_for_run"
     assert entry["connector_diagnostic_type"] == "fal"
     [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
@@ -134,7 +134,7 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 0
     assert http_error_entry["type"] == "http_error"
-    assert http_error_entry["status"] == 502
+    assert http_error_entry["status"] == 424
 
 
 @pytest.mark.parametrize(
