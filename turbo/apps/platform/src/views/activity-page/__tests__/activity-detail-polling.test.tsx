@@ -899,7 +899,6 @@ function codexActivityEvents(): AgentEvent[] {
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
-        success: false,
         usage: {
           input_tokens: 111,
           cached_input_tokens: 22,
@@ -2091,7 +2090,6 @@ describe("activity detail polling", () => {
     expect(screen.getByText(/Codex unknown_item/u)).toBeInTheDocument();
     expect(screen.getByText("1 turns")).toBeInTheDocument();
     expect(screen.getByText("1 models")).toBeInTheDocument();
-    expect(document.querySelector('[data-variant="error"]')).toBeTruthy();
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
@@ -2379,6 +2377,64 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Codex stream disconnected.")).not.toHaveLength(
       0,
     );
+  });
+
+  it("marks raw success false result events as failed summaries", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000302";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Raw Result Status",
+          status: "failed",
+          prompt: "Render raw result status",
+          error: "Raw result failed",
+          startedAt: "2026-03-10T16:10:01Z",
+          completedAt: "2026-03-10T16:10:02Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "result",
+              eventData: {
+                type: "result",
+                success: false,
+                result: "Raw result failed",
+                num_turns: 1,
+                duration_ms: 1000,
+              },
+              createdAt: "2026-03-10T16:10:02Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Raw Result Status" }),
+      ).toBeInTheDocument();
+    });
+
+    const summaryRow = screen.getByText("Summary").closest("div");
+    expect(summaryRow?.querySelector('[data-variant="error"]')).toBeTruthy();
+    expect(screen.getAllByText("Raw result failed")).not.toHaveLength(0);
   });
 
   it("normalizes codex app-server adapter events in activity details", async () => {
