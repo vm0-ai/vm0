@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   expandHostWildcardsInBaseUrl,
   validateBaseUrl,
@@ -11,9 +11,33 @@ import {
   resolveFirewallConfigSelection,
   validateRule,
 } from "../firewall-expander";
-import type { FirewallConfig } from "../firewall-types";
+import type { FirewallConfig, PermissionNamesOf } from "../firewall-types";
 
 describe("firewall expander helpers", () => {
+  it("PermissionNamesOf ignores api entries without permissions", () => {
+    const config = {
+      name: "mixed",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "read", rules: ["GET /files"] },
+            { name: "write", rules: ["POST /files"] },
+          ],
+        },
+        {
+          base: "https://uploads.example.com",
+          auth: { headers: {} },
+        },
+      ],
+    } as const satisfies FirewallConfig;
+
+    expectTypeOf<PermissionNamesOf<typeof config>>().toEqualTypeOf<
+      "read" | "write"
+    >();
+  });
+
   it("resolveFirewallConfigSelection filters selected permissions", () => {
     const config: FirewallConfig = {
       name: "mixed",

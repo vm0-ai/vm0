@@ -169,10 +169,12 @@ export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
  * so that permission name strings are preserved as literal types.
  */
 export type PermissionNamesOf<T extends FirewallConfig> =
-  T["apis"][number] extends { permissions?: infer P }
-    ? P extends ReadonlyArray<{ name: infer N }>
-      ? N extends string
-        ? N
+  T["apis"][number] extends infer Api
+    ? Api extends { readonly permissions?: infer P }
+      ? P extends ReadonlyArray<{ readonly name: infer N }>
+        ? N extends string
+          ? N
+          : never
         : never
       : never
     : never;
