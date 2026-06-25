@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.21...runner-rs-v0.129.22) (2026-06-25)
+
+
+### Performance Improvements
+
+* add runner queue-to-claim timing ([#18940](https://github.com/vm0-ai/vm0/issues/18940)) ([ae6564c](https://github.com/vm0-ai/vm0/commit/ae6564cd58f595ec239d6f1c1f4155911ded8655))
+
 ## [0.129.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.20...runner-rs-v0.129.21) (2026-06-25)
 
 
