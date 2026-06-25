@@ -2,6 +2,7 @@
 
 import ast
 from pathlib import Path
+from typing import TypeGuard
 
 import flow_metadata_keys as metadata_keys
 
@@ -100,6 +101,36 @@ def _pattern_names(pattern: ast.pattern) -> set[str]:
     return set()
 
 
+def _body_can_fall_through(body: list[ast.stmt]) -> bool:
+    return all(_statement_can_fall_through(statement) for statement in body)
+
+
+def _is_try_statement(statement: ast.stmt) -> TypeGuard[ast.Try]:
+    return isinstance(statement, ast.Try) or statement.__class__.__name__ == "TryStar"
+
+
+def _statement_can_fall_through(statement: ast.stmt) -> bool:
+    if isinstance(statement, (ast.Return, ast.Raise)):
+        return False
+    if isinstance(statement, ast.If):
+        if not statement.orelse:
+            return True
+        return _body_can_fall_through(statement.body) or _body_can_fall_through(statement.orelse)
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
+        return _body_can_fall_through(statement.body)
+    if _is_try_statement(statement):
+        if statement.finalbody and not _body_can_fall_through(statement.finalbody):
+            return False
+        normal_path_falls_through = _body_can_fall_through(statement.body)
+        if normal_path_falls_through and statement.orelse:
+            normal_path_falls_through = _body_can_fall_through(statement.orelse)
+        handler_path_falls_through = any(
+            _body_can_fall_through(handler.body) for handler in statement.handlers
+        )
+        return normal_path_falls_through or handler_path_falls_through
+    return True
+
+
 class _MetadataKeyVisitor(ast.NodeVisitor):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -174,27 +205,40 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_aliases.clear()
         self._metadata_aliases.update(aliases)
 
-    def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> set[str]:
-        self._metadata_alias_scopes.append(set(aliases))
+    def _visit_current_scope_body(self, body: list[ast.stmt]) -> bool:
         for statement in body:
             self.visit(statement)
+            if not _statement_can_fall_through(statement):
+                return False
+        return True
+
+    def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> tuple[set[str], bool]:
+        self._metadata_alias_scopes.append(set(aliases))
+        falls_through = self._visit_current_scope_body(body)
         result = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
+        return result, falls_through
+
+    def _visit_branch_body_state_only(
+        self, body: list[ast.stmt], aliases: set[str]
+    ) -> tuple[set[str], bool]:
+        violation_count = len(self.violations)
+        result = self._visit_branch_body(body, aliases)
+        del self.violations[violation_count:]
         return result
 
     def _visit_except_handler_branch(
         self, handler: ast.ExceptHandler, aliases: set[str]
-    ) -> set[str]:
+    ) -> tuple[set[str], bool]:
         self._metadata_alias_scopes.append(set(aliases))
         if handler.type is not None:
             self.visit(handler.type)
         if handler.name is not None:
             self._metadata_aliases.discard(handler.name)
-        for statement in handler.body:
-            self.visit(statement)
+        falls_through = self._visit_current_scope_body(handler.body)
         result = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
-        return result
+        return result, falls_through
 
     def _visit_scoped_body(
         self,
@@ -210,8 +254,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(aliases)
         previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
         self._named_expr_target_scope_indexes = []
-        for statement in body:
-            self.visit(statement)
+        self._visit_current_scope_body(body)
         self._named_expr_target_scope_indexes = previous_named_expr_target_scope_indexes
         self._metadata_alias_scopes.pop()
 
@@ -369,20 +412,31 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_If(self, node: ast.If) -> None:
         self.visit(node.test)
         base_aliases = set(self._metadata_aliases)
-        body_aliases = self._visit_branch_body(node.body, base_aliases)
-        orelse_aliases = (
-            self._visit_branch_body(node.orelse, base_aliases) if node.orelse else base_aliases
-        )
-        self._replace_current_aliases(body_aliases | orelse_aliases)
+        body_aliases, body_falls_through = self._visit_branch_body(node.body, base_aliases)
+        if node.orelse:
+            orelse_aliases, orelse_falls_through = self._visit_branch_body(
+                node.orelse, base_aliases
+            )
+        else:
+            orelse_aliases = base_aliases
+            orelse_falls_through = True
+        exit_aliases: set[str] = set()
+        if body_falls_through:
+            exit_aliases.update(body_aliases)
+        if orelse_falls_through:
+            exit_aliases.update(orelse_aliases)
+        self._replace_current_aliases(exit_aliases)
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
         base_aliases = set(self._metadata_aliases)
         self._discard_alias_target(node.target)
-        body_aliases = self._visit_branch_body(node.body, set(self._metadata_aliases))
+        body_aliases, _body_falls_through = self._visit_branch_body(
+            node.body, set(self._metadata_aliases)
+        )
         loop_exit_aliases = base_aliases | body_aliases
         orelse_aliases = (
-            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            self._visit_branch_body(node.orelse, loop_exit_aliases)[0]
             if node.orelse
             else loop_exit_aliases
         )
@@ -392,10 +446,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.visit(node.iter)
         base_aliases = set(self._metadata_aliases)
         self._discard_alias_target(node.target)
-        body_aliases = self._visit_branch_body(node.body, set(self._metadata_aliases))
+        body_aliases, _body_falls_through = self._visit_branch_body(
+            node.body, set(self._metadata_aliases)
+        )
         loop_exit_aliases = base_aliases | body_aliases
         orelse_aliases = (
-            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            self._visit_branch_body(node.orelse, loop_exit_aliases)[0]
             if node.orelse
             else loop_exit_aliases
         )
@@ -404,10 +460,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_While(self, node: ast.While) -> None:
         self.visit(node.test)
         base_aliases = set(self._metadata_aliases)
-        body_aliases = self._visit_branch_body(node.body, base_aliases)
+        body_aliases, _body_falls_through = self._visit_branch_body(node.body, base_aliases)
         loop_exit_aliases = base_aliases | body_aliases
         orelse_aliases = (
-            self._visit_branch_body(node.orelse, loop_exit_aliases)
+            self._visit_branch_body(node.orelse, loop_exit_aliases)[0]
             if node.orelse
             else loop_exit_aliases
         )
@@ -421,8 +477,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(body_aliases)
         for item in node.items:
             self._discard_alias_target(item.optional_vars)
-        for statement in node.body:
-            self.visit(statement)
+        self._visit_current_scope_body(node.body)
         body_result_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
         self._replace_current_aliases(base_aliases | body_result_aliases)
@@ -435,8 +490,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(body_aliases)
         for item in node.items:
             self._discard_alias_target(item.optional_vars)
-        for statement in node.body:
-            self.visit(statement)
+        self._visit_current_scope_body(node.body)
         body_result_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
         self._replace_current_aliases(base_aliases | body_result_aliases)
@@ -448,28 +502,49 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(base_aliases)
         if node.name is not None:
             self._metadata_aliases.discard(node.name)
-        for statement in node.body:
-            self.visit(statement)
+        self._visit_current_scope_body(node.body)
         result_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
         self._replace_current_aliases(base_aliases | result_aliases)
 
     def _visit_try_statement(self, node: ast.Try) -> None:
         base_aliases = set(self._metadata_aliases)
-        body_aliases = self._visit_branch_body(node.body, base_aliases)
+        body_aliases, body_falls_through = self._visit_branch_body(node.body, base_aliases)
         handler_start_aliases = base_aliases | body_aliases
-        handler_aliases = [
+        handler_results = [
             self._visit_except_handler_branch(handler, handler_start_aliases)
             for handler in node.handlers
         ]
-        orelse_aliases = (
-            self._visit_branch_body(node.orelse, body_aliases) if node.orelse else body_aliases
-        )
-        exit_aliases = base_aliases | body_aliases | orelse_aliases
-        for aliases in handler_aliases:
-            exit_aliases.update(aliases)
+        exit_aliases: set[str] = set()
+        if body_falls_through:
+            if node.orelse:
+                orelse_aliases, orelse_falls_through = self._visit_branch_body(
+                    node.orelse, body_aliases
+                )
+                if orelse_falls_through:
+                    exit_aliases.update(orelse_aliases)
+            else:
+                exit_aliases.update(body_aliases)
+        for aliases, falls_through in handler_results:
+            if falls_through:
+                exit_aliases.update(aliases)
         if node.finalbody:
-            exit_aliases = self._visit_branch_body(node.finalbody, exit_aliases)
+            finalbody_scan_aliases = base_aliases | body_aliases
+            for aliases, _falls_through in handler_results:
+                finalbody_scan_aliases.update(aliases)
+            if finalbody_scan_aliases == exit_aliases:
+                exit_aliases, finalbody_falls_through = self._visit_branch_body(
+                    node.finalbody, exit_aliases
+                )
+            else:
+                self._visit_branch_body(node.finalbody, finalbody_scan_aliases)
+                exit_aliases, finalbody_falls_through = (
+                    self._visit_branch_body_state_only(node.finalbody, exit_aliases)
+                    if exit_aliases
+                    else (set(), True)
+                )
+            if not finalbody_falls_through:
+                exit_aliases = set()
         self._replace_current_aliases(exit_aliases)
 
     def visit_Try(self, node: ast.Try) -> None:
@@ -720,6 +795,12 @@ try:
 except* Exception as except_star_meta:
     pass
 except_star_meta["firewall_error"] = "auth_failed"
+def finalbody_alias_after_return():
+    finalbody_meta = flow.metadata
+    try:
+        return None
+    finally:
+        finalbody_meta["vm_run_id"] = "run-1"
 with_meta = flow.metadata
 with context() as with_meta:
     pass
@@ -751,7 +832,7 @@ match payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 53
+    assert len(violations) == 54
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -778,6 +859,35 @@ value = both_branch_meta["vm_run_id"]
 external_aug_meta = {}
 external_aug_meta |= {"vm_run_id": "external"}
 value = external_aug_meta["vm_run_id"]
+def terminal_if_rebinds_to_external(condition):
+    terminal_if_meta = flow.metadata
+    if condition:
+        return None
+    else:
+        terminal_if_meta = {}
+    return terminal_if_meta["vm_run_id"]
+def terminal_raise_rebinds_to_external(condition):
+    terminal_raise_meta = flow.metadata
+    if condition:
+        raise RuntimeError
+    else:
+        terminal_raise_meta = {}
+    return terminal_raise_meta["vm_run_id"]
+def terminal_try_handler_rebinds_to_external():
+    terminal_try_meta = flow.metadata
+    try:
+        return None
+    except Exception:
+        terminal_try_meta = {}
+    return terminal_try_meta["vm_run_id"]
+def partial_return_finalbody_rebinds_to_external(condition):
+    partial_finalbody_meta = flow.metadata
+    try:
+        if condition:
+            return None
+    finally:
+        partial_finalbody_meta = {}
+    return partial_finalbody_meta["vm_run_id"]
 def accepts_external_metadata(meta):
     return meta["vm_proxy_log_path"]
 for meta in [{"firewall_name": "external"}]:
