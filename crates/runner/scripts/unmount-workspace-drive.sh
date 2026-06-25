@@ -119,13 +119,14 @@ scan_proc_maps() {
   maps_path=$2
   [ -r "$maps_path" ] || return 0
 
+  truncated=0
   {
     line_count=0
     while read -r maps_address maps_perms maps_offset maps_dev maps_inode maps_target; do
       line_count=$((line_count + 1))
       if [ "$line_count" -gt "$WORKSPACE_HOLDER_MAPS_LINE_LIMIT" ]; then
-        echo "workspace holder maps scan truncated for pid=$pid after $WORKSPACE_HOLDER_MAPS_LINE_LIMIT lines" >&2
-        return 0
+        truncated=1
+        break
       fi
       [ -n "$maps_target" ] || continue
       if is_workspace_ref "$maps_target"; then
@@ -134,6 +135,9 @@ scan_proc_maps() {
       fi
     done < "$maps_path"
   } 2>/dev/null || return 0
+  if [ "$truncated" -eq 1 ]; then
+    echo "workspace holder maps scan truncated for pid=$pid after $WORKSPACE_HOLDER_MAPS_LINE_LIMIT lines" >&2
+  fi
 
   return 0
 }
