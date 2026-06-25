@@ -261,15 +261,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Template picker in the Zero chat composer for per-message generation template selection.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VideoTemplatePicker]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Video template picker tab in the Zero chat composer for AI video generation with curated templates.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
@@ -288,8 +286,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
     description: "Show a PPTX download action for presentation HTML artifacts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",

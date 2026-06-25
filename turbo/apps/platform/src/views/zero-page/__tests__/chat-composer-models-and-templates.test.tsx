@@ -3281,7 +3281,10 @@ describe("chat composer templates", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
-        featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+        featureSwitches: {
+          [FeatureSwitchKey.ChatTemplatePicker]: false,
+          [FeatureSwitchKey.VideoTemplatePicker]: true,
+        },
       });
 
       click(
