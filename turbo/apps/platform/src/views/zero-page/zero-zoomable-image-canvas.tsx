@@ -1,6 +1,5 @@
 import type {
   MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
   ReactNode,
   Ref,
   SyntheticEvent,
@@ -14,7 +13,7 @@ import {
   setZoomableImageCanvasFitWidth$,
   setZoomableImageCanvasZoom$,
   zoomableImageCanvasFitWidthByKey$,
-  zoomableImageCanvasWheelRef$,
+  zoomableImageCanvasInteractionRef$,
   zoomableImageCanvasZoomByKey$,
 } from "../../signals/view-component-state.ts";
 
@@ -40,40 +39,6 @@ type DragStartState = {
   clientY: number;
   scrollLeft: number;
   scrollTop: number;
-};
-type TouchPoint = {
-  clientX: number;
-  clientY: number;
-  pointerId: number;
-};
-type TouchGestureState =
-  | {
-      clientX: number;
-      clientY: number;
-      kind: "pan";
-      pointerId: number;
-      scrollLeft: number;
-      scrollTop: number;
-    }
-  | {
-      contentX: number;
-      contentY: number;
-      distance: number;
-      kind: "pinch";
-      zoom: number;
-    };
-type TouchSurfaceState = {
-  gesture: TouchGestureState | null;
-  pointers: Map<number, TouchPoint>;
-};
-type TouchSurfaceElement = HTMLDivElement & {
-  __vm0ZoomableImageTouchState?: TouchSurfaceState;
-};
-type ZoomableTouchGestureContext = {
-  displayZoom: number;
-  setDisplayZoom: SetZoomHandler;
-  surfaceState: TouchSurfaceState;
-  zoomKey: string;
 };
 
 export type ZoomableImageControls = {
@@ -165,44 +130,6 @@ function calculateImageFitWidth(image: HTMLImageElement) {
   return naturalWidth > 0 ? naturalWidth : null;
 }
 
-function clampDisplayZoom(zoom: number) {
-  return Math.min(
-    IMAGE_LIGHTBOX_MAX_ZOOM,
-    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
-  );
-}
-
-function touchDistance(a: TouchPoint, b: TouchPoint) {
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-}
-
-function touchMidpoint(a: TouchPoint, b: TouchPoint) {
-  return {
-    clientX: (a.clientX + b.clientX) / 2,
-    clientY: (a.clientY + b.clientY) / 2,
-  };
-}
-
-function firstTwoTouchPoints(
-  touchPointers: Map<number, TouchPoint>,
-): [TouchPoint, TouchPoint] | null {
-  const points = Array.from(touchPointers.values());
-  const [first, second] = points;
-  return first && second ? [first, second] : null;
-}
-
-function touchSurfaceStateFor(
-  scrollContainer: HTMLDivElement,
-): TouchSurfaceState {
-  const touchSurface = scrollContainer as TouchSurfaceElement;
-
-  touchSurface.__vm0ZoomableImageTouchState ??= {
-    gesture: null,
-    pointers: new Map<number, TouchPoint>(),
-  };
-  return touchSurface.__vm0ZoomableImageTouchState;
-}
-
 function startMouseDragPan(event: ReactMouseEvent<HTMLDivElement>) {
   if (event.button !== 0 || shouldIgnoreDragStart(event.target)) {
     return;
@@ -233,259 +160,6 @@ function startMouseDragPan(event: ReactMouseEvent<HTMLDivElement>) {
   window.addEventListener("mouseup", handleMouseUp);
 }
 
-function startTouchPanGesture(
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-  pointer: TouchPoint,
-) {
-  context.surfaceState.gesture = {
-    clientX: pointer.clientX,
-    clientY: pointer.clientY,
-    kind: "pan",
-    pointerId: pointer.pointerId,
-    scrollLeft: scrollContainer.scrollLeft,
-    scrollTop: scrollContainer.scrollTop,
-  };
-}
-
-function startTouchPinchGesture(
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-) {
-  const points = firstTwoTouchPoints(context.surfaceState.pointers);
-  if (!points) {
-    return;
-  }
-
-  const [first, second] = points;
-  const distance = touchDistance(first, second);
-  if (distance <= 0) {
-    return;
-  }
-
-  const midpoint = touchMidpoint(first, second);
-  const rect = scrollContainer.getBoundingClientRect();
-  const viewportX = midpoint.clientX - rect.x;
-  const viewportY = midpoint.clientY - rect.y;
-
-  context.surfaceState.gesture = {
-    contentX: scrollContainer.scrollLeft + viewportX,
-    contentY: scrollContainer.scrollTop + viewportY,
-    distance,
-    kind: "pinch",
-    zoom: context.displayZoom,
-  };
-}
-
-function applyTouchPanGesture(
-  gesture: Extract<TouchGestureState, { kind: "pan" }>,
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-) {
-  const pointer = context.surfaceState.pointers.get(gesture.pointerId);
-  if (!pointer) {
-    return;
-  }
-
-  scrollContainer.scrollLeft =
-    gesture.scrollLeft - (pointer.clientX - gesture.clientX);
-  scrollContainer.scrollTop =
-    gesture.scrollTop - (pointer.clientY - gesture.clientY);
-}
-
-function applyTouchPinchGesture(
-  gesture: Extract<TouchGestureState, { kind: "pinch" }>,
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-) {
-  const points = firstTwoTouchPoints(context.surfaceState.pointers);
-  if (!points) {
-    return;
-  }
-
-  const [first, second] = points;
-  const nextDistance = touchDistance(first, second);
-  if (nextDistance <= 0) {
-    return;
-  }
-
-  const nextZoom = clampDisplayZoom(
-    gesture.zoom * (nextDistance / gesture.distance),
-  );
-  const zoomRatio = nextZoom / gesture.zoom;
-  const midpoint = touchMidpoint(first, second);
-  const rect = scrollContainer.getBoundingClientRect();
-  const viewportX = midpoint.clientX - rect.x;
-  const viewportY = midpoint.clientY - rect.y;
-
-  context.setDisplayZoom(context.zoomKey, nextZoom);
-  scrollContainer.scrollLeft = gesture.contentX * zoomRatio - viewportX;
-  scrollContainer.scrollTop = gesture.contentY * zoomRatio - viewportY;
-}
-
-function applyTouchGesture(
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-) {
-  const gesture = context.surfaceState.gesture;
-  if (!gesture) {
-    return;
-  }
-
-  if (gesture.kind === "pan") {
-    applyTouchPanGesture(gesture, context, scrollContainer);
-    return;
-  }
-
-  applyTouchPinchGesture(gesture, context, scrollContainer);
-}
-
-function refreshTouchGestureAfterPointerRelease(
-  context: ZoomableTouchGestureContext,
-  scrollContainer: HTMLDivElement,
-) {
-  if (context.surfaceState.pointers.size >= 2) {
-    startTouchPinchGesture(context, scrollContainer);
-    return;
-  }
-
-  const [remainingPointer] = context.surfaceState.pointers.values();
-  if (remainingPointer) {
-    startTouchPanGesture(context, scrollContainer, remainingPointer);
-    return;
-  }
-
-  context.surfaceState.gesture = null;
-}
-
-function handleTouchPointerDown(
-  event: ReactPointerEvent<HTMLDivElement>,
-  context: ZoomableTouchGestureContext,
-) {
-  if (event.pointerType !== "touch" || shouldIgnoreDragStart(event.target)) {
-    return;
-  }
-
-  const scrollContainer = event.currentTarget;
-  event.preventDefault();
-  if (typeof scrollContainer.setPointerCapture === "function") {
-    scrollContainer.setPointerCapture(event.pointerId);
-  }
-
-  const pointer = {
-    clientX: event.clientX,
-    clientY: event.clientY,
-    pointerId: event.pointerId,
-  };
-  context.surfaceState.pointers.set(event.pointerId, pointer);
-
-  if (context.surfaceState.pointers.size >= 2) {
-    startTouchPinchGesture(context, scrollContainer);
-    return;
-  }
-
-  startTouchPanGesture(context, scrollContainer, pointer);
-}
-
-function handleTouchPointerMove(
-  event: ReactPointerEvent<HTMLDivElement>,
-  context: ZoomableTouchGestureContext,
-) {
-  if (
-    event.pointerType !== "touch" ||
-    !context.surfaceState.pointers.has(event.pointerId)
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  context.surfaceState.pointers.set(event.pointerId, {
-    clientX: event.clientX,
-    clientY: event.clientY,
-    pointerId: event.pointerId,
-  });
-  applyTouchGesture(context, event.currentTarget);
-}
-
-function handleTouchPointerEnd(
-  event: ReactPointerEvent<HTMLDivElement>,
-  context: ZoomableTouchGestureContext,
-) {
-  if (
-    event.pointerType !== "touch" ||
-    !context.surfaceState.pointers.has(event.pointerId)
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  const scrollContainer = event.currentTarget;
-  context.surfaceState.pointers.delete(event.pointerId);
-  if (typeof scrollContainer.releasePointerCapture === "function") {
-    scrollContainer.releasePointerCapture(event.pointerId);
-  }
-  refreshTouchGestureAfterPointerRelease(context, scrollContainer);
-}
-
-function touchGestureContext(
-  scrollContainer: HTMLDivElement,
-  {
-    displayZoom,
-    setDisplayZoom,
-    zoomKey,
-  }: {
-    displayZoom: number;
-    setDisplayZoom: SetZoomHandler;
-    zoomKey: string;
-  },
-): ZoomableTouchGestureContext {
-  return {
-    displayZoom,
-    setDisplayZoom,
-    surfaceState: touchSurfaceStateFor(scrollContainer),
-    zoomKey,
-  };
-}
-
-function zoomableTouchGestureHandlers({
-  displayZoom,
-  setDisplayZoom,
-  zoomKey,
-}: {
-  displayZoom: number;
-  setDisplayZoom: SetZoomHandler;
-  zoomKey: string;
-}) {
-  const args = { displayZoom, setDisplayZoom, zoomKey };
-
-  return {
-    onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => {
-      handleTouchPointerEnd(
-        event,
-        touchGestureContext(event.currentTarget, args),
-      );
-    },
-    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
-      handleTouchPointerDown(
-        event,
-        touchGestureContext(event.currentTarget, args),
-      );
-    },
-    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
-      handleTouchPointerMove(
-        event,
-        touchGestureContext(event.currentTarget, args),
-      );
-    },
-    onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
-      handleTouchPointerEnd(
-        event,
-        touchGestureContext(event.currentTarget, args),
-      );
-    },
-  };
-}
-
 export function ZoomableArtifactImageCanvas({
   alt,
   canvasTestId = "zoomable-image-canvas",
@@ -505,7 +179,9 @@ export function ZoomableArtifactImageCanvas({
   const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
   const setFitWidth = useSet(setZoomableImageCanvasFitWidth$);
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
-  const setZoomableImageCanvasWheelRef = useSet(zoomableImageCanvasWheelRef$);
+  const setZoomableImageCanvasInteractionRef = useSet(
+    zoomableImageCanvasInteractionRef$,
+  );
   const displayZoom = zoomByKey[zoomKey] ?? 1;
   const fitWidth = fitWidthByKey[zoomKey];
   const imageWidth =
@@ -518,12 +194,6 @@ export function ZoomableArtifactImageCanvas({
     setDisplayZoom,
     zoomKey,
   });
-  const touchGestureHandlers = zoomableTouchGestureHandlers({
-    displayZoom,
-    setDisplayZoom,
-    zoomKey,
-  });
-
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const fitWidthValue = calculateImageFitWidth(event.currentTarget);
     if (fitWidthValue !== null) {
@@ -542,7 +212,7 @@ export function ZoomableArtifactImageCanvas({
     >
       {children?.(controls)}
       <div
-        ref={setZoomableImageCanvasWheelRef}
+        ref={setZoomableImageCanvasInteractionRef}
         className={cn(
           "h-full min-h-0 w-full overflow-auto overscroll-contain",
           "cursor-grab active:cursor-grabbing",
@@ -551,7 +221,6 @@ export function ZoomableArtifactImageCanvas({
         data-zoom-key={zoomKey}
         onMouseDown={startMouseDragPan}
         style={{ touchAction: "none" }}
-        {...touchGestureHandlers}
       >
         <div
           className={cn(
