@@ -140,6 +140,10 @@ function buildPresentationGenerationTemplatePrompt(
         ? [`- Template preview URL: ${generationTemplate.selection.previewUrl}`]
         : []),
       "",
+      "Hard rules for presentation template references and media:",
+      "- Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
+      "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
+      "",
       "When you produce a presentation from the user's request:",
       `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
       ...(colorSystem

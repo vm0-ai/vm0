@@ -131,7 +131,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
   "template:html-ppt-botane-organic":
-    "7438cf79bbf25501de0c7a91cc35a98e164e6e1e59c8e8571f0f2d4272a5158f",
+    "53e472431ba9954aacc845f1fb39b037a6cef64155de74b5730297864e1a0e11",
   "template:html-ppt-playful-launch":
     "ff2dae6ef1f99d1c754903a7acc49ea220a5439f7408870f8a9074e4543de190",
   "template:html-ppt-business-data":
