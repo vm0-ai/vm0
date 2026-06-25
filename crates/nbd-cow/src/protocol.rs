@@ -4,16 +4,16 @@
 //! The kernel NBD client communicates directly using the transmission protocol.
 
 /// Magic number in every NBD request (client -> server).
-pub const REQUEST_MAGIC: u32 = 0x2560_9513;
+pub(crate) const REQUEST_MAGIC: u32 = 0x2560_9513;
 
 /// Magic number in every NBD reply (server -> client).
-pub const REPLY_MAGIC: u32 = 0x6744_6698;
+pub(crate) const REPLY_MAGIC: u32 = 0x6744_6698;
 
 /// Size of the request header in bytes (excluding payload).
-pub const REQUEST_HEADER_SIZE: usize = 28;
+pub(crate) const REQUEST_HEADER_SIZE: usize = 28;
 
 /// Size of the reply header in bytes (excluding payload).
-pub const REPLY_HEADER_SIZE: usize = 16;
+pub(crate) const REPLY_HEADER_SIZE: usize = 16;
 
 const REQUEST_MAGIC_OFFSET: usize = 0;
 #[cfg(test)]
@@ -30,7 +30,7 @@ const REPLY_HANDLE_OFFSET: usize = 8;
 /// NBD command types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-pub enum Command {
+pub(crate) enum Command {
     Read = 0,
     Write = 1,
     Disconnect = 2,
@@ -39,7 +39,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn from_u16(val: u16) -> Result<Self, ProtocolError> {
+    pub(crate) fn from_u16(val: u16) -> Result<Self, ProtocolError> {
         match val {
             0 => Ok(Self::Read),
             1 => Ok(Self::Write),
@@ -53,30 +53,30 @@ impl Command {
 
 /// NBD request header (28 bytes, client -> server).
 #[derive(Debug, Clone)]
-pub struct NbdRequest {
+pub(crate) struct NbdRequest {
     /// Decoded command type. The wire encoding is `u16`; see [`Command`].
-    pub command: Command,
+    pub(crate) command: Command,
     /// Opaque request identifier echoed back in [`NbdReply::handle`]. The
     /// dispatcher uses this to correlate replies with in-flight requests;
     /// the server does not interpret the value.
-    pub handle: u64,
+    pub(crate) handle: u64,
     /// Byte offset into the device where the operation applies (Read /
     /// Write / Trim). Ignored for Flush and Disconnect.
-    pub offset: u64,
+    pub(crate) offset: u64,
     /// Payload length in bytes. Requests exceeding the server's
     /// `MAX_REQUEST_LENGTH` (see `server.rs`) are rejected with `EIO`.
-    pub length: u32,
+    pub(crate) length: u32,
 }
 
 /// NBD reply header (16 bytes, server -> client).
 #[derive(Debug, Clone)]
-pub struct NbdReply {
+pub(crate) struct NbdReply {
     /// NBD error code: `0` means success; a non-zero value is an errno
     /// the kernel maps back to the originating I/O (e.g. `libc::EIO`).
-    pub error: u32,
+    pub(crate) error: u32,
     /// Echoes [`NbdRequest::handle`] from the originating request so the
     /// client can match this reply to the pending operation.
-    pub handle: u64,
+    pub(crate) handle: u64,
 }
 
 /// Errors returned while decoding fixed-size NBD transmission headers.
@@ -155,7 +155,7 @@ fn write_bytes<const N: usize>(buf: &mut [u8], offset: usize, bytes: [u8; N]) {
 }
 
 /// Parse a 28-byte NBD request header.
-pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
+pub(crate) fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
     let header = buf
         .get(..REQUEST_HEADER_SIZE)
         .ok_or(ProtocolError::BufferTooShort {
@@ -183,7 +183,7 @@ pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
 }
 
 /// Serialize a 16-byte NBD reply header.
-pub fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
+pub(crate) fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
     let mut buf = [0u8; REPLY_HEADER_SIZE];
     write_u32(&mut buf, REPLY_MAGIC_OFFSET, REPLY_MAGIC);
     write_u32(&mut buf, REPLY_ERROR_OFFSET, reply.error);
