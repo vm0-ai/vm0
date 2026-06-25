@@ -692,10 +692,17 @@ describe("firewall metadata", () => {
       assertNoForbiddenMetadataKeys(detail, type);
     }
 
-    expect(isFirewallMetadataConnectorType("cloudinary")).toBe(false);
-    await expect(
-      loadFirewallPermissionMetadata("cloudinary"),
-    ).resolves.toBeNull();
+    for (const unknownType of [
+      "cloudinary",
+      "__proto__",
+      "constructor",
+      "toString",
+    ]) {
+      expect(isFirewallMetadataConnectorType(unknownType)).toBe(false);
+      await expect(
+        loadFirewallPermissionMetadata(unknownType),
+      ).resolves.toBeNull();
+    }
   });
 
   it("keeps execution metadata synchronized with runtime construction data", async () => {
