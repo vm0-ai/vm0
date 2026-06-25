@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@vm0/ui";
 
-import { agents$, currentAgentId$ } from "../../signals/agent.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
