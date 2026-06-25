@@ -324,6 +324,22 @@ def _pattern_names(pattern: ast.pattern) -> set[str]:
     return set()
 
 
+def _metadata_match_pattern_alias_names(pattern: ast.pattern) -> set[str]:
+    if isinstance(pattern, ast.MatchAs):
+        names = set() if pattern.name is None else {pattern.name}
+        if pattern.pattern is not None:
+            names.update(_metadata_match_pattern_alias_names(pattern.pattern))
+        return names
+    if isinstance(pattern, ast.MatchMapping):
+        return set() if pattern.rest is None else {pattern.rest}
+    if isinstance(pattern, ast.MatchOr):
+        names: set[str] = set()
+        for child_pattern in pattern.patterns:
+            names.update(_metadata_match_pattern_alias_names(child_pattern))
+        return names
+    return set()
+
+
 def _pattern_is_exhaustive(pattern: ast.pattern) -> bool:
     if isinstance(pattern, ast.MatchAs):
         return pattern.pattern is None or _pattern_is_exhaustive(pattern.pattern)
@@ -1113,6 +1129,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             pattern_is_exhaustive = _pattern_is_exhaustive(case.pattern)
             aliases = set(continuing_aliases)
             aliases.difference_update(names)
+            if subject_is_metadata:
+                aliases.update(_metadata_match_pattern_alias_names(case.pattern))
             self._metadata_alias_scopes.append(aliases)
             if case.guard is not None:
                 self._record_metadata_merge_key_violations(case.guard)
@@ -1595,12 +1613,30 @@ meta = flow.metadata
 match meta:
     case {"firewall_name": firewall_name}:
         pass
+match flow.metadata:
+    case captured_match_meta:
+        captured_match_meta["vm_run_id"] = "run-1"
+match flow.metadata:
+    case _ as as_match_meta:
+        as_match_meta.get("firewall_name")
+match flow.metadata:
+    case {"payload": payload, **rest_match_meta}:
+        rest_match_meta["firewall_action"] = "ALLOW"
+match flow.metadata:
+    case {**only_rest_match_meta}:
+        only_rest_match_meta["firewall_permission"] = "read"
+match flow.metadata:
+    case {"payload": payload} as matched_meta:
+        matched_meta["firewall_base"] = "https://api.example.com"
+match flow.metadata:
+    case guarded_match_meta if guarded_match_meta["vm_run_id"]:
+        pass
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 145
+    assert len(violations) == 151
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1852,6 +1888,9 @@ match payload:
         pass
 match flow.metadata:
     case {"payload": {"vm_run_id": external_run_id}}:
+        pass
+match flow.metadata:
+    case {metadata_keys.VM_RUN_ID: run_id}:
         pass
 try:
     pass
