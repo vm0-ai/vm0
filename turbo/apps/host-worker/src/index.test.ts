@@ -7,6 +7,17 @@ type R2Object = NonNullable<
   Awaited<ReturnType<WorkerEnv["HOSTED_SITES_BUCKET"]["get"]>>
 >;
 
+interface TestFile {
+  readonly body: string;
+  readonly contentType: string;
+}
+
+interface TestEnvOptions {
+  readonly files?: Record<string, TestFile>;
+}
+
+const DEFAULT_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
+
 function textStream(value: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
@@ -26,11 +37,40 @@ function objectBody(body: string, contentType = "application/json"): R2Object {
   };
 }
 
-function env(): WorkerEnv {
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function env(options: TestEnvOptions = {}): WorkerEnv {
   const publicSlug = "demo";
   const deploymentId = "00000000-0000-4000-8000-000000000001";
   const prefix = `sites/${publicSlug}/deployments/${deploymentId}`;
   const manifestKey = `${prefix}/manifest.json`;
+  const files: Record<string, TestFile> = {
+    "/index.html": {
+      body: "<!doctype html>ok",
+      contentType: "text/html; charset=utf-8",
+    },
+    ...(options.files ?? {}),
+  };
+  const manifestFiles = Object.fromEntries(
+    Object.entries(files).map(([path, file]) => {
+      return [
+        path,
+        {
+          path,
+          size: byteLength(file.body),
+          sha256: "a".repeat(64),
+          contentType: file.contentType,
+        },
+      ];
+    }),
+  );
+  const fileObjects: [string, R2Object][] = Object.entries(files).map(
+    ([path, file]) => {
+      return [`${prefix}${path}`, objectBody(file.body, file.contentType)];
+    },
+  );
   const objects = new Map<string, R2Object>([
     [
       `sites/${publicSlug}/active.json`,
@@ -57,21 +97,11 @@ function env(): WorkerEnv {
           publicSlug,
           createdAt: "2026-01-01T00:00:00.000Z",
           spaFallback: false,
-          files: {
-            "/index.html": {
-              path: "/index.html",
-              size: 18,
-              sha256: "a".repeat(64),
-              contentType: "text/html; charset=utf-8",
-            },
-          },
+          files: manifestFiles,
         }),
       ),
     ],
-    [
-      `${prefix}/index.html`,
-      objectBody("<!doctype html>ok", "text/html; charset=utf-8"),
-    ],
+    ...fileObjects,
   ]);
 
   return {
@@ -84,7 +114,7 @@ function env(): WorkerEnv {
   };
 }
 
-describe("hosted site CORS", () => {
+describe("hosted site worker", () => {
   it("allows the vm0 apex origin on preflight responses", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/", {
@@ -131,5 +161,38 @@ describe("hosted site CORS", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("serves default robots.txt when the active deployment omits it", async () => {
+    const response = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/robots.txt"),
+      env(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(await response.text()).toBe(DEFAULT_ROBOTS_TXT);
+  });
+
+  it("serves an uploaded robots.txt when present", async () => {
+    const customRobots = "User-agent: *\nAllow: /\n";
+    const response = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/robots.txt"),
+      env({
+        files: {
+          "/robots.txt": {
+            body: customRobots,
+            contentType: "text/plain; charset=utf-8",
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(customRobots);
   });
 });
