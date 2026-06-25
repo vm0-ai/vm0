@@ -93,8 +93,8 @@ async fn dispatch_trim_succeeds() -> TestResult<()> {
 }
 
 #[tokio::test]
-async fn dispatch_accepts_request_flags() -> TestResult<()> {
-    const NBD_CMD_FLAG_FUA: u32 = 1 << 16;
+async fn dispatch_masks_request_type_flags_from_command() -> TestResult<()> {
+    const REQUEST_TYPE_HIGH_FLAG: u32 = 1 << 16;
 
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
@@ -108,7 +108,7 @@ async fn dispatch_accepts_request_flags() -> TestResult<()> {
         1,
         0,
         write_data.len() as u32,
-        NBD_CMD_FLAG_FUA,
+        REQUEST_TYPE_HIGH_FLAG,
     );
     client.send_request(&flagged_write).await?;
     client.write_payload(&write_data).await?;
