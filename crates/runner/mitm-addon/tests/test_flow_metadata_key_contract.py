@@ -49,49 +49,107 @@ def _violation(path: Path, node: ast.AST, key_name: str) -> str:
     return f"{location}:{line_number}: use metadata_keys.{key_name} for flow.metadata access"
 
 
-def _metadata_key_violations(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(), filename=str(path))
-    violations: list[str] = []
+class _MetadataKeyVisitor(ast.NodeVisitor):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.violations: list[str] = []
+        self._metadata_alias_scopes: list[set[str]] = [set()]
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Subscript) and _is_metadata_attribute(node.value):
+    @property
+    def _metadata_aliases(self) -> set[str]:
+        return self._metadata_alias_scopes[-1]
+
+    def _is_metadata_reference(self, node: ast.AST) -> bool:
+        return _is_metadata_attribute(node) or (
+            isinstance(node, ast.Name) and node.id in self._metadata_aliases
+        )
+
+    def _visit_scoped_body(self, body: list[ast.stmt]) -> None:
+        self._metadata_alias_scopes.append(set(self._metadata_aliases))
+        for statement in body:
+            self.visit(statement)
+        self._metadata_alias_scopes.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_scoped_body(node.body)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_scoped_body(node.body)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_scoped_body(node.body)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if any(_is_metadata_attribute(target) for target in node.targets):
+            self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
+        self._update_aliases_from_assign(node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if _is_metadata_attribute(node.target):
+            self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
+        if isinstance(node.target, ast.Name):
+            if node.value is not None and self._is_metadata_reference(node.value):
+                self._metadata_aliases.add(node.target.id)
+            else:
+                self._metadata_aliases.discard(node.target.id)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        if self._is_metadata_reference(node.target):
+            self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        if self._is_metadata_reference(node.value):
             key_name = _registered_key_name(node.slice)
             if key_name is not None:
-                violations.append(_violation(path, node, key_name))
+                self.violations.append(_violation(self.path, node, key_name))
+        self.generic_visit(node)
 
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and _is_metadata_attribute(node.func.value)
-        ):
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Attribute) and self._is_metadata_reference(node.func.value):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
                 key_name = _registered_key_name(node.args[0])
                 if key_name is not None:
-                    violations.append(_violation(path, node, key_name))
+                    self.violations.append(_violation(self.path, node, key_name))
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
-                violations.extend(_metadata_update_violations(path, node))
+                self.violations.extend(_metadata_update_violations(self.path, node))
+        self.generic_visit(node)
 
-        if isinstance(node, ast.AugAssign) and _is_metadata_attribute(node.target):
-            violations.extend(_metadata_dict_key_violations(path, node.value))
-
-        if isinstance(node, ast.Assign) and any(
-            _is_metadata_attribute(target) for target in node.targets
+    def visit_Compare(self, node: ast.Compare) -> None:
+        if (
+            len(node.comparators) == 1
+            and isinstance(node.ops[0], (ast.In, ast.NotIn))
+            and self._is_metadata_reference(node.comparators[0])
         ):
-            violations.extend(_metadata_dict_key_violations(path, node.value))
-
-        if isinstance(node, ast.AnnAssign) and _is_metadata_attribute(node.target):
-            violations.extend(_metadata_dict_key_violations(path, node.value))
-
-        if isinstance(node, ast.Compare) and len(node.comparators) == 1:
-            if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
-                continue
-            if not _is_metadata_attribute(node.comparators[0]):
-                continue
             key_name = _registered_key_name(node.left)
             if key_name is not None:
-                violations.append(_violation(path, node, key_name))
+                self.violations.append(_violation(self.path, node, key_name))
+        self.generic_visit(node)
 
-    return violations
+    def visit_Delete(self, node: ast.Delete) -> None:
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                self._metadata_aliases.discard(target.id)
+        self.generic_visit(node)
+
+    def _update_aliases_from_assign(self, node: ast.Assign) -> None:
+        is_metadata_alias = self._is_metadata_reference(node.value)
+        for target in node.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if is_metadata_alias:
+                self._metadata_aliases.add(target.id)
+            else:
+                self._metadata_aliases.discard(target.id)
+
+
+def _metadata_key_violations(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    visitor = _MetadataKeyVisitor(path)
+    visitor.visit(tree)
+    return visitor.violations
 
 
 def _metadata_update_violations(path: Path, node: ast.Call) -> list[str]:
@@ -184,12 +242,18 @@ flow.metadata.__delitem__("network_log_target")
 flow.metadata.__contains__("browser_user_agent")
 flow.metadata.__ior__({"suppress_request_body_capture": True})
 http_flow.metadata["vm_run_id"] = "run-2"
+meta = flow.metadata
+meta["vm_proxy_log_path"] = "proxy.jsonl"
+meta.get("vm_network_log_path")
+"firewall_name" in meta
+meta.update({"firewall_permission": "read"})
+meta |= {"firewall_rule_match": "GET /items"}
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 19
+    assert len(violations) == 24
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -203,6 +267,8 @@ entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
+meta = flow.metadata
+meta = {"vm_run_id": "external payload"}
 """
     )
 
