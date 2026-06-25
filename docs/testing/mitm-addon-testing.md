@@ -42,7 +42,10 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_tcp_hooks.py` | TCP start, logging, message drain, end, and error hooks |
 | `test_registry_loading.py` | Registry loading, parsing, unavailable-state, and cache behavior |
 | `test_registry_auth_cache_eviction.py` | Registry-driven auth-cache ownership and eviction behavior |
-| `test_registry_context.py` | VM lookup and compiled registry context behavior |
+| `test_registry_context.py` | VM lookup and public compiled context API behavior |
+| `test_registry_builtin_cache.py` | Registry built-in firewall resolution and compiled-core cache behavior |
+| `test_registry_builtin_base_url_vars.py` | Registry built-in base URL variable resolution and validation |
+| `test_registry_context_state.py` | Registry compiled context reload, unavailable-state, and malformed-shape behavior |
 | `test_matching_path.py` | Low-level firewall path matching |
 | `test_matching_host.py` | Low-level firewall host matching |
 | `test_matching_path_prefix.py` | Low-level firewall path-prefix matching |
