@@ -152,17 +152,24 @@ export function ZoomableArtifactImageCanvas({
     <TransformWrapper
       key={zoomKey}
       centerZoomedOut
+      disablePadding
       doubleClick={{ disabled: true }}
       initialScale={1}
       maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
+      autoAlignment={{ disabled: true }}
       onInit={(transformRef) => {
         setDisplayZoom(zoomKey, transformRef.state.scale);
       }}
       onTransform={(_transformRef, transformState) => {
         setDisplayZoom(zoomKey, transformState.scale);
       }}
-      panning={{ velocityDisabled: true }}
+      panning={{
+        allowMiddleClickPan: false,
+        allowRightClickPan: false,
+        velocityDisabled: true,
+      }}
+      pinch={{ allowPanning: false }}
       smooth={false}
       wheel={{ activationKeys: ["Control"] }}
     >

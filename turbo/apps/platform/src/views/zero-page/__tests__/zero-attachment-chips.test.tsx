@@ -414,6 +414,65 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("keeps an uploaded image preview stable when zooming past the maximum from the top-left", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const zoomInButton = screen.getByLabelText("Zoom in");
+    for (let i = 0; i < 14; i += 1) {
+      click(zoomInButton);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(3)");
+    });
+
+    const transformAtMaxZoom = transformContent.style.transform;
+    fireEvent.keyDown(window, { key: "Control" });
+    const maxedWheelEvent = createEvent.wheel(transformWrapper, {
+      clientX: 0,
+      clientY: 0,
+      ctrlKey: true,
+      deltaY: -120,
+    });
+    fireEvent(transformWrapper, maxedWheelEvent);
+    fireEvent.keyUp(window, { key: "Control" });
+
+    expect(maxedWheelEvent.defaultPrevented).toBeTruthy();
+    expect(transformContent.style.transform).toBe(transformAtMaxZoom);
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("pinches an uploaded image preview with touch gestures", async () => {
     await setupUploadedImagePreview();
 
@@ -476,6 +535,97 @@ describe("zero attachment chips", () => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
       expect(transformContent.style.transform).toContain("scale(2)");
     });
+
+    fireEvent.touchEnd(lightboxImage, {
+      touches: [],
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps an uploaded image preview stable when pinching past the maximum", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const firstTouch = touchPoint({
+      clientX: 0,
+      clientY: 0,
+      identifier: 1,
+      target: lightboxImage,
+    });
+    const secondTouch = touchPoint({
+      clientX: 200,
+      clientY: 0,
+      identifier: 2,
+      target: lightboxImage,
+    });
+    fireEvent.touchStart(lightboxImage, {
+      touches: [firstTouch, secondTouch],
+    });
+    fireEvent.touchMove(lightboxImage, {
+      touches: [
+        firstTouch,
+        touchPoint({
+          clientX: 600,
+          clientY: 0,
+          identifier: 2,
+          target: lightboxImage,
+        }),
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(3)");
+    });
+
+    const transformAtMaxZoom = transformContent.style.transform;
+    fireEvent.touchMove(lightboxImage, {
+      touches: [
+        touchPoint({
+          clientX: 4,
+          clientY: 2,
+          identifier: 1,
+          target: lightboxImage,
+        }),
+        touchPoint({
+          clientX: 700,
+          clientY: 2,
+          identifier: 2,
+          target: lightboxImage,
+        }),
+      ],
+    });
+
+    expect(transformContent.style.transform).toBe(transformAtMaxZoom);
 
     fireEvent.touchEnd(lightboxImage, {
       touches: [],
