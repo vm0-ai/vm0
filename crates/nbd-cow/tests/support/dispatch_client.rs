@@ -23,6 +23,7 @@ const REQUEST_MAGIC: u32 = 0x2560_9513;
 const REPLY_MAGIC: u32 = 0x6744_6698;
 const REQUEST_HEADER_SIZE: usize = 28;
 const REPLY_HEADER_SIZE: usize = 16;
+const REQUEST_TYPE_COMMAND_MASK: u32 = 0x0000_FFFF;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
@@ -179,6 +180,12 @@ pub fn request_with_type_flags(
     length: u32,
     request_type_flags: u32,
 ) -> NbdRequest {
+    assert_eq!(
+        request_type_flags & REQUEST_TYPE_COMMAND_MASK,
+        0,
+        "request type flags must not overlap command bits"
+    );
+
     NbdRequest {
         request_type_flags,
         command,
