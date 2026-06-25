@@ -754,11 +754,11 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
 
         # Simulate request handler setting metadata
-        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
 
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/"
 
         # Add response
         flow.response = tutils.tresp(
@@ -796,10 +796,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="request.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://original.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://original.example.com/"
         flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
             "url": "https://target.example.com:9443/path",
             "host": "target.example.com",
@@ -882,10 +882,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="request.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = raw_url
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
         flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
             "url": raw_url,
             "host": "target.example.com",
@@ -900,7 +900,7 @@ class TestResponseHandler:
         assert entry["host"] == "target.example.com"
         assert entry["port"] == 9443
         assert entry["url"] == expected_url
-        assert flow.metadata["original_url"] == raw_url
+        assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
         assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
     def test_logs_legacy_target_when_original_url_port_is_invalid(
@@ -909,10 +909,12 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://invalid.example.com:bad/path?secret=value#frag"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://invalid.example.com:bad/path?secret=value#frag"
+        )
         flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
 
         with mitm_ctx():
@@ -928,10 +930,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-length": "999", "content-type": "application/json"}),
@@ -955,10 +957,10 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
         body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-length": "12", "content-type": "application/json"}),
@@ -967,8 +969,8 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body[:123])
         response_stream(flow)(body[123:])
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -989,10 +991,10 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
         body = b"x" * (STREAM_BUFFER_LIMIT + 17)
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.metadata[metadata_keys.CAPTURE_BODY] = True
         flow.response = tutils.tresp(
             status_code=200,
@@ -1273,10 +1275,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-length": content_length})
         )
@@ -1292,10 +1294,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-length": "9007199254740991"})
         )
@@ -1313,10 +1315,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
@@ -1357,10 +1359,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-length": content_length})
         )
@@ -1378,10 +1380,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50000")]),
@@ -1400,10 +1402,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50001")]),
@@ -1420,10 +1422,10 @@ class TestResponseHandler:
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-length": "50000", "content-type": "application/json"}),
@@ -1445,10 +1447,10 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
         body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -1467,13 +1469,13 @@ class TestResponseHandler:
     def test_401_firewall_cache_invalidation(self, real_flow, mitm_ctx, headers):
         """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["vm_run_id"] = "run-conn-1"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-1"
 
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-1:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-1:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
 
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
@@ -1495,13 +1497,13 @@ class TestResponseHandler:
     ):
         """Malformed log-only response size metadata must not block 401 auth recovery."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["vm_run_id"] = "run-conn-invalid-length"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length"
 
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-invalid-length:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
 
         flow.response = tutils.tresp(
             status_code=401,
@@ -1523,13 +1525,13 @@ class TestResponseHandler:
         """Malformed network-log response size metadata must not block 401 auth recovery."""
         flow = real_flow(with_response=False, host="api.github.com")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-conn-invalid-length-log"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length-log"
 
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-invalid-length-log:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length-log:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
 
         flow.response = tutils.tresp(
             status_code=401,
@@ -1550,12 +1552,12 @@ class TestResponseHandler:
     def test_401_without_existing_state_marks_force_refresh(self, real_flow, mitm_ctx, headers):
         """401 should request a forced refresh even if no cache entry exists yet."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["vm_run_id"] = "run-conn-new"
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-new:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-new"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-new:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         cache_key = ("run-conn-new", "run-conn-new:0")
@@ -1573,12 +1575,12 @@ class TestResponseHandler:
         level reject) would amplify into a loop of OAuth refresh calls and
         hit the provider's rate limits (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["vm_run_id"] = "run-conn-cd"
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-cd:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-cd"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-cd:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         cache_key = ("run-conn-cd", "run-conn-cd:0")
@@ -1600,12 +1602,12 @@ class TestResponseHandler:
         rate limit only throttles, it doesn't permanently lock out real
         token-invalidation recovery (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata["vm_run_id"] = "run-conn-re"
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://api.github.com"
-        flow.metadata["firewall_api_id"] = "run-conn-re:0"
-        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-re"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-re:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         cache_key = ("run-conn-re", "run-conn-re:0")
@@ -1624,14 +1626,15 @@ class TestResponseHandler:
     def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""
         flow = real_flow(with_response=False, host="api.example.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
 
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata["vm_network_log_path"] = ""
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_rule"] = "domain:*.example.com"
-        flow.metadata["original_url"] = "https://api.example.com/fail?api_key=secret#frag"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://api.example.com/fail?api_key=secret#frag"
+        )
 
         flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
@@ -1657,13 +1660,13 @@ class TestResponseHandler:
     def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """The completed response hook must not retain parser/buffer closures."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -1676,16 +1679,16 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata
 
     def test_response_without_run_id_releases_x_json_streaming_state(self, real_flow):
         """Even early-returning flows should not retain response parser closures."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "x"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -1698,8 +1701,8 @@ class TestResponseHandler:
         mitm_addon.response(flow)
 
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
     def test_response_without_run_id_releases_request_stream_state(self, real_flow):
@@ -1738,10 +1741,10 @@ class TestResponseHandler:
     def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
         """Early-returning SSE flows should not retain parser closures."""
         flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "gpt-5.5"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
@@ -1757,8 +1760,8 @@ class TestResponseHandler:
         mitm_addon.response(flow)
 
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
 
     def test_response_does_not_clear_external_stream_callback(self, tmp_path, real_flow, mitm_ctx):
@@ -1769,10 +1772,10 @@ class TestResponseHandler:
         def external_stream(chunk):
             return chunk
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         flow.response = tutils.tresp(status_code=200)
         flow.response.stream = external_stream
 
@@ -1788,13 +1791,13 @@ class TestResponseHandler:
         def external_stream(chunk):
             return chunk
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -1809,5 +1812,5 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         assert flow.response.stream is external_stream
-        assert "stream_buffer" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata

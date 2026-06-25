@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
@@ -119,11 +120,11 @@ class TestUsagePendingCounter:
         usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok"
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 1}
 
         with mitm_ctx(api_url="https://api.test"):
             usage.report_model_provider_usage(flow, "run-1")

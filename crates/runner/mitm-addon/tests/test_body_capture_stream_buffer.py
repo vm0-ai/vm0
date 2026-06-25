@@ -211,8 +211,8 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray()
-        flow.metadata["stream_buffer_state"] = {"total_bytes": 0}
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray()
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": 0}
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -227,8 +227,8 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray()
-        flow.metadata["stream_buffer_state"] = ["truncated"]
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray()
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = ["truncated"]
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -245,7 +245,7 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -262,8 +262,8 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {}
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {}
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -280,8 +280,8 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = ["truncated"]
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = ["truncated"]
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -298,7 +298,7 @@ class TestBodyCaptureStreamBuffer:
             response_encoding="gzip",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(gzip.compress(b""))
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(gzip.compress(b""))
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -316,8 +316,8 @@ class TestBodyCaptureStreamBuffer:
             response_encoding="gzip",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(compressed)
-        flow.metadata["stream_buffer_state"] = {"total_bytes": len(compressed)}
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(compressed)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": len(compressed)}
         entry = {}
         with pytest.raises(
             RuntimeError,
@@ -334,8 +334,8 @@ class TestBodyCaptureStreamBuffer:
             response_content_type="application/json",
             include_request_id=True,
         )
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"total_bytes": len(body)}
+        flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"total_bytes": len(body)}
         entry = {}
         with pytest.raises(
             RuntimeError,

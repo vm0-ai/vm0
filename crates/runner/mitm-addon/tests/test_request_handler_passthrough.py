@@ -39,11 +39,11 @@ def _assert_stale_tls_admission_block(flow, *, reason: str) -> None:
         ),
         "reason": reason,
     }
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "stale_tls_admission"
-    assert "vm_run_id" not in flow.metadata
-    assert "vm_network_log_path" not in flow.metadata
-    assert "firewall_base" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "stale_tls_admission"
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.VM_NETWORK_LOG_PATH not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
 
@@ -55,7 +55,7 @@ async def test_allowed_domain_passes_through(registry_file, real_flow, mitm_ctx)
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
 async def test_vm0_api_auto_allowed(registry_file, real_flow, mitm_ctx):
@@ -66,7 +66,7 @@ async def test_vm0_api_auto_allowed(registry_file, real_flow, mitm_ctx):
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
 async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, real_flow, mitm_ctx):
@@ -84,9 +84,9 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
         "message": "Proxy registry is unavailable",
         "reason": "parse_failed",
     }
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "registry_unavailable"
-    assert "vm_run_id" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "registry_unavailable"
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
 async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx, headers):
@@ -124,7 +124,9 @@ async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx,
     # Carve-out took effect: Step 3 ran and the real handle_firewall_request
     # entered (firewall_base is written at auth.py:327 up-front).  Step 2's
     # auto-allow would have returned without writing firewall_base.
-    assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
+    assert (
+        flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai/api/test/oauth-provider"
+    )
 
 
 async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_flow, mitm_ctx):
@@ -156,9 +158,9 @@ async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert flow.request.headers.get("Authorization") is None
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "registry_unavailable"
-    assert "firewall_base" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "registry_unavailable"
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
 
 
 async def test_valid_tls_admission_blocks_when_registry_entry_disappears(
@@ -391,7 +393,7 @@ async def test_missing_registry_entry_without_tls_admission_passes_through(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert "firewall_action" not in flow.metadata
+    assert metadata_keys.FIREWALL_ACTION not in flow.metadata
 
 
 async def test_tls_admission_keeps_guarding_multiple_requests(
@@ -475,7 +477,7 @@ async def test_client_disconnected_removes_tls_admission(
 
     assert tls_data.ignore_connection is False
     assert flow.response is None
-    assert "firewall_action" not in flow.metadata
+    assert metadata_keys.FIREWALL_ACTION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -537,10 +539,10 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
     }
     auth_fetch.assert_not_called()
     assert not has_auth_state(("", "https://api.github.com"))
-    assert "vm_run_id" not in flow.metadata
-    assert "firewall_base" not in flow.metadata
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
 async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
@@ -567,10 +569,10 @@ async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
         "reason": "invalid_vm_entry",
     }
     auth_fetch.assert_not_called()
-    assert "vm_run_id" not in flow.metadata
-    assert "firewall_base" not in flow.metadata
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
 @pytest.mark.parametrize(
@@ -616,10 +618,10 @@ async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injectio
         "reason": "invalid_firewalls",
     }
     auth_fetch.assert_not_called()
-    assert "vm_run_id" not in flow.metadata
-    assert "firewall_base" not in flow.metadata
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
 async def test_registered_vm_null_firewalls_passes_through_without_auth_injection(
@@ -654,9 +656,9 @@ async def test_registered_vm_null_firewalls_passes_through_without_auth_injectio
 
     assert flow.response is None
     auth_fetch.assert_not_called()
-    assert flow.metadata["vm_run_id"] == vm_info["runId"]
-    assert "firewall_base" not in flow.metadata
-    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata[metadata_keys.VM_RUN_ID] == vm_info["runId"]
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
@@ -680,7 +682,7 @@ async def test_unregistered_vm_passes_through(registry_file, real_flow, mitm_ctx
 
     # No 403, no metadata set
     assert flow.response is None
-    assert "firewall_action" not in flow.metadata
+    assert metadata_keys.FIREWALL_ACTION not in flow.metadata
 
 
 async def test_mitm_allowed_passes_through(registry_file, real_flow, mitm_ctx):
@@ -694,8 +696,8 @@ async def test_mitm_allowed_passes_through(registry_file, real_flow, mitm_ctx):
 
     # Request should pass through without rewrite
     assert flow.response is None
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata.get(metadata_keys.ORIGINAL_URL) == "https://api.anthropic.com/v1/messages"
 
 
 async def test_firewall_no_base_match_passes_through(tmp_path, real_flow, mitm_ctx, headers):
@@ -730,5 +732,5 @@ async def test_firewall_no_base_match_passes_through(tmp_path, real_flow, mitm_c
     # fall-through sets firewall_action=ALLOW; handler never reached so
     # firewall_base is absent).
     assert flow.response is None
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert "firewall_base" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata

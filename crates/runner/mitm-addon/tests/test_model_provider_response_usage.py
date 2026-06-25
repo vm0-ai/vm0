@@ -922,8 +922,8 @@ class TestModelProviderResponseUsage:
 
         assert "model_json_usage_finish" not in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_non_observable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Model-provider fallback without MODEL_USAGE_PROVIDER must not emit warnings."""
@@ -968,8 +968,8 @@ class TestModelProviderResponseUsage:
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
         callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
         webhook = self._run_response(flow)
 
@@ -1241,7 +1241,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
-        assert "stream_buffer" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
 
     def test_full_pipeline_model_json_ignores_usage_array_shape(self, tmp_path, real_flow):
         """usage fields inside array elements must not be treated as usage object fields."""

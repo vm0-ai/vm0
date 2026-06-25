@@ -237,8 +237,8 @@ def classify_bucket(permission: str, method: str, path: str) -> str | None:
     """Return the X billing bucket for a matched firewall request.
 
     ``permission`` is the firewall permission name set on
-    ``flow.metadata["firewall_permission"]``.  ``method`` and ``path``
-    come from ``flow.request``.
+    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` and ``path`` come from
+    ``flow.request``.
 
     Returns ``None`` for permissions that are not billable (e.g. the
     ``"app-only"`` scope).  The caller should skip emission in that

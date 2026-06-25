@@ -2,6 +2,7 @@
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
@@ -29,7 +30,7 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
-        assert "x_ndjson_state" in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
     def test_absolute_form_request_target_registers_ndjson_parser_from_original_url(
@@ -43,12 +44,12 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
-        assert "x_ndjson_state" in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
     def test_stream_parser_requires_original_url(self, real_flow):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
-        flow.metadata.pop("original_url")
+        flow.metadata.pop(metadata_keys.ORIGINAL_URL)
 
         with pytest.raises(ValueError, match="original_url"):
             mitm_addon.responseheaders(flow)
@@ -69,7 +70,7 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
     def test_stream_error_response_uses_bounded_forensic_buffer_only(self, real_flow):
@@ -81,12 +82,12 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
         callback = response_stream(flow)
         callback(b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}')
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     @pytest.mark.parametrize("path", ["/2/tweets", "/2/tweets/search/stream"])
     @pytest.mark.parametrize("firewall_billable", [False, None])
@@ -98,16 +99,16 @@ class TestXStreamPathRouting:
     ):
         flow = make_x_response_flow(real_flow, path=path, firewall_billable=firewall_billable)
         if firewall_billable is None:
-            flow.metadata.pop("firewall_billable")
+            flow.metadata.pop(metadata_keys.FIREWALL_BILLABLE)
 
         mitm_addon.responseheaders(flow)
 
         response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
 
         assert "connector_response_finish" not in flow.metadata
-        assert "x_ndjson_state" not in flow.metadata
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
@@ -120,17 +121,17 @@ class TestXStreamPathRouting:
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
     def test_unregistered_parser_factory_does_not_require_original_url(self, real_flow):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
-        flow.metadata["firewall_name"] = "github"
-        flow.metadata.pop("original_url")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
+        flow.metadata.pop(metadata_keys.ORIGINAL_URL)
 
         mitm_addon.responseheaders(flow)
 
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
