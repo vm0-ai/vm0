@@ -8,12 +8,6 @@ import {
 
 type HtmlArtifactKind = GenerationTarget;
 
-interface HtmlArtifactVerificationRuleContext {
-  readonly outputDir: string;
-  readonly site: string;
-  readonly hostCommand: string;
-}
-
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
@@ -21,9 +15,6 @@ interface HtmlArtifactAuthoringOptions {
   readonly siteSlug?: string;
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
-  readonly verificationRules?: (
-    context: HtmlArtifactVerificationRuleContext,
-  ) => readonly string[];
 }
 
 interface HtmlArtifactAuthoringPacket {
@@ -165,8 +156,6 @@ export function createHtmlArtifactAuthoringPacket(
     previewKind: "hosted-url",
     outputDir,
   } as const;
-  const verificationRules =
-    options.verificationRules?.({ outputDir, site, hostCommand }) ?? [];
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
@@ -260,7 +249,6 @@ export function createHtmlArtifactAuthoringPacket(
     "- Check that keyboard/click interactions work when present.",
     "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
     "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
-    ...verificationRules,
     "- Run the final hosting command only after the artifact looks correct.",
     "",
     "## Publish",

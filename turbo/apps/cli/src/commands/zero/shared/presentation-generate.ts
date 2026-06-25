@@ -196,9 +196,6 @@ ${formatRegistryListing(templates, "presentation templates")}`;
             "Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
             "Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
           ],
-          verificationRules: ({ outputDir }) => [
-            `- After generating the deck, run \`node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ${outputDir}/index.html\` to QA the final HTML. Fix failures before hosting, or state why the QA script could not run.`,
-          ],
         });
 
         console.log(packet.instructions);

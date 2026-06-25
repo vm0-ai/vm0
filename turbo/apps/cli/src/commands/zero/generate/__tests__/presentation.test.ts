@@ -82,9 +82,6 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "Check that shapes, charts, images, or decorative graphics do not cover readable text",
     );
-    expect(stdout).toContain(
-      "After generating the deck, run `node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ./generated/mockups/api-migration-plan/index.html` to QA the final HTML",
-    );
   });
 
   it("should reject slide counts outside the supported range", async () => {
