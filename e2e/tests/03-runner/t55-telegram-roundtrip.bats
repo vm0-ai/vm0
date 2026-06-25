@@ -21,8 +21,6 @@ BOT_ID="${TELEGRAM_FIXTURE_BOT_ID}_${GITHUB_RUN_ID:-local}"
 TELEGRAM_USER_ID="$TELEGRAM_FIXTURE_USER_ID"
 DM_CHAT_ID="${TELEGRAM_FIXTURE_CHAT_ID}${GITHUB_RUN_ID:-0}"
 
-export BATS_TEST_TIMEOUT=240
-
 setup_file() {
     if [[ -z "${VM0_API_URL:-}" ]]; then
         skip "VM0_API_URL not set"

@@ -11,8 +11,6 @@
 
 load '../../helpers/setup'
 
-export BATS_TEST_TIMEOUT=240
-
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
