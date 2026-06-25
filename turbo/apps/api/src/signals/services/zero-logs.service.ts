@@ -7,9 +7,10 @@ import {
   type LogsFilters,
   type TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
-import type {
-  LogsSearchResponse,
-  RunEvent,
+import {
+  MAX_EVENT_SEQUENCE_NUMBER,
+  type LogsSearchResponse,
+  type RunEvent,
 } from "@vm0/api-contracts/contracts/runs";
 import { isSupportedFramework } from "@vm0/core/frameworks";
 import {
@@ -511,6 +512,55 @@ interface AxiomAgentEvent {
   eventData: unknown;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseAxiomAgentEvent(value: unknown): AxiomAgentEvent | null {
+  const event = asRecord(value);
+  if (!event) {
+    return null;
+  }
+
+  const time = event._time;
+  const runId = event.runId;
+  const userId = event.userId;
+  const sequenceNumber = event.sequenceNumber;
+  const eventType = event.eventType;
+  if (
+    typeof time !== "string" ||
+    typeof runId !== "string" ||
+    typeof userId !== "string" ||
+    typeof eventType !== "string" ||
+    typeof sequenceNumber !== "number" ||
+    !Number.isSafeInteger(sequenceNumber) ||
+    sequenceNumber < 0 ||
+    sequenceNumber > MAX_EVENT_SEQUENCE_NUMBER
+  ) {
+    return null;
+  }
+
+  return {
+    _time: time,
+    runId,
+    userId,
+    sequenceNumber,
+    eventType,
+    eventData: event.eventData,
+  };
+}
+
+function parseAxiomAgentEvents(values: readonly unknown[]): AxiomAgentEvent[] {
+  return values
+    .map(parseAxiomAgentEvent)
+    .filter((event): event is AxiomAgentEvent => {
+      return event !== null;
+    });
+}
+
 function toRunEvent(event: AxiomAgentEvent): RunEvent {
   return {
     sequenceNumber: event.sequenceNumber,
@@ -646,9 +696,7 @@ function queryMatchingEvents(params: {
             keyword: params.keyword,
             limit: params.limit + 1,
           });
-          return (
-            await get(queryAxiom(searchApl))
-          ).slice() as unknown as AxiomAgentEvent[];
+          return parseAxiomAgentEvents(await get(queryAxiom(searchApl)));
         }),
       );
 
@@ -683,9 +731,9 @@ function getSearchContextMap(params: {
 | where ${contextConditions.join("\n  or ")}
 | order by runId asc, sequenceNumber asc`;
 
-    const contextEvents = (
-      await get(queryAxiom(contextApl))
-    ).slice() as unknown as AxiomAgentEvent[];
+    const contextEvents = parseAxiomAgentEvents(
+      await get(queryAxiom(contextApl)),
+    );
 
     for (const event of contextEvents) {
       contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);

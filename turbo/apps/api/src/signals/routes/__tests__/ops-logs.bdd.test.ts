@@ -2,6 +2,8 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
+
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -392,6 +394,28 @@ describe("OPS-01: run log search via /api/logs/search", () => {
       [400],
     );
     expectApiError(invalidSince.body);
+
+    const axiomCallsBeforeMalformed =
+      context.mocks.axiom.query.mock.calls.length;
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      { ...axiomEvent(runId, 3, "Error: OOM killed"), sequenceNumber: "bad" },
+      {
+        ...axiomEvent(runId, 4, "Error: OOM killed"),
+        sequenceNumber: MAX_EVENT_SEQUENCE_NUMBER + 1,
+      },
+    ]);
+    const malformedAxiomRow = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", before: 1, after: 1 },
+      [200],
+    );
+    expect(malformedAxiomRow.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
+      axiomCallsBeforeMalformed + 1,
+    );
 
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 3, "Error: OOM killed"),
