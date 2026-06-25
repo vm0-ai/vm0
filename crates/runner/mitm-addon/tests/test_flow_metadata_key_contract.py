@@ -1365,13 +1365,12 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
         and not node.keywords
     ):
         return _metadata_key_sequence_violations(path, node.func.value)
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS
-    ):
-        keys_arg = None if not node.args else node.args[0]
-        return _metadata_key_sequence_violations(path, keys_arg)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id == "dict":
+            return _metadata_dict_key_violations(path, node)
+        if node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS:
+            keys_arg = None if not node.args else node.args[0]
+            return _metadata_key_sequence_violations(path, keys_arg)
     if not isinstance(node, ast.List | ast.Tuple | ast.Set):
         return []
     violations: list[str] = []
@@ -1429,6 +1428,9 @@ flow.metadata = dict.fromkeys(["auth_refreshed_connectors"], [])
 flow.metadata.update(dict.fromkeys(("auth_refreshed_secrets",), []))
 flow.metadata.update(dict.fromkeys({"auth_resolved_secrets": []}, []))
 flow.metadata.update(dict.fromkeys({"model_usage_provider": "gpt-5.5"}.keys(), "gpt-5.5"))
+flow.metadata.update(dict.fromkeys(dict(vm_run_id="run-1"), "run-1"))
+flow.metadata.update(dict.fromkeys(dict([("firewall_action", "ALLOW")]).keys(), "ALLOW"))
+flow.metadata.update(dict.fromkeys(tuple(dict(firewall_billable=True)), False))
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
@@ -1728,7 +1730,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 159
+    assert len(violations) == 162
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1770,6 +1772,9 @@ value = external_items_meta["vm_run_id"]
 flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.items())
 flow.metadata.update(dict.fromkeys([metadata_keys.VM_RUN_ID], "run-1"))
 flow.metadata.update(dict.fromkeys({metadata_keys.VM_RUN_ID: "run-1"}, "run-1"))
+flow.metadata.update(dict.fromkeys(dict({metadata_keys.VM_RUN_ID: "run-1"}), "run-1"))
+flow.metadata.update(dict.fromkeys(dict({metadata_keys.FIREWALL_ACTION: "ALLOW"}).keys(), "ALLOW"))
+flow.metadata.update(dict.fromkeys(tuple(dict({metadata_keys.FIREWALL_BILLABLE: True})), False))
 external_conditional_meta = {"vm_run_id": "external"} if condition else {}
 value = external_conditional_meta["vm_run_id"]
 external_bool_meta = fallback_meta or {"vm_run_id": "external"}
