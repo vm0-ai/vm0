@@ -189,6 +189,32 @@ describe("zero logs search command", () => {
     expect(logCalls).toContain("Codex found the issue");
   });
 
+  it("should tolerate unsupported search result framework values", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "abc12345-1234-1234-1234-123456789abc",
+              agentName: "future-agent",
+              framework: "future-framework",
+              matchedEvent: makeEvent(3, "Legacy parser fallback output"),
+              contextBefore: [],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "fallback"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("future-agent");
+    expect(logCalls).toContain("Legacy parser fallback output");
+  });
+
   it("should group paired codex tool events in search context", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", () => {

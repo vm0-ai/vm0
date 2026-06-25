@@ -12,6 +12,7 @@ import { EventStreamNormalizer } from "../../../lib/events/event-stream-normaliz
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -32,6 +33,13 @@ interface LogsSearchCommandOptions extends Omit<
   agent?: string;
 }
 
+function supportedSearchFramework(
+  framework: string | null | undefined,
+): string | undefined {
+  const normalized = framework ?? undefined;
+  return isSupportedFramework(normalized) ? normalized : undefined;
+}
+
 function renderSearchEvent(
   event: RunEvent,
   framework: string | null | undefined,
@@ -40,7 +48,7 @@ function renderSearchEvent(
 ): void {
   const parsedEvents = normalizer.process(
     event.eventData,
-    framework ?? undefined,
+    supportedSearchFramework(framework),
     new Date(event.createdAt),
   );
   for (const parsed of parsedEvents) {
