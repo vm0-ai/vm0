@@ -127,18 +127,17 @@ def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AS
     for argument in args:
         next_consumed_counts: list[int] = []
         if isinstance(argument, ast.Starred):
-            expansions = _static_starred_argument_expansions(argument.value)
-            if expansions is None:
+            expansions, has_unknown_expansion = _static_starred_argument_expansions(argument.value)
+            for consumed in consumed_counts:
+                for expansion in expansions:
+                    for offset, expanded_argument in enumerate(expansion):
+                        if consumed + offset == index:
+                            result.append(expanded_argument)
+                    next_consumed_counts.append(consumed + len(expansion))
+            if has_unknown_expansion:
                 next_consumed_counts.extend(
                     consumed for consumed in consumed_counts if consumed <= index
                 )
-            else:
-                for consumed in consumed_counts:
-                    for expansion in expansions:
-                        for offset, expanded_argument in enumerate(expansion):
-                            if consumed + offset == index:
-                                result.append(expanded_argument)
-                        next_consumed_counts.append(consumed + len(expansion))
         else:
             for consumed in consumed_counts:
                 if consumed == index:
@@ -148,35 +147,49 @@ def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AS
     return result
 
 
-def _static_starred_argument_expansions(node: ast.AST) -> list[list[ast.AST]] | None:
+def _static_starred_argument_expansions(node: ast.AST) -> tuple[list[list[ast.AST]], bool]:
     if isinstance(node, ast.NamedExpr):
         return _static_starred_argument_expansions(node.value)
     if isinstance(node, ast.IfExp):
+        body_expansions, body_has_unknown_expansion = _static_starred_argument_expansions(node.body)
+        orelse_expansions, orelse_has_unknown_expansion = _static_starred_argument_expansions(
+            node.orelse
+        )
         return [
-            *(_static_starred_argument_expansions(node.body) or []),
-            *(_static_starred_argument_expansions(node.orelse) or []),
-        ]
+            *body_expansions,
+            *orelse_expansions,
+        ], body_has_unknown_expansion or orelse_has_unknown_expansion
     if isinstance(node, ast.BoolOp):
         expansions: list[list[ast.AST]] = []
+        has_unknown_expansion = False
         for value in node.values:
-            value_expansions = _static_starred_argument_expansions(value)
-            if value_expansions is not None:
-                expansions.extend(value_expansions)
-        return expansions
+            value_expansions, value_has_unknown_expansion = _static_starred_argument_expansions(
+                value
+            )
+            expansions.extend(value_expansions)
+            has_unknown_expansion = has_unknown_expansion or value_has_unknown_expansion
+        return expansions, has_unknown_expansion
     if not isinstance(node, ast.List | ast.Tuple):
-        return None
+        return [], True
     expansions = [[]]
+    has_unknown_expansion = False
     for element in node.elts:
         if isinstance(element, ast.Starred):
-            nested_expansions = _static_starred_argument_expansions(element.value)
-            if nested_expansions is None:
-                return None
-            expansions = [
-                [*prefix, *nested] for prefix in expansions for nested in nested_expansions
-            ]
+            nested_expansions, nested_has_unknown_expansion = _static_starred_argument_expansions(
+                element.value
+            )
+            next_expansions: list[list[ast.AST]] = []
+            if nested_expansions:
+                next_expansions.extend(
+                    [*prefix, *nested] for prefix in expansions for nested in nested_expansions
+                )
+            if nested_has_unknown_expansion:
+                next_expansions.extend(expansions)
+            expansions = next_expansions
+            has_unknown_expansion = has_unknown_expansion or nested_has_unknown_expansion
         else:
             expansions = [[*prefix, element] for prefix in expansions]
-    return expansions
+    return expansions, has_unknown_expansion
 
 
 def _type_params(node: ast.AST) -> list[ast.AST]:
@@ -2015,17 +2028,26 @@ def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(t
 flow.metadata.get(*args, "vm_run_id")
 flow.metadata.update(*args, {"firewall_name": "github"})
 flow.metadata.update(dict.fromkeys(*args, ["firewall_action"], "ALLOW"))
+flow.metadata.get(*(args if condition else other_args), "auth_cache_hit")
+flow.metadata.get(*(args if condition else ["firewall_error"]))
+flow.metadata.update(*([[("firewall_permission", "read")]] if condition else args))
+flow.metadata.get(*[*([prefix] if condition else args), "vm_network_log_path"])
 flow.metadata.get(*args, metadata_keys.VM_RUN_ID)
 flow.metadata.update(*args, {metadata_keys.FIREWALL_NAME: "github"})
+flow.metadata.get(*(args if condition else [metadata_keys.AUTH_CACHE_HIT]))
 """,
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 3
+    assert len(violations) == 7
     assert any("metadata_keys.VM_RUN_ID" in violation for violation in violations)
     assert any("metadata_keys.FIREWALL_NAME" in violation for violation in violations)
     assert any("metadata_keys.FIREWALL_ACTION" in violation for violation in violations)
+    assert any("metadata_keys.AUTH_CACHE_HIT" in violation for violation in violations)
+    assert any("metadata_keys.FIREWALL_ERROR" in violation for violation in violations)
+    assert any("metadata_keys.FIREWALL_PERMISSION" in violation for violation in violations)
+    assert any("metadata_keys.VM_NETWORK_LOG_PATH" in violation for violation in violations)
 
 
 def test_registered_flow_metadata_guard_ignores_external_schema_and_private_markers(
