@@ -34,9 +34,21 @@ from tests.requestheaders_helpers import await_requestheaders_result
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
+def _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, *, capture_body: bool = False):
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = capture_body
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        f"https://{flow.request.pretty_host}{flow.request.path}"
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[mitm_addon._CONNECTOR_DIAGNOSTIC_ELIGIBLE] = True
+    flow.metadata[mitm_addon._CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = ()
+
+
 class TestResponseHandler:
     async def test_replaces_unauthenticated_connector_401_body(self, tmp_path, real_flow, mitm_ctx):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -44,9 +56,9 @@ class TestResponseHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain", "content-length": "8"}),
@@ -87,7 +99,6 @@ class TestResponseHandler:
     async def test_buffers_unauthenticated_connector_401_before_response_replacement(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -95,9 +106,9 @@ class TestResponseHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain"}),
@@ -434,7 +445,6 @@ class TestResponseHandler:
     async def test_replaces_connector_401_body_when_auth_header_has_empty_bearer_token(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -446,9 +456,9 @@ class TestResponseHandler:
                 ("Authorization", "Bearer "),
             ),
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain"}),
@@ -468,7 +478,6 @@ class TestResponseHandler:
     async def test_replaces_connector_401_body_when_only_proxy_authorization_is_present(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -480,9 +489,9 @@ class TestResponseHandler:
                 ("Proxy-Authorization", "Basic proxy-secret"),
             ),
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain"}),
@@ -502,7 +511,6 @@ class TestResponseHandler:
     async def test_replaces_connector_401_body_when_auth_header_has_empty_key_token(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -514,9 +522,9 @@ class TestResponseHandler:
                 ("Authorization", "Key "),
             ),
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain"}),
@@ -536,7 +544,6 @@ class TestResponseHandler:
     async def test_replaces_connector_401_body_when_auth_query_param_is_empty(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -544,9 +551,9 @@ class TestResponseHandler:
             path="/fal-ai/nano-banana-pro?api_key=",
             method="POST",
         )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
 
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            await mitm_addon.request(flow)
+        with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
                 headers=header_map({"content-type": "text/plain"}),
@@ -689,7 +696,7 @@ class TestResponseHandler:
         assert "firewall_error" not in entry
 
     async def test_preserves_successful_connector_response_body(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, real_flow, mitm_ctx, headers
     ):
         reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
@@ -698,6 +705,10 @@ class TestResponseHandler:
             host="fal.run",
             path="/fal-ai/nano-banana-pro",
             method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
         )
 
         with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):

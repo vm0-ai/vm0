@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.179.2](https://github.com/vm0-ai/vm0/compare/api-v1.179.1...api-v1.179.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+    * @vm0/db bumped to 1.72.1
+
+## [1.179.1](https://github.com/vm0-ai/vm0/compare/api-v1.179.0...api-v1.179.1) (2026-06-25)
+
+
+### Performance Improvements
+
+* split compose resolution timing ([#18979](https://github.com/vm0-ai/vm0/issues/18979)) ([dcfda07](https://github.com/vm0-ai/vm0/commit/dcfda07e5bc575a0752b2c08532f3b739e952491))
+
 ## [1.179.0](https://github.com/vm0-ai/vm0/compare/api-v1.178.4...api-v1.179.0) (2026-06-25)
 
 

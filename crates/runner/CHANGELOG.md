@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.23...runner-rs-v0.129.24) (2026-06-25)
+
+
+### Performance Improvements
+
+* bound auth base forwarding admission ([#18954](https://github.com/vm0-ai/vm0/issues/18954)) ([e4a7a0e](https://github.com/vm0-ai/vm0/commit/e4a7a0eabb581a16d92b6080d369a4f8d3980b76))
+
 ## [0.129.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.22...runner-rs-v0.129.23) (2026-06-25)
 
 
