@@ -84,10 +84,10 @@ class TestConnectorUsageDispatcher:
 
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to
-        BILLABLE_CONNECTORS) must NOT reach the X parser.  The dispatcher
-        drops when the firewall_name has no registered handler, which
-        prevents bogus billing records if someone grows the whitelist
-        without also registering a handler in ``_HANDLERS``."""
+        the TypeScript firewall billable metadata) must NOT reach the X parser.
+        The dispatcher drops when the firewall_name has no registered handler,
+        which prevents bogus billing records if someone marks a connector
+        billable without also registering a handler in ``_HANDLERS``."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "github"
         assert self._call_and_get_billing(flow) == []

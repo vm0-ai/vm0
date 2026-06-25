@@ -5,5 +5,5 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/firewalls/*.generated.ts"]
+  "exclude": ["node_modules", "dist"]
 }
