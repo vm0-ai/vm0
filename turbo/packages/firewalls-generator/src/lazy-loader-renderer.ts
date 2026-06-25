@@ -32,7 +32,9 @@ export function renderLazyLoaderRecord({
 
   return `const ${constName}: Readonly<
   ${recordType}
-> = {
+> = Object.assign(Object.create(null), {
 ${renderedEntries}
-};`;
+} satisfies Readonly<
+  ${recordType}
+>);`;
 }

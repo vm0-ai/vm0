@@ -268,6 +268,7 @@ describe("firewall metadata generator", () => {
     expect(loaderSource).toContain(
       "const FIREWALL_PERMISSION_METADATA_LOADERS",
     );
+    expect(loaderSource).toContain("Object.create(null)");
     expect(loaderSource).toContain(
       "export async function loadGeneratedFirewallPermissionMetadata",
     );
@@ -309,6 +310,7 @@ describe("firewall metadata generator", () => {
     expect(loaderSource).toContain(
       "export async function loadGeneratedRuntimeFirewall",
     );
+    expect(loaderSource).toContain("Object.create(null)");
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     expect(dynamicSpecifiers.length).toBe(
       runtimeLoaderConnectorTypes(loaderSource).length,
