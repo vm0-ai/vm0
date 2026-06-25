@@ -324,6 +324,21 @@ describe("logs search command", () => {
     expect(errorCalls).toContain("Invalid run ID");
   });
 
+  it("should reject non-UUID --agent values", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "deploy",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+  });
+
   it("should parse --since and send as timestamp", async () => {
     let capturedUrl: URL | undefined;
     server.use(

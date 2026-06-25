@@ -409,6 +409,22 @@ describe("zero logs search command", () => {
     expect(errorCalls).toContain("zero logs list");
   });
 
+  it("should reject non-UUID --agent value", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
   it("should reject malformed UUID-like --run value", async () => {
     await expect(
       searchCommand.parseAsync([

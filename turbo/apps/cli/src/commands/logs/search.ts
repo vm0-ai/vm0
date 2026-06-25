@@ -180,6 +180,14 @@ export const searchCommand = new Command()
   .option("--limit <n>", "Maximum number of matches (default: 20)")
   .action(
     withErrorHandler(async (keyword: string, options: SearchOptions) => {
+      if (options.agent && !isUUID(options.agent)) {
+        console.error(
+          chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
+        );
+        console.error(chalk.dim("  Run: vm0 run list    to find agent IDs"));
+        process.exit(1);
+      }
+
       if (options.run && !isUUID(options.run)) {
         console.error(
           chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),

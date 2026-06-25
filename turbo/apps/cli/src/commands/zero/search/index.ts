@@ -10,6 +10,7 @@ import type {
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { isUUID } from "../../run/shared";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -146,6 +147,13 @@ async function runChatSource(
 ): Promise<void> {
   if (options.run) {
     throw new Error("--run is not supported with --source chat");
+  }
+  if (options.agent && !isUUID(options.agent)) {
+    console.error(
+      chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
+    );
+    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    process.exit(1);
   }
 
   const { before, after } = parseContextOptions(options);

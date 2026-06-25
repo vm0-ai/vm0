@@ -165,6 +165,14 @@ export async function runLogsSearch(
 ): Promise<void> {
   const { before, after } = parseContextOptions(options);
 
+  if (options.agentId && !isUUID(options.agentId)) {
+    console.error(
+      chalk.red(`✗ Invalid agent ID "${options.agentId}" — expected a UUID`),
+    );
+    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    process.exit(1);
+  }
+
   if (options.run && !isUUID(options.run)) {
     console.error(
       chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),

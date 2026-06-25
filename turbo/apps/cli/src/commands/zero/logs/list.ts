@@ -5,6 +5,7 @@ import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
+import { isUUID } from "../../run/shared";
 
 function formatStatus(status: string): string {
   switch (status) {
@@ -64,6 +65,17 @@ Examples:
           ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
           : undefined;
         const since = options.since ? parseTime(options.since) : undefined;
+        if (options.agent && !isUUID(options.agent)) {
+          console.error(
+            chalk.red(
+              `✗ Invalid agent ID "${options.agent}" — expected a UUID`,
+            ),
+          );
+          console.error(
+            chalk.dim("  Run: zero logs list    to find agent IDs"),
+          );
+          process.exit(1);
+        }
 
         const result = await listZeroLogs({
           agentId: options.agent,

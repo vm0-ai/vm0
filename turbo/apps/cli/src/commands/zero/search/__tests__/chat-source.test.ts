@@ -213,6 +213,23 @@ describe("zero search --source chat", () => {
     expect(capturedUrl?.searchParams.get("agentId")).toBe(agentId);
   });
 
+  it("rejects non-UUID --agent values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
+  });
+
   it("rejects --run flag for chat source with clear error", async () => {
     await expect(
       zeroSearchCommand.parseAsync([

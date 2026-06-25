@@ -130,6 +130,15 @@ describe("zero logs list command", () => {
     expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
   });
 
+  it("should reject non-UUID agent filter values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--agent", "agent-123"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+  });
+
   it("should pass status filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(

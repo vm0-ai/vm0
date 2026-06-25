@@ -58,14 +58,25 @@ async function capture(
 }
 
 describe("zero search --source logs parity with zero logs search", () => {
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
   beforeEach(() => {
+    mockExit.mockClear();
+    mockConsoleError.mockClear();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     zeroSearchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mockExit.mockClear();
+    mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("produces identical output for the same query and flags", async () => {
@@ -144,5 +155,22 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(url.searchParams.get("limit")).toBe("10");
     expect(url.searchParams.get("before")).toBe("1");
     expect(url.searchParams.get("after")).toBe("2");
+  });
+
+  it("rejects non-UUID --agent values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--source",
+        "logs",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
   });
 });
