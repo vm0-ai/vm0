@@ -12,9 +12,13 @@ import {
   applyComputerUseAuthorizationRequest$,
   computerUseAuthorizationRequest$,
 } from "../../signals/computer-use-authorization/computer-use-authorization.ts";
-import { ZERO_DESKTOP_DOWNLOAD_URL } from "../../signals/zero-page/computer-use-hosts.ts";
+import {
+  visibleComputerUseHosts,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import computerUseIllustration from "../zero-page/assets/computer-use-illustration.png";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
 
 function formatTime(value: string): string {
@@ -52,8 +56,7 @@ function HostOption({
             {host.displayName}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
-            {host.status === "online" ? "Online" : "Offline"} · Last seen{" "}
-            {formatTime(host.lastSeenAt)}
+            Last seen {formatTime(host.lastSeenAt)}
           </div>
         </div>
       </div>
@@ -81,24 +84,30 @@ function HostOption({
 function EmptyHosts() {
   return (
     <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-6 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background">
-        <IconDeviceDesktop size={20} />
+      <div className="flex h-24 w-24 items-center justify-center">
+        <img
+          src={computerUseIllustration}
+          alt=""
+          className="h-24 w-24 object-contain"
+        />
       </div>
       <div className="flex max-w-sm flex-col gap-1">
         <h2 className="text-sm font-medium text-foreground">
-          No Desktop host found
+          No online computers
         </h2>
         <p className="text-sm leading-5 text-muted-foreground">
-          Install or open Zero Desktop, sign in, and enable Computer Use before
-          authorizing a host.
+          Open Zero Computer Use on your Mac and refresh this page when it comes
+          online.
         </p>
       </div>
       <a
         href={ZERO_DESKTOP_DOWNLOAD_URL}
+        target="_blank"
+        rel="noreferrer"
         className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
       >
         <IconDownload size={16} />
-        Download Zero Desktop
+        Download for macOS
       </a>
     </div>
   );
@@ -132,6 +141,7 @@ export function ComputerUseAuthorizationPage() {
   const request =
     requestLoadable.state === "hasData" ? requestLoadable.data : null;
   const hosts = request?.hosts;
+  const visibleHosts = visibleComputerUseHosts(hosts ?? [], null);
 
   if (requestLoadable.state === "loading") {
     return (
@@ -159,21 +169,20 @@ export function ComputerUseAuthorizationPage() {
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">
-              Authorize Computer Use
+              Authorize computer use
             </h1>
             <p className="mx-auto max-w-md text-sm leading-5 text-muted-foreground">
-              Select a Desktop host for future runs in{" "}
-              {sourceLabel(request.source)}. The current run token will not
-              change.
+              Choose an online computer for Zero to use in{" "}
+              {sourceLabel(request.source)}.
             </p>
           </div>
         </div>
 
-        {!hosts || hosts.length === 0 ? (
+        {visibleHosts.length === 0 ? (
           <EmptyHosts />
         ) : (
           <div className="flex flex-col gap-3">
-            {hosts.map((host) => {
+            {visibleHosts.map((host) => {
               return (
                 <HostOption
                   key={host.id}

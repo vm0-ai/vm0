@@ -231,7 +231,14 @@ function normalizeHostPermissions(
   };
 }
 
-function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
+export function computerUseHostIsOnline(
+  host: {
+    readonly status: string;
+    readonly revokedAt: Date | null;
+    readonly lastSeenAt: Date;
+  },
+  now: Date,
+): boolean {
   return (
     host.status === "online" &&
     host.revokedAt === null &&
@@ -581,7 +588,9 @@ function serializeHost(row: ComputerUseHostRow, now: Date) {
     osVersion: row.osVersion,
     supportedCapabilities: row.supportedCapabilities,
     permissions: normalizeHostPermissions(row.permissions),
-    status: hostIsOnline(row, now) ? ("online" as const) : ("offline" as const),
+    status: computerUseHostIsOnline(row, now)
+      ? ("online" as const)
+      : ("offline" as const),
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };
@@ -873,7 +882,7 @@ export const heartbeatComputerUseHost$ = command(
           params.supportedCapabilities,
         );
         const publishChanged =
-          !hostIsOnline(lockedHost, now) ||
+          !computerUseHostIsOnline(lockedHost, now) ||
           lockedHost.displayName !== displayName ||
           lockedHost.appVersion !== appVersion ||
           lockedHost.osVersion !== osVersion ||
@@ -1079,7 +1088,7 @@ export const createComputerUseCommand$ = command(
     }
 
     const onlineHosts = hosts.filter((host) => {
-      return hostIsOnline(host, now);
+      return computerUseHostIsOnline(host, now);
     });
     const target = resolveComputerUseCommandTargets({
       onlineHosts,

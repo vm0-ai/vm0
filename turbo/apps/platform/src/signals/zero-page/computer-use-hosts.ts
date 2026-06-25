@@ -52,6 +52,8 @@ interface ListedComputerUseHost extends Pick<
   readonly hostName: string;
 }
 
+type SelectableComputerUseHost = Pick<ComputerUseHost, "id" | "status">;
+
 export function selectedComputerUseHostId(
   hosts: readonly { readonly id: string }[],
   selectedHostId: string | null | undefined,
@@ -66,10 +68,10 @@ export function selectedComputerUseHostId(
     : null;
 }
 
-export function visibleComputerUseHosts(
-  hosts: readonly ListedComputerUseHost[],
+export function visibleComputerUseHosts<Host extends SelectableComputerUseHost>(
+  hosts: readonly Host[],
   selectedHostId: string | null | undefined,
-): ListedComputerUseHost[] {
+): Host[] {
   const selected = selectedComputerUseHostId(hosts, selectedHostId);
   const selectedHost = selected
     ? hosts.find((host) => {
