@@ -90,5 +90,6 @@ def release_request_stream_state(flow: http.HTTPFlow) -> None:
     stream_callback = flow.metadata.pop(_REQUEST_STREAM_CALLBACK, None)
     flow.metadata.pop(metadata_keys.REQUEST_STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.REQUEST_STREAM_BUFFER_STATE, None)
+    flow.metadata.pop(metadata_keys.REQUEST_STREAM_COMPLETE, None)
     if stream_callback is not None and flow.request.stream is stream_callback:
         flow.request.stream = False

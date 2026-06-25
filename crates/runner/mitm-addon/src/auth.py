@@ -5,6 +5,7 @@ auth.base forwarding, local failure responses, and AWS SigV4 signing together.
 Cache state and platform API calls live in dedicated owner modules.
 """
 
+import asyncio
 import json
 import urllib.parse
 from dataclasses import dataclass
@@ -43,6 +44,13 @@ class FirewallAuthHandlingResult(Enum):
     CONTINUE_UPSTREAM = "continue_upstream"
     INLINE_PROVIDER_RESPONSE = "inline_provider_response"
     LOCAL_RESPONSE = "local_response"
+
+
+class FirewallHeaderPhaseAuthResult(Enum):
+    """Firewall auth result for requestheaders() stream-capture probing."""
+
+    APPLIED = "applied"
+    FALLBACK = "fallback"
 
 
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
@@ -210,6 +218,29 @@ def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict
     )
     flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] = token_meta.get("refreshed_secrets", [])
     flow.metadata[metadata_keys.AUTH_CACHE_HIT] = token_meta.get("cache_hit", False)
+
+
+def _auth_config_uses_body_dependent_auth(auth_config: object) -> bool:
+    if not isinstance(auth_config, dict):
+        return False
+    auth_base = auth_config.get("base")
+    if isinstance(auth_base, str) and auth_base:
+        return True
+    auth_aws_sigv4 = auth_config.get("awsSigv4")
+    return isinstance(auth_aws_sigv4, dict) and bool(auth_aws_sigv4)
+
+
+def _restore_header_phase_probe_state(
+    flow: http.HTTPFlow,
+    *,
+    metadata_snapshot: dict,
+    request_headers_snapshot: http.Headers,
+    request_path_snapshot: str,
+) -> None:
+    flow.metadata.clear()
+    flow.metadata.update(metadata_snapshot)
+    flow.request.headers = http.Headers(request_headers_snapshot.fields)
+    flow.request.path = request_path_snapshot
 
 
 def _apply_header_query_injection(
@@ -808,3 +839,94 @@ async def handle_firewall_request(
 
     _finalize_firewall_auth_success(flow, context, token_meta)
     return auth_result
+
+
+async def try_apply_stream_safe_firewall_auth_for_requestheaders(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> FirewallHeaderPhaseAuthResult:
+    """Apply successful header/query firewall auth before request streaming.
+
+    This helper intentionally falls back instead of creating local responses.
+    The request hook owns auth failure semantics; requestheaders() only keeps a
+    success that is safe before mitmproxy sends upstream request headers.
+    """
+    auth_config = allow.api_entry.get("auth", {})
+    if _auth_config_uses_body_dependent_auth(auth_config):
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    request_scheme = flow.request.scheme.lower()
+    if request_scheme != "https" and auth_config_injects_credentials(auth_config):
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    if not vm_info.get("encryptedSecrets"):
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    metadata_snapshot = dict(flow.metadata)
+    request_headers_snapshot = http.Headers(flow.request.headers.fields)
+    request_path_snapshot = flow.request.path
+
+    _prepare_firewall_metadata(flow, allow, vm_info)
+    context = _build_firewall_auth_context(flow, allow, vm_info)
+
+    try:
+        token_meta = await get_firewall_headers(
+            context.run_id,
+            context.api_id,
+            context.auth_request,
+        )
+    except asyncio.CancelledError:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        raise
+    except Exception:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    if not isinstance(token_meta, dict):
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    if token_meta.get("base") or token_meta.get("aws_sigv4") is not None:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    try:
+        headers = token_meta["headers"]
+        resolved_query = token_meta.get("query")
+        _apply_header_query_injection(
+            flow,
+            headers=headers,
+            resolved_query=resolved_query,
+        )
+    except Exception:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
+    _finalize_firewall_auth_success(flow, context, token_meta)
+    return FirewallHeaderPhaseAuthResult.APPLIED

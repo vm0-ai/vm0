@@ -1,14 +1,21 @@
 """Tests for requestheaders() request-stream setup."""
 
+import asyncio
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+import auth
+import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from auth import MAX_AUTH_BASE_REQUEST_BODY_BYTES
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _vm_without_firewalls,
     _write_registry,
 )
+from tests.requestheaders_helpers import await_requestheaders_result
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -324,8 +331,17 @@ def test_non_stream_requestheaders_probe_restores_request_metadata(tmp_path, rea
     assert metadata_keys.CAPTURE_BODY not in flow.metadata
 
 
-def test_capture_enabled_firewall_allow_does_not_install_request_stream(
-    tmp_path, real_flow, mitm_ctx
+@pytest.mark.parametrize(
+    "request_header_pairs",
+    [
+        [("Content-Length", str(STREAM_BUFFER_LIMIT + 1))],
+        [("Transfer-Encoding", "chunked")],
+        [],
+    ],
+    ids=["large-content-length", "chunked", "unknown-length"],
+)
+async def test_capture_enabled_firewall_allow_header_auth_installs_request_stream(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_header_pairs
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -349,12 +365,236 @@ def test_capture_enabled_firewall_allow_does_not_install_request_stream(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.github.com",
+        method="POST",
         path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com"), *request_header_pairs),
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        mitm_addon.requestheaders(flow)
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
 
+        assert callable(flow.request.stream)
+        assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+
+
+def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_request_stream(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+
+    auth_fetch.assert_not_called()
+    _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+
+
+async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    get_headers = AsyncMock(side_effect=auth_client.ConnectorNotConfiguredError("not linked"))
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        _assert_no_request_stream(flow)
+        assert flow.response is None
+        assert metadata_keys.FIREWALL_BASE not in flow.metadata
+
+        await mitm_addon.request(flow)
+
+    assert get_headers.await_count == 2
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
+
+
+async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("X-Client", "original"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    get_headers = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        with pytest.raises(asyncio.CancelledError):
+            await await_requestheaders_result(requestheaders_result)
+
+    get_headers.assert_awaited_once()
+    _assert_no_request_stream(flow)
+    assert flow.request.headers["X-Client"] == "original"
+    assert "Authorization" not in flow.request.headers
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    "auth_config",
+    [
+        {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+        {
+            "awsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            }
+        },
+    ],
+    ids=["auth-base", "aws-sigv4"],
+)
+async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_request_stream(
+    tmp_path, real_flow, mitm_ctx, headers, auth_config
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": auth_config,
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+    get_headers.assert_not_called()
     _assert_no_request_stream(flow)
     assert metadata_keys.VM_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
@@ -426,7 +666,7 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
         path="/",
         request_headers=headers(
             ("Host", "placeholder.example.com"),
-            ("Content-Length", str(MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1)),
+            ("Content-Length", str(auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1)),
         ),
     )
 
