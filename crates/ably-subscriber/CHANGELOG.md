@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.1...ably-subscriber-v1.0.2) (2026-06-25)
+
+
+### Performance Improvements
+
+* avoid ably protocol json decode round trip ([#18886](https://github.com/vm0-ai/vm0/issues/18886)) ([9cd5cd4](https://github.com/vm0-ai/vm0/commit/9cd5cd4c10b28c99c7f0da0f4623c0a995fb3761))
+
 ## [1.0.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.0...ably-subscriber-v1.0.1) (2026-06-22)
 
 
