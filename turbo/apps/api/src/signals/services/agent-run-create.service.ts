@@ -4612,7 +4612,7 @@ async function prepareRunBodyContext(args: {
       });
     },
   );
-  const requestedFramework = await args.timing.measure(
+  const requestedFrameworkResult = await args.timing.measure(
     "api_dispatch_prepare_context_resolve_framework",
     "nested",
     async () => {
@@ -4628,10 +4628,15 @@ async function prepareRunBodyContext(args: {
     },
   );
   args.signal.throwIfAborted();
-  if (isRouteError(requestedFramework)) {
-    return requestedFramework;
+  if (isRouteError(requestedFrameworkResult)) {
+    return requestedFrameworkResult;
   }
-  return { body, resolved, requestedFramework, featureSwitchContext };
+  return {
+    body,
+    resolved,
+    requestedFramework: requestedFrameworkResult,
+    featureSwitchContext,
+  };
 }
 
 async function prepareRunRuntimeContext(args: {
