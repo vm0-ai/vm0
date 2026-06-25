@@ -684,7 +684,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "5b7b8f959cef7a3f5ea4eb86e95152845013425365683e4d7efe6c7c5ecc2b48",
         templateArchiveSha256:
-          "0176ccac0f36b5921ebfcdc998e2273f57a3d79644213eb01000dc4e0e23dcd5",
+          "c5b21908c84f248163dfc3259912d8ffb086f8c36a12882cd634005219db8eec",
       },
       {
         designSystemId: "design-system:blueprint-academy",
@@ -694,7 +694,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "9a5fdb160ae3691513567279401e9a8766c892e0bb80caae6eef3c08a54c0416",
         templateArchiveSha256:
-          "00b01b07095965f68971e4593cf563562a32b75f49ff4be186be5c81eb6e8330",
+          "559103cd2b2fc4c874c86e722a8023da17a2ca2f754189301044c39f6d43382b",
       },
       {
         designSystemId: "design-system:meridian",
@@ -704,7 +704,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "6a00cba7ddd2fcb74e8c89c0063d33bba5fe2e190c15b4634d4a56b2334f527e",
         templateArchiveSha256:
-          "571bc5d0a35fe3db2ddb2ddc2b0aa3b11bb52532da3fc2eb76d84af885710302",
+          "9821fbbdf3c92bdc638f38d0bfb47201f080ad208d820048637b6b7610f1e4a3",
       },
       {
         designSystemId: "design-system:pixel-glitch",
@@ -714,7 +714,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "18ce63a66658c7002d3ebea135dc7274b2dac4033c0e98c6e508c7a249fe93a2",
         templateArchiveSha256:
-          "d16f2913aed0dba0384795db45aa67e6a697d1ae1c31c6a43ff16b8a975dfc18",
+          "caa395165c04703afb8fcda3c8303e6b6ba4513797ba4967a797680906144940",
       },
       {
         designSystemId: "design-system:prospectus",
@@ -724,7 +724,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "01e9e6b1f0ea17e3a65c2af7c76cff317b095005c4020ce20eba22e5d63430b6",
         templateArchiveSha256:
-          "99430b2bd063eb1c922ef22ca95fbe783ab0646b7bdfbb6b7a8b5c839cad5ba0",
+          "050f66a9993f2829e9bc2eb9c31f31e1af2d3612face1c925d4d84834191e482",
       },
       {
         designSystemId: "design-system:schoolhouse",
@@ -734,7 +734,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "a4a7be65e2adca9eb5572f92b3f49075e768da305b833d74b703da5f2dd3d271",
         templateArchiveSha256:
-          "4824967cf53a03098aca8c6ca3ea34938d848ff372a556f47ac66a608f81f5db",
+          "43851c36d04882b7e4ed5126f95af69ad38eab395c7ea5e5e9c31c7c02cd9bff",
       },
       {
         designSystemId: "design-system:sticker-scrapbook",
@@ -744,7 +744,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "d50129981c3dc3b51b4c63b2ac36b9b5fe6783953bbea3546e372903c8596cad",
         templateArchiveSha256:
-          "e289743180d623e6a0966ab85d0737686914445c1b749901cfbbf061958cc334",
+          "e30a5d0565023ef13c25fec40376996142ce33bae447ac012d2819854d3f9979",
       },
       {
         designSystemId: "design-system:strata",
@@ -754,7 +754,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "91a45f8c3b70d7c43505ca7fe51f55ab36a08312e28867383ef885a7a7e63c28",
         templateArchiveSha256:
-          "ff9c81d11d866f98bbe9cf5e8584adcb3cb28095b734ca02dd1e750ace6f9e49",
+          "c43028b751dd1d53b942255b616653a09f9937481daaba5163c7ff304ad3082c",
       },
       {
         designSystemId: "design-system:taped-consulting",
@@ -764,7 +764,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "9fb58db77455a3bc7ccdd106b18c99a3d62bc53981f494577804b496a78a858e",
         templateArchiveSha256:
-          "df64d3f8d5a63e892eeaf5b7723d7274e4147359eda558e1b34aab27e30c439d",
+          "26b7deb0feb0b685caa19d84ede7ecb7ed530afd4525a801615de6ee0169ae1e",
       },
       {
         designSystemId: "design-system:vantage",
@@ -774,7 +774,7 @@ describe("presentation template items", () => {
         designArchiveSha256:
           "8338e31f3aa18538d36ae363d3ac2aa0ec56669c33494fdf2a12286d9b0523a8",
         templateArchiveSha256:
-          "0d4c276d8dc7710a484d4d7c9bfb05f0a68b378d50e73aea6a6eb92698daa6fe",
+          "6e4308867e6959813d2e941b6c620d817354db3329c09cdd6f08b40f09b31597",
       },
     ] as const;
 
