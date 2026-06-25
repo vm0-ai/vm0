@@ -6,7 +6,7 @@ use std::sync::Arc;
 use nbd_cow::BLOCK_SIZE;
 use support::dispatch_client::{
     Command, TestResult, assert_error, assert_error_code, assert_success, create_base_file,
-    create_cow_with_full_device, create_test_cow, request, request_with_flags, spawn_dispatch,
+    create_cow_with_full_device, create_test_cow, request, request_with_type_flags, spawn_dispatch,
     spawn_dispatch_with_shutdown, wait_for_dispatch,
 };
 use tokio::sync::RwLock;
@@ -94,7 +94,7 @@ async fn dispatch_trim_succeeds() -> TestResult<()> {
 
 #[tokio::test]
 async fn dispatch_accepts_request_flags() -> TestResult<()> {
-    const NBD_CMD_FLAG_FUA: u16 = 0x0001;
+    const NBD_CMD_FLAG_FUA: u32 = 1 << 16;
 
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
@@ -103,7 +103,7 @@ async fn dispatch_accepts_request_flags() -> TestResult<()> {
     let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
 
     let write_data = vec![0xBC; BLOCK_SIZE];
-    let flagged_write = request_with_flags(
+    let flagged_write = request_with_type_flags(
         Command::Write,
         1,
         0,

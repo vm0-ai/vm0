@@ -36,7 +36,7 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub struct NbdRequest {
-    flags: u16,
+    request_type_flags: u32,
     command: Command,
     handle: u64,
     offset: u64,
@@ -169,18 +169,18 @@ impl DispatchClient {
 }
 
 pub fn request(command: Command, handle: u64, offset: u64, length: u32) -> NbdRequest {
-    request_with_flags(command, handle, offset, length, 0)
+    request_with_type_flags(command, handle, offset, length, 0)
 }
 
-pub fn request_with_flags(
+pub fn request_with_type_flags(
     command: Command,
     handle: u64,
     offset: u64,
     length: u32,
-    flags: u16,
+    request_type_flags: u32,
 ) -> NbdRequest {
     NbdRequest {
-        flags,
+        request_type_flags,
         command,
         handle,
         offset,
@@ -292,8 +292,8 @@ fn socketpair() -> std::io::Result<(OwnedFd, OwnedFd)> {
 
 fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let [magic_0, magic_1, magic_2, magic_3] = REQUEST_MAGIC.to_be_bytes();
-    let [flags_0, flags_1] = request.flags.to_be_bytes();
-    let [command_0, command_1] = (request.command as u16).to_be_bytes();
+    let request_type = request.request_type_flags | request.command as u32;
+    let [type_0, type_1, type_2, type_3] = request_type.to_be_bytes();
     let [
         handle_0,
         handle_1,
@@ -317,9 +317,8 @@ fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let [length_0, length_1, length_2, length_3] = request.length.to_be_bytes();
 
     [
-        magic_0, magic_1, magic_2, magic_3, flags_0, flags_1, command_0, command_1, handle_0,
-        handle_1, handle_2, handle_3, handle_4, handle_5, handle_6, handle_7, offset_0, offset_1,
-        offset_2, offset_3, offset_4, offset_5, offset_6, offset_7, length_0, length_1, length_2,
-        length_3,
+        magic_0, magic_1, magic_2, magic_3, type_0, type_1, type_2, type_3, handle_0, handle_1,
+        handle_2, handle_3, handle_4, handle_5, handle_6, handle_7, offset_0, offset_1, offset_2,
+        offset_3, offset_4, offset_5, offset_6, offset_7, length_0, length_1, length_2, length_3,
     ]
 }
