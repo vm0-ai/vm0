@@ -366,6 +366,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def __init__(self, path: Path) -> None:
         self.path = path
         self.violations: list[str] = []
+        self._violation_messages: set[str] = set()
         self._metadata_alias_scopes: list[set[str]] = [set()]
         self._class_nested_scope_alias_scopes: list[set[str]] = []
         self._metadata_key_checked_node_ids: set[int] = set()
@@ -380,6 +381,20 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if not self._named_expr_target_scope_indexes:
             return self._metadata_aliases
         return self._metadata_alias_scopes[self._named_expr_target_scope_indexes[-1]]
+
+    def _add_violation(self, violation: str) -> None:
+        if violation in self._violation_messages:
+            return
+        self._violation_messages.add(violation)
+        self.violations.append(violation)
+
+    def _add_violations(self, violations: list[str]) -> None:
+        for violation in violations:
+            self._add_violation(violation)
+
+    def visit(self, node: ast.AST) -> None:
+        self._record_metadata_merge_key_violations(node)
+        super().visit(node)
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
         return (
@@ -454,7 +469,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if not violations:
             return
         self._metadata_key_checked_node_ids.add(node_id)
-        self.violations.extend(violations)
+        self._add_violations(violations)
 
     def _record_metadata_dict_key_violations(self, node: ast.AST | None) -> None:
         if node is None:
@@ -466,7 +481,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if not violations:
             return
         self._metadata_key_checked_node_ids.add(node_id)
-        self.violations.extend(violations)
+        self._add_violations(violations)
 
     def _metadata_default_argument_names(self, args: ast.arguments) -> set[str]:
         metadata_defaults: set[str] = set()
@@ -528,9 +543,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self, body: list[ast.stmt], aliases: set[str]
     ) -> tuple[set[str], bool]:
         violation_count = len(self.violations)
+        violation_messages = set(self._violation_messages)
         checked_node_ids = set(self._metadata_key_checked_node_ids)
         result = self._visit_branch_body(body, aliases)
         del self.violations[violation_count:]
+        self._violation_messages = violation_messages
         self._metadata_key_checked_node_ids = checked_node_ids
         return result
 
@@ -845,7 +862,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if self._is_metadata_alias_value(node.value):
             key_name = _registered_key_name(node.slice)
             if key_name is not None:
-                self.violations.append(_violation(self.path, node, key_name))
+                self._add_violation(_violation(self.path, node, key_name))
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -862,7 +879,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
                 key_name = _registered_key_name(node.args[0])
                 if key_name is not None:
-                    self.violations.append(_violation(self.path, node, key_name))
+                    self._add_violation(_violation(self.path, node, key_name))
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
                 update_arg = None if not node.args else node.args[0]
                 self._record_metadata_dict_key_violations(update_arg)
@@ -872,7 +889,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                         continue
                     key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
                     if key_name is not None:
-                        self.violations.append(_violation(self.path, keyword, key_name))
+                        self._add_violation(_violation(self.path, keyword, key_name))
         self.visit(node.func)
         for argument in node.args:
             self.visit(argument)
@@ -920,7 +937,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         ):
             key_name = _registered_key_name(node.left)
             if key_name is not None:
-                self.violations.append(_violation(self.path, node, key_name))
+                self._add_violation(_violation(self.path, node, key_name))
         self.generic_visit(node)
 
     def visit_Delete(self, node: ast.Delete) -> None:
