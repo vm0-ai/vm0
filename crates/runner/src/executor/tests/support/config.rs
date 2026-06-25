@@ -1,8 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use sandbox::{Sandbox, SandboxFactory, SandboxId};
-use sandbox_mock::MockSandboxFactory;
+use sandbox::Sandbox;
 
 use super::super::super::{ExecutorConfig, JobParams};
 use crate::http::HttpClientConfig;
@@ -76,25 +75,18 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
     session_id: &str,
 ) -> (ReusableIdleSandbox, crate::resource_budget::BudgetLease) {
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult,
+        test_support::ParkedIdleCandidateBuilder,
     };
 
     let mut pool = IdlePool::new(IdlePoolConfig {
         default_timeout: std::time::Duration::from_secs(300),
         max_idle: 0,
     });
-    let candidate = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-        sandbox,
-        factory: std::sync::Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-        cli_agent_session_id: session_id.into(),
-        sandbox_id: SandboxId::new_v4(),
-        profile_name: "vm0/default".into(),
-        device_rate_limits: None,
-        budget_lease: test_budget_lease(),
-        source_ip,
-        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-    });
+    let candidate = ParkedIdleCandidateBuilder::new(session_id, test_budget_lease())
+        .with_sandbox(sandbox)
+        .with_source_ip(source_ip)
+        .build();
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(session_id).expect("idle entry should exist");
     match entry.try_unpark().await {

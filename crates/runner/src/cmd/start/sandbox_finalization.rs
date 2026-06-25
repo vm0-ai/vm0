@@ -588,8 +588,8 @@ mod tests {
         ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
     };
     use crate::idle_pool::{
-        IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
-        ParkedIdleCandidate, ParkingGate, SyntheticParkedIdleCandidateParts,
+        IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
+        test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -1250,18 +1250,10 @@ mod tests {
     async fn finalizer_promotes_workspace_cache_when_parked_candidate_is_rejected() {
         let fixture = FinalizeTestFixture::new_with_max_idle(1).await;
         let (_existing_budget, existing_lease) = test_budget_lease();
-        let existing = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-            sandbox: Box::new(MockSandbox::new("existing-idle")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: "sess-existing".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            device_rate_limits: None,
-            budget_lease: existing_lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-        })
-        .with_last_completed_at(local_completed_at());
+        let existing = ParkedIdleCandidateBuilder::new("sess-existing", existing_lease)
+            .with_mock_sandbox_name("existing-idle")
+            .with_last_completed_at(local_completed_at())
+            .build();
         assert!(matches!(
             fixture.idle_pool.lock().await.park(existing),
             ParkResult::Parked

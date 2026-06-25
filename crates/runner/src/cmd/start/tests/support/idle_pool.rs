@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::TEST_SESSION_LAST_COMPLETED_AT;
 
-use crate::idle_pool::{ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts};
+use crate::idle_pool::{ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder};
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
 use crate::resource_budget::BudgetLease;
@@ -11,25 +11,16 @@ use crate::workspace_image_cache::{
     WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
 };
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-use sandbox::{SandboxFactory, SandboxId};
-use sandbox_mock::{MockSandbox, MockSandboxFactory};
+use sandbox::SandboxId;
 
 fn make_synthetic_parked_candidate(
     session_id: &str,
     profile_name: &str,
     budget_lease: BudgetLease,
 ) -> ParkedIdleCandidate {
-    ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-        sandbox: Box::new(MockSandbox::new("idle-test")),
-        factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-        cli_agent_session_id: session_id.into(),
-        sandbox_id: SandboxId::new_v4(),
-        profile_name: profile_name.into(),
-        device_rate_limits: None,
-        budget_lease,
-        source_ip: "10.0.0.1".into(),
-        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-    })
+    ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+        .with_profile_name(profile_name)
+        .build()
 }
 
 /// Pre-populate idle pool with an entry and reserve its budget. Returns
@@ -93,18 +84,13 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
 
     let mut guard = pool.lock().await;
     let result = guard.park(
-        ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-            sandbox,
-            factory: factory_arc,
-            cli_agent_session_id: session_id.to_string(),
-            sandbox_id,
-            profile_name: profile_name.into(),
-            device_rate_limits: None,
-            budget_lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-        })
-        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string()),
+        ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+            .with_sandbox(sandbox)
+            .with_factory(factory_arc)
+            .with_sandbox_id(sandbox_id)
+            .with_profile_name(profile_name)
+            .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT)
+            .build(),
     );
     assert!(matches!(result, ParkResult::Parked));
     sandbox_id
@@ -159,21 +145,13 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
         .expect("workspace image should be promotable");
     let budget_lease = ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb)
         .expect("reserve budget");
-    let candidate = ParkedIdleCandidate::synthetic_for_test_with_workspace_promotion(
-        SyntheticParkedIdleCandidateParts {
-            sandbox: Box::new(MockSandbox::new("idle-workspace-promotion-test")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: spec.session_id.into(),
-            sandbox_id,
-            profile_name: spec.profile_name.into(),
-            device_rate_limits: None,
-            budget_lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        },
-        promotion,
-    )
-    .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string());
+    let candidate = ParkedIdleCandidateBuilder::new(spec.session_id, budget_lease)
+        .with_mock_sandbox_name("idle-workspace-promotion-test")
+        .with_sandbox_id(sandbox_id)
+        .with_profile_name(spec.profile_name)
+        .with_workspace_promotion(promotion)
+        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT)
+        .build();
     let mut guard = pool.lock().await;
     let result = guard.park(candidate);
     assert!(matches!(result, ParkResult::Parked));

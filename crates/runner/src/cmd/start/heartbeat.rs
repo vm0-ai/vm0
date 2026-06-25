@@ -198,7 +198,7 @@ mod tests {
     use super::*;
     use crate::config;
     use crate::idle_pool::{
-        IdlePoolConfig, ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
+        IdlePoolConfig, ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
@@ -206,8 +206,7 @@ mod tests {
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-    use sandbox::{SandboxFactory, SandboxId};
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox::SandboxId;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
@@ -229,17 +228,12 @@ mod tests {
 
     fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
-        ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-            sandbox: Box::new(MockSandbox::new("test")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: session_id.into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            device_rate_limits: None,
-            budget_lease: ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-        })
+        ParkedIdleCandidateBuilder::new(
+            session_id,
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        )
+        .with_mock_sandbox_name("test")
+        .build()
     }
 
     async fn seed_workspace_cache_state(
