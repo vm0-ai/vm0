@@ -21,6 +21,10 @@ import {
   type ConnectorEnvBindingEntry,
   type ConnectorFirewallSource,
 } from "./connector-firewall-sources";
+import {
+  renderLazyLoaderRecord,
+  type LazyLoaderEntry,
+} from "./lazy-loader-renderer";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
@@ -507,25 +511,23 @@ export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS = ${stableJson(fixedHostOwners)}
 }
 
 function renderLoaderFile(types: readonly FirewallConnectorType[]): string {
-  const loaders = types
-    .map((type) => {
-      const key = JSON.stringify(type);
-      const specifier = JSON.stringify(generatedDetailModuleSpecifier(type));
-      return `  ${key}: async () => {
-    return (await import(${specifier})).firewallPermissionMetadata;
-  },`;
-    })
-    .join("\n");
+  const loaderEntries = types.map((type): LazyLoaderEntry => {
+    return {
+      key: type,
+      moduleSpecifier: generatedDetailModuleSpecifier(type),
+      exportName: "firewallPermissionMetadata",
+    };
+  });
 
   return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-metadata/v1/.
 // Bump that URL version before shipping an incompatible metadata module shape or import contract change.
 import type { FirewallPermissionDetailMetadata } from "./types";
 
-const FIREWALL_PERMISSION_METADATA_LOADERS: Readonly<
-  Record<string, () => Promise<FirewallPermissionDetailMetadata>>
-> = {
-${loaders}
-};
+${renderLazyLoaderRecord({
+  constName: "FIREWALL_PERMISSION_METADATA_LOADERS",
+  recordType: "Record<string, () => Promise<FirewallPermissionDetailMetadata>>",
+  entries: loaderEntries,
+})}
 
 export async function loadGeneratedFirewallPermissionMetadata(
   type: string,
@@ -547,17 +549,13 @@ function renderRuntimeLoaderFile(
       return `  ${JSON.stringify(source.type)},`;
     })
     .join("\n");
-  const loaders = sources
-    .map((source) => {
-      const key = JSON.stringify(source.type);
-      const specifier = JSON.stringify(
-        generatedRuntimeModuleSpecifier(source.type),
-      );
-      return `  ${key}: async () => {
-    return (await import(${specifier})).${source.firewallExportName};
-  },`;
-    })
-    .join("\n");
+  const loaderEntries = sources.map((source): LazyLoaderEntry => {
+    return {
+      key: source.type,
+      moduleSpecifier: generatedRuntimeModuleSpecifier(source.type),
+      exportName: source.firewallExportName,
+    };
+  });
 
   return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-runtime/v1/.
 // Bump that URL version before shipping an incompatible runtime firewall module shape or import contract change.
@@ -570,11 +568,12 @@ ${connectorTypes}
 export type GeneratedRuntimeFirewallConnectorType =
   (typeof RUNTIME_FIREWALL_CONNECTOR_TYPES)[number];
 
-const GENERATED_RUNTIME_FIREWALL_LOADERS: Readonly<
-  Record<GeneratedRuntimeFirewallConnectorType, () => Promise<FirewallConfig>>
-> = {
-${loaders}
-};
+${renderLazyLoaderRecord({
+  constName: "GENERATED_RUNTIME_FIREWALL_LOADERS",
+  recordType:
+    "Record<GeneratedRuntimeFirewallConnectorType, () => Promise<FirewallConfig>>",
+  entries: loaderEntries,
+})}
 
 export function hasGeneratedRuntimeFirewall(
   type: string,
