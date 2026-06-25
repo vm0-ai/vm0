@@ -132,10 +132,6 @@ const ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE = `/api/zero/workflow-trigger
 const ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
 );
-const ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/run`;
-const ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE = new RegExp(
-  `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/run$`,
-);
 const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/permission-policy`;
 const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/permission-policy$`,
@@ -1411,11 +1407,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE,
     "/api/zero/workflow-triggers/:id/disable",
     ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE,
-  ],
-  [
-    ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE,
-    "/api/zero/workflow-triggers/:id/run",
-    ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE,

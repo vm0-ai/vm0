@@ -24,7 +24,18 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import {
+  Button,
   cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -44,13 +55,16 @@ import {
   deleteWorkflowTrigger$,
   editingGmailTriggerId$,
   runWorkflow$,
-  runWorkflowTrigger$,
+  scheduleTriggerType$,
   selectedWorkflowFilePath$,
+  setScheduleTriggerType$,
   setEditingGmailTriggerId$,
   setSelectedWorkflowFilePath$,
+  setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflow$,
+  workflowTriggerCreateDialog$,
   workflowDetail,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -761,6 +775,8 @@ function TriggersSection({
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
+  const createDialog = useGet(workflowTriggerCreateDialog$);
+  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
   const userLoadable = useLoadable(user$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
@@ -769,10 +785,64 @@ function TriggersSection({
   return (
     <div className="zero-card overflow-hidden">
       <div className="flex h-10 items-center justify-between border-b border-border/60 px-4">
-        <span className="text-sm font-medium text-foreground">Triggers</span>
-        <span className="text-xs text-muted-foreground">{triggers.length}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-sm font-medium text-foreground">Triggers</span>
+          <span className="text-xs text-muted-foreground">
+            {triggers.length}
+          </span>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
+            >
+              <IconPlus size={13} stroke={1.5} />
+              <span>Add trigger</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem
+              className="items-start gap-2 py-2"
+              onSelect={() => {
+                setCreateDialog("schedule");
+              }}
+            >
+              <IconClock
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Schedule</span>
+                <span className="block text-xs text-muted-foreground">
+                  Run this workflow from a time rule.
+                </span>
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="items-start gap-2 py-2"
+              onSelect={() => {
+                setCreateDialog("gmail");
+              }}
+            >
+              <IconMail
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  Gmail new message
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Run this workflow from matching email.
+                </span>
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <CreateTriggerForm workflowId={detail.id} />
       <div className="max-h-[320px] overflow-auto p-2">
         {triggers.length > 0 ? (
           <div className="flex flex-col gap-1">
@@ -793,24 +863,35 @@ function TriggersSection({
           </p>
         )}
       </div>
+      <CreateScheduleTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "schedule"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "schedule" : null);
+        }}
+      />
+      <CreateGmailNewMessageTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "gmail"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "gmail" : null);
+        }}
+      />
     </div>
   );
 }
 
-function CreateTriggerForm({ workflowId }: { readonly workflowId: string }) {
-  return (
-    <div className="flex flex-col gap-3 border-b border-border/60 p-3">
-      <CreateScheduleTriggerForm workflowId={workflowId} />
-      <CreateGmailNewMessageTriggerForm workflowId={workflowId} />
-    </div>
-  );
-}
-
-function CreateScheduleTriggerForm({
+function CreateScheduleTriggerDialog({
   workflowId,
+  open,
+  onOpenChange,
 }: {
   readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
 }) {
+  const scheduleType = useGet(scheduleTriggerType$);
+  const setScheduleType = useSet(setScheduleTriggerType$);
   const pageSignal = useGet(pageSignal$);
   const [createLoadable, createScheduleTrigger] = useLoadableSet(
     createWorkflowScheduleTrigger$,
@@ -818,51 +899,100 @@ function CreateScheduleTriggerForm({
   const creating = createLoadable.state === "loading";
 
   return (
-    <form
-      aria-label="Create schedule trigger"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const scheduleType = String(
-          form.get("scheduleType") ?? "cron",
-        ) as ZeroWorkflowScheduleType;
-        const schedule = buildTriggerSchedule(scheduleType, {
-          cronExpression: String(form.get("cronExpression") ?? ""),
-          intervalSeconds: String(form.get("intervalSeconds") ?? ""),
-          atTime: String(form.get("atTime") ?? ""),
-        });
-        if (!schedule) {
-          return;
-        }
-        detach(
-          createScheduleTrigger({ workflowId, schedule }, pageSignal),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <div className="mb-1 text-xs font-medium text-muted-foreground">
-        Schedule
-      </div>
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-        <select
-          name="scheduleType"
-          aria-label="Schedule type"
-          defaultValue="cron"
-          disabled={creating}
-          className={TRIGGER_FIELD_CLASS}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add schedule trigger</DialogTitle>
+          <DialogDescription>
+            Choose when this workflow should run.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add schedule trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const schedule = buildTriggerSchedule(scheduleType, {
+              cronExpression: String(form.get("cronExpression") ?? ""),
+              intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+              atTime: String(form.get("atTime") ?? ""),
+            });
+            if (!schedule) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createScheduleTrigger(
+                  { workflowId, schedule },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
         >
-          <option value="cron">Repeat (cron)</option>
-          <option value="loop">Loop (interval)</option>
-          <option value="once">Once</option>
-        </select>
-        <input
-          name="cronExpression"
-          aria-label="Cron expression"
-          defaultValue="0 9 * * *"
-          disabled={creating}
-          placeholder="cron, e.g. 0 9 * * *"
-          className={TRIGGER_FIELD_CLASS}
-        />
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Schedule type
+            <Select
+              value={scheduleType}
+              disabled={creating}
+              onValueChange={(value) => {
+                setScheduleType(value as ZeroWorkflowScheduleType);
+              }}
+            >
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cron">Repeat with cron</SelectItem>
+                <SelectItem value="loop">Loop every interval</SelectItem>
+                <SelectItem value="once">Run once</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+
+          <ScheduleTriggerFields
+            scheduleType={scheduleType}
+            creating={creating}
+          />
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add schedule
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ScheduleTriggerFields({
+  scheduleType,
+  creating,
+}: {
+  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly creating: boolean;
+}) {
+  if (scheduleType === "loop") {
+    return (
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Interval seconds
         <input
           name="intervalSeconds"
           aria-label="Interval seconds"
@@ -870,40 +1000,56 @@ function CreateScheduleTriggerForm({
           min="1"
           defaultValue="3600"
           disabled={creating}
-          placeholder="loop interval seconds"
-          className={TRIGGER_FIELD_CLASS}
+          className={FIELD_CLASS}
         />
+      </label>
+    );
+  }
+
+  if (scheduleType === "once") {
+    return (
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Run at
         <input
           name="atTime"
           aria-label="Run at"
           type="datetime-local"
           disabled={creating}
-          className={TRIGGER_FIELD_CLASS}
+          className={FIELD_CLASS}
         />
-        <button
-          type="submit"
-          disabled={creating}
-          className={cn(
-            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-            creating ? "cursor-not-allowed opacity-60" : "",
-          )}
-        >
-          {creating ? (
-            <IconLoader2 size={13} className="animate-spin" />
-          ) : (
-            <IconPlus size={13} stroke={1.5} />
-          )}
-          <span>Add schedule</span>
-        </button>
-      </div>
-    </form>
+        <span className="text-xs text-muted-foreground">
+          Uses {TRIGGER_TIMEZONE}.
+        </span>
+      </label>
+    );
+  }
+
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Cron expression
+      <input
+        name="cronExpression"
+        aria-label="Cron expression"
+        defaultValue="0 9 * * *"
+        disabled={creating}
+        placeholder="0 9 * * *"
+        className={FIELD_CLASS}
+      />
+      <span className="text-xs text-muted-foreground">
+        Runs in {TRIGGER_TIMEZONE}.
+      </span>
+    </label>
   );
 }
 
-function CreateGmailNewMessageTriggerForm({
+function CreateGmailNewMessageTriggerDialog({
   workflowId,
+  open,
+  onOpenChange,
 }: {
   readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [createLoadable, createGmailTrigger] = useLoadableSet(
@@ -912,64 +1058,78 @@ function CreateGmailNewMessageTriggerForm({
   const creating = createLoadable.state === "loading";
 
   return (
-    <form
-      aria-label="Create Gmail new message trigger"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        detach(
-          createGmailTrigger(
-            {
-              workflowId,
-              eventConfig: buildGmailNewMessageEventConfig(form),
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <div className="mb-1 text-xs font-medium text-muted-foreground">
-        Gmail new message
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
-          return (
-            <div key={field} className="grid grid-cols-2 gap-1.5">
-              <input
-                name={`${field}Contains`}
-                aria-label={`${label} contains`}
-                disabled={creating}
-                placeholder={`${label} contains`}
-                className={TRIGGER_FIELD_CLASS}
-              />
-              <input
-                name={`${field}DoesNotContain`}
-                aria-label={`${label} does not contain`}
-                disabled={creating}
-                placeholder={`${label} does not contain`}
-                className={TRIGGER_FIELD_CLASS}
-              />
-            </div>
-          );
-        })}
-        <button
-          type="submit"
-          disabled={creating}
-          className={cn(
-            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-            creating ? "cursor-not-allowed opacity-60" : "",
-          )}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add Gmail trigger</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a matching message arrives.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Gmail trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            detach(
+              (async () => {
+                await createGmailTrigger(
+                  {
+                    workflowId,
+                    eventConfig: buildGmailNewMessageEventConfig(form),
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
         >
-          {creating ? (
-            <IconLoader2 size={13} className="animate-spin" />
-          ) : (
-            <IconPlus size={13} stroke={1.5} />
-          )}
-          <span>Add Gmail trigger</span>
-        </button>
-      </div>
-    </form>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+              return (
+                <div key={field} className="grid grid-cols-2 gap-2">
+                  <input
+                    name={`${field}Contains`}
+                    aria-label={`${label} contains`}
+                    disabled={creating}
+                    placeholder={`${label} contains`}
+                    className={FIELD_CLASS}
+                  />
+                  <input
+                    name={`${field}DoesNotContain`}
+                    aria-label={`${label} does not contain`}
+                    disabled={creating}
+                    placeholder={`${label} does not contain`}
+                    className={FIELD_CLASS}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add Gmail trigger
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1069,24 +1229,11 @@ function TriggerControls({
   const [deleteLoadable, deleteTrigger] = useLoadableSet(
     deleteWorkflowTrigger$,
   );
-  const [runLoadable, runTrigger] = useLoadableSet(runWorkflowTrigger$);
   const busy =
-    enabledLoadable.state === "loading" ||
-    deleteLoadable.state === "loading" ||
-    runLoadable.state === "loading";
+    enabledLoadable.state === "loading" || deleteLoadable.state === "loading";
 
   return (
     <div className="mt-1 flex items-center gap-2">
-      <button
-        type="button"
-        disabled={busy}
-        className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-        onClick={() => {
-          detach(runTrigger(trigger.id, pageSignal), Reason.DomCallback);
-        }}
-      >
-        Test run
-      </button>
       {agentId ? (
         <Link
           pathname={ROUTES.agentWorkflowTriggerPermissions}

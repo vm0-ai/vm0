@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
   type ZeroWorkflowUpdateRequest,
   type UnattendedTriggerPermissionPolicy,
@@ -35,6 +36,10 @@ const internalWorkflowReload$ = state(0);
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
+const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
+  null,
+);
+const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
@@ -51,6 +56,29 @@ export const editingGmailTriggerId$ = computed((get) => {
 export const setEditingGmailTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingGmailTriggerId$, triggerId);
+  },
+);
+
+export const workflowTriggerCreateDialog$ = computed((get) => {
+  return get(internalWorkflowTriggerCreateDialog$);
+});
+
+export const setWorkflowTriggerCreateDialog$ = command(
+  ({ set }, dialog: "schedule" | "gmail" | null) => {
+    set(internalWorkflowTriggerCreateDialog$, dialog);
+    if (dialog === "schedule") {
+      set(internalScheduleTriggerType$, "cron");
+    }
+  },
+);
+
+export const scheduleTriggerType$ = computed((get) => {
+  return get(internalScheduleTriggerType$);
+});
+
+export const setScheduleTriggerType$ = command(
+  ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
+    set(internalScheduleTriggerType$, scheduleType);
   },
 );
 
@@ -442,16 +470,5 @@ export const deleteWorkflowTrigger$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
-  },
-);
-
-export const runWorkflowTrigger$ = command(
-  async ({ get }, triggerId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.run({ params: { id: triggerId }, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
   },
 );

@@ -364,8 +364,11 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
-    const createTriggerForm = screen.getByRole("form", {
-      name: "Create Gmail new message trigger",
+    click(screen.getByRole("button", { name: "Add trigger" }));
+    click(await screen.findByRole("menuitem", { name: /Gmail new message/i }));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Gmail trigger",
     });
     await fill(
       within(createTriggerForm).getByLabelText("From contains"),

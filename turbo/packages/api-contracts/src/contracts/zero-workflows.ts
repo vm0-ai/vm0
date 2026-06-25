@@ -705,21 +705,6 @@ export const zeroWorkflowTriggersContract = c.router({
     },
     summary: "Disable a workflow trigger",
   },
-  run: {
-    method: "POST",
-    path: "/api/zero/workflow-triggers/:id/run",
-    headers: authHeadersSchema,
-    pathParams: triggerIdParams,
-    body: c.noBody(),
-    responses: {
-      200: z.object({ runId: z.string() }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Fire a one-off test run of a workflow trigger",
-  },
   setPermissionPolicy: {
     method: "PUT",
     path: "/api/zero/workflow-triggers/:id/permission-policy",
