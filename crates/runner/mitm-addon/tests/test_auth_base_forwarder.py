@@ -16,19 +16,18 @@ from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstrea
 class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
     def __init__(self, *args, **kwargs) -> None:
         self._submit_count = 0
-        self._submit_condition = threading.Condition()
+        self._submit_lock = threading.Lock()
         super().__init__(*args, **kwargs)
 
     def submit(self, fn, /, *args, **kwargs):
         future = super().submit(fn, *args, **kwargs)
-        with self._submit_condition:
+        with self._submit_lock:
             self._submit_count += 1
-            self._submit_condition.notify_all()
         return future
 
     @property
     def submit_count(self) -> int:
-        with self._submit_condition:
+        with self._submit_lock:
             return self._submit_count
 
 
