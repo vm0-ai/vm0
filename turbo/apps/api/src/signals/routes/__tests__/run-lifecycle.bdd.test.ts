@@ -2305,37 +2305,39 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(serialized).not.toContain(claimed.body.sandboxToken);
       expect(serialized).not.toContain(apiKey.token);
     }
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
-      "vm0-sandbox-op-log-dev",
-      [
-        expect.objectContaining({
-          op_type: "job_discovered_to_claim_request",
-          sandbox_type: "runner",
-          run_id: first.runId,
-          duration_ms: 1234,
-          success: true,
-          profile: "vm0/default",
-          auth_type: "user",
-          poll_reason: "deferred",
-        }),
-      ],
-    );
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
-      "vm0-sandbox-op-log-dev",
-      [
-        expect.objectContaining({
-          op_type: "local_admission_to_claim_request",
-          sandbox_type: "runner",
-          run_id: first.runId,
-          duration_ms: 56,
-          success: true,
-          profile: "vm0/default",
-          auth_type: "user",
-          poll_reason: "deferred",
-        }),
-      ],
-    );
     const timingEvents = sandboxOperationEventsForRun(first.runId);
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "job_discovered_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "job_discovered_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 1234,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        poll_reason: "deferred",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "local_admission_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "local_admission_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 56,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        poll_reason: "deferred",
+      }),
+    );
     for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
       const events = timingEvents.filter((event) => {
         return event.op_type === actionType;

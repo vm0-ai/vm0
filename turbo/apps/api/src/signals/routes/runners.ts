@@ -25,10 +25,7 @@ import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import {
-  recordSandboxOperation,
-  recordSandboxOperations,
-} from "../external/sandbox-op-log";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -40,6 +37,10 @@ import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
 const L = logger("Runners");
+
+type SandboxOperationAttrs = Parameters<
+  typeof recordSandboxOperations
+>[0][number];
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -938,59 +939,65 @@ async function recordClaimTimingMetrics(args: {
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_runner_queue",
-    args.apiToRunnerQueueMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "runner_queue_to_claim_request",
-    args.runnerQueueToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim_request",
-    args.apiToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim",
-    args.apiToClaimMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "claim_request_to_running",
-    args.claimRequestToRunningMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "job_discovered_to_claim_request",
-    args.jobDiscoveredToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "local_admission_to_claim_request",
-    args.localAdmissionToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "runner_poll_due_to_job_discovered",
-    args.pollDueToJobDiscoveredMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "runner_poll_http_request",
-    args.pollHttpRequestMs,
-    dimensions,
+  recordSandboxOperations(
+    [
+      claimTimingOperation(
+        args.runId,
+        "api_to_runner_queue",
+        args.apiToRunnerQueueMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_queue_to_claim_request",
+        args.runnerQueueToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim_request",
+        args.apiToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim",
+        args.apiToClaimMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "claim_request_to_running",
+        args.claimRequestToRunningMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "job_discovered_to_claim_request",
+        args.jobDiscoveredToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "local_admission_to_claim_request",
+        args.localAdmissionToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_due_to_job_discovered",
+        args.pollDueToJobDiscoveredMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_http_request",
+        args.pollHttpRequestMs,
+        dimensions,
+      ),
+    ].filter((operation): operation is SandboxOperationAttrs => {
+      return operation !== undefined;
+    }),
   );
   args.claimRouteTiming.flush({
     runId: args.runId,
@@ -1001,23 +1008,23 @@ async function recordClaimTimingMetrics(args: {
   });
 }
 
-function recordClaimTimingOperation(
+function claimTimingOperation(
   runId: string,
   actionType: string,
   durationMs: number | undefined,
   dimensions: Record<string, string>,
-): void {
+): SandboxOperationAttrs | undefined {
   if (durationMs === undefined) {
-    return;
+    return undefined;
   }
-  recordSandboxOperation({
+  return {
     sandboxType: "runner",
     actionType,
     durationMs,
     success: true,
     runId,
     dimensions,
-  });
+  };
 }
 
 const scheduleClaimFailedSideEffects$ = command(
