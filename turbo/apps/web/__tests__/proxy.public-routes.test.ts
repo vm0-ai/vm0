@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { brotliCompressSync } from "node:zlib";
 import { NextRequest, NextResponse } from "next/server";
 import { HttpResponse, http } from "msw";
 import { server } from "../src/mocks/server";
@@ -92,6 +93,18 @@ function captureForwardedRequests(
     }),
   );
   return requests;
+}
+
+function compressedComponentResponse(body: string, status: number): Response {
+  const encodedBody = brotliCompressSync(Buffer.from(body));
+  return new HttpResponse(encodedBody, {
+    status,
+    headers: {
+      "content-encoding": "br",
+      "content-length": String(encodedBody.byteLength),
+      "content-type": "text/x-component",
+    },
+  });
 }
 
 describe("proxy middleware: public routes", () => {
@@ -339,17 +352,11 @@ describe("proxy middleware: public routes", () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
     vi.stubEnv("VERCEL_ENV", "production");
     reloadEnv();
-    const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response("verification proxied", {
-        status: 202,
-        headers: {
-          "content-encoding": "br",
-          "content-length": "123",
-          "content-type": "text/x-component",
-        },
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/sign-up/verify-email-address",
+      compressedComponentResponse("verification proxied", 202),
+    );
 
     const request = new NextRequest(
       "https://www.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
@@ -363,12 +370,15 @@ describe("proxy middleware: public routes", () => {
 
     const response = await middleware(request, createMockEvent());
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [targetUrl, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(targetUrl)).toBe(
+    expect(forwardedRequests).toHaveLength(1);
+    const [forwardedRequest] = forwardedRequests;
+    if (!forwardedRequest) {
+      throw new Error("Expected forwarded verification request");
+    }
+    expect(forwardedRequest.url).toBe(
       "https://so.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
     );
-    expect((init?.headers as Headers).get("accept-encoding")).toBe("identity");
+    expect(forwardedRequest.headers.get("accept-encoding")).toBe("identity");
     expect(response).toBeDefined();
     if (!response) {
       throw new Error("Expected verification proxy response");
@@ -384,17 +394,11 @@ describe("proxy middleware: public routes", () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
     vi.stubEnv("VERCEL_ENV", "production");
     reloadEnv();
-    const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response("locale action proxied", {
-        status: 200,
-        headers: {
-          "content-encoding": "br",
-          "content-length": "123",
-          "content-type": "text/x-component",
-        },
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/en",
+      compressedComponentResponse("locale action proxied", 200),
+    );
 
     const request = new NextRequest("https://www.vm0.ai/en", {
       method: "POST",
@@ -405,10 +409,13 @@ describe("proxy middleware: public routes", () => {
 
     const response = await middleware(request, createMockEvent());
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [targetUrl, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(targetUrl)).toBe("https://so.vm0.ai/en");
-    expect((init?.headers as Headers).get("accept-encoding")).toBe("identity");
+    expect(forwardedRequests).toHaveLength(1);
+    const [forwardedRequest] = forwardedRequests;
+    if (!forwardedRequest) {
+      throw new Error("Expected forwarded locale page request");
+    }
+    expect(forwardedRequest.url).toBe("https://so.vm0.ai/en");
+    expect(forwardedRequest.headers.get("accept-encoding")).toBe("identity");
     expect(response).toBeDefined();
     if (!response) {
       throw new Error("Expected locale page proxy response");
