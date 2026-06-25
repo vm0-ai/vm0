@@ -146,28 +146,11 @@ pub(super) struct DisconnectOutcome {
 }
 
 impl DisconnectOutcome {
-    fn new(device_index: u32, result: Result<()>) -> Self {
-        Self {
-            device_index,
-            lease: None,
-            result: Some(result),
-        }
-    }
-
     fn with_lease(device_index: u32, lease: DeferredLease, result: Result<()>) -> Self {
         Self {
             device_index,
             lease: Some(lease),
             result: Some(result),
-        }
-    }
-
-    pub(super) fn into_result(mut self) -> Result<()> {
-        match self.result.take() {
-            Some(result) => result,
-            None => Err(error::NbdCowError::Io(std::io::Error::other(
-                "disconnect outcome consumed twice",
-            ))),
         }
     }
 
@@ -202,14 +185,6 @@ impl Drop for DisconnectOutcome {
     }
 }
 
-pub(super) async fn disconnect_device_critical_section(device_index: u32) -> Result<()> {
-    run_netlink_critical_section("NBD disconnect", move || {
-        DisconnectOutcome::new(device_index, netlink::disconnect(device_index))
-    })
-    .await?
-    .into_result()
-}
-
 pub(super) async fn disconnect_device_with_lease_critical_section(
     device_index: u32,
     pool: pool::DevicePoolHandle,
@@ -224,34 +199,6 @@ pub(super) async fn disconnect_device_with_lease_critical_section(
         )
     })
     .await
-}
-
-pub(super) struct OwnedDisconnectOutcome {
-    lease: DeferredLease,
-    disconnected: Option<bool>,
-}
-
-impl OwnedDisconnectOutcome {
-    fn new(lease: DeferredLease, disconnected: bool) -> Self {
-        Self {
-            lease,
-            disconnected: Some(disconnected),
-        }
-    }
-
-    pub(super) fn into_parts(mut self) -> Result<(pool::DeviceLease, bool)> {
-        let disconnected = self.disconnected.take().ok_or_else(|| {
-            error::NbdCowError::Io(std::io::Error::other(
-                "owned disconnect outcome consumed twice",
-            ))
-        })?;
-        let lease = self.lease.take().ok_or_else(|| {
-            error::NbdCowError::Io(std::io::Error::other(
-                "owned disconnect outcome lease consumed twice",
-            ))
-        })?;
-        Ok((lease, disconnected))
-    }
 }
 
 pub(super) struct OwnedDisconnectResultOutcome {
@@ -284,15 +231,6 @@ impl OwnedDisconnectResultOutcome {
     }
 }
 
-pub(super) async fn disconnect_connected_if_owned_critical_section(
-    connected: ConnectedDevice,
-) -> Result<bool> {
-    run_netlink_critical_section("owned NBD disconnect", move || {
-        disconnect_connected_if_owned(connected)
-    })
-    .await
-}
-
 pub(super) async fn disconnect_connected_if_owned_result_critical_section(
     connected: ConnectedDevice,
 ) -> Result<OwnedDisconnectState> {
@@ -317,18 +255,6 @@ pub(super) async fn disconnect_connected_if_owned_result_with_lease_critical_sec
                 netlink::disconnect,
             ),
         )
-    })
-    .await
-}
-
-pub(super) async fn disconnect_connected_if_owned_with_lease_critical_section(
-    connected: ConnectedDevice,
-    pool: pool::DevicePoolHandle,
-    lease: pool::DeviceLease,
-) -> Result<OwnedDisconnectOutcome> {
-    let deferred_lease = DeferredLease::new(pool, lease);
-    run_netlink_critical_section("owned NBD disconnect", move || {
-        OwnedDisconnectOutcome::new(deferred_lease, disconnect_connected_if_owned(connected))
     })
     .await
 }
