@@ -99,7 +99,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self.visit(default)
-        self._visit_scoped_body(node.body, _argument_names(node.args))
+        self._visit_scoped_body(node.body, _argument_names(node.args) | {node.name})
+        self._metadata_aliases.discard(node.name)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         for decorator in node.decorator_list:
@@ -107,7 +108,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self.visit(default)
-        self._visit_scoped_body(node.body, _argument_names(node.args))
+        self._visit_scoped_body(node.body, _argument_names(node.args) | {node.name})
+        self._metadata_aliases.discard(node.name)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for decorator in node.decorator_list:
@@ -117,6 +119,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for keyword in node.keywords:
             self.visit(keyword)
         self._visit_scoped_body(node.body)
+        self._metadata_aliases.discard(node.name)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if any(_is_metadata_attribute(target) for target in node.targets):
@@ -127,8 +130,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if _is_metadata_attribute(node.target):
             self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
-        if isinstance(node.target, ast.Name):
-            if node.value is not None and self._is_metadata_reference(node.value):
+        if node.value is not None and isinstance(node.target, ast.Name):
+            if self._is_metadata_reference(node.value):
                 self._metadata_aliases.add(node.target.id)
             else:
                 self._metadata_aliases.discard(node.target.id)
@@ -203,14 +206,25 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
 
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self._metadata_aliases.discard(alias.asname or alias.name.split(".", maxsplit=1)[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name == "*":
+                self._metadata_aliases.clear()
+            else:
+                self._metadata_aliases.discard(alias.asname or alias.name)
+
     def _update_aliases_from_assign(self, node: ast.Assign) -> None:
         is_metadata_alias = self._is_metadata_reference(node.value)
         for target in node.targets:
+            if is_metadata_alias and isinstance(target, ast.Name):
+                self._metadata_aliases.add(target.id)
+                continue
             for name in _target_names(target):
-                if is_metadata_alias:
-                    self._metadata_aliases.add(name)
-                else:
-                    self._metadata_aliases.discard(name)
+                self._metadata_aliases.discard(name)
 
     def _discard_alias_target(self, target: ast.AST | None) -> None:
         for name in _target_names(target):
@@ -324,12 +338,15 @@ def nested_alias():
     inner_meta = flow.metadata
     def uses_outer_alias():
         inner_meta["auth_cache_hit"] = False
+annotated_meta = flow.metadata
+annotated_meta: dict[str, object]
+annotated_meta["auth_url_rewrite"] = True
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 25
+    assert len(violations) == 26
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -351,6 +368,18 @@ for meta in [{"firewall_name": "external"}]:
     value = meta["firewall_name"]
 with context() as meta:
     value = meta["firewall_action"]
+def meta():
+    return None
+value = meta["vm_run_id"]
+class meta:
+    pass
+value = meta["vm_run_id"]
+import json as meta
+value = meta["vm_run_id"]
+from json import dumps as meta
+value = meta["vm_run_id"]
+meta, other = flow.metadata
+value = meta["vm_run_id"]
 """
     )
 
