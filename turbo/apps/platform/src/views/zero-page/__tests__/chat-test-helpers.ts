@@ -1,4 +1,6 @@
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { expect } from "vitest";
 import {
   createChatMessage,
   createChatRun,
@@ -153,6 +155,33 @@ export async function sendMessageInUI(
 ): Promise<void> {
   await fill(textarea, text);
   await user.keyboard("{Enter}");
+}
+
+export function activeRunTextarea(): Promise<HTMLTextAreaElement> {
+  return waitFor(() => {
+    return screen.getByPlaceholderText(
+      /Type your next message/,
+    ) as HTMLTextAreaElement;
+  });
+}
+
+export async function sendQueuedMessage(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+): Promise<void> {
+  const textarea = await activeRunTextarea();
+  await fill(textarea, text);
+  await user.keyboard("{Enter}");
+}
+
+export async function expectQueuedMessages(contents: string[]): Promise<void> {
+  await waitFor(() => {
+    const queuedMessages = screen.getAllByLabelText("Queued message");
+    expect(queuedMessages).toHaveLength(contents.length);
+    for (const [index, content] of contents.entries()) {
+      expect(queuedMessages[index]).toHaveTextContent(content);
+    }
+  });
 }
 
 interface ThreadListItem {
