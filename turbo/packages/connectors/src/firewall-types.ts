@@ -163,6 +163,21 @@ export type NetworkPolicies = z.infer<typeof networkPoliciesSchema>;
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
+/**
+ * Extract the union of permission names from a firewall config object.
+ * Requires the config to be declared with `as const satisfies FirewallConfig`
+ * so that permission name strings are preserved as literal types.
+ */
+export type PermissionNamesOf<T extends FirewallConfig> =
+  T["apis"][number] extends infer Api
+    ? Api extends { readonly permissions?: infer P }
+      ? P extends ReadonlyArray<{ readonly name: infer N }>
+        ? N extends string
+          ? N
+          : never
+        : never
+      : never
+    : never;
 export type Firewall = z.infer<typeof firewallSchema>;
 export type Firewalls = z.infer<typeof firewallsSchema>;
 export type ExecutionFirewallBuiltinEntry = z.infer<

@@ -138,9 +138,25 @@ function requireSpecifiers(source: string): string[] {
   });
 }
 
+function importTypeSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      const specifier = stringLiteralText(node.argument.literal);
+      if (specifier !== null) {
+        specifiers.push(specifier);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parseSource(source));
+  return specifiers;
+}
+
 function moduleSpecifiers(source: string): string[] {
   return [
     ...staticModuleSpecifiers(source, { includeTypeOnly: true }),
+    ...importTypeSpecifiers(source),
     ...dynamicImportSpecifiers(source),
     ...requireSpecifiers(source),
   ];
@@ -230,6 +246,50 @@ function expectNoGeneratedRuntimeImports(source: string): void {
       /^\.{1,2}\/(?:[^/]+\/)*[a-z0-9][a-z0-9-]*\.generated$/,
     );
   }
+}
+
+function isEagerRegistryIndexSpecifier(
+  sourceFilePath: string,
+  specifier: string,
+): boolean {
+  if (
+    /^@vm0\/connectors\/firewalls(?:\/(?:index(?:\.(?:d\.)?[cm]?[jt]sx?)?)?)?$/.test(
+      specifier,
+    )
+  ) {
+    return true;
+  }
+
+  if (!specifier.startsWith(".")) {
+    return false;
+  }
+
+  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
+  const resolvedSpecifier = path.resolve(
+    path.dirname(sourceFilePath),
+    specifier,
+  );
+  const relativeSpecifier = path.relative(firewallsDir, resolvedSpecifier);
+  return (
+    relativeSpecifier === "" ||
+    /^index(?:\.(?:d\.)?[cm]?[jt]sx?)?$/.test(relativeSpecifier)
+  );
+}
+
+function generatedFirewallSourceFiles(): string[] {
+  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
+  return fs
+    .readdirSync(firewallsDir)
+    .filter((fileName) => {
+      return (
+        fileName.endsWith(".generated.ts") &&
+        fileName !== "runtime-loader.generated.ts"
+      );
+    })
+    .map((fileName) => {
+      return path.join(firewallsDir, fileName);
+    })
+    .sort(compareStrings);
 }
 
 describe("firewall runtime loader", () => {
@@ -375,6 +435,28 @@ describe("firewall runtime loader", () => {
         "permissionGrantsToFirewallPolicies",
       ].sort(compareStrings),
     );
+  });
+
+  it("keeps generated firewall configs independent from the eager registry index", () => {
+    const offenders: string[] = [];
+    const generatedFiles = generatedFirewallSourceFiles();
+
+    expect(generatedFiles.length).toBeGreaterThan(0);
+    for (const filePath of generatedFiles) {
+      const source = fs.readFileSync(filePath, "utf-8");
+      const eagerIndexSpecifiers = moduleSpecifiers(source).filter(
+        (specifier) => {
+          return isEagerRegistryIndexSpecifier(filePath, specifier);
+        },
+      );
+      if (eagerIndexSpecifiers.length > 0) {
+        offenders.push(
+          `${path.basename(filePath)}: ${eagerIndexSpecifiers.join(", ")}`,
+        );
+      }
+    }
+
+    expect(offenders).toStrictEqual([]);
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

@@ -457,8 +457,7 @@ export function renderGoogleManifestFirewall<Kind extends string>({
   const lines: string[] = [
     ...headerLines,
     "",
-    'import type { FirewallConfig, FirewallPolicyValue } from "../firewall-types";',
-    'import type { PermissionNamesOf } from "./index";',
+    'import type { FirewallConfig, FirewallPolicyValue, PermissionNamesOf } from "../firewall-types";',
     "",
     `export const ${firewallVarName} = {`,
     `  name: "${escapeString(firewallName)}",`,
