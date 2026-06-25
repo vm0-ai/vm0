@@ -299,8 +299,8 @@ def fake_firewall_headers():
     Dispatcher tests that want to verify ``mitm_addon.request`` routed to
     ``handle_firewall_request`` should not patch the handler itself (that was
     the Phase-3-forbidden pattern). Instead they patch the auth-service
-    boundary behind ``get_firewall_headers`` and assert on
-    ``flow.metadata["firewall_*"]`` populated by
+    boundary behind ``get_firewall_headers`` and assert on shared firewall
+    metadata keys populated by
     ``_prepare_firewall_metadata`` at the start of the real handler, before
     auth resolution begins.
 

@@ -9,6 +9,7 @@ import pytest
 
 import auth
 import auth_base_forwarder as forwarder
+import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
@@ -83,8 +84,8 @@ class TestAuthBaseUrlRewriteSafety:
         assert mock_forward.call_count == 1
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert "X-Custom" not in flow.request.headers
         assert "api_key" not in flow.request.query
@@ -120,7 +121,7 @@ class TestAuthBaseUrlRewriteSafety:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
 
         with (
             fake_forwarder_upstream(addresses=("127.0.0.1",)) as upstream,
@@ -142,13 +143,13 @@ class TestAuthBaseUrlRewriteSafety:
         assert body["base"] == allow.api_entry["base"]
         assert "connectors" not in body
 
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-        assert "auth_url_rewrite" not in flow.metadata
-        assert "auth_resolved_secrets" not in flow.metadata
-        assert "auth_refreshed_connectors" not in flow.metadata
-        assert "auth_refreshed_secrets" not in flow.metadata
-        assert "auth_cache_hit" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_CONNECTORS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_CACHE_HIT not in flow.metadata
 
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert flow.request.path == "/hook?client=visible"
@@ -197,7 +198,7 @@ class TestAuthBaseUrlRewriteSafety:
         assert mock_forward.call_count == 0
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
         assert "super-secret-token" not in flow.response.text
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert "X-Custom" not in flow.request.headers
@@ -230,7 +231,7 @@ class TestAuthBaseUrlRewriteSafety:
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert "super-secret-token" not in flow.response.text
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
@@ -265,8 +266,8 @@ class TestAuthBaseUrlRewriteSafety:
         assert mock_forward.call_count == 0
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert "super-secret-token" not in flow.response.text
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
@@ -313,7 +314,7 @@ class TestAuthBaseUrlRewriteSafety:
         assert mock_forward.call_count == 0
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
@@ -344,7 +345,7 @@ class TestAuthBaseUrlRewriteSafety:
         assert updated_url.scheme == original_url.scheme
         assert updated_url.netloc == original_url.netloc
         assert updated_url.path == original_url.path
-        assert "auth_url_rewrite" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["api_key"] == "resolved-key"
-        assert flow.metadata["auth_resolved_secrets"] == ["TOKEN", "API_KEY"]
+        assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == ["TOKEN", "API_KEY"]

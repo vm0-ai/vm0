@@ -109,7 +109,7 @@ async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_
     assert "PLACEHOLDER" not in authorization
     assert "Signature=placeholder" not in authorization
     assert flow.request.headers["x-amz-security-token"] == "real-session-token"
-    assert flow.metadata["auth_resolved_secrets"] == [
+    assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == [
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
         "AWS_SESSION_TOKEN",

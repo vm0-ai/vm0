@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import platform_api
 import usage
 from tests.jsonl_log_helpers import (
@@ -53,11 +54,11 @@ class TestUsageWebhookDelivery:
     @staticmethod
     def _model_flow(real_flow, tmp_path):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok"
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"tokens.input": 100}
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 100}
         return flow
 
     def test_post_webhook_does_not_follow_redirects(self, usage_webhook_server):
@@ -93,7 +94,10 @@ class TestUsageWebhookDelivery:
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["model_provider_usage"] = {"model": "claude-sonnet-4-6", "tokens.input": 100}
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 100,
+        }
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-1")
@@ -123,7 +127,8 @@ class TestUsageWebhookDelivery:
         ]
         uuid.UUID(body["events"][0]["idempotencyKey"])
         payload_bytes = len(json.dumps(body).encode())
-        log_entries = read_jsonl_entries_after_flush(Path(flow.metadata["vm_proxy_log_path"]))
+        log_path = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        log_entries = read_jsonl_entries_after_flush(log_path)
         webhook_entries = [entry for entry in log_entries if entry["type"] == "usage_event"]
         assert len(webhook_entries) == 2
         assert {entry["level"] for entry in webhook_entries} == {"info"}
@@ -223,7 +228,7 @@ class TestUsageWebhookDelivery:
     ):
         """Default max_retries=1 -> 2 total attempts before giving up."""
         flow = self._model_flow(real_flow, tmp_path)
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
         with (
             usage_webhook_api() as webhook,
@@ -550,7 +555,7 @@ class TestUsageWebhookDelivery:
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["model_provider_usage"] = {"tokens.input": 42}
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 42}
         usage.flush_usage_events(trigger="test")
         usage.webhook.usage_executor.shutdown(wait=True)
 

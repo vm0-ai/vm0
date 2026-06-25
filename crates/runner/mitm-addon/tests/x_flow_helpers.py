@@ -6,6 +6,7 @@ from pathlib import Path
 from mitmproxy import http
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 from tests.flow_helpers import header_map
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
@@ -52,9 +53,9 @@ def make_x_response_flow(
         request_body=request_body,
         request_encoding=request_encoding,
     )
-    flow.metadata["firewall_name"] = firewall_name
-    flow.metadata["firewall_billable"] = firewall_billable
-    flow.metadata["original_url"] = (
+    flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
         original_url if original_url is not None else x_original_url(path)
     )
     response_headers = {"content-type": content_type}
@@ -90,10 +91,10 @@ def make_x_usage_flow(
         request_body=request_body,
         request_encoding=request_encoding,
     )
-    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-    flow.metadata["vm_sandbox_token"] = "test-token"
-    flow.metadata["firewall_permission"] = permission
-    flow.metadata["firewall_rule_match"] = rule
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "test-token"
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = permission
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = rule
     set_response_stream_buffer(flow, body)
     return flow
 
@@ -122,13 +123,13 @@ def make_x_pipeline_flow(
         content_type=content_type,
         content_encoding=content_encoding,
     )
-    flow.metadata["vm_run_id"] = vm_run_id
-    flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-    flow.metadata["vm_sandbox_token"] = sandbox_value
-    flow.metadata["firewall_action"] = firewall_action
-    flow.metadata["firewall_permission"] = permission
-    flow.metadata["firewall_rule_match"] = rule
+    flow.metadata[metadata_keys.VM_RUN_ID] = vm_run_id
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = sandbox_value
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = permission
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = rule
     return flow
 
 

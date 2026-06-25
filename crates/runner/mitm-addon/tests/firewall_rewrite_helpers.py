@@ -2,6 +2,7 @@
 
 from urllib.parse import urlparse
 
+import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import make_allow
 
 
@@ -46,7 +47,7 @@ def _make_rewrite_inputs(
             request_body=request_body,
             request_headers=request_headers,
         )
-    flow.metadata["vm_run_id"] = "test-run"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
 
     auth_config = {"headers": {}, "base": "${{ secrets.WEBHOOK }}"}
     if auth_overrides:
