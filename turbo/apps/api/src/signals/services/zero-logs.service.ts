@@ -87,13 +87,16 @@ function normalizeTriggerSource(
 
 function buildCursorCondition(cursor: string): SQL | null {
   const separatorIndex = cursor.lastIndexOf("|");
-  if (separatorIndex <= 0) {
+  if (separatorIndex <= 0 || separatorIndex >= cursor.length - 1) {
     return null;
   }
 
   const cursorTime = cursor.slice(0, separatorIndex);
   const cursorId = cursor.slice(separatorIndex + 1);
   const cursorDate = new Date(cursorTime);
+  if (!Number.isFinite(cursorDate.getTime())) {
+    return null;
+  }
 
   return or(
     lt(agentRuns.createdAt, cursorDate),

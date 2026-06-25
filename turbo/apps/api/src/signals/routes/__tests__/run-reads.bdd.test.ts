@@ -3280,10 +3280,18 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       { limit: 1, cursor: "garbage" },
       [200],
     );
-    if (malformedCursor.status !== 200) {
-      throw new Error("Expected the malformed-cursor list to succeed");
-    }
+    mustOk(malformedCursor, "malformed cursor list");
     expect(malformedCursor.body.data[0]?.id).toBe(pageOne.body.data[0]?.id);
+
+    const malformedStructuredCursor = await reads.requestListLogs(
+      actor,
+      { limit: 1, cursor: "not-a-date|not-a-run-id" },
+      [200],
+    );
+    mustOk(malformedStructuredCursor, "malformed structured cursor list");
+    expect(malformedStructuredCursor.body.data[0]?.id).toBe(
+      pageOne.body.data[0]?.id,
+    );
 
     const agentOneRunIds = [webRun.runId, scheduleRun.body.runId].sort();
     const fuzzy = await reads.requestListLogs(
