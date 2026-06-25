@@ -50,12 +50,17 @@ function assistantMessage(params: {
 function group(
   role: "user" | "assistant",
   messages: EnrichedChatMessage[],
+  usage?: GroupedChatMessageGroup["usage"],
 ): GroupedChatMessageGroup {
-  return {
+  const result: GroupedChatMessageGroup = {
     beginMessageId: messages[0]!.id,
     role,
     messages,
   };
+  if (usage !== undefined) {
+    result.usage = usage;
+  }
+  return result;
 }
 
 function messageIds(groups: readonly GroupedChatMessageGroup[]): string[] {
@@ -64,6 +69,28 @@ function messageIds(groups: readonly GroupedChatMessageGroup[]): string[] {
       return message.id;
     });
   });
+}
+
+function usagePayload(params: {
+  readonly totalCredits: number;
+  readonly settledAt: string;
+  readonly kind: string;
+  readonly provider: string;
+}): NonNullable<GroupedChatMessageGroup["usage"]> {
+  return {
+    version: 1,
+    totalCredits: params.totalCredits,
+    settledAt: params.settledAt,
+    breakdown: [
+      {
+        kind: params.kind,
+        credits: params.totalCredits,
+        providers: [
+          { provider: params.provider, credits: params.totalCredits },
+        ],
+      },
+    ],
+  };
 }
 
 function assistantRunGroups(params: {
@@ -113,6 +140,64 @@ describe("buildRunGroupFolding", () => {
       "u2",
       "a2",
     ]);
+  });
+
+  it("rolls up usage from folded runs onto the latest assistant group", () => {
+    const groups: GroupedChatMessageGroup[] = [
+      group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 10,
+          settledAt: "2026-06-24T00:00:01.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+      group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 20,
+          settledAt: "2026-06-24T00:00:02.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+      group("user", [userMessage({ id: "u3", runId: "r3", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a3", runId: "r3", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 30,
+          settledAt: "2026-06-24T00:00:03.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+    ];
+
+    const folding = buildRunGroupFolding(groups);
+
+    expect(folding).not.toBeNull();
+    expect(messageIds(folding!.visibleGroups)).toStrictEqual(["u3", "a3"]);
+    const latestAssistantGroup = folding!.visibleGroups.find((item) => {
+      return item.beginMessageId === "a3";
+    });
+    expect(latestAssistantGroup?.usage).toStrictEqual({
+      version: 1,
+      totalCredits: 60,
+      settledAt: "2026-06-24T00:00:03.000Z",
+      breakdown: [
+        {
+          kind: "connector",
+          credits: 60,
+          providers: [{ provider: "github", credits: 60 }],
+        },
+      ],
+    });
   });
 
   it("does not fold runs separated by a normal message", () => {
