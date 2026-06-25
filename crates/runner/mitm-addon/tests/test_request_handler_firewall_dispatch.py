@@ -72,9 +72,9 @@ async def test_firewall_match_calls_handler(
 
     # Dispatcher routed to the real handle_firewall_request, which writes
     # firewall allow metadata into flow.metadata up front.
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
-    assert flow.metadata["firewall_permission"] == "full-access"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
 
 
 async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
@@ -205,8 +205,8 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     # handle_firewall_request is reached.
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     body = json.loads(flow.response.content)
     assert body["error"] == "permission_denied"
     assert body["method"] == "GET"
@@ -355,7 +355,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
 
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     body = json.loads(flow.response.content)
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
@@ -404,7 +404,7 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
 
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     body = json.loads(flow.response.content)
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
@@ -504,11 +504,11 @@ async def test_firewall_permission_allows_matched(
 
     # Dispatcher routed to the real handle_firewall_request, which writes
     # firewall allow metadata into flow.metadata up front.
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
-    assert flow.metadata["firewall_permission"] == "read-repos"
-    assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
-    assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "read-repos"
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == "GET /repos/{owner}/{repo}"
+    assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"owner": "octocat", "repo": "hello"}
 
 
 @pytest.mark.parametrize(
@@ -1039,12 +1039,12 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_base"] == "https://api-{region}.example.com/v1"
-    assert flow.metadata["firewall_name"] == "example"
-    assert flow.metadata["firewall_permission"] == ""
-    assert flow.metadata["firewall_rule_match"] == ""
-    assert flow.metadata["firewall_params"] == {"region": "us"}
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api-{region}.example.com/v1"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"region": "us"}
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -1095,18 +1095,18 @@ async def test_browser_passthrough_skips_firewall_auth_injection(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
-    assert "firewall_permission" not in flow.metadata
-    assert "firewall_rule_match" not in flow.metadata
-    assert "firewall_params" not in flow.metadata
-    assert "firewall_api_id" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_PERMISSION not in flow.metadata
+    assert metadata_keys.FIREWALL_RULE_MATCH not in flow.metadata
+    assert metadata_keys.FIREWALL_PARAMS not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
     assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
-    assert "auth_resolved_secrets" not in flow.metadata
-    assert "auth_url_rewrite" not in flow.metadata
+    assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="browser-passthrough")
     assert_pending(
         pending_path,
@@ -1167,9 +1167,9 @@ async def test_non_browser_firewall_match_still_injects_auth(
     mock_headers.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer x"
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
-    assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.stripe.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "stripe"
 
 
 async def test_browser_passthrough_skips_denied_unknown_policy_match(
@@ -1216,11 +1216,11 @@ async def test_browser_passthrough_skips_denied_unknown_policy_match(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
 
 
 async def test_browser_passthrough_skips_denied_permission_match(
@@ -1273,12 +1273,12 @@ async def test_browser_passthrough_skips_denied_permission_match(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
-    assert "firewall_api_id" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
 
     flow.response = mitm_addon.http.Response.make(200)
     mitm_addon.response(flow)
@@ -1356,9 +1356,9 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     mock_headers.assert_not_called()
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
     assert "Authorization" not in flow.request.headers
     body = json.loads(flow.response.content)
     assert body["error"] == "permission_denied"
@@ -1421,9 +1421,9 @@ async def test_browser_passthrough_skips_unsafe_path_firewall_match(
 
     mock_headers.assert_not_called()
     assert flow.response is None
-    assert flow.metadata["browser_user_agent"] is True
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
     assert "Authorization" not in flow.request.headers

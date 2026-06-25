@@ -57,7 +57,7 @@ def test_x_json_parse_error_on_write_does_not_emit_lost_visibility_log(
         rule="POST /2/tweets",
     )
     flow.request.method = "POST"
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": "incomplete json",
@@ -354,7 +354,9 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         request_body=b"not gzip request content",
         request_encoding="gzip",
     )
-    flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    )
 
     # The billing payload cannot prove this negative side effect: the decoder
     # fails closed, so a regression that decodes non-refinement request bodies

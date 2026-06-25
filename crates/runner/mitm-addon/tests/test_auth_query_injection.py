@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import auth
+import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import make_allow
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 
@@ -19,7 +20,7 @@ def make_query_inputs(
     match_overrides=None,
 ):
     flow = real_flow(with_response=False, host=host, path=path)
-    flow.metadata["vm_run_id"] = "test-run"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
     auth_config = {
         "headers": {},
         "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"},
@@ -91,7 +92,7 @@ class TestAuthQueryInjection:
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
-        assert "auth_url_rewrite" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
         assert flow.request.query["empty_auth"] == ""
         assert flow.request.query["space"] == "a b"
@@ -175,7 +176,7 @@ class TestAuthQueryInjection:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         # Verify the forwarded URL contains the auth.query params
         call_args = mock_forward.call_args
         forwarded_url = call_args[0][0]
@@ -280,7 +281,7 @@ class TestAuthQueryInjection:
     async def test_no_query_injection_when_absent(self, real_flow, mitm_ctx):
         """No query modification when auth.query is not present."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},

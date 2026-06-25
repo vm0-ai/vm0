@@ -136,14 +136,17 @@ metadata semantics, while still letting the test seed metadata for later hook
 phases:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=True, host="api.github.com", path="/repos")
     flow.metadata.update(
         {
-            "vm_run_id": "run-abc-123",
-            "vm_network_log_path": str(tmp_path / "network.jsonl"),
-            "original_url": "https://api.github.com/repos",
-            "firewall_action": "ALLOW",
+            metadata_keys.VM_RUN_ID: "run-abc-123",
+            metadata_keys.VM_NETWORK_LOG_PATH: str(tmp_path / "network.jsonl"),
+            metadata_keys.ORIGINAL_URL: "https://api.github.com/repos",
+            metadata_keys.FIREWALL_ACTION: "ALLOW",
         }
     )
 
@@ -177,6 +180,9 @@ shared `fake_firewall_headers` fixture to stub the auth-service boundary while
 still running the real dispatcher and firewall handler:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 async def test_firewall_request_injects_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
@@ -190,7 +196,7 @@ async def test_firewall_request_injects_auth(
         await mitm_addon.request(flow)
 
     assert flow.request.headers["Authorization"] == "Bearer real-token"
-    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 ```
 
 Avoid patching internal handlers only to prove they were called. Assert the flow
@@ -202,10 +208,13 @@ hook path.
 Check flow metadata and response after handler execution:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 # Service auth injected
 assert flow.request.headers["Authorization"] == "Bearer real-token"
-assert flow.metadata["firewall_action"] == "ALLOW"
-assert flow.metadata["firewall_base"] == "https://api.github.com"
+assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
 ```
 
 ### Shared Flow Metadata Keys

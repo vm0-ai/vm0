@@ -52,9 +52,9 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
     assert body["error"] == "authority_mismatch"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "authority_mismatch"
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
         "url": expected_original_url,
         "host": "attacker.example.com",
@@ -88,7 +88,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert flow.response is not None
     assert flow.response.status_code == 403
     auth_fetch.assert_not_called()
-    assert flow.metadata["original_url"] == raw_url
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
     with mitm_ctx():
@@ -161,11 +161,11 @@ async def test_matching_sni_and_host_allows_firewall_auth(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
-    assert flow.metadata["firewall_permission"] == "full-access"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
     assert flow.request.headers["Authorization"] == "Bearer x"
-    assert flow.metadata["original_url"] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
         "url": "https://api.github.com/repos",
         "host": "api.github.com",
@@ -196,8 +196,8 @@ async def test_pseudo_authority_without_host_allows_firewall_auth(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["original_url"] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -229,9 +229,9 @@ async def test_pseudo_authority_takes_precedence_over_host_header(
     assert body["error"] == "authority_mismatch"
     assert body["sni"] == "api.github.com"
     assert body["host_header"] == "attacker.example.com"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "authority_mismatch"
-    assert flow.metadata["original_url"] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -254,7 +254,7 @@ async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
     assert body["error"] == "authority_mismatch"
-    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
 
 
 async def test_rejects_duplicate_host_authority_before_firewall_auth(
@@ -285,9 +285,9 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
     assert body["error"] == "invalid_authority"
     assert body["sni"] == "api.github.com"
     assert body["host_header"] == "api.github.com, attacker.example.com"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_authority"
-    assert flow.metadata["original_url"] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -313,7 +313,7 @@ async def test_accepts_equivalent_host_authority_default_https_port(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -351,9 +351,9 @@ async def test_rejects_noncanonical_ipv4_host_authority_before_firewall_auth(
     assert body["error"] == "invalid_authority"
     assert body["sni"] == "127.0.0.1"
     assert body["host_header"] == host_header
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_authority"
-    assert flow.metadata["original_url"] == "https://127.0.0.1/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://127.0.0.1/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -388,8 +388,8 @@ async def test_accepts_matching_non_default_host_authority_port(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://api.github.com:8443"
-    assert flow.metadata["original_url"] == "https://api.github.com:8443/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com:8443"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com:8443/repos"
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -418,8 +418,8 @@ async def test_accepts_matching_ipv6_host_authority(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://[2001:db8::1]:8443"
-    assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://[2001:db8::1]:8443"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://[2001:db8::1]:8443/repos"
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -447,8 +447,8 @@ async def test_accepts_canonical_ipv6_host_authority(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == "https://[2001:db8::1]:8443"
-    assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://[2001:db8::1]:8443"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://[2001:db8::1]:8443/repos"
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -483,9 +483,9 @@ async def test_rejects_unbracketed_ipv6_host_authority(
     assert body["request_host"] == "2001:db8::1"
     assert body["host_header"] == "2001:db8::1"
     assert body["request_port"] == 8443
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_authority"
-    assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://[2001:db8::1]:8443/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -528,9 +528,9 @@ async def test_rejects_host_authority_port_mismatch(
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
     assert body["error"] == "authority_port_mismatch"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "authority_port_mismatch"
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_port_mismatch"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     auth_fetch.assert_not_called()
 
 
@@ -708,8 +708,8 @@ async def test_accepts_authority_host_normalization_equivalence(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_base"] == expected_firewall_base
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == expected_firewall_base
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -741,9 +741,9 @@ async def test_rejects_idna_compatibility_sni_alias_before_firewall_auth(
     body = json.loads(flow.response.content)
     assert body["error"] == "invalid_sni"
     assert body["sni"] == "\uff21.example"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_sni"
-    assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_sni"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://203.0.113.10/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -776,9 +776,9 @@ async def test_rejects_multiple_trailing_dot_sni_before_firewall_auth(
     body = json.loads(flow.response.content)
     assert body["error"] == "invalid_sni"
     assert body["sni"] == "api.github.com.."
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_sni"
-    assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_sni"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://203.0.113.10/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -812,9 +812,9 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
     assert body["error"] == "invalid_authority"
     assert body["sni"] == "a.example"
     assert body["host_header"] == "\uff21.example"
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_authority"
-    assert flow.metadata["original_url"] == "https://a.example/repos"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://a.example/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -932,9 +932,9 @@ async def test_rejects_invalid_host_authority_before_firewall_auth(
     assert body["request_host"] == "203.0.113.10"
     assert body["host_header"] == host_header
     assert body["request_port"] == request_port
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == expected_error
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -982,9 +982,9 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
     body = json.loads(flow.response.content)
     assert body["error"] == "missing_sni"
     assert body["sni"] == expected_sni
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "missing_sni"
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "missing_sni"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     auth_fetch.assert_not_called()
 
 
@@ -1158,9 +1158,9 @@ async def test_rejects_invalid_https_sni_before_firewall_auth(
     assert body["request_host"] == request_host
     assert body["host_header"] == "api.github.com"
     assert body["request_port"] == request_port
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_error"] == "invalid_sni"
-    assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_sni"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "authority_validation"
     assert proxy_log_entry["reason"] == "invalid_sni"
@@ -1193,9 +1193,9 @@ async def test_http_host_spoof_does_not_match_domain_firewall(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["original_url"] == "http://203.0.113.10/repos"
-    assert "firewall_base" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "http://203.0.113.10/repos"
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -1226,10 +1226,10 @@ async def test_http_host_spoof_does_not_trigger_vm0_api_auto_allow(
     auth_fetch.assert_not_called()
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_base"] == "http://203.0.113.10/api/runs"
-    assert flow.metadata["firewall_action"] == "BLOCK"
-    assert flow.metadata["firewall_error"] == "insecure_transport"
-    assert flow.metadata["original_url"] == "http://203.0.113.10/api/runs/heartbeat"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "http://203.0.113.10/api/runs"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "insecure_transport"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "http://203.0.113.10/api/runs/heartbeat"
     assert "Authorization" not in flow.request.headers
     body = json.loads(flow.response.content)
     assert body["error"] == "insecure_transport"

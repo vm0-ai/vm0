@@ -205,11 +205,11 @@ class TestErrorHandler:
 
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
         # Matches the request handler's invariant: original_url is set
         # alongside vm_run_id.
-        flow.metadata["original_url"] = "https://example.com/"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
         flow.error = Error("connection reset")
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
@@ -221,13 +221,13 @@ class TestErrorHandler:
     def test_error_releases_unfinished_json_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """Connection errors should drop unfinished JSON parser closures."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -241,17 +241,17 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     def test_error_without_run_id_releases_streaming_state(self, real_flow, mitm_ctx):
         """Early-returning error flows should still drop response parser closures."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "x"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -266,8 +266,8 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
     def test_error_without_run_id_releases_request_stream_state(self, real_flow, mitm_ctx):
@@ -291,16 +291,16 @@ class TestErrorHandler:
     ):
         """Interrupted non-stream JSON must not be billed via request-hint fallback."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["vm_sandbox_token"] = "test-token"
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets?ids=1,2,3"
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["firewall_permission"] = "tweet.read"
-        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "test-token"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets?ids=1,2,3"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "x"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.FIREWALL_PERMISSION] = "tweet.read"
+        flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -315,7 +315,7 @@ class TestErrorHandler:
 
         assert webhook.request_count == 0
         assert flow.response.stream is False
-        assert "stream_buffer" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
     def test_skips_log_when_no_metadata(self, real_flow, mitm_ctx):
@@ -330,10 +330,10 @@ class TestErrorHandler:
         flow.request.method = "POST"
         log_path = str(tmp_path / "network.jsonl")
         raw_url = "https://slack.com/api/chat.postMessage?token=secret#frag"
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = raw_url
-        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 1.5
 
@@ -353,7 +353,7 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
-        assert flow.metadata["original_url"] == raw_url
+        assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
 
     async def test_request_classified_error_logs_network_target(
         self, registry_file, real_flow, mitm_ctx, headers
@@ -388,10 +388,10 @@ class TestErrorHandler:
     ):
         flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://invalid.example.com:bad/path"
-        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://invalid.example.com:bad/path"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
 
         with mitm_ctx():
@@ -415,10 +415,10 @@ class TestErrorHandler:
         log_path = str(tmp_path / "network.jsonl")
         body = b"abcdef"
 
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://api.example.com/"
-        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
 
         request_streaming.configure_request_stream(flow)
@@ -440,14 +440,14 @@ class TestErrorHandler:
     def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_base"] = "https://slack.com/api"
-        flow.metadata["firewall_name"] = "slack"
-        flow.metadata["firewall_permission"] = "chat:write"
-        flow.metadata["firewall_rule_match"] = "POST /chat.postMessage"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/chat.postMessage"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://slack.com/api"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "slack"
+        flow.metadata[metadata_keys.FIREWALL_PERMISSION] = "chat:write"
+        flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = "POST /chat.postMessage"
         flow.error = Error("timed out")
 
         with mitm_ctx():
@@ -465,10 +465,10 @@ class TestErrorHandler:
         flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
-        flow.metadata["original_url"] = "https://slack.com/api/test?api_key=secret#frag"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/test?api_key=secret#frag"
         flow.error = Error("connection reset by peer")
 
         mitm_addon.error(flow)
@@ -488,15 +488,15 @@ class TestErrorHandler:
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-int-002"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-002"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "tokens.input": 80,
         }

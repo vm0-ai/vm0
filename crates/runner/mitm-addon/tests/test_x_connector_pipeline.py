@@ -9,6 +9,7 @@ import brotli
 import pytest
 from mitmproxy.flow import Error
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
@@ -62,8 +63,8 @@ class TestXConnectorResponsePipeline:
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
@@ -90,7 +91,7 @@ class TestXConnectorResponsePipeline:
         by_category = {event["category"]: event["quantity"] for event in payloads}
         assert by_category == {"posts.read": 1, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
@@ -105,7 +106,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.responseheaders(flow)
 
         assert "connector_response_finish" not in flow.metadata
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
@@ -138,7 +139,7 @@ class TestXConnectorResponsePipeline:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -226,7 +227,7 @@ class TestXConnectorResponsePipeline:
         # 1. responseheaders - registers NDJSON parser
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
-        assert "x_ndjson_state" in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
         # 2. Stream chunks (including keep-alives and a mid-line split)
@@ -289,7 +290,7 @@ class TestXConnectorResponsePipeline:
                 b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n{"data":{"id":"2"}}\n'
             )[:-1]
         )
-        assert flow.metadata["x_ndjson_state"]["data_count"] == 2
+        assert flow.metadata[metadata_keys.X_NDJSON_STATE]["data_count"] == 2
         flow.error = Error("connection reset by peer")
 
         with usage_webhook_api() as webhook:
@@ -298,8 +299,8 @@ class TestXConnectorResponsePipeline:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
-        assert "x_ndjson_state" not in flow.metadata
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -315,7 +316,7 @@ class TestXConnectorResponsePipeline:
 
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
-        assert "x_ndjson_state" in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
         callback(
@@ -324,7 +325,7 @@ class TestXConnectorResponsePipeline:
             b'"tweets":{"id":"t1"},'
             b'"media":[{"media_key":"m1"}]}}\n'
         )
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
         assert state["data_count"] == 1
         assert state["includes"] == {"media": 1}
         assert state["lines_parsed"] == 1
@@ -357,7 +358,7 @@ class TestXConnectorResponsePipeline:
 
         callback(failed_line + b'\n{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
 
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
         assert state["lines_failed"] == 1
         assert state["lines_parsed"] == 1
         assert state["data_count"] == 1
@@ -389,7 +390,7 @@ class TestXConnectorResponsePipeline:
                 + b'":[{"id":"u"}]}}\n'
             )
         callback(b'{"data":{"id":"known"},"includes":{"users":[{"id":"user"}]}}\n')
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
         assert state["unknown_includes_overflow_count"] == 6
         assert state["includes"]["users"] == 1
 
@@ -430,7 +431,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -458,13 +459,13 @@ class TestXConnectorResponsePipeline:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * STREAM_BUFFER_LIMIT)
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -499,7 +500,7 @@ class TestXConnectorResponsePipeline:
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
-        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
@@ -515,7 +516,7 @@ class TestXConnectorErrorPipeline:
     ):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
-        flow.metadata["x_ndjson_state"] = {
+        flow.metadata[metadata_keys.X_NDJSON_STATE] = {
             "data_count": 23,
             "includes": {"users": 5},
             "lines_parsed": 23,
@@ -549,7 +550,7 @@ class TestXConnectorErrorPipeline:
         # 1. Register parser
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
-        assert "x_ndjson_state" in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
 
         # 2. Receive two complete tweets, then a partial third (cut off)
         callback(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')

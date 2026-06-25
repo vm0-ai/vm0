@@ -45,8 +45,8 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
-        assert flow.metadata["vm_run_id"] == "run-abc-123"
-        assert "vm_network_log_path" in flow.metadata
+        assert flow.metadata[metadata_keys.VM_RUN_ID] == "run-abc-123"
+        assert metadata_keys.VM_NETWORK_LOG_PATH in flow.metadata
         assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
     def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
@@ -58,7 +58,7 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
-        assert "vm_run_id" not in flow.metadata
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
 
     def test_skips_when_vm_not_registered(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="192.168.99.99")
@@ -68,7 +68,7 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
-        assert "vm_run_id" not in flow.metadata
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
 
     def test_registry_unavailable_kills_flow(self, registry_file, mitm_ctx, real_tcp_flow):
         registry.load_registry(str(registry_file))
@@ -81,7 +81,7 @@ class TestTcpStart:
         assert flow.error is not None
         assert flow.error.msg == Error.KILLED_MESSAGE
         assert not flow.live
-        assert "vm_run_id" not in flow.metadata
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
 
     def test_invalid_registered_vm_kills_flow(self, tmp_path, mitm_ctx, real_tcp_flow):
         registry_file = tmp_path / "registry.json"
@@ -94,15 +94,15 @@ class TestTcpStart:
         assert flow.error is not None
         assert flow.error.msg == Error.KILLED_MESSAGE
         assert not flow.live
-        assert "vm_run_id" not in flow.metadata
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
 class TestTcpLog:
     def test_logs_tcp_connection(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic() - 0.05
 
         with mitm_ctx():
@@ -123,8 +123,8 @@ class TestTcpLog:
     def test_logs_tcp_error(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
 
@@ -138,7 +138,7 @@ class TestTcpLog:
     def test_skips_when_no_run_id(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -149,8 +149,8 @@ class TestTcpLog:
     def test_handles_missing_server_addr(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.server_conn = None
 
@@ -164,8 +164,8 @@ class TestTcpLog:
     def test_handles_missing_start_time(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -183,8 +183,8 @@ class TestTcpLog:
         ]
         flow = real_tcp_flow(messages=messages)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -214,8 +214,8 @@ class TestTcpLog:
         ]
         flow = real_tcp_flow(messages=messages)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -237,8 +237,8 @@ class TestTcpLog:
         first_server = tcp.TCPMessage(False, b"first-server")
         flow = real_tcp_flow(messages=[first_client, first_server])
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -282,8 +282,8 @@ class TestTcpLog:
     def test_tcp_size_counter_saturates_at_network_log_max(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(messages=[tcp.TCPMessage(True, b"overflow")])
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[mitm_addon._TCP_REQUEST_SIZE] = mitm_addon._MAX_SAFE_NETWORK_LOG_SIZE - 1
 
         with mitm_ctx():
