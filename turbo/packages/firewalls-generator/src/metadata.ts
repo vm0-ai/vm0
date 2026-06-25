@@ -14,7 +14,7 @@ import type {
   FirewallPermissionMetadataPermission,
   FirewallPermissionSummaryMetadata,
 } from "../../connectors/src/firewall-metadata/types";
-import type { FirewallConnectorType } from "../../connectors/src/firewalls";
+import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
   generatedFirewallFileName,
   loadConnectorFirewallSourceSet,
@@ -559,7 +559,9 @@ function renderRuntimeLoaderFile(
     })
     .join("\n");
 
-  return `${generatedHeader()}import type { FirewallConfig } from "../firewall-types";
+  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-runtime/v1/.
+// Bump that URL version before shipping an incompatible runtime firewall module shape or import contract change.
+import type { FirewallConfig } from "../firewall-types";
 
 export const RUNTIME_FIREWALL_CONNECTOR_TYPES = [
 ${connectorTypes}
@@ -602,7 +604,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/connectors",
   );
-  const firewallsIndexFile = path.join(firewallsDir, "index.ts");
   const outputDir = path.resolve(
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
@@ -624,7 +625,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     await loadConnectorFirewallSourceSet({
       firewallsDir,
       connectorsDir,
-      firewallsIndexFile,
     });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
   const executionMetadata: Record<string, FirewallExecutionMetadata> = {};

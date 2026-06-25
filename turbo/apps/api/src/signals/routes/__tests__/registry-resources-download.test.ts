@@ -47,7 +47,7 @@ const PRIVATE_ARCHIVE_FIXTURES = [
   {
     id: "template:html-ppt-botane-organic",
     versionId:
-      "7438cf79bbf25501de0c7a91cc35a98e164e6e1e59c8e8571f0f2d4272a5158f",
+      "53e472431ba9954aacc845f1fb39b037a6cef64155de74b5730297864e1a0e11",
   },
   {
     id: "template:html-ppt-playful-launch",

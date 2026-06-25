@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.370.1](https://github.com/vm0-ai/vm0/compare/core-v8.370.0...core-v8.370.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* constrain presentation template imagery ([#18938](https://github.com/vm0-ai/vm0/issues/18938)) ([75c9003](https://github.com/vm0-ai/vm0/commit/75c9003900b875b9f3f467e37840cd6a179044d1))
+
+
+### Refactoring
+
+* move firewall registry to generator manifest ([#18930](https://github.com/vm0-ai/vm0/issues/18930)) ([2e4271b](https://github.com/vm0-ai/vm0/commit/2e4271b120828ac2ed0137e30e3ab9df5ea19f56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+
 ## [8.370.0](https://github.com/vm0-ai/vm0/compare/core-v8.369.1...core-v8.370.0) (2026-06-25)
 
 

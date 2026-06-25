@@ -15,7 +15,7 @@
 //! - [`pool`] for host-locked `/dev/nbdN` device claim allocation.
 //! - [`netlink`] for Linux NBD generic netlink setup and disconnect.
 //! - [`server`] for the in-process NBD dispatch loop.
-//! - [`protocol`] for NBD transmission protocol parsing and serialization.
+//! - an internal NBD transmission protocol parser and serializer.
 //! - [`error`] for crate error and result types.
 //!
 //! Call pooled-device finalizers when the device should be shut down cleanly.
@@ -28,7 +28,12 @@ pub mod device_lock;
 pub mod error;
 pub mod netlink;
 pub mod pool;
-pub mod protocol;
+#[path = "protocol.rs"]
+mod protocol_impl;
+/// Compatibility exports for protocol-related public error types.
+pub mod protocol {
+    pub use crate::error::ProtocolError;
+}
 pub mod server;
 
 pub use device::{

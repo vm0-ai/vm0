@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.491.1](https://github.com/vm0-ai/vm0/compare/app-v0.491.0...app-v0.491.1) (2026-06-25)
+
+
+### Refactoring
+
+* move firewall registry to generator manifest ([#18930](https://github.com/vm0-ai/vm0/issues/18930)) ([2e4271b](https://github.com/vm0-ai/vm0/commit/2e4271b120828ac2ed0137e30e3ab9df5ea19f56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+
 ## [0.491.0](https://github.com/vm0-ai/vm0/compare/app-v0.490.1...app-v0.491.0) (2026-06-25)
 
 

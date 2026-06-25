@@ -25,10 +25,7 @@ import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import {
-  recordSandboxOperation,
-  recordSandboxOperations,
-} from "../external/sandbox-op-log";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -40,6 +37,10 @@ import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
 const L = logger("Runners");
+
+type SandboxOperationAttrs = Parameters<
+  typeof recordSandboxOperations
+>[0][number];
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -304,7 +305,63 @@ function uniqueHeldCliAgentSessionIds(
   ];
 }
 
+function recordPollTimingMetrics(args: {
+  readonly runId: string;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly authType: RunnerAuthContext["type"];
+  readonly pollReason: string | undefined;
+  readonly queueCreatedAtMs: number;
+  readonly pollRequestStartedAtMs: number;
+  readonly pendingJobLookupStartedAtMs: number;
+  readonly pendingJobLookupFinishedAtMs: number;
+  readonly pollResponseAtMs: number;
+}): void {
+  const dimensions: Record<string, string> = {
+    runner_group: args.runnerGroup,
+    profile: args.profile,
+    auth_type: args.authType,
+  };
+  if (args.pollReason) {
+    dimensions.poll_reason = args.pollReason;
+  }
+
+  recordSandboxOperations([
+    {
+      sandboxType: "runner",
+      actionType: "runner_poll_pending_job_lookup",
+      durationMs: Math.max(
+        0,
+        args.pendingJobLookupFinishedAtMs - args.pendingJobLookupStartedAtMs,
+      ),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_poll_request_to_job_response",
+      durationMs: Math.max(
+        0,
+        args.pollResponseAtMs - args.pollRequestStartedAtMs,
+      ),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_queue_to_poll_response",
+      durationMs: Math.max(0, args.pollResponseAtMs - args.queueCreatedAtMs),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+  ]);
+}
+
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const pollRequestStartedAtMs = now();
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
   if (!auth) {
@@ -359,6 +416,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       : [runnerJobQueue.createdAt];
 
   const db = set(writeDb$);
+  const pendingJobLookupStartedAtMs = now();
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -368,6 +426,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
+      createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
@@ -375,10 +434,25 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .orderBy(...orderClauses)
     .limit(1);
   signal.throwIfAborted();
+  const pendingJobLookupFinishedAtMs = now();
 
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
+
+  const pollResponseAtMs = now();
+  recordPollTimingMetrics({
+    runId: pendingJob.runId,
+    runnerGroup: group,
+    profile: pendingJob.profile,
+    authType: auth.type,
+    pollReason: body.data.telemetry?.pollReason,
+    queueCreatedAtMs: pendingJob.createdAt.getTime(),
+    pollRequestStartedAtMs,
+    pendingJobLookupStartedAtMs,
+    pendingJobLookupFinishedAtMs,
+    pollResponseAtMs,
+  });
 
   return {
     status: 200 as const,
@@ -762,6 +836,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
     | {
         readonly jobDiscoveredToClaimRequestMs?: number;
         readonly localAdmissionToClaimRequestMs?: number;
+        readonly pollDueToJobDiscoveredMs?: number;
+        readonly pollHttpRequestMs?: number;
         readonly pollReason?: string;
       }
     | undefined;
@@ -799,6 +875,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
       args.telemetry?.jobDiscoveredToClaimRequestMs,
     localAdmissionToClaimRequestMs:
       args.telemetry?.localAdmissionToClaimRequestMs,
+    pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
+    pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
     claimRouteTiming: args.claimRouteTiming,
   });
@@ -817,6 +895,8 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollDueToJobDiscoveredMs: number | undefined;
+  readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
@@ -845,6 +925,8 @@ async function recordClaimTimingMetrics(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollDueToJobDiscoveredMs: number | undefined;
+  readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): Promise<void> {
@@ -857,47 +939,65 @@ async function recordClaimTimingMetrics(args: {
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_runner_queue",
-    args.apiToRunnerQueueMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "runner_queue_to_claim_request",
-    args.runnerQueueToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim_request",
-    args.apiToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim",
-    args.apiToClaimMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "claim_request_to_running",
-    args.claimRequestToRunningMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "job_discovered_to_claim_request",
-    args.jobDiscoveredToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "local_admission_to_claim_request",
-    args.localAdmissionToClaimRequestMs,
-    dimensions,
+  recordSandboxOperations(
+    [
+      claimTimingOperation(
+        args.runId,
+        "api_to_runner_queue",
+        args.apiToRunnerQueueMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_queue_to_claim_request",
+        args.runnerQueueToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim_request",
+        args.apiToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim",
+        args.apiToClaimMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "claim_request_to_running",
+        args.claimRequestToRunningMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "job_discovered_to_claim_request",
+        args.jobDiscoveredToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "local_admission_to_claim_request",
+        args.localAdmissionToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_due_to_job_discovered",
+        args.pollDueToJobDiscoveredMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_http_request",
+        args.pollHttpRequestMs,
+        dimensions,
+      ),
+    ].filter((operation): operation is SandboxOperationAttrs => {
+      return operation !== undefined;
+    }),
   );
   args.claimRouteTiming.flush({
     runId: args.runId,
@@ -908,23 +1008,23 @@ async function recordClaimTimingMetrics(args: {
   });
 }
 
-function recordClaimTimingOperation(
+function claimTimingOperation(
   runId: string,
   actionType: string,
   durationMs: number | undefined,
   dimensions: Record<string, string>,
-): void {
+): SandboxOperationAttrs | undefined {
   if (durationMs === undefined) {
-    return;
+    return undefined;
   }
-  recordSandboxOperation({
+  return {
     sandboxType: "runner",
     actionType,
     durationMs,
     success: true,
     runId,
     dimensions,
-  });
+  };
 }
 
 const scheduleClaimFailedSideEffects$ = command(

@@ -349,8 +349,8 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     steps:
       - uses: actions/checkout@v7
-      - name: Ensure only allowed connector firewall files are tracked
-        run: ./scripts/ensure-connector-firewalls-index-only.sh
+      - name: Ensure generated connector firewall files are untracked
+        run: ./scripts/ensure-generated-connector-firewalls-untracked.sh
 
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:

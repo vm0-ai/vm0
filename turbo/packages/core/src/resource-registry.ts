@@ -135,7 +135,7 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
   aplocoto: "28a6fbda2f740dbf1cffa52cc0b636746eaf6ebe95aa37d47568980a5564816f",
   botaneOrganic:
-    "25feaef1ffd584ae8c09a48826a05ca86696b3731085fa7d06fc12a52eb8ddb6",
+    "ebdb8b68e728915f98f84a44b577524aa427b2a0ca6ad52ac0b31865f286b44e",
   businessData:
     "229516a65ebd66d48c789bb626da24f96a8658d313c72229c0d2cabe262248f1",
   presentationDeckTools:
