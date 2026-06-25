@@ -2226,6 +2226,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
+    expect(claimRouteTimingEvents).toHaveLength(
+      CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
+    );
     const observedClaimRouteActionTypes = new Set(
       claimRouteTimingEvents.map((event) => {
         return event.op_type;
