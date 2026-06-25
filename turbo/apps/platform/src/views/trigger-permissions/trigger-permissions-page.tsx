@@ -238,6 +238,45 @@ function PermissionToggle({
   );
 }
 
+function hasDirtyTriggerPermissionOverride({
+  overrides,
+  savedPolicy,
+  connectorRef,
+  metadata,
+}: {
+  readonly overrides: Record<string, UnattendedTriggerPermissionAction>;
+  readonly savedPolicy: UnattendedTriggerPermissionPolicy | null;
+  readonly connectorRef: string;
+  readonly metadata: FirewallPermissionDetailMetadata;
+}): boolean {
+  return metadata.permissions.some((permission) => {
+    const override = overrides[permission.name];
+    if (override === undefined) {
+      return false;
+    }
+    return (
+      override !==
+      resolveTriggerPermissionAction(
+        savedPolicy,
+        connectorRef,
+        metadata,
+        permission.name,
+      )
+    );
+  });
+}
+
+function materializeTriggerPermissionPolicies(
+  metadata: FirewallPermissionDetailMetadata,
+  actionFor: (permission: string) => UnattendedTriggerPermissionAction,
+): Record<string, UnattendedTriggerPermissionAction> {
+  const policies: Record<string, UnattendedTriggerPermissionAction> = {};
+  for (const permission of metadata.permissions) {
+    policies[permission.name] = actionFor(permission.name);
+  }
+  return policies;
+}
+
 function ConnectorPermissionEditorCard({
   triggerId,
   connectorRef,
@@ -269,27 +308,29 @@ function ConnectorPermissionEditorCard({
   const actionFor = (permission: string): UnattendedTriggerPermissionAction => {
     return (
       overrides[permission] ??
-      resolveTriggerPermissionAction(savedPolicy, connectorRef, permission)
+      resolveTriggerPermissionAction(
+        savedPolicy,
+        connectorRef,
+        metadata,
+        permission,
+      )
     );
   };
 
-  const dirty = metadata.permissions.some((permission) => {
-    const override = overrides[permission.name];
-    if (override === undefined) {
-      return false;
-    }
-    return (
-      override !==
-      resolveTriggerPermissionAction(savedPolicy, connectorRef, permission.name)
-    );
+  const dirty = hasDirtyTriggerPermissionOverride({
+    overrides,
+    savedPolicy,
+    connectorRef,
+    metadata,
   });
 
   const handleSave = () => {
-    const policies: Record<string, UnattendedTriggerPermissionAction> = {};
-    for (const permission of metadata.permissions) {
-      policies[permission.name] = actionFor(permission.name);
-    }
-    const merged = mergeConnectorPolicy(savedPolicy, connectorRef, policies);
+    const merged = mergeConnectorPolicy(
+      savedPolicy,
+      connectorRef,
+      metadata,
+      materializeTriggerPermissionPolicies(metadata, actionFor),
+    );
     // After the save, `reloadWorkflows$` refetches the trigger; once its policy
     // reflects the merge, the local overrides match the saved state and `dirty`
     // collapses to false on its own — no explicit reset needed.
