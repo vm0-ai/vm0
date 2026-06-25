@@ -1503,11 +1503,11 @@ jobs:
               kill "$ALLOC_PID" 2>/dev/null || true
               wait "$ALLOC_PID" 2>/dev/null || true
             fi
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
             if [ -n "$SUBMIT_PID" ]; then
               kill "$SUBMIT_PID" 2>/dev/null || true
               wait "$SUBMIT_PID" 2>/dev/null || true
             fi
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
 
