@@ -301,8 +301,16 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
     });
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    const workflowsLink = queryAllByRoleFast("link", breadcrumb).find(
+      (link) => {
+        return link.textContent?.trim() === "Workflows";
+      },
+    );
+    expect(workflowsLink).toHaveAttribute("href", "/workflows");
+    expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
     expect(screen.getByLabelText("Instruction")).toHaveValue(
       "Gather CRM context before outreach.",
     );
@@ -362,7 +370,7 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
     });
     const createTriggerForm = screen.getByRole("form", {
       name: "Create Gmail new message trigger",
@@ -499,7 +507,7 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
     });
     click(screen.getByLabelText("Open config/settings.json"));
     click(screen.getByLabelText("Delete config/settings.json"));
@@ -526,7 +534,7 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
     });
 
     const input =
