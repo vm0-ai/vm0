@@ -110,7 +110,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "my-agent",
               matchedEvent: makeEvent(3, "Build failed: OOM killed"),
               contextBefore: [],
@@ -125,7 +125,7 @@ describe("logs search command", () => {
     await searchCommand.parseAsync(["node", "cli", "OOM"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345");
+    expect(logCalls).toContain("550e8400");
     expect(logCalls).toContain("my-agent");
     expect(logCalls).toContain("OOM killed");
   });
@@ -136,7 +136,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "my-agent",
               matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
               contextBefore: [],
@@ -161,7 +161,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "codex-agent",
               framework: "codex",
               matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
@@ -187,7 +187,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "future-agent",
               framework: "future-framework",
               matchedEvent: makeEvent(3, "Legacy parser fallback output"),
@@ -213,7 +213,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "codex-agent",
               framework: "codex",
               matchedEvent: makeCodexTurnFailedEvent(4, "Turn failed"),
@@ -397,7 +397,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "test-agent",
               matchedEvent: makeEvent(
                 5,
@@ -435,7 +435,7 @@ describe("logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "agent",
               matchedEvent: makeEvent(1, "match"),
               contextBefore: [],

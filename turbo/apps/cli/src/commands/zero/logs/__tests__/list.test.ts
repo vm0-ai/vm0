@@ -16,7 +16,7 @@ import chalk from "chalk";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
 const mockLogEntry = {
-  id: "abc12345-1234-1234-1234-123456789abc",
+  id: "550e8400-e29b-41d4-a716-446655440001",
   sessionId: null,
   agentId: AGENT_ID,
   displayName: "My Agent",
@@ -71,7 +71,7 @@ describe("zero logs list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345-1234-1234-1234-123456789abc");
+    expect(logCalls).toContain("550e8400-e29b-41d4-a716-446655440001");
     expect(logCalls).toContain("My Agent");
     expect(logCalls).toContain("completed");
     expect(logCalls).toContain("2026-04-01");

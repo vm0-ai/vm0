@@ -18,7 +18,7 @@ function stubResponse() {
   return HttpResponse.json({
     results: [
       {
-        runId: "abc12345-1234-1234-1234-123456789abc",
+        runId: "550e8400-e29b-41d4-a716-446655440001",
         agentName: "my-agent",
         matchedEvent: {
           sequenceNumber: 3,
@@ -134,7 +134,7 @@ describe("zero search --source logs parity with zero logs search", () => {
       "--agent",
       AGENT_ID,
       "--run",
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
       "--since",
       "3d",
       "--limit",
@@ -150,7 +150,7 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(url.searchParams.get("keyword")).toBe("error");
     expect(url.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(url.searchParams.get("runId")).toBe(
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
     );
     expect(url.searchParams.get("limit")).toBe("10");
     expect(url.searchParams.get("before")).toBe("1");

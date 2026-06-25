@@ -34,7 +34,7 @@ function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
 }
 
-const RUN_ID = "abc12345-1234-1234-1234-123456789abc";
+const RUN_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 describe("zero logs view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

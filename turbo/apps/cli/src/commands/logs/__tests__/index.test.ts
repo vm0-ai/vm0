@@ -12,9 +12,10 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { logsCommand } from "../index";
 
-const RUN_ID = "abc12345-1234-1234-1234-123456789abc";
+const RUN_ID = "550e8400-e29b-41d4-a716-446655440001";
 const MISSING_RUN_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const INVALID_RUN_ID = "run-123";
+const INVALID_UUID_SHAPED_RUN_ID = "abc12345-1234-1234-1234-123456789abc";
 
 function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
@@ -92,6 +93,16 @@ describe("logs command", () => {
     it("should reject non-UUID run IDs", async () => {
       await expect(
         logsCommand.parseAsync(["node", "cli", INVALID_RUN_ID]),
+      ).rejects.toThrow("process.exit called");
+
+      const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorCalls).toContain("Invalid run ID");
+      expect(errorCalls).toContain("vm0 run list");
+    });
+
+    it("should reject UUID-shaped run IDs with invalid variants", async () => {
+      await expect(
+        logsCommand.parseAsync(["node", "cli", INVALID_UUID_SHAPED_RUN_ID]),
       ).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");

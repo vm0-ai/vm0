@@ -118,7 +118,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "my-agent",
               matchedEvent: makeEvent(3, "Build failed: OOM killed"),
               contextBefore: [],
@@ -133,7 +133,7 @@ describe("zero logs search command", () => {
     await searchCommand.parseAsync(["node", "cli", "OOM"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345-1234-1234-1234-123456789abc");
+    expect(logCalls).toContain("550e8400-e29b-41d4-a716-446655440001");
     expect(logCalls).toContain("my-agent");
     expect(logCalls).toContain("OOM killed");
   });
@@ -144,7 +144,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "my-agent",
               matchedEvent: makeEvent(3, "Build failed", "not-a-timestamp"),
               contextBefore: [],
@@ -169,7 +169,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "codex-agent",
               framework: "codex",
               matchedEvent: makeCodexMessageEvent(3, "Codex found the issue"),
@@ -195,7 +195,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "future-agent",
               framework: "future-framework",
               matchedEvent: makeEvent(3, "Legacy parser fallback output"),
@@ -221,7 +221,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "codex-agent",
               framework: "codex",
               matchedEvent: makeCodexCommandCompletedEvent(4),
@@ -328,12 +328,12 @@ describe("zero logs search command", () => {
       "--agent",
       AGENT_ID,
       "--run",
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
     ]);
 
     expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(capturedUrl?.searchParams.get("runId")).toBe(
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
     );
   });
 
@@ -343,7 +343,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "agent",
               matchedEvent: makeEvent(1, "match"),
               contextBefore: [],
@@ -367,7 +367,7 @@ describe("zero logs search command", () => {
         return HttpResponse.json({
           results: [
             {
-              runId: "abc12345-1234-1234-1234-123456789abc",
+              runId: "550e8400-e29b-41d4-a716-446655440001",
               agentName: "test-agent",
               matchedEvent: makeEvent(
                 5,
