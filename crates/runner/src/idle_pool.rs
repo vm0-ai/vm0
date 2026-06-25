@@ -958,31 +958,9 @@ impl IdlePool {
 
     /// Remove expired entries and return the post-eviction idle status snapshot.
     pub fn evict_expired_with_snapshot(&mut self) -> (Vec<IdleDestroyJob>, IdlePoolSnapshot) {
-        let now = Instant::now();
-        let mut idle_vms = Vec::with_capacity(self.entries.len());
-        let expired: Vec<IdleDestroyJob> = self
-            .entries
-            .extract_if(|session_id, entry| {
-                if entry.is_expired_at(now) {
-                    true
-                } else {
-                    idle_vms.push(idle_vm_for_entry(session_id, entry));
-                    false
-                }
-            })
-            .map(|(_, entry)| entry.into_destroy_job())
-            .collect();
-        if !expired.is_empty() {
-            self.bump_revision();
-        }
-        idle_vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
-        (
-            expired,
-            IdlePoolSnapshot {
-                revision: self.revision,
-                idle_vms,
-            },
-        )
+        let expired = self.evict_expired();
+        let snapshot = self.status_snapshot();
+        (expired, snapshot)
     }
 
     /// Evict the oldest idle entry (by park time). Used for resource
