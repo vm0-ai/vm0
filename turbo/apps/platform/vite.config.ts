@@ -204,7 +204,7 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Stable metadata chunk URLs must also keep stable import contracts.
+        // Stable generated firewall chunk URLs must also keep stable import contracts.
         minifyInternalExports: false,
         chunkFileNames(chunkInfo) {
           return (
