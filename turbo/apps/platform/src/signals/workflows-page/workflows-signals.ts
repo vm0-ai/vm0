@@ -17,10 +17,16 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { pathParams$ } from "../route.ts";
+import {
+  pathParams$,
+  replaceSearchParams$,
+  searchParams$,
+  updateSearchParams$,
+} from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 export type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+const WORKFLOW_TRIGGER_SIDEBAR_PARAM = "triggers";
 
 export interface WorkflowDetailFileDraft {
   readonly workflowId: string;
@@ -43,7 +49,6 @@ export const currentWorkflowId$ = computed((get): string | null => {
 const internalWorkflowReload$ = state(0);
 
 const internalSelectedFilePath$ = state<string | null>(null);
-const internalWorkflowDetailTriggerSidebarOpen$ = state(false);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalWorkflowSearch$ = state("");
@@ -65,12 +70,27 @@ export const setWorkflowSearch$ = command(({ set }, value: string) => {
 });
 
 export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
-  return get(internalWorkflowDetailTriggerSidebarOpen$);
+  return get(searchParams$).get(WORKFLOW_TRIGGER_SIDEBAR_PARAM) === "1";
 });
 
 export const setWorkflowDetailTriggerSidebarOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalWorkflowDetailTriggerSidebarOpen$, open);
+  ({ get, set }, open: boolean) => {
+    const params = new URLSearchParams(get(searchParams$));
+    const currentlyOpen = params.get(WORKFLOW_TRIGGER_SIDEBAR_PARAM) === "1";
+    if (open === currentlyOpen) {
+      return;
+    }
+    if (open) {
+      params.set(WORKFLOW_TRIGGER_SIDEBAR_PARAM, "1");
+      set(updateSearchParams$, params);
+      return;
+    }
+
+    params.delete(WORKFLOW_TRIGGER_SIDEBAR_PARAM);
+    set(internalEditingGmailTriggerId$, null);
+    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+    set(internalWorkflowTriggerCreateDialog$, null);
+    set(replaceSearchParams$, params);
   },
 );
 
@@ -93,6 +113,16 @@ export const setWorkflowFileDraft$ = command(
     set(internalWorkflowFileDraft$, draft);
   },
 );
+
+export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalSelectedFilePath$, null);
+  set(internalWorkflowActionDialog$, null);
+  set(internalWorkflowFileDraft$, null);
+  set(internalEditingGmailTriggerId$, null);
+  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+  set(internalWorkflowTriggerCreateDialog$, null);
+  set(internalScheduleTriggerType$, "cron");
+});
 
 export const editingGmailTriggerId$ = computed((get) => {
   return get(internalEditingGmailTriggerId$);

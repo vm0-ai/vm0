@@ -18,6 +18,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -318,6 +319,7 @@ describe("workflow detail page", () => {
     expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
     click(screen.getByRole("button", { name: /trigger/i }));
+    expect(search()).toBe("?triggers=1");
     expect(
       screen.getByRole("button", { name: "Close trigger sidebar" }),
     ).toBeInTheDocument();
@@ -346,6 +348,30 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("derives the trigger sidebar from workflow detail search params", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?triggers=1`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Close trigger sidebar" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    click(screen.getByRole("button", { name: "Close trigger sidebar" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Close trigger sidebar" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("");
   });
 
   it("renders Gmail new message trigger match summaries", async () => {
