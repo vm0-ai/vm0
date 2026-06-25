@@ -273,6 +273,7 @@ describe("firewall metadata generator", () => {
     );
     expect(dynamicSpecifiers).toContain("./slack.generated");
     expect(dynamicSpecifiers).toContain("./github.generated");
+    expect(loaderSource).toContain("/firewall-runtime/v1/");
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     expect(dynamicSpecifiers.length).toBe(
       runtimeLoaderConnectorTypes(loaderSource).length,

@@ -559,7 +559,9 @@ function renderRuntimeLoaderFile(
     })
     .join("\n");
 
-  return `${generatedHeader()}import type { FirewallConfig } from "../firewall-types";
+  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-runtime/v1/.
+// Bump that URL version before shipping an incompatible runtime firewall module shape or import contract change.
+import type { FirewallConfig } from "../firewall-types";
 
 export const RUNTIME_FIREWALL_CONNECTOR_TYPES = [
 ${connectorTypes}

@@ -465,6 +465,7 @@ describe("firewall runtime loader", () => {
     expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
     expect(dynamicSpecifiers).toContain("./slack.generated");
     expect(dynamicSpecifiers).toContain("./github.generated");
+    expect(loaderSource).toContain("/firewall-runtime/v1/");
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     for (const specifier of dynamicSpecifiers) {
       expect(specifier).toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);

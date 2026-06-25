@@ -27,6 +27,12 @@ const FIREWALL_METADATA_DETAIL_MODULE_ID_RE =
   /\/packages\/connectors\/src\/firewall-metadata\/details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
 const FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE =
   /^vm0-firewall-metadata-detail-([a-z0-9][a-z0-9-]*)\.generated$/;
+const FIREWALL_RUNTIME_CHUNK_NAME_PREFIX = "vm0-firewall-runtime-";
+const FIREWALL_RUNTIME_CHUNK_PROTOCOL_VERSION = "v1";
+const FIREWALL_RUNTIME_MODULE_ID_RE =
+  /\/packages\/connectors\/src\/firewalls\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
+const FIREWALL_RUNTIME_CHUNK_NAME_RE =
+  /^vm0-firewall-runtime-([a-z0-9][a-z0-9-]*)\.generated$/;
 
 process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
 
@@ -52,6 +58,40 @@ function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
     return null;
   }
   return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
+}
+
+function firewallRuntimeChunkName(moduleId: string): string | null {
+  const match = FIREWALL_RUNTIME_MODULE_ID_RE.exec(
+    normalizedModuleId(moduleId),
+  );
+  if (!match || match[1] === "runtime-loader") {
+    return null;
+  }
+  return `${FIREWALL_RUNTIME_CHUNK_NAME_PREFIX}${match[1]}.generated`;
+}
+
+function firewallRuntimeChunkFileName(chunkName: string): string | null {
+  const match = FIREWALL_RUNTIME_CHUNK_NAME_RE.exec(chunkName);
+  if (!match) {
+    return null;
+  }
+  return `firewall-runtime/${FIREWALL_RUNTIME_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
+}
+
+function stableGeneratedFirewallChunkName(moduleId: string): string | null {
+  return (
+    firewallMetadataDetailChunkName(moduleId) ??
+    firewallRuntimeChunkName(moduleId)
+  );
+}
+
+function stableGeneratedFirewallChunkFileName(
+  chunkName: string,
+): string | null {
+  return (
+    firewallMetadataDetailChunkFileName(chunkName) ??
+    firewallRuntimeChunkFileName(chunkName)
+  );
 }
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
@@ -168,7 +208,7 @@ export default defineConfig({
         minifyInternalExports: false,
         chunkFileNames(chunkInfo) {
           return (
-            firewallMetadataDetailChunkFileName(chunkInfo.name) ??
+            stableGeneratedFirewallChunkFileName(chunkInfo.name) ??
             "assets/[name]-[hash].js"
           );
         },
@@ -176,10 +216,10 @@ export default defineConfig({
           groups: [
             {
               name(moduleId) {
-                return firewallMetadataDetailChunkName(moduleId);
+                return stableGeneratedFirewallChunkName(moduleId);
               },
               test(moduleId) {
-                return firewallMetadataDetailChunkName(moduleId) !== null;
+                return stableGeneratedFirewallChunkName(moduleId) !== null;
               },
               priority: 10,
             },
