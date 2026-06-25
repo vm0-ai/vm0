@@ -112,6 +112,15 @@ describe("zero logs search command", () => {
     mockConsoleError.mockClear();
   });
 
+  it("should reject whitespace-only keywords", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "   "]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Keyword cannot be empty");
+  });
+
   it("should render search results grouped by run", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", () => {

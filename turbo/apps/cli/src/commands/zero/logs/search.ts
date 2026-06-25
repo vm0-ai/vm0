@@ -12,6 +12,7 @@ import { EventStreamNormalizer } from "../../../lib/events/event-stream-normaliz
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../../lib/utils/search-query";
 import { isSupportedFramework } from "@vm0/core/frameworks";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -166,6 +167,7 @@ export async function runLogsSearch(
   keyword: string,
   options: LogsSearchCliOptions,
 ): Promise<void> {
+  const searchKeyword = parseSearchQuery(keyword, "Keyword");
   const { before, after } = parseContextOptions(options);
 
   if (options.agentId !== undefined && !isUUID(options.agentId)) {
@@ -191,7 +193,7 @@ export async function runLogsSearch(
   const limit = parseLimit(options.limit);
 
   const response = await searchZeroLogs({
-    keyword,
+    keyword: searchKeyword,
     agentId: options.agentId,
     runId: options.run,
     since,

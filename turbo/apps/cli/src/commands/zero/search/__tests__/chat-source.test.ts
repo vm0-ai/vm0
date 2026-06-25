@@ -53,6 +53,15 @@ describe("zero search --source chat", () => {
     vi.unstubAllEnvs();
   });
 
+  it("rejects whitespace-only queries", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "chat"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Query cannot be empty");
+  });
+
   it("renders chat search results grouped by thread", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/chat/search", () => {

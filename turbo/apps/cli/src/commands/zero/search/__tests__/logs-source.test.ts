@@ -79,6 +79,15 @@ describe("zero search --source logs parity with zero logs search", () => {
     vi.unstubAllEnvs();
   });
 
+  it("rejects whitespace-only queries", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "logs"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Query cannot be empty");
+  });
+
   it("produces identical output for the same query and flags", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", stubResponse),

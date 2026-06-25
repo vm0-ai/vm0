@@ -11,6 +11,7 @@ import { EventRenderer } from "../../lib/events/event-renderer";
 import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { withErrorHandler } from "../../lib/command";
 import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../lib/utils/search-query";
 import { isSupportedFramework } from "@vm0/core/frameworks";
 import { isUUID } from "../run/shared";
 
@@ -183,6 +184,8 @@ export const searchCommand = new Command()
   .option("--limit <n>", "Maximum number of matches (default: 20)")
   .action(
     withErrorHandler(async (keyword: string, options: SearchOptions) => {
+      const searchKeyword = parseSearchQuery(keyword, "Keyword");
+
       if (options.agent !== undefined && !isUUID(options.agent)) {
         console.error(
           chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
@@ -207,7 +210,7 @@ export const searchCommand = new Command()
       const limit = parseLimit(options.limit);
 
       const response = await searchLogs({
-        keyword,
+        keyword: searchKeyword,
         agentId: options.agent,
         runId: options.run,
         since,

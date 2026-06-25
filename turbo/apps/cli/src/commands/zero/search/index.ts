@@ -10,6 +10,7 @@ import type {
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../../lib/utils/search-query";
 import { isUUID } from "../../run/shared";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
@@ -215,6 +216,7 @@ export const zeroSearchCommand = new Command()
   .addHelpText("after", SEARCH_EXPLAINER)
   .action(
     withErrorHandler(async (query: string, options: SearchOptions) => {
+      const searchQuery = parseSearchQuery(query, "Query");
       const sources = options.source;
 
       if (sources.length === 0) {
@@ -235,13 +237,13 @@ export const zeroSearchCommand = new Command()
 
       switch (source as Source) {
         case "logs":
-          await runLogsSource(query, options);
+          await runLogsSource(searchQuery, options);
           return;
         case "chat":
-          await runChatSource(query, options);
+          await runChatSource(searchQuery, options);
           return;
         case "slack":
-          await runSlackSource(query, options);
+          await runSlackSource(searchQuery, options);
           return;
       }
     }),

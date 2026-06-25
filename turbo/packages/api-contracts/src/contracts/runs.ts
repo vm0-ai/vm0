@@ -946,7 +946,7 @@ const logsSearchResponseSchema = z.object({
 });
 
 const logsSearchQuerySchema = z.object({
-  keyword: z.string().min(1),
+  keyword: z.string().trim().min(1),
   agentId: z.string().uuid().optional(),
   runId: z.string().uuid().optional(),
   since: timestampQueryNumberSchema.optional(),

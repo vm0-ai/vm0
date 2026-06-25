@@ -423,6 +423,10 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(blankContext.status).toBe(400);
     expectApiError(blankContext.body);
 
+    const blankKeyword = await api.rawSearchLogs(actor, "?keyword=%20%20");
+    expect(blankKeyword.status).toBe(400);
+    expectApiError(blankKeyword.body);
+
     const invalidRunId = await api.requestSearchLogs(
       actor,
       { keyword: "OOM", runId: "not-a-uuid" },
@@ -475,7 +479,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     context.mocks.axiom.query.mockResolvedValueOnce([]);
     const escapedKeywordSearch = await api.requestSearchLogs(
       actor,
-      { keyword: 'quote" slash\\ tab\t newline\n carriage\r' },
+      { keyword: 'quote" slash\\ tab\t newline\n carriage\r return' },
       [200],
     );
     expect(escapedKeywordSearch.body).toStrictEqual({
@@ -488,7 +492,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
         return line.includes("| search");
       });
     expect(escapedSearchLine).toBe(
-      String.raw`| search "*quote\" slash\\ tab\t newline\n carriage\n*"`,
+      String.raw`| search "*quote\" slash\\ tab\t newline\n carriage\n return*"`,
     );
 
     context.mocks.axiom.query
