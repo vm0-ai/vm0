@@ -1435,18 +1435,8 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         flow.kill()
         return
 
-    if classification.kind == "allow":
-        _maybe_record_allow_connector_diagnostic_context(flow, classification)
-        original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-        if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
-            flow,
-            original_url=original_url,
-        ):
-            flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
-            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-            return
-
     if _should_stream_capture_request(classification):
+        _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
@@ -1579,12 +1569,13 @@ async def request(flow: http.HTTPFlow) -> None:
         if vm_info is None:
             return
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
-        original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-        if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
-            flow,
-            original_url=original_url,
-        ):
-            return
+        if request_streaming.streamed_request_size(flow) is None:
+            original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+            if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
+                flow,
+                original_url=original_url,
+            ):
+                return
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)

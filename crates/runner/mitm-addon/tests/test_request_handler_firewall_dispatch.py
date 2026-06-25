@@ -9,6 +9,7 @@ from mitmproxy.flow import Error
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_streaming
 import usage
 from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
@@ -192,7 +193,7 @@ async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 
-async def test_inactive_builtin_connector_requestheaders_without_auth_gets_local_diagnostic(
+async def test_streamed_inactive_builtin_connector_request_waits_for_response_fallback(
     tmp_path, real_flow, mitm_ctx
 ):
     reg_path = _write_registry(
@@ -209,18 +210,17 @@ async def test_inactive_builtin_connector_requestheaders_without_auth_gets_local
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.requestheaders(flow)
+        request_stream = flow.request.stream
+        assert callable(request_stream)
+        assert request_stream(b"partial request") == b"partial request"
         await mitm_addon.request(flow)
-        mitm_addon.response(flow)
 
-    _assert_fal_local_connector_diagnostic(flow)
-    assert not callable(flow.request.stream)
-    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
-    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert request_streaming.streamed_request_size(flow) == len(b"partial request")
     assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
-    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert entry["status"] == 502
-    assert entry["request_size"] == 0
-    assert entry["connector_diagnostic_type"] == "fal"
 
 
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(

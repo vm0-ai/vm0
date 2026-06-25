@@ -78,6 +78,10 @@ class TestErrorHandler:
     def test_streamed_connector_candidate_error_before_request_gets_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        )
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -85,10 +89,9 @@ class TestErrorHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
-        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, capture_body=True)
 
-        with mitm_ctx():
-            request_streaming.configure_request_stream(flow)
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
             stream = flow.request.stream
             assert callable(stream)
             assert stream(b"partial request") == b"partial request"
