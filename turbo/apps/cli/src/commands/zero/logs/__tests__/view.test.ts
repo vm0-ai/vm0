@@ -137,6 +137,62 @@ describe("zero logs view command", () => {
     expect(logCalls).toContain("Page 2");
   });
 
+  it("should preserve per-page framework when a later page omits it", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:31:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "msg_1",
+                      type: "agent_message",
+                      text: "Codex zero page output",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: true,
+              nextCursor: "sequence:desc:2",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-page-1",
+                },
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Codex Started");
+    expect(logCalls).toContain("Codex zero page output");
+  });
+
   it("should pass --since option to API as sinceTime", async () => {
     let capturedUrl: URL | undefined;
     server.use(

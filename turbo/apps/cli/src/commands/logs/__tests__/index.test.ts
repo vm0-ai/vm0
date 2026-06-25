@@ -228,6 +228,62 @@ describe("logs command", () => {
       expect(requestCount).toBe(2);
     });
 
+    it("should preserve per-page framework when a later page omits it", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            const cursor = url.searchParams.get("cursor");
+
+            if (!cursor) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 2,
+                    eventType: "item.completed",
+                    createdAt: "2024-01-15T10:31:00Z",
+                    eventData: {
+                      type: "item.completed",
+                      item: {
+                        id: "msg_1",
+                        type: "agent_message",
+                        text: "Codex page output",
+                      },
+                    },
+                  },
+                ],
+                framework: "codex",
+                hasMore: true,
+                nextCursor: "cursor-page-2",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-page-1",
+                  },
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Started");
+      expect(logCalls).toContain("Codex page output");
+    });
+
     it("should stop pagination when target count is reached within single page", async () => {
       let requestCount = 0;
       server.use(
