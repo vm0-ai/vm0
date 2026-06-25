@@ -91,7 +91,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
-| `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
+| `test_model_provider_json_fallback.py` | Model provider buffered JSON fallback usage pipeline |
+| `test_model_provider_json_streaming.py` | Model provider streaming JSON response usage pipeline |
 | `test_model_provider_sse_usage.py` | Model provider SSE usage pipeline |
 | `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
 | `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |

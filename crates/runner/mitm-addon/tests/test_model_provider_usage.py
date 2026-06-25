@@ -3,9 +3,12 @@
 import uuid
 
 import pytest
+from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import mitm_addon
 import usage
+from tests.flow_helpers import header_map
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
@@ -608,3 +611,56 @@ class TestReportModelProviderUsage:
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20
+
+
+class TestModelProviderResponseHookUsage:
+    """Tests for response hook wiring into model-provider usage reporting."""
+
+    def test_full_path_response_to_webhook(
+        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        """Integration: response() -> _maybe_report -> _enqueue -> _retry -> webhook.
+
+        Verifies wiring between all intermediate layers through loopback HTTP.
+        """
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-001"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 100,
+            "tokens.output": 500,
+        }
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "text/event-stream"})
+        )
+
+        with usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            # Flush the executor to ensure the background POST completes.
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        assert body["runId"] == "run-int-001"
+        by_category = {event["category"]: event for event in body["events"]}
+        assert by_category["tokens.input"]["quantity"] == 100
+        assert by_category["tokens.output"]["quantity"] == 500
+        assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        observation_by_category = {event["category"]: event for event in observation_body["events"]}
+        assert observation_by_category["tokens.input"]["model"] == "claude-sonnet-4-6"
