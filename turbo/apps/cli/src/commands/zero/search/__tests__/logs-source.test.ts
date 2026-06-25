@@ -136,7 +136,7 @@ describe("zero search --source logs parity with zero logs search", () => {
       "--run",
       "550e8400-e29b-41d4-a716-446655440001",
       "--since",
-      "3d",
+      "1970-01-01T00:00:00Z",
       "--limit",
       "10",
       "-A",
@@ -155,6 +155,7 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(url.searchParams.get("limit")).toBe("10");
     expect(url.searchParams.get("before")).toBe("1");
     expect(url.searchParams.get("after")).toBe("2");
+    expect(url.searchParams.get("since")).toBe("0");
   });
 
   it("rejects non-UUID --agent values", async () => {

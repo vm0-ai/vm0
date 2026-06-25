@@ -215,6 +215,29 @@ describe("zero logs list command", () => {
     expect(sinceValue).toBeLessThanOrEqual(Date.now());
   });
 
+  it("should pass epoch since filter to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 0 },
+          filters: emptyFilters,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync([
+      "node",
+      "cli",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
   it("should reject partial numeric --limit values", async () => {
     await expect(
       listCommand.parseAsync(["node", "cli", "--limit", "1abc"]),

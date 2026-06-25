@@ -64,7 +64,8 @@ Examples:
         const limit = options.limit
           ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
           : undefined;
-        const since = options.since ? parseTime(options.since) : undefined;
+        const since =
+          options.since !== undefined ? parseTime(options.since) : undefined;
         if (options.agent && !isUUID(options.agent)) {
           console.error(
             chalk.red(

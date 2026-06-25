@@ -169,7 +169,7 @@ export function zeroLogsList(
 
     conditions.push(...buildAgentFilterConditions(params));
 
-    if (params.since) {
+    if (params.since !== undefined) {
       conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
     }
     if (params.status) {
@@ -275,7 +275,7 @@ async function getLogsTotalCount(
 
   conditions.push(...buildAgentFilterConditions(params));
 
-  if (params.since) {
+  if (params.since !== undefined) {
     conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
   }
   if (params.status) {

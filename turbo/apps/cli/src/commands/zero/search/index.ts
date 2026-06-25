@@ -158,9 +158,10 @@ async function runChatSource(
 
   const { before, after } = parseContextOptions(options);
   const limit = parseLimit(options.limit);
-  const since = options.since
-    ? parseTime(options.since)
-    : Date.now() - SEVEN_DAYS_MS;
+  const since =
+    options.since !== undefined
+      ? parseTime(options.since)
+      : Date.now() - SEVEN_DAYS_MS;
 
   const response = await searchZeroChat({
     keyword: query,

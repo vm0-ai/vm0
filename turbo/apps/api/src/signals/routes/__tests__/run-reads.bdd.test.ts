@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
   expectApiError,
@@ -41,6 +45,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -79,6 +84,14 @@ async function createClaudeCompose(
       },
     },
   });
+}
+
+async function setRunCreatedAt(runId: string, createdAt: Date): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentRuns)
+    .set({ createdAt })
+    .where(eq(agentRuns.id, runId));
 }
 
 function sandboxHeaders(token: string): { readonly authorization: string } {
@@ -3475,6 +3488,35 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(tokenDetail.body).toMatchObject({ id: webRun.runId });
 
     await api.requestCancelRun(actor, tokenRun.runId, [200]);
+
+    const sinceBoundaryRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary visible run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, sinceBoundaryRun.runId, [200]);
+    const beforeEpochRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary hidden run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, beforeEpochRun.runId, [200]);
+    await setRunCreatedAt(
+      beforeEpochRun.runId,
+      new Date("1969-12-31T23:59:59.000Z"),
+    );
+
+    const sinceEpoch = await reads.requestListLogs(
+      actor,
+      { since: 0, limit: 100 },
+      [200],
+    );
+    mustOk(sinceEpoch, "the epoch-boundary log list");
+    const sinceEpochIds = sinceEpoch.body.data.map((entry) => {
+      return entry.id;
+    });
+    expect(sinceEpochIds).toContain(sinceBoundaryRun.runId);
+    expect(sinceEpochIds).not.toContain(beforeEpochRun.runId);
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {

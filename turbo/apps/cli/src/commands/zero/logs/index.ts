@@ -168,7 +168,7 @@ Examples:
         }
 
         let since: number | undefined;
-        if (options.since) {
+        if (options.since !== undefined) {
           since = parseTime(options.since);
         }
 

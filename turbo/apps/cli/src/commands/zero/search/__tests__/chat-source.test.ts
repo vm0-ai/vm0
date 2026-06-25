@@ -165,6 +165,28 @@ describe("zero search --source chat", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("3");
   });
 
+  it("passes epoch --since to API instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await zeroSearchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "--source",
+      "chat",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
   it("passes -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(

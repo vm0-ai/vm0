@@ -197,9 +197,10 @@ export const searchCommand = new Command()
       }
 
       const { before, after } = parseContextOptions(options);
-      const since = options.since
-        ? parseTime(options.since)
-        : Date.now() - SEVEN_DAYS_MS;
+      const since =
+        options.since !== undefined
+          ? parseTime(options.since)
+          : Date.now() - SEVEN_DAYS_MS;
       const limit = parseLimit(options.limit);
 
       const response = await searchLogs({

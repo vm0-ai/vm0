@@ -271,6 +271,26 @@ describe("zero logs search command", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("3");
   });
 
+  it("should send epoch --since instead of the default search window", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await searchCommand.parseAsync([
+      "node",
+      "cli",
+      "error",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
   it("should pass -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(

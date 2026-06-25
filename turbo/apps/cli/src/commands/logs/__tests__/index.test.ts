@@ -4665,6 +4665,35 @@ describe("logs command", () => {
       expect(capturedQuery?.since).toBeUndefined();
     });
 
+    it("should pass epoch --since values to API", async () => {
+      let capturedQuery: Record<string, unknown> | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            capturedQuery = Object.fromEntries(url.searchParams);
+            return HttpResponse.json({
+              events: [],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync([
+        "node",
+        "cli",
+        RUN_ID,
+        "--since",
+        "1970-01-01T00:00:00Z",
+      ]);
+
+      expect(capturedQuery?.sinceTime).toBe("0");
+      expect(capturedQuery?.since).toBeUndefined();
+    });
+
     it("should pass --tail option to API with desc order", async () => {
       let capturedQuery: Record<string, unknown> | undefined;
       server.use(

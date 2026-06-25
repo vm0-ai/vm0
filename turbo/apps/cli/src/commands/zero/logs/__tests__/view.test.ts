@@ -268,6 +268,34 @@ describe("zero logs view command", () => {
     expect(capturedUrl?.searchParams.get("since")).toBeNull();
   });
 
+  it("should pass epoch --since values to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({
+            events: [],
+            framework: "claude-code",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync([
+      "node",
+      "cli",
+      RUN_ID,
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("sinceTime")).toBe("0");
+    expect(capturedUrl?.searchParams.get("since")).toBeNull();
+  });
+
   it("should reject invalid calendar dates for --since", async () => {
     await expect(
       zeroLogsCommand.parseAsync([

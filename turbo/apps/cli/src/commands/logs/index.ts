@@ -428,7 +428,7 @@ export const logsCommand = new Command()
 
         // Parse since option
         let since: number | undefined;
-        if (options.since) {
+        if (options.since !== undefined) {
           since = parseTime(options.since);
         }
 
