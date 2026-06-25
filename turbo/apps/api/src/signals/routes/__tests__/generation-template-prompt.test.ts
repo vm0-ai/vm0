@@ -43,6 +43,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );
+    expect(result.prompt).toContain(
+      "node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html",
+    );
   });
 
   it("builds presentation template guidance for the switched picker catalog", () => {

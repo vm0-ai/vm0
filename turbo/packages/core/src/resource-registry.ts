@@ -133,93 +133,93 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
     "b0ed1fa2b7daa5d543ae3b187edea17f95b0594d2a408d4cc197510caafc26ef",
   playfulEditorial:
     "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "28a6fbda2f740dbf1cffa52cc0b636746eaf6ebe95aa37d47568980a5564816f",
+  aplocoto: "fda7b03fb9bd09b6a79dc8765f81bcc31b6ce23134a93bd409da2e1b8d5fe1bf",
   botaneOrganic:
-    "ebdb8b68e728915f98f84a44b577524aa427b2a0ca6ad52ac0b31865f286b44e",
+    "4ae748cff5ffe87fd562a674a7741cdd71c98ca1cea3d7e328ac0b03a1be51ed",
   businessData:
-    "229516a65ebd66d48c789bb626da24f96a8658d313c72229c0d2cabe262248f1",
+    "47b08d200c334d669ca3595906218797d75f2a1b8ec12abee3372163f8f7d4e7",
   presentationDeckTools:
-    "8494f73396a76d81b8b252afe0e3cbaf2c6004346b2c9430365cdb0b6ae76d89",
+    "5d31cb02f1beb2533a13161222a6a24e1fa07621755970623ab2b44a9380fda2",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
-    "05b88b0490718c329f0cffd38384c7e08af222dcbdc4d58e6c4702bc92669595",
+    "9e8680cf98fa9343d502eeef4d9e172a34893a7393fc905d7347662e811a1044",
   designSystemCreativeAgency:
     "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
   templateCreativeAgency:
-    "ec6aa675adf8486662cb653327fc2ec46a6622365ffeed06d4dba6b85bb73fa3",
+    "cf374630535b8f5168e2fd765f97cb48625dd60949b75b00bc4c0e0a3b01b85c",
   designSystemDataReport:
     "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
   templateDataReport:
-    "256556de59fe261fb86a63767e83c339b98c3c2ca0872f5a0d99a3fe4fdb9282",
+    "f1b9262cfbdfa4fea39edcbb85a8a76d8d70d444804d7edb22a82836025dc07a",
   designSystemEditorialMagazine:
     "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
   templateEditorialMagazine:
-    "f5f9500a31980be2e66362d5d6dc475c9435e5dec2b660c6356213596f77a8d2",
+    "592179ea64534a174555f2ba40d0e7483b4d0a2e5b9b825b96852a8794453fba",
   designSystemLandingConsulting:
     "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
   templateLandingConsulting:
-    "4c3209355a076aef28aea8d70ad5a2b74f5decdd05e4ecfb8a8192148bf8ff7a",
+    "904ac18edf7a906a77327d2026639ff9ad3184a18ceebaf70da1ede9d460c49e",
   designSystemLumina:
     "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
   templateLumina:
-    "599f4cbd8118a2347dd1a84435c6fdb1105b1d906ba49d2e3595fca54a77bee2",
+    "fb595015db04419b076a28d7ed73860e4444749bb6b715f8904afaa012a9d15a",
   designSystemMosaicGeometric:
     "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
   templateMosaicGeometric:
-    "112a0aabe92a20bd25427286d6a674725b926ab324e6c06b35574f1e511b911d",
+    "ecafda2bd18813accfc594521f2a183e60aa8d1115f9c88e437a41677e4db379",
   designSystemPlayfulPop:
     "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
   templatePlayfulPop:
-    "10944b1b02421f7b2e792c4563a7e4e52ee752cb50b34cb31054afd94311906d",
+    "57d6449ddbb55b7b04f33f80cb90b811cb141adf3a441c30d76a8a540895de52",
   designSystemNocturne:
     "bc82f6665394cc99039fe34523e5c6095a9bbf5a2a3a81dee128540a43812dec",
   templateNocturne:
-    "8fe867f43313ed8c99c0cd774ce61bef7b097f4912b7e3ef4bd5d228d05d2bde",
+    "5236da22dabe8e33777b68755915c11653d3d59f0ecda0c49959204abb5f02e4",
   designSystemNeoBrutalism:
     "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
   templateNeoBrutalism:
-    "cec2dde23a09f38c8a538e5cddcce9853e726cef1ee7bcfde46cd405f7dcd465",
+    "b5d04d01634097a802e193d1976e9b36c8ced2d5a09192286b2999b108c1638b",
   designSystemBloomPitch:
     "5b7b8f959cef7a3f5ea4eb86e95152845013425365683e4d7efe6c7c5ecc2b48",
   templateBloomPitch:
-    "0176ccac0f36b5921ebfcdc998e2273f57a3d79644213eb01000dc4e0e23dcd5",
+    "c5b21908c84f248163dfc3259912d8ffb086f8c36a12882cd634005219db8eec",
   designSystemBlueprintAcademy:
     "9a5fdb160ae3691513567279401e9a8766c892e0bb80caae6eef3c08a54c0416",
   templateBlueprintAcademy:
-    "00b01b07095965f68971e4593cf563562a32b75f49ff4be186be5c81eb6e8330",
+    "559103cd2b2fc4c874c86e722a8023da17a2ca2f754189301044c39f6d43382b",
   designSystemMeridian:
     "6a00cba7ddd2fcb74e8c89c0063d33bba5fe2e190c15b4634d4a56b2334f527e",
   templateMeridian:
-    "571bc5d0a35fe3db2ddb2ddc2b0aa3b11bb52532da3fc2eb76d84af885710302",
+    "9821fbbdf3c92bdc638f38d0bfb47201f080ad208d820048637b6b7610f1e4a3",
   designSystemPixelGlitch:
     "18ce63a66658c7002d3ebea135dc7274b2dac4033c0e98c6e508c7a249fe93a2",
   templatePixelGlitch:
-    "d16f2913aed0dba0384795db45aa67e6a697d1ae1c31c6a43ff16b8a975dfc18",
+    "caa395165c04703afb8fcda3c8303e6b6ba4513797ba4967a797680906144940",
   designSystemProspectus:
     "01e9e6b1f0ea17e3a65c2af7c76cff317b095005c4020ce20eba22e5d63430b6",
   templateProspectus:
-    "99430b2bd063eb1c922ef22ca95fbe783ab0646b7bdfbb6b7a8b5c839cad5ba0",
+    "050f66a9993f2829e9bc2eb9c31f31e1af2d3612face1c925d4d84834191e482",
   designSystemSchoolhouse:
     "a4a7be65e2adca9eb5572f92b3f49075e768da305b833d74b703da5f2dd3d271",
   templateSchoolhouse:
-    "4824967cf53a03098aca8c6ca3ea34938d848ff372a556f47ac66a608f81f5db",
+    "43851c36d04882b7e4ed5126f95af69ad38eab395c7ea5e5e9c31c7c02cd9bff",
   designSystemStickerScrapbook:
     "d50129981c3dc3b51b4c63b2ac36b9b5fe6783953bbea3546e372903c8596cad",
   templateStickerScrapbook:
-    "e289743180d623e6a0966ab85d0737686914445c1b749901cfbbf061958cc334",
+    "e30a5d0565023ef13c25fec40376996142ce33bae447ac012d2819854d3f9979",
   designSystemStrata:
     "91a45f8c3b70d7c43505ca7fe51f55ab36a08312e28867383ef885a7a7e63c28",
   templateStrata:
-    "ff9c81d11d866f98bbe9cf5e8584adcb3cb28095b734ca02dd1e750ace6f9e49",
+    "c43028b751dd1d53b942255b616653a09f9937481daaba5163c7ff304ad3082c",
   designSystemTapedConsulting:
     "9fb58db77455a3bc7ccdd106b18c99a3d62bc53981f494577804b496a78a858e",
   templateTapedConsulting:
-    "df64d3f8d5a63e892eeaf5b7723d7274e4147359eda558e1b34aab27e30c439d",
+    "26b7deb0feb0b685caa19d84ede7ecb7ed530afd4525a801615de6ee0169ae1e",
   designSystemVantage:
     "8338e31f3aa18538d36ae363d3ac2aa0ec56669c33494fdf2a12286d9b0523a8",
   templateVantage:
-    "0d4c276d8dc7710a484d4d7c9bfb05f0a68b378d50e73aea6a6eb92698daa6fe",
+    "6e4308867e6959813d2e941b6c620d817354db3329c09cdd6f08b40f09b31597",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
