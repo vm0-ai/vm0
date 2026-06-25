@@ -2,19 +2,7 @@
 
 from urllib.parse import urlparse
 
-import matching
-
-
-def make_allow(
-    api_entry: dict,
-    *,
-    name: str = "test",
-    permission: str | None = "send",
-    params: dict[str, str] | None = None,
-    rule: str | None = "POST /",
-    rel_path: str = "/",
-) -> matching.FirewallAllow:
-    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
+from tests.firewall_auth_helpers import make_allow
 
 
 def _make_rewrite_inputs(
@@ -134,8 +122,10 @@ def make_forwarding_rewrite_inputs(
     method="GET",
     request_body=None,
     request_headers=None,
+    api_base="https://firewall-placeholder.vm3.ai/discord-webhook/hook",
     auth_overrides=None,
     token_overrides=None,
+    match_overrides=None,
 ):
     return _make_rewrite_inputs(
         real_flow,
@@ -146,8 +136,10 @@ def make_forwarding_rewrite_inputs(
         method=method,
         request_body=request_body,
         request_headers=request_headers,
+        api_base=api_base,
         auth_overrides=auth_overrides,
         token_overrides=token_overrides,
+        match_overrides=match_overrides,
     )
 
 
