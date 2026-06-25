@@ -52,3 +52,63 @@ def write_firewall_registry(path, *, rule="/items"):
         "updatedAt": 1700000000000,
     }
     path.write_text(json.dumps(data))
+
+
+def write_builtin_firewall_registry(
+    path,
+    *,
+    run_id: str,
+    name: str,
+    base_url_vars: dict[str, str],
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "vms": {
+                    "10.200.0.1": {
+                        "runId": run_id,
+                        "firewalls": [
+                            {
+                                "kind": "builtin",
+                                "name": name,
+                                "baseUrlVars": base_url_vars,
+                            }
+                        ],
+                    }
+                },
+                "updatedAt": 0,
+            }
+        )
+    )
+
+
+def write_multi_vm_registry(path, vms: dict) -> None:
+    path.write_text(json.dumps({"vms": vms, "updatedAt": 0}))
+
+
+def builtin_vm(run_id: str, name: str, base_url_vars: dict[str, str] | None = None) -> dict:
+    entry: dict[str, object] = {"kind": "builtin", "name": name}
+    if base_url_vars is not None:
+        entry["baseUrlVars"] = base_url_vars
+    return {"runId": run_id, "firewalls": [entry]}
+
+
+def inline_vm(run_id: str) -> dict:
+    return {
+        "runId": run_id,
+        "firewalls": [
+            {
+                "kind": "inline",
+                "firewall": {
+                    "name": "example",
+                    "apis": [
+                        {
+                            "base": "https://api.example.com",
+                            "auth": {"headers": {"Authorization": "Bearer token"}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                },
+            }
+        ],
+    }
