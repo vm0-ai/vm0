@@ -258,6 +258,59 @@ fn decode_msg_preserves_nil_optional_fields_and_empty_nested_defaults() -> TestR
 }
 
 #[test]
+fn decode_msg_treats_non_finite_optional_fields_as_null() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field("channel", rmpv::Value::F64(f64::NAN)),
+        field("timestamp", rmpv::Value::F64(f64::INFINITY)),
+        field("params", rmpv::Value::F32(f32::NEG_INFINITY)),
+        field("connectionDetails", rmpv::Value::F64(f64::NAN)),
+        field("auth", rmpv::Value::F32(f32::INFINITY)),
+        field("error", rmpv::Value::F64(f64::NEG_INFINITY)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![
+                field("name", str_value("job")),
+                field("data", rmpv::Value::F64(f64::NAN)),
+                field("timestamp", rmpv::Value::F64(f64::INFINITY)),
+                field("encoding", rmpv::Value::F32(f32::NAN)),
+            ])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert!(decoded.channel.is_none());
+    assert!(decoded.timestamp.is_none());
+    assert!(decoded.params.is_none());
+    assert!(decoded.connection_details.is_none());
+    assert!(decoded.auth.is_none());
+    assert!(decoded.error.is_none());
+    let message = single_message(&decoded)?;
+    assert_eq!(message.name.as_deref(), Some("job"));
+    assert!(message.data.is_none());
+    assert!(message.timestamp.is_none());
+    assert!(message.encoding.is_none());
+
+    Ok(())
+}
+
+#[test]
+fn decode_msg_treats_non_finite_messages_field_as_null() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field("messages", rmpv::Value::F64(f64::NAN)),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert!(decoded.messages.is_none());
+    Ok(())
+}
+
+#[test]
 fn decode_msg_accepts_duplicate_scalar_keys_from_msgpack() -> TestResult {
     let payload = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::ATTACHED)),

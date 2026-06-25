@@ -324,7 +324,8 @@ fn decode_ably_message(map: MsgpackMap) -> Result<AblyMessage, Error> {
 
 fn optional_messages(value: Option<rmpv::Value>) -> Result<Option<Vec<AblyMessage>>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(rmpv::Value::Array(messages)) => messages
             .into_iter()
             .map(|message| match message {
@@ -339,7 +340,8 @@ fn optional_messages(value: Option<rmpv::Value>) -> Result<Option<Vec<AblyMessag
 
 fn optional_params(value: Option<rmpv::Value>) -> Result<Option<HashMap<String, String>>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(rmpv::Value::Map(map)) => {
             let mut raw_values = HashMap::new();
             for (key, value) in map {
@@ -364,7 +366,8 @@ fn optional_map<T>(
     decode: fn(MsgpackMap) -> Result<T, Error>,
 ) -> Result<Option<T>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(rmpv::Value::Map(map)) => decode(map).map(Some),
         Some(other) => Err(type_error(field, "map", &other)),
     }
@@ -372,7 +375,8 @@ fn optional_map<T>(
 
 fn optional_json(value: Option<rmpv::Value>) -> Option<serde_json::Value> {
     match value {
-        None | Some(rmpv::Value::Nil) => None,
+        None => None,
+        Some(value) if is_json_null_equivalent(&value) => None,
         Some(value) => Some(rmpv_to_json(value)),
     }
 }
@@ -382,7 +386,8 @@ fn optional_string(
     value: Option<rmpv::Value>,
 ) -> Result<Option<String>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(value) => required_string(field, value).map(Some),
     }
 }
@@ -415,7 +420,8 @@ fn required_string(field: &'static str, value: rmpv::Value) -> Result<String, Er
 
 fn optional_i32(field: &'static str, value: Option<rmpv::Value>) -> Result<Option<i32>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(value) => required_i32(field, value).map(Some),
     }
 }
@@ -444,7 +450,8 @@ fn required_i32(field: &'static str, value: rmpv::Value) -> Result<i32, Error> {
 
 fn optional_i64(field: &'static str, value: Option<rmpv::Value>) -> Result<Option<i64>, Error> {
     match value {
-        None | Some(rmpv::Value::Nil) => Ok(None),
+        None => Ok(None),
+        Some(value) if is_json_null_equivalent(&value) => Ok(None),
         Some(value) => required_i64(field, value).map(Some),
     }
 }
@@ -481,6 +488,15 @@ fn json_map_key(key: rmpv::Value) -> String {
             }
         },
         other => format!("{other}"),
+    }
+}
+
+fn is_json_null_equivalent(value: &rmpv::Value) -> bool {
+    match value {
+        rmpv::Value::Nil => true,
+        rmpv::Value::F32(value) => !value.is_finite(),
+        rmpv::Value::F64(value) => !value.is_finite(),
+        _ => false,
     }
 }
 
