@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
+import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -168,6 +170,75 @@ def test_tweet_create_raw_body_over_cap_stays_conservative(x_usage, tmp_path, re
         request_body=request_body,
     )
     flow.request.method = "POST"
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_refines_from_complete_stream_capture(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_incomplete_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_truncated_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
+    assert stream(request_body) == request_body
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1

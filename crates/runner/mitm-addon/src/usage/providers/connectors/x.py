@@ -16,6 +16,7 @@ import billing_body
 import body_decoding
 import flow_metadata_keys as metadata_keys
 import matching
+import request_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 from platform_api import get_api_url
@@ -780,6 +781,13 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     return result
 
 
+def _request_body_for_billing_refinement(flow: http.HTTPFlow) -> bytes | None:
+    raw_content = flow.request.raw_content
+    if raw_content is not None:
+        return raw_content
+    return request_streaming.complete_captured_request_stream_body(flow)
+
+
 def _compute_billable_counts(
     method: str,
     req_meta: dict,
@@ -943,7 +951,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         return
     if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
         request_body = billing_body.decode_request_body_for_billing(
-            flow.request.raw_content,
+            _request_body_for_billing_refinement(flow),
             flow.request.headers,
             max_raw=_REQUEST_BODY_REFINEMENT_LIMIT,
             max_decoded=_REQUEST_BODY_REFINEMENT_LIMIT,

@@ -123,6 +123,7 @@ def _write_billable_x_tracking_registry(
     tmp_path: Path,
     *,
     include_encrypted_secrets: bool = True,
+    vm_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
         tmp_path,
@@ -142,6 +143,7 @@ def _write_billable_x_tracking_registry(
             },
             billable_firewalls=[_X_FIREWALL_NAME],
             include_encrypted_secrets=include_encrypted_secrets,
+            vm_fields=vm_fields,
         ),
     )
 
@@ -312,6 +314,51 @@ async def test_billable_flow_error_releases_tracking_after_request(
         reports=0,
         flush_request_id="request-1",
     )
+
+
+async def test_header_phase_streamed_billable_flow_error_releases_tracking(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_billable_x_tracking_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _x_tracking_flow(real_flow)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is not None
+        await requestheaders_result
+
+        usage.write_pending_snapshot(flush_request_id="request-headers")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-headers",
+        )
+
+        flow.error = Error("connection reset")
+        mitm_addon.error(flow)
+
+    usage.write_pending_snapshot(flush_request_id="after-error")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-error",
+    )
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
 
 
 async def test_duplicate_terminal_hooks_do_not_double_decrement_usage_flow(
