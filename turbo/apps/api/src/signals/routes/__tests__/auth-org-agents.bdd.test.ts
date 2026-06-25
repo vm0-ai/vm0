@@ -183,6 +183,31 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: true,
     });
 
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    expect(completeLimitedFree.status).toBe(200);
+    expect(completeLimitedFree.body).toStrictEqual({
+      agentId: defaultAgentId,
+      tier: "limited-free-1",
+      needsOnboarding: false,
+    });
+
+    const afterLimitedFree = await api.readOnboardingStatus(admin);
+    expect(afterLimitedFree.needsOnboarding).toBe(false);
+    expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
+
+    const [limitedFreeMetadata] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, adminOrgId))
+      .limit(1);
+    expect(limitedFreeMetadata).toStrictEqual({
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
+    });
+
     const afterRepeatedSetup = await api.listAgents(admin);
     expect(
       afterRepeatedSetup.filter((agent) => {

@@ -69,6 +69,25 @@ type OnboardingSetupForbiddenResponse = Extract<
   { readonly status: 403 }
 >;
 
+type CompleteLimitedFreeOnboardingResponse =
+  | {
+      readonly status: 200;
+      readonly body: {
+        readonly agentId: string;
+        readonly tier: "limited-free-1";
+        readonly needsOnboarding: false;
+      };
+    }
+  | {
+      readonly status: 409;
+      readonly body: {
+        readonly error: {
+          readonly message: string;
+          readonly code: "DEFAULT_AGENT_REQUIRED";
+        };
+      };
+    };
+
 function unavailableSelectedConnectorsError(
   unavailableTypes: readonly ConnectorType[],
 ): OnboardingSetupForbiddenResponse | null {
@@ -699,5 +718,58 @@ export const setupOnboarding$ = command(
     });
 
     return { status: 200 as const, body: { agentId: composeResult.composeId } };
+  },
+);
+
+export const completeLimitedFreeOnboarding$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string },
+    signal: AbortSignal,
+  ): Promise<CompleteLimitedFreeOnboardingResponse> => {
+    const writeDb = set(writeDb$);
+    const agentId = await existingDefaultAgentId(writeDb, args.orgId);
+    signal.throwIfAborted();
+
+    if (!agentId) {
+      return {
+        status: 409,
+        body: {
+          error: {
+            message: "A default agent is required before completing onboarding",
+            code: "DEFAULT_AGENT_REQUIRED",
+          },
+        },
+      };
+    }
+
+    await writeDb
+      .insert(orgMetadata)
+      .values({
+        orgId: args.orgId,
+        defaultAgentId: agentId,
+        tier: "limited-free-1",
+        onboardingPaymentPending: false,
+        updatedAt: nowDate(),
+      })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: {
+          defaultAgentId: agentId,
+          tier: "limited-free-1",
+          onboardingPaymentPending: false,
+          updatedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
+
+    return {
+      status: 200,
+      body: {
+        agentId,
+        tier: "limited-free-1",
+        needsOnboarding: false,
+      },
+    };
   },
 );
