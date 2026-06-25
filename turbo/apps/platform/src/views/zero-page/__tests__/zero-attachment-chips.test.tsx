@@ -263,20 +263,41 @@ describe("zero attachment chips", () => {
     });
 
     const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
-    const zoomContent = zoomStage.querySelector<HTMLElement>(
-      ".react-transform-component",
-    );
-    if (!zoomContent) {
-      throw new Error("Zoomable image content not found");
-    }
-    expect(zoomContent.style.height).toBe("");
-    expect(zoomContent.style.width).toBe("");
-    expect(zoomContent.style.maxHeight).toBe("100%");
-    expect(zoomContent.style.maxWidth).toBe("100%");
+    expect(zoomStage).toHaveClass("overflow-auto");
+    expect(
+      screen.getByTestId("artifact-dialog-image-stage-content"),
+    ).toBeInTheDocument();
+
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    Object.defineProperty(zoomStage, "clientWidth", {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
 
     click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
       expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "920px" });
+    });
+
+    const zoomInButton = screen.getByLabelText("Zoom in");
+    for (let i = 0; i < 13; i += 1) {
+      click(zoomInButton);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "2400px" });
+      expect(zoomInButton).toBeDisabled();
     });
 
     click(screen.getByLabelText("Close"));
@@ -765,11 +786,12 @@ describe("zero attachment chips", () => {
     });
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     expect(lightboxImage.tagName).toBe("IMG");
-    expect(lightboxImage).not.toHaveAttribute("draggable", "false");
-    expect(lightboxImage).toHaveClass("zero-native-media-interaction");
+    expect(lightboxImage).toHaveAttribute("draggable", "false");
+    expect(lightboxImage).not.toHaveClass("zero-native-media-interaction");
     expect(lightboxImage).toHaveStyle({
       pointerEvents: "auto",
-      userSelect: "auto",
+      userSelect: "none",
+      width: "100%",
     });
 
     click(screen.getByLabelText("Close"));
