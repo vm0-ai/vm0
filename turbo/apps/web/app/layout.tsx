@@ -1,5 +1,4 @@
 // Root layout for the web application (e2e-auth validated without Playwright)
-import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Script from "next/script";
 import { getLocale } from "next-intl/server";
@@ -24,18 +23,9 @@ import { PostHogProvider } from "./components/PostHogProvider";
 import { VM0_CLERK_LOCALIZATION } from "./components/auth/banned-account-message";
 import { env } from "../src/env";
 import "./globals.css";
-import "./landing.css";
-import "./blog.css";
-import "./docs.css";
-import "./use-cases.css";
-import "./illustration.css";
 
 const GOOGLE_ADS_ID = "AW-18144854014";
 const LINKEDIN_PARTNER_ID = "9378804";
-const staticAssetCssVariables = {
-  "--vm0-web-cta-ellipse": `url("${webStaticAssetUrl("assets/cta-ellipse.webp")}")`,
-  "--vm0-web-paper-bg": `url("${webStaticAssetUrl("images/paper-bg.png")}")`,
-} as CSSProperties;
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -168,12 +158,7 @@ export default async function RootLayout({
       localization={VM0_CLERK_LOCALIZATION}
     >
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
-      <html
-        lang={htmlLang}
-        data-theme="dark"
-        style={staticAssetCssVariables}
-        suppressHydrationWarning
-      >
+      <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
         <head>
           {shouldLoadMarketingScripts && (
             <>
