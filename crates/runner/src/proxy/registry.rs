@@ -12,14 +12,14 @@ use crate::types::{FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct ProxyRegistry {
-    pub(super) vms: HashMap<String, VmEntry>,
+struct ProxyRegistry {
+    vms: HashMap<String, VmEntry>,
     updated_at: i64,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct VmEntry {
+struct VmEntry {
     run_id: String,
     cli_agent_type: String,
     sandbox_token: String,
@@ -58,7 +58,7 @@ pub struct VmRegistration<'a> {
     pub model_usage_provider: Option<&'a str>,
 }
 
-pub(super) async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
+async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
     let content = crate::state_file::read_to_string(
         path,
         crate::state_file::PROXY_REGISTRY_MAX_BYTES,
@@ -73,10 +73,7 @@ pub(super) async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyR
 /// Write the proxy registry JSON file atomically (write tmp + rename).
 ///
 /// This ensures the Python mitm-addon never reads a partially-written file.
-pub(super) async fn write_registry(
-    path: &std::path::Path,
-    value: &ProxyRegistry,
-) -> RunnerResult<()> {
+async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
     remove_legacy_registry_tmp(path).await?;

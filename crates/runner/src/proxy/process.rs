@@ -712,7 +712,6 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::registry::read_registry;
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
@@ -987,8 +986,9 @@ PY
         let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
 
         assert!(addon_dir.join("mitm_addon.py").is_file());
-        let registry = read_registry(&registry_path).await.unwrap();
-        assert!(registry.vms.is_empty());
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(registry["vms"], serde_json::json!({}));
     }
 
     #[tokio::test]
