@@ -1050,6 +1050,33 @@ mod tests {
     }
 
     #[test]
+    fn claude_result_provider_overloaded_logs_job_execution_failed_at_info() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+        .with_session_history_status(SessionHistoryStatus::Present)
+        .with_failure_reason(FailureReason::ProviderOverloaded);
+        let failure = executor::ExecutionFailure::new(1, "API Error: Overloaded", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::INFO);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "error", "API Error: Overloaded");
+        assert_field_eq(&event, "failure_reason", "provider_overloaded");
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_framework", "claude_code");
+        assert_field_eq(&event, "failure_detail_source", "claude_result");
+    }
+
+    #[test]
     fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,
