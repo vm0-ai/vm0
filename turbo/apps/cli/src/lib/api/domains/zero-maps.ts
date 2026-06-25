@@ -6,7 +6,9 @@ type ZeroMapsOperation =
   | "reverse-geocode"
   | "directions"
   | "places/search"
-  | "places/details";
+  | "places/details"
+  | "osm/download"
+  | "osm/render";
 
 export interface ZeroMapsResponse {
   readonly operation?: string;

@@ -3508,6 +3508,13 @@
       "when": 1782296951051,
       "tag": "0500_fast_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1782356464677,
+      "tag": "0501_add_zero_maps_osm_pricing",
+      "breakpoints": true
     }
   ]
 }

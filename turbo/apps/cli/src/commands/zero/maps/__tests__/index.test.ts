@@ -195,6 +195,158 @@ describe("zero maps command", () => {
     });
   });
 
+  it("writes OSM download GeoJSON output", async () => {
+    const outputPath = path.join(TEST_HOME, "map.geojson");
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/maps/osm/download",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "osm.download",
+            provider: "openstreetmap",
+            creditsCharged: 1,
+            billingCategory: "osm.download",
+            billingQuantity: 1,
+            result: {
+              bbox: {
+                west: -122.43,
+                south: 37.76,
+                east: -122.4,
+                north: 37.79,
+              },
+              layers: ["roads", "buildings"],
+              attribution: "© OpenStreetMap contributors",
+              featureCount: 1,
+              geojson: {
+                type: "FeatureCollection",
+                features: [
+                  {
+                    type: "Feature",
+                    properties: { layer: "roads" },
+                    geometry: {
+                      type: "LineString",
+                      coordinates: [
+                        [-122.43, 37.76],
+                        [-122.4, 37.79],
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    await zeroMapsCommand.parseAsync([
+      "node",
+      "cli",
+      "osm",
+      "download",
+      "--bbox",
+      "-122.43,37.76,-122.40,37.79",
+      "--layers",
+      "roads,buildings",
+      "--output",
+      outputPath,
+    ]);
+
+    expect(requestBody).toEqual({
+      bbox: { west: -122.43, south: 37.76, east: -122.4, north: 37.79 },
+      layers: ["roads", "buildings"],
+    });
+    const written = JSON.parse(
+      await fs.readFile(outputPath, "utf8"),
+    ) as unknown;
+    expect(written).toMatchObject({
+      type: "FeatureCollection",
+      features: [{ properties: { layer: "roads" } }],
+    });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("✓ OSM download completed");
+    expect(output).toContain(`Output: ${outputPath}`);
+  });
+
+  it("writes OSM render PNG output", async () => {
+    const outputPath = path.join(TEST_HOME, "map.png");
+    const pngBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/maps/osm/render",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "osm.render",
+            provider: "openstreetmap",
+            creditsCharged: 2,
+            billingCategory: "osm.render.png",
+            billingQuantity: 1,
+            result: {
+              bbox: {
+                west: -122.4308,
+                south: 37.7641,
+                east: -122.408,
+                north: 37.7857,
+              },
+              layers: ["roads", "buildings", "water", "parks"],
+              width: 640,
+              height: 480,
+              style: "guide",
+              attribution: "© OpenStreetMap contributors",
+              featureCount: 4,
+              image: {
+                mimeType: "image/png",
+                base64: pngBytes.toString("base64"),
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    await zeroMapsCommand.parseAsync([
+      "node",
+      "cli",
+      "osm",
+      "render",
+      "--center",
+      "37.7749,-122.4194",
+      "--radius",
+      "1200",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--style",
+      "guide",
+      "--title",
+      "Mission walk",
+      "--marker",
+      "37.7749,-122.4194,Ferry Building",
+      "--output",
+      outputPath,
+    ]);
+
+    expect(requestBody).toEqual({
+      center: { lat: 37.7749, lng: -122.4194 },
+      radiusMeters: 1200,
+      layers: ["roads", "buildings", "water", "parks"],
+      width: 640,
+      height: 480,
+      style: "guide",
+      title: "Mission walk",
+      markers: [{ lat: 37.7749, lng: -122.4194, label: "Ferry Building" }],
+    });
+    await expect(fs.readFile(outputPath)).resolves.toEqual(pngBytes);
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("✓ OSM render completed");
+    expect(output).toContain(`Output: ${outputPath}`);
+  });
+
   it("documents Enterprise fieldsets in places help output", () => {
     const placesCommand = zeroMapsCommand.commands.find((command) => {
       return command.name() === "places";

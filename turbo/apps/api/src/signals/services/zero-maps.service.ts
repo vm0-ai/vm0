@@ -59,7 +59,7 @@ type ErrorStatus = 400 | 402 | 502 | 503;
 type PlaceSearchFieldset = ZeroMapsPlacesSearchRequest["fields"];
 type PlaceDetailFieldset = ZeroMapsPlacesDetailsRequest["fields"];
 
-interface MapsErrorResponse {
+export interface MapsErrorResponse {
   readonly status: ErrorStatus;
   readonly body: {
     readonly error: {
@@ -73,6 +73,7 @@ interface MapsUsageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId?: string;
+  readonly provider?: string;
   readonly category: string;
 }
 
@@ -294,21 +295,23 @@ function estimatedCredits(unitPrice: string, unitSize: string): number {
   return Math.ceil(Number(unitPrice) / Number(unitSize));
 }
 
-const checkMapsCredits$ = command(
+export const checkMapsCredits$ = command(
   async (
     { set },
     args: {
       readonly orgId: string;
+      readonly provider?: string;
       readonly category: string;
     },
     signal: AbortSignal,
   ): Promise<MapsErrorResponse | null> => {
+    const provider = args.provider ?? PROVIDER;
     const writeDb = set(writeDb$);
     const { rows } = await writeDb.execute<CreditCheckRow>(sql`
       WITH pricing AS (
         SELECT unit_price, unit_size FROM usage_pricing
         WHERE kind = ${USAGE_KIND}
-          AND provider = ${PROVIDER}
+          AND provider = ${provider}
           AND category = ${args.category}
         LIMIT 1
       ),
@@ -353,7 +356,7 @@ const checkMapsCredits$ = command(
   },
 );
 
-const recordMapsUsage$ = command(
+export const recordMapsUsage$ = command(
   async (
     { set },
     args: MapsUsageArgs,
@@ -382,7 +385,7 @@ const recordMapsUsage$ = command(
         orgId: args.orgId,
         userId: args.userId,
         kind: USAGE_KIND,
-        provider: PROVIDER,
+        provider: args.provider ?? PROVIDER,
         category: args.category,
         quantity: 1,
       })
