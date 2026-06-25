@@ -1,4 +1,4 @@
-export const HTML_DOM_EDIT_PAYLOAD_TYPE = "html_dom_edit.v1" as const;
+export const HTML_DOM_EDIT_PAYLOAD_TYPE = "html_dom_edit" as const;
 
 export interface HtmlDomEditComment {
   readonly id: string;
