@@ -75,6 +75,7 @@ export class EventRenderer {
     string,
     { toolUse: ToolUseData; prefix: string; rendered: boolean }
   >();
+  private ambiguousToolUseIds = new Set<string>();
   private options: EventRendererOptions;
   private lastEventType: string | null = null;
   private frameworkDisplayName: string = "Agent";
@@ -140,6 +141,7 @@ export class EventRenderer {
   flush(): void {
     this.renderPendingToolUses();
     this.pendingToolUse.clear();
+    this.ambiguousToolUseIds.clear();
   }
 
   private renderPendingToolUses(): void {
@@ -230,8 +232,14 @@ export class EventRenderer {
     // When not buffered, render immediately
     if (this.options.buffered !== false && toolUseId.length > 0) {
       const existing = this.pendingToolUse.get(toolUseId);
-      if (existing && !existing.rendered) {
-        this.renderToolUseOnly(existing.toolUse, existing.prefix);
+      if (existing || this.ambiguousToolUseIds.has(toolUseId)) {
+        if (existing && !existing.rendered) {
+          this.renderToolUseOnly(existing.toolUse, existing.prefix);
+        }
+        this.pendingToolUse.delete(toolUseId);
+        this.ambiguousToolUseIds.add(toolUseId);
+        this.renderToolUseOnly(toolUseData, prefix);
+        return;
       }
       this.pendingToolUse.set(toolUseId, {
         toolUse: toolUseData,
@@ -275,6 +283,14 @@ export class EventRenderer {
     const toolUseId = displayString(event.data.toolUseId);
     const result = displayString(event.data.result);
     const isError = Boolean(event.data.isError);
+
+    if (toolUseId.length > 0 && this.ambiguousToolUseIds.has(toolUseId)) {
+      const orphanToolUse = this.getToolUseFromResultEvent(event);
+      if (orphanToolUse) {
+        this.renderGroupedTool(orphanToolUse, { result, isError }, prefix);
+      }
+      return;
+    }
 
     const pending = this.pendingToolUse.get(toolUseId);
 
