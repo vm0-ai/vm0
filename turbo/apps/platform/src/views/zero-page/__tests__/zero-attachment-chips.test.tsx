@@ -366,6 +366,126 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("pans and pinches an uploaded image preview with touch gestures", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    Object.defineProperty(zoomStage, "clientWidth", {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(zoomStage, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return {
+          bottom: 600,
+          height: 600,
+          left: 0,
+          right: 800,
+          toJSON: () => {
+            return {};
+          },
+          top: 0,
+          width: 800,
+          x: 0,
+          y: 0,
+        };
+      },
+    });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+    expect(zoomStage).toHaveStyle({ touchAction: "none" });
+
+    zoomStage.scrollLeft = 120;
+    zoomStage.scrollTop = 80;
+
+    fireEvent.pointerDown(lightboxImage, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    fireEvent.pointerMove(lightboxImage, {
+      clientX: 70,
+      clientY: 60,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+
+    expect(zoomStage.scrollLeft).toBe(150);
+    expect(zoomStage.scrollTop).toBe(120);
+
+    fireEvent.pointerUp(lightboxImage, {
+      clientX: 70,
+      clientY: 60,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+
+    zoomStage.scrollLeft = 10;
+    zoomStage.scrollTop = 20;
+
+    fireEvent.pointerDown(lightboxImage, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    fireEvent.pointerDown(lightboxImage, {
+      clientX: 300,
+      clientY: 100,
+      pointerId: 3,
+      pointerType: "touch",
+    });
+    fireEvent.pointerMove(lightboxImage, {
+      clientX: 500,
+      clientY: 100,
+      pointerId: 3,
+      pointerType: "touch",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "1600px" });
+    });
+    expect(zoomStage.scrollLeft).toBe(120);
+    expect(zoomStage.scrollTop).toBe(140);
+
+    fireEvent.pointerUp(lightboxImage, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    fireEvent.pointerUp(lightboxImage, {
+      clientX: 500,
+      clientY: 100,
+      pointerId: 3,
+      pointerType: "touch",
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("removes an uploaded image preview from the composer", async () => {
     await setupUploadedImagePreview();
 
