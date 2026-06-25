@@ -25,7 +25,12 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _vm_without_firewalls,
+    _write_registry,
+)
+from tests.requestheaders_helpers import await_requestheaders_result
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -1007,6 +1012,178 @@ class TestResponseHandler:
         assert entry["request_size"] == len(body)
         assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
         assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_firewalled_streamed_request_logs_size_and_capture_body(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                network_policy={
+                    "allow": ["full-access"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+                vm_fields={"captureNetworkBodies": True},
+            ),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "text/plain"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 17)),
+            ),
+        )
+        body = b"x" * (STREAM_BUFFER_LIMIT + 17)
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(body[:123]) == body[:123]
+            assert stream(body[123:]) == body[123:]
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        auth_fetch.assert_awaited_once()
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == len(body)
+        assert entry["request_body"] == "x" * STREAM_BUFFER_LIMIT
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.stream is False
+
+    async def test_firewalled_partial_streamed_request_marks_capture_truncated(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                network_policy={
+                    "allow": ["full-access"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+                vm_fields={"captureNetworkBodies": True},
+            ),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+            ),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b'{"partial":true') == b'{"partial":true'
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == len(b'{"partial":true')
+        assert entry["request_body"] == '{"partial":true'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
+    async def test_firewalled_empty_incomplete_streamed_request_marks_capture_truncated(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                network_policy={
+                    "allow": ["full-access"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+                vm_fields={"captureNetworkBodies": True},
+            ),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+            ),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            await await_requestheaders_result(requestheaders_result)
+            assert callable(flow.request.stream)
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == 0
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
         assert entry["request_body_truncated"] is True
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata

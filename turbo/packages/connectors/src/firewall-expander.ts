@@ -1,16 +1,11 @@
 import {
   type FirewallConfig,
-  type ExpandedFirewallConfig,
   UNKNOWN_PERMISSION_GRANT,
   validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
-
-export interface FirewallSelection {
-  permissions: string[] | "all";
-}
 
 const VALID_RULE_METHODS = new Set([
   "GET",
@@ -167,59 +162,4 @@ export function collectAndValidatePermissions(
     }
   }
   return available;
-}
-
-/**
- * Resolve one already-loaded firewall config against a permission selection.
- * Validates permission names, filters api_entries to only include selected permissions,
- * and returns null when no api_entries remain.
- */
-export function resolveFirewallConfigSelection(
-  serviceConfig: FirewallConfig,
-  selection: FirewallSelection,
-): ExpandedFirewallConfig | null {
-  const availablePermissions = collectAndValidatePermissions(serviceConfig);
-
-  if (selection.permissions !== "all") {
-    for (const name of selection.permissions) {
-      if (!availablePermissions.has(name)) {
-        const available = [...availablePermissions].join(", ");
-        throw new Error(
-          `Permission "${name}" does not exist in firewall "${serviceConfig.name}". Available: ${available}`,
-        );
-      }
-    }
-  }
-
-  const selectedSet =
-    selection.permissions === "all" ? null : new Set(selection.permissions);
-
-  const filteredApis = serviceConfig.apis
-    .map((api) => {
-      return {
-        ...api,
-        permissions: selectedSet
-          ? (api.permissions ?? []).filter((p) => {
-              return selectedSet.has(p.name);
-            })
-          : api.permissions,
-      };
-    })
-    .filter((api) => {
-      // When user picked "all", keep every api, including auth-only entries.
-      if (selectedSet === null) return true;
-      return (api.permissions ?? []).length > 0;
-    });
-
-  if (filteredApis.length === 0) return null;
-
-  const entry: ExpandedFirewallConfig = {
-    name: serviceConfig.name,
-    apis: filteredApis,
-  };
-  if (serviceConfig.description !== undefined)
-    entry.description = serviceConfig.description;
-  if (serviceConfig.placeholders !== undefined)
-    entry.placeholders = serviceConfig.placeholders;
-  return entry;
 }

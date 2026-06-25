@@ -767,7 +767,6 @@ export {
 export {
   collectAndValidatePermissions,
   validateRule,
-  type FirewallSelection,
 } from "@vm0/connectors/firewall-expander";
 
 export {

@@ -285,7 +285,7 @@ describe("firewall runtime loader", () => {
     expect(rootEntrypoint).not.toContain("firewalls/runtime");
   });
 
-  it("keeps selection resolution behind an explicit runtime package subpath", () => {
+  it("does not expose a firewall selection resolver package subpath", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(
         path.resolve(import.meta.dirname, "../../package.json"),
@@ -297,11 +297,8 @@ describe("firewall runtime loader", () => {
       "utf-8",
     );
 
-    expect(packageJson.exports["./firewalls/selection-resolver"]).toStrictEqual(
-      {
-        import: "./src/firewall-selection-resolver.ts",
-        types: "./src/firewall-selection-resolver.ts",
-      },
+    expect(packageJson.exports).not.toHaveProperty(
+      "./firewalls/selection-resolver",
     );
     expect(moduleSpecifiers(rootEntrypoint)).not.toContain(
       "./firewalls/selection-resolver",
@@ -334,7 +331,7 @@ describe("firewall runtime loader", () => {
     expectNoGeneratedRuntimeImports(expanderSource);
   });
 
-  it("keeps root contract entrypoints from exporting runtime selection resolution", () => {
+  it("keeps root contract entrypoints from exporting firewall selection APIs", () => {
     const apiContractsRoot = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -347,8 +344,14 @@ describe("firewall runtime loader", () => {
       "utf-8",
     );
 
-    expect(apiContractsRoot).not.toContain("resolveFirewallSelections");
-    expect(coreRoot).not.toContain("resolveFirewallSelections");
+    for (const exportedName of [
+      "resolveFirewallSelections",
+      "resolveFirewallConfigSelection",
+      "FirewallSelection",
+    ]) {
+      expect(apiContractsRoot).not.toContain(exportedName);
+      expect(coreRoot).not.toContain(exportedName);
+    }
   });
 
   it("blocks eager all-catalog package access", () => {
@@ -432,24 +435,23 @@ describe("firewall runtime loader", () => {
     expectNoGeneratedRuntimeImports(helperSource);
   });
 
-  it("keeps selection resolver on the lazy runtime boundary", () => {
-    const resolverSource = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../firewall-selection-resolver.ts"),
+  it("does not keep the removed selection resolver source file", () => {
+    expect(
+      fs.existsSync(
+        path.resolve(import.meta.dirname, "../firewall-selection-resolver.ts"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps firewall expander limited to validation helpers", () => {
+    const expanderSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../firewall-expander.ts"),
       "utf-8",
     );
 
     expect(
-      staticValueModuleSpecifiers(resolverSource).sort(compareStrings),
-    ).toStrictEqual(["./firewall-expander", "./firewall-runtime"]);
-    expect(dynamicImportSpecifiers(resolverSource)).toStrictEqual([]);
-    for (const specifier of moduleSpecifiers(resolverSource)) {
-      expect(specifier).not.toBe(".");
-      expect(specifier).not.toBe("./index");
-      expect(specifier).not.toMatch(/^\.{1,2}\/firewalls(?:\/|$)/);
-      expect(specifier).not.toBe("@vm0/connectors/firewalls");
-      expect(specifier).not.toBe("@vm0/connectors/firewalls/all");
-    }
-    expectNoGeneratedRuntimeImports(resolverSource);
+      exportedIdentifierNames(expanderSource).sort(compareStrings),
+    ).toEqual(["collectAndValidatePermissions", "validateRule"]);
   });
 
   it("uses literal dynamic imports in the generated runtime loader", () => {

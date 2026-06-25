@@ -108,11 +108,16 @@ Request streaming
 -----------------
 - ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
   ``requestheaders()`` via request streaming setup for stream-safe body
-  capture paths. Read by request body capture. Removed by stream cleanup after
-  terminal hooks.
+  capture paths. Read by request body capture and connector billing refinement.
+  Removed by stream cleanup after terminal hooks.
 - ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
   ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
-  size and capture truncation. Removed by stream cleanup.
+  size, capture truncation, and connector billing refinement. Removed by stream
+  cleanup.
+- ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
+  mitmproxy has delivered the full streamed request body to the addon. Read by
+  connector billing before treating a non-truncated request stream buffer as a
+  complete request body. Removed by stream cleanup.
 
 Model-provider usage
 --------------------
@@ -189,5 +194,6 @@ STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
 REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"
 REQUEST_STREAM_BUFFER_STATE: Final = "request_stream_buffer_state"
+REQUEST_STREAM_COMPLETE: Final = "request_stream_complete"
 X_NDJSON_STATE: Final = "x_ndjson_state"
 X_JSON_STATE: Final = "x_json_state"

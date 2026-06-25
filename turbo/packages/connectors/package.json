@@ -53,10 +53,6 @@
       "import": "./src/firewall-runtime.ts",
       "types": "./src/firewall-runtime.ts"
     },
-    "./firewalls/selection-resolver": {
-      "import": "./src/firewall-selection-resolver.ts",
-      "types": "./src/firewall-selection-resolver.ts"
-    },
     "./firewalls/*": null,
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",
