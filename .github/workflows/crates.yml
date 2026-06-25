@@ -1501,9 +1501,11 @@ jobs:
             echo "--- Cleanup ---"
             if [ -n "$ALLOC_PID" ]; then
               kill "$ALLOC_PID" 2>/dev/null || true
-              wait "$ALLOC_PID" 2>/dev/null || true
             fi
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            if [ -n "$ALLOC_PID" ]; then
+              wait "$ALLOC_PID" 2>/dev/null || true
+            fi
             if [ -n "$SUBMIT_PID" ]; then
               kill "$SUBMIT_PID" 2>/dev/null || true
               wait "$SUBMIT_PID" 2>/dev/null || true
