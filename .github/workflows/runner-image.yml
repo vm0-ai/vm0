@@ -183,7 +183,7 @@ jobs:
         id: host-group-presence
         env:
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
         run: |
           set -euo pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -222,7 +222,7 @@ jobs:
         id: host-groups
         env:
           CURRENT_RUNNER_IMAGE_NEEDED: ${{ steps.needed.outputs.current-runner-image-needed }}
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
         run: |
           set -euo pipefail
@@ -296,7 +296,7 @@ jobs:
         id: matrix-hosts
         shell: bash
         env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
         run: |
