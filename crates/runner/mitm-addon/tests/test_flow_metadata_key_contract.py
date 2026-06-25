@@ -56,6 +56,11 @@ def _static_string_value(node: ast.AST) -> str | None:
                 return None
             parts.append(value.value)
         return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _static_string_value(node.left)
+        right = _static_string_value(node.right)
+        if left is not None and right is not None:
+            return left + right
     return None
 
 
@@ -1591,6 +1596,7 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
         """
 flow.metadata["vm_run_id"] = "run-1"
 flow.metadata[f"vm_run_id"] = "run-1"
+flow.metadata["vm_" + "run_id"] = "run-1"
 flow.metadata["vm_run_id" if condition else "firewall_name"] = "run-1"
 flow.metadata.get("firewall_action")
 flow.metadata.get(f"firewall_action")
@@ -1970,7 +1976,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 222
+    assert len(violations) == 223
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1985,6 +1991,7 @@ payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
 flow.metadata[f"vm_{dynamic_suffix}"] = "run-1"
+flow.metadata[metadata_keys.VM_RUN_ID + ""] = "run-1"
 flow.metadata[metadata_keys.VM_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
 flow.metadata.get(
     metadata_keys.FIREWALL_ACTION if condition else metadata_keys.FIREWALL_ERROR
