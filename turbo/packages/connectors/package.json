@@ -49,10 +49,6 @@
       "types": "./src/firewall-metadata/server.ts"
     },
     "./firewalls": null,
-    "./firewalls/all": {
-      "import": "./src/firewall-runtime-all.ts",
-      "types": "./src/firewall-runtime-all.ts"
-    },
     "./firewalls/runtime": {
       "import": "./src/firewall-runtime.ts",
       "types": "./src/firewall-runtime.ts"

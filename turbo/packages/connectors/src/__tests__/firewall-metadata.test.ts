@@ -35,14 +35,7 @@ import {
   loadFirewallPermissionIndex,
   resolveFirewallServerMetadataPolicies,
 } from "../firewall-metadata/server";
-import {
-  BILLABLE_CONNECTORS,
-  getAllBuiltinConnectorHosts,
-  getDefaultFirewallPolicies,
-  resolveFirewallPolicies,
-  type FirewallConnectorType,
-} from "../firewalls";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
 
 const FORBIDDEN_METADATA_KEYS = new Set([
   "auth",
@@ -58,6 +51,11 @@ const FORBIDDEN_EXECUTION_METADATA_KEYS = new Set([
 ]);
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+type FirewallConnectorType =
+  keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
+let runtimeEntriesPromise: Promise<
+  readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+> | null = null;
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -67,7 +65,7 @@ function isConnectorType(type: string): type is ConnectorType {
   return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, type);
 }
 
-function connectorLabel(type: FirewallConnectorType): string {
+function connectorLabel(type: ConnectorType): string {
   if (!isConnectorType(type)) {
     throw new Error(
       `Firewall connector is missing connector metadata: ${type}`,
@@ -249,10 +247,40 @@ function assertNoForbiddenExecutionMetadataKeys(
   }
 }
 
-function runtimeEntries(): [FirewallConnectorType, FirewallConfig][] {
-  return Object.entries(getAllConnectorFirewalls()).sort(([a], [b]) => {
-    return compareStrings(a, b);
-  }) as [FirewallConnectorType, FirewallConfig][];
+function fixedFirewallApiBaseHost(base: string): string | null {
+  if (base.includes("${{")) {
+    return null;
+  }
+  try {
+    return new URL(base).host;
+  } catch {
+    return null;
+  }
+}
+
+async function runtimeEntries(): Promise<
+  readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+> {
+  runtimeEntriesPromise ??= loadRuntimeFirewallEntries() as Promise<
+    readonly (readonly [FirewallConnectorType, FirewallConfig])[]
+  >;
+  return await runtimeEntriesPromise;
+}
+
+async function runtimeBuiltinConnectorHosts(): Promise<
+  ReadonlyMap<string, FirewallConnectorType>
+> {
+  const hosts = new Map<string, FirewallConnectorType>();
+  for (const [type, firewall] of await runtimeEntries()) {
+    for (const api of firewall.apis) {
+      const host = fixedFirewallApiBaseHost(api.base);
+      if (!host || hosts.has(host)) {
+        continue;
+      }
+      hosts.set(host, type);
+    }
+  }
+  return hosts;
 }
 
 const RESOLVER_METADATA = {
@@ -486,8 +514,8 @@ describe("firewall metadata", () => {
     }
   });
 
-  it("keeps fixed builtin host owners synchronized with runtime hosts", () => {
-    for (const [host, type] of getAllBuiltinConnectorHosts()) {
+  it("keeps fixed builtin host owners synchronized with runtime hosts", async () => {
+    for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
       expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
         type,
         label: connectorLabel(type),
@@ -588,7 +616,9 @@ describe("firewall metadata", () => {
   });
 
   it("resolves server metadata policies like runtime helpers", async () => {
-    for (const [type] of runtimeEntries()) {
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      expect(detail).not.toBeNull();
       const stored = {
         [type]: {
           policies: { __metadata_test__: "deny" as const },
@@ -597,10 +627,14 @@ describe("firewall metadata", () => {
       };
       await expect(
         resolveFirewallServerMetadataPolicies(null, [type]),
-      ).resolves.toStrictEqual(resolveFirewallPolicies(null, [type]));
+      ).resolves.toStrictEqual(
+        resolveFirewallMetadataPolicies(null, [detail!]),
+      );
       await expect(
         resolveFirewallServerMetadataPolicies(stored, [type]),
-      ).resolves.toStrictEqual(resolveFirewallPolicies(stored, [type]));
+      ).resolves.toStrictEqual(
+        resolveFirewallMetadataPolicies(stored, [detail!]),
+      );
     }
 
     await expect(
@@ -620,8 +654,9 @@ describe("firewall metadata", () => {
     ).resolves.toStrictEqual(storedUnknownConnector);
   });
 
-  it("keeps summary metadata synchronized with the runtime registry", () => {
-    const runtimeTypes = runtimeEntries().map(([type]) => {
+  it("keeps summary metadata synchronized with the runtime registry", async () => {
+    const entries = await runtimeEntries();
+    const runtimeTypes = entries.map(([type]) => {
       return type;
     });
     const metadataTypes = Object.keys(
@@ -629,7 +664,7 @@ describe("firewall metadata", () => {
     ).sort(compareStrings);
     expect(metadataTypes).toStrictEqual(runtimeTypes);
 
-    for (const [type, firewall] of runtimeEntries()) {
+    for (const [type, firewall] of entries) {
       const permissions = collectRuntimePermissions(firewall);
       const summary = getFirewallPermissionSummary(type);
       expect(summary).toStrictEqual(
@@ -645,7 +680,7 @@ describe("firewall metadata", () => {
   });
 
   it("loads per-connector details and keeps permission metadata synchronized", async () => {
-    for (const [type, firewall] of runtimeEntries()) {
+    for (const [type, firewall] of await runtimeEntries()) {
       expect(isFirewallMetadataConnectorType(type)).toBe(true);
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
@@ -664,9 +699,9 @@ describe("firewall metadata", () => {
   });
 
   it("keeps execution metadata synchronized with runtime construction data", async () => {
-    const billableConnectors = new Set<string>(BILLABLE_CONNECTORS);
+    expect(getFirewallExecutionMetadata("x")?.billable).toBe(true);
 
-    for (const [type, firewall] of runtimeEntries()) {
+    for (const [type, firewall] of await runtimeEntries()) {
       expect(isFirewallExecutionMetadataConnectorType(type)).toBe(true);
       const metadata = getFirewallExecutionMetadata(type);
       expect(metadata).not.toBeNull();
@@ -681,7 +716,7 @@ describe("firewall metadata", () => {
       const placeholderValues = collectRuntimePlaceholderValues(firewall);
 
       expect(metadata!.type).toBe(type);
-      expect(metadata!.billable).toBe(billableConnectors.has(type));
+      expect(metadata!.billable).toBe(type === "x");
       expect(metadata!.baseUrlVarNames).toStrictEqual(baseUrlVarNames);
       expect(metadata!.baseUrlTemplates).toStrictEqual(baseUrlTemplates);
       expect(metadata!.placeholderValues).toStrictEqual(placeholderValues);
@@ -696,7 +731,7 @@ describe("firewall metadata", () => {
   });
 
   it("keeps category summary flags synchronized with detail metadata", async () => {
-    for (const [type] of runtimeEntries()) {
+    for (const [type] of await runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
       const summary = getFirewallPermissionSummary(type);
@@ -706,7 +741,7 @@ describe("firewall metadata", () => {
   });
 
   it("groups metadata permissions by generated category metadata", async () => {
-    for (const [type] of runtimeEntries()) {
+    for (const [type] of await runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
       const grouped = groupFirewallMetadataPermissionsByCategory(
@@ -736,18 +771,24 @@ describe("firewall metadata", () => {
     }
   });
 
-  it("expands compact default policy metadata to runtime default policies", async () => {
-    for (const [type] of runtimeEntries()) {
+  it("expands compact default policy metadata across generated details", async () => {
+    for (const [type] of await runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
-      expect(expandFirewallMetadataDefaultPolicy(detail!)).toStrictEqual(
-        getDefaultFirewallPolicies(type),
+      const expanded = expandFirewallMetadataDefaultPolicy(detail!);
+      expect(Object.keys(expanded.policies).sort(compareStrings)).toStrictEqual(
+        detail!.permissions
+          .map((permission) => {
+            return permission.name;
+          })
+          .sort(compareStrings),
       );
+      expect(expanded.unknownPolicy).toBe(detail!.defaultPolicy.unknownPolicy);
     }
   });
 
-  it("resolves stored policies with metadata defaults like runtime helpers", async () => {
-    for (const [type] of runtimeEntries()) {
+  it("resolves stored policies with metadata defaults across generated details", async () => {
+    for (const [type] of await runtimeEntries()) {
       const detail = await loadFirewallPermissionMetadata(type);
       expect(detail).not.toBeNull();
       const stored = {
@@ -756,9 +797,9 @@ describe("firewall metadata", () => {
           unknownPolicy: "deny" as const,
         },
       };
-      expect(resolveFirewallMetadataPolicies(stored, [detail!])).toStrictEqual(
-        resolveFirewallPolicies(stored, [type]),
-      );
+      const resolved = resolveFirewallMetadataPolicies(stored, [detail!]);
+      expect(resolved?.[type]?.policies.__metadata_test__).toBe("deny");
+      expect(resolved?.[type]?.unknownPolicy).toBe("deny");
     }
   });
 

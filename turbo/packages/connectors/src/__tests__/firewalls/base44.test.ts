@@ -2,15 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 
 describe("base44 firewall", () => {
-  it("registers the Base44 firewall with OAuth placeholder expansion", () => {
-    expect(isFirewallConnectorType("base44")).toBe(true);
-    const firewall = getConnectorFirewall("base44");
+  it("registers the Base44 firewall with OAuth placeholder expansion", async () => {
+    const firewall = await loadRequiredConnectorFirewall("base44");
 
     expect(firewall.name).toBe("base44");
     expect(firewall.apis).toHaveLength(2);
@@ -39,7 +37,7 @@ describe("base44 firewall", () => {
       BASE44_TOKEN: "base44_placeholder_token",
       BASE44_ACCESS_TOKEN: "base44_placeholder_token",
     });
-    expect(getDefaultFirewallPolicies("base44")).toStrictEqual({
+    await expect(loadDefaultFirewallPolicies("base44")).resolves.toStrictEqual({
       policies: {},
       unknownPolicy: "allow",
     });

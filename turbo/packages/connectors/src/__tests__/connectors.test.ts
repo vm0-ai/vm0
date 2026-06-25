@@ -96,7 +96,7 @@ import {
   isGoogleOAuthConnector,
 } from "../auth-providers/oauth/google-connectors";
 import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
-import { getConnectorFirewall } from "../firewalls";
+import { loadRequiredConnectorFirewall } from "./firewall-test-helpers";
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
@@ -3315,8 +3315,8 @@ describe("getConnectorEnvBindingEntries", () => {
     });
   });
 
-  it("declares generated Slock firewall auth headers", () => {
-    const firewall = getConnectorFirewall("slock");
+  it("declares generated Slock firewall auth headers", async () => {
+    const firewall = await loadRequiredConnectorFirewall("slock");
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]?.base).toBe("https://api.slock.ai");
     expect(firewall.apis[0]?.auth?.headers).toMatchObject({
@@ -3326,8 +3326,8 @@ describe("getConnectorEnvBindingEntries", () => {
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });
 
-  it("declares generated YouTube firewall bearer auth headers", () => {
-    const firewall = getConnectorFirewall("youtube");
+  it("declares generated YouTube firewall bearer auth headers", async () => {
+    const firewall = await loadRequiredConnectorFirewall("youtube");
     expect(firewall.apis).toHaveLength(3);
     for (const api of firewall.apis) {
       expect(api.auth?.headers).toStrictEqual({
@@ -3337,8 +3337,8 @@ describe("getConnectorEnvBindingEntries", () => {
     }
   });
 
-  it("declares generated Google Maps firewall bearer auth header", () => {
-    const firewall = getConnectorFirewall("google-maps");
+  it("declares generated Google Maps firewall bearer auth header", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-maps");
     expect(
       firewall.apis.map((api) => {
         return api.base;

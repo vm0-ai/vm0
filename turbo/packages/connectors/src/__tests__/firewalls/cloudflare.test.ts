@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
-import { extractSecretNamesFromApis } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+  extractSecretNamesFromApis,
+  type FirewallConfig,
+} from "../../firewall-types";
+import {
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 import {
   cloudflareCategories,
   cloudflareCategoryOrder,
@@ -14,8 +16,9 @@ import {
   cloudflareGenerationStats,
 } from "../../firewalls/cloudflare.generated";
 
+let firewall: FirewallConfig;
+
 function getCloudflarePermission(name: string) {
-  const firewall = getConnectorFirewall("cloudflare");
   const permission = firewall.apis
     .flatMap((api) => {
       return api.permissions ?? [];
@@ -40,19 +43,16 @@ function expectCloudflareMatches(
   path: string,
   permissionNames: readonly string[],
 ): void {
-  const matches = findMatchingPermissions(
-    method,
-    path,
-    getConnectorFirewall("cloudflare"),
-  );
+  const matches = findMatchingPermissions(method, path, firewall);
   expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
 }
 
 describe("cloudflare firewall", () => {
-  it("registers the Cloudflare firewall with API token auth", () => {
-    expect(isFirewallConnectorType("cloudflare")).toBe(true);
-    const firewall = getConnectorFirewall("cloudflare");
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("cloudflare");
+  });
 
+  it("registers the Cloudflare firewall with API token auth", () => {
     expect(firewall.name).toBe("cloudflare");
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]).toMatchObject({
@@ -221,7 +221,6 @@ describe("cloudflare firewall", () => {
   });
 
   it("does not assign any route to more than one permission", () => {
-    const firewall = getConnectorFirewall("cloudflare");
     const routePermissions = new Map<string, string[]>();
 
     for (const api of firewall.apis) {
@@ -243,7 +242,6 @@ describe("cloudflare firewall", () => {
   });
 
   it("does not assign any route to both default-allowed and default-denied permissions", () => {
-    const firewall = getConnectorFirewall("cloudflare");
     const defaultAllowed: ReadonlySet<string> = new Set(
       cloudflareDefaultAllowed,
     );
@@ -303,7 +301,6 @@ describe("cloudflare firewall", () => {
   });
 
   it("reports generated mapping coverage from the official OpenAPI schema", () => {
-    const firewall = getConnectorFirewall("cloudflare");
     const permissionCount = firewall.apis.reduce((count, api) => {
       return count + (api.permissions?.length ?? 0);
     }, 0);
@@ -359,8 +356,8 @@ describe("cloudflare firewall", () => {
     expect(cloudflareCategoryOrder).toContain("Cloudflare One / Zero Trust");
   });
 
-  it("defaults Cloudflare readonly permissions to allow and unknown endpoints to deny", () => {
-    const policy = getDefaultFirewallPolicies("cloudflare");
+  it("defaults Cloudflare readonly permissions to allow and unknown endpoints to deny", async () => {
+    const policy = await loadDefaultFirewallPolicies("cloudflare");
 
     expect(policy.policies["account-rule-lists.read"]).toBe("allow");
     expect(policy.policies["account-settings.read"]).toBe("allow");
@@ -386,7 +383,6 @@ describe("cloudflare firewall", () => {
   });
 
   it("generates Cloudflare default-allowed permissions from read permission groups", () => {
-    const firewall = getConnectorFirewall("cloudflare");
     const readOnlyPermissions = firewall.apis.flatMap((api) => {
       return (api.permissions ?? [])
         .filter((permission) => {

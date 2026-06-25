@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
-import { extractSecretNamesFromApis } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+  extractSecretNamesFromApis,
+  type FirewallConfig,
+} from "../../firewall-types";
+import {
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 import {
   stripeCategories,
   stripeCategoryOrder,
@@ -24,8 +26,9 @@ const RUNTIME_METHODS = [
   "DELETE",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function getStripePermission(name: string) {
-  const firewall = getConnectorFirewall("stripe");
   const permission = firewall.apis
     .flatMap((api) => {
       return api.permissions ?? [];
@@ -50,11 +53,7 @@ function expectStripeMatches(
   path: string,
   permissionNames: readonly string[],
 ): void {
-  const matches = findMatchingPermissions(
-    method,
-    path,
-    getConnectorFirewall("stripe"),
-  );
+  const matches = findMatchingPermissions(method, path, firewall);
   expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
 }
 
@@ -69,10 +68,11 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("stripe firewall", () => {
-  it("registers the Stripe firewall with API token auth", () => {
-    expect(isFirewallConnectorType("stripe")).toBe(true);
-    const firewall = getConnectorFirewall("stripe");
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("stripe");
+  });
 
+  it("registers the Stripe firewall with API token auth", () => {
     expect(firewall.name).toBe("stripe");
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]).toMatchObject({
@@ -95,7 +95,7 @@ describe("stripe firewall", () => {
 
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("stripe").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {
@@ -279,7 +279,6 @@ describe("stripe firewall", () => {
   });
 
   it("reports generated mapping coverage with legacy single-owner overrides", () => {
-    const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {
       return count + (api.permissions?.length ?? 0);
     }, 0);
@@ -306,8 +305,8 @@ describe("stripe firewall", () => {
     expect(stripeCategoryOrder).toContain("Treasury");
   });
 
-  it("defaults Stripe readonly permissions to allow", () => {
-    const policy = getDefaultFirewallPolicies("stripe");
+  it("defaults Stripe readonly permissions to allow", async () => {
+    const policy = await loadDefaultFirewallPolicies("stripe");
 
     expect(policy.policies.customer_read).toBe("allow");
     expect(policy.policies.charge_read).toBe("allow");
@@ -329,7 +328,6 @@ describe("stripe firewall", () => {
   });
 
   it("generates Stripe default-allowed permissions from readonly rules", () => {
-    const firewall = getConnectorFirewall("stripe");
     const readOnlyPermissions = firewall.apis.flatMap((api) => {
       return (api.permissions ?? [])
         .filter((permission) => {
