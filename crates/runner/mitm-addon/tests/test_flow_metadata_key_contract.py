@@ -101,6 +101,14 @@ def _pattern_names(pattern: ast.pattern) -> set[str]:
     return set()
 
 
+def _pattern_is_exhaustive(pattern: ast.pattern) -> bool:
+    if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+        return True
+    if isinstance(pattern, ast.MatchOr):
+        return any(_pattern_is_exhaustive(child_pattern) for child_pattern in pattern.patterns)
+    return False
+
+
 def _body_can_fall_through(body: list[ast.stmt]) -> bool:
     return all(_statement_can_fall_through(statement) for statement in body)
 
@@ -555,19 +563,26 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_Match(self, node: ast.Match) -> None:
         self.visit(node.subject)
-        matched_names: set[str] = set()
+        base_aliases = set(self._metadata_aliases)
+        exit_aliases: set[str] = set()
+        has_unmatched_path = True
         for case in node.cases:
             names = _pattern_names(case.pattern)
-            matched_names.update(names)
-            aliases = set(self._metadata_aliases)
+            aliases = set(base_aliases)
             aliases.difference_update(names)
             self._metadata_alias_scopes.append(aliases)
             if case.guard is not None:
                 self.visit(case.guard)
-            for statement in case.body:
-                self.visit(statement)
+            falls_through = self._visit_current_scope_body(case.body)
+            if falls_through:
+                exit_aliases.update(self._metadata_aliases)
             self._metadata_alias_scopes.pop()
-        self._metadata_aliases.difference_update(matched_names)
+            if case.guard is None and _pattern_is_exhaustive(case.pattern):
+                has_unmatched_path = False
+                break
+        if has_unmatched_path:
+            exit_aliases.update(base_aliases)
+        self._replace_current_aliases(exit_aliases)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self._visit_comprehension(node.generators, [node.elt])
@@ -827,12 +842,19 @@ values = [
 match payload:
     case {"payload": payload}:
         outer_meta["_model_json_usage_finalized"] = True
+match_alias_after_case = {}
+match match_payload:
+    case {"metadata": raw_match_metadata}:
+        match_alias_after_case = flow.metadata
+    case _:
+        pass
+match_alias_after_case["vm_run_id"] = "run-1"
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 54
+    assert len(violations) == 55
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -888,6 +910,14 @@ def partial_return_finalbody_rebinds_to_external(condition):
     finally:
         partial_finalbody_meta = {}
     return partial_finalbody_meta["vm_run_id"]
+def terminal_match_rebinds_to_external(match_payload):
+    terminal_match_meta = flow.metadata
+    match match_payload:
+        case {"return": True}:
+            return None
+        case _:
+            terminal_match_meta = {}
+    return terminal_match_meta["vm_run_id"]
 def accepts_external_metadata(meta):
     return meta["vm_proxy_log_path"]
 for meta in [{"firewall_name": "external"}]:
