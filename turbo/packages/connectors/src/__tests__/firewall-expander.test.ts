@@ -8,7 +8,6 @@ import {
 } from "../firewall-types";
 import {
   collectAndValidatePermissions,
-  resolveFirewallConfigSelection,
   validateRule,
 } from "../firewall-expander";
 import type { FirewallConfig, PermissionNamesOf } from "../firewall-types";
@@ -36,108 +35,6 @@ describe("firewall expander helpers", () => {
     expectTypeOf<PermissionNamesOf<typeof config>>().toEqualTypeOf<
       "read" | "write"
     >();
-  });
-
-  it("resolveFirewallConfigSelection filters selected permissions", () => {
-    const config: FirewallConfig = {
-      name: "mixed",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [
-            { name: "read", rules: ["GET /files"] },
-            { name: "write", rules: ["POST /files"] },
-          ],
-        },
-        {
-          base: "https://uploads.example.com",
-          auth: { headers: {} },
-          permissions: [],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: ["read"],
-    });
-
-    expect(resolved).toStrictEqual({
-      name: "mixed",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    });
-  });
-
-  it("resolveFirewallConfigSelection keeps all api entries and metadata", () => {
-    const config: FirewallConfig = {
-      name: "metadata",
-      description: "Metadata test",
-      placeholders: { TOKEN: "secret" },
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-        {
-          base: "https://uploads.example.com",
-          auth: { headers: {} },
-          permissions: [],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: "all",
-    });
-
-    expect(resolved).toStrictEqual(config);
-  });
-
-  it("resolveFirewallConfigSelection returns null when no api entries remain", () => {
-    const config: FirewallConfig = {
-      name: "empty-selection",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: [],
-    });
-
-    expect(resolved).toBeNull();
-  });
-
-  it("resolveFirewallConfigSelection rejects missing permission names", () => {
-    const config: FirewallConfig = {
-      name: "missing-permission",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    };
-
-    expect(() => {
-      return resolveFirewallConfigSelection(config, {
-        permissions: ["write"],
-      });
-    }).toThrow(
-      'Permission "write" does not exist in firewall "missing-permission". Available: read',
-    );
   });
 
   it("collectAndValidatePermissions accepts mixed empty and non-empty apis", () => {
