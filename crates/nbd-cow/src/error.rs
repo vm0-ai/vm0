@@ -3,7 +3,7 @@
 //! [`NbdCowError`] wraps protocol, I/O, netlink, device allocation, and bounds
 //! errors surfaced by the public APIs.
 
-pub use crate::protocol::ProtocolError;
+pub use crate::protocol_impl::ProtocolError;
 
 /// Error type returned by `nbd-cow` operations.
 #[derive(Debug, thiserror::Error)]

@@ -28,7 +28,12 @@ pub mod device_lock;
 pub mod error;
 pub mod netlink;
 pub mod pool;
-mod protocol;
+#[path = "protocol.rs"]
+mod protocol_impl;
+/// Compatibility exports for protocol-related public error types.
+pub mod protocol {
+    pub use crate::error::ProtocolError;
+}
 pub mod server;
 
 pub use device::{

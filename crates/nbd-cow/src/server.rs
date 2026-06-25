@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::cow::CowLayer;
 use crate::error::{NbdCowError, Result};
-use crate::protocol::{self, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
+use crate::protocol_impl::{self as protocol, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
 
 /// Maximum allowed request length (32 MB). Requests exceeding this are rejected
 /// with an I/O error to prevent OOM from malformed requests.

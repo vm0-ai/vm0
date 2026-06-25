@@ -1,6 +1,6 @@
 use super::*;
 use crate::cow::CowLayer;
-use crate::protocol::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
+use crate::protocol_impl::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
 use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 use std::time::Duration;
