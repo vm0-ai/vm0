@@ -362,7 +362,7 @@ function ResultMessageCard({
   showConnector?: boolean;
 }) {
   const timestamp = formatEventTime(message.createdAt);
-  const isError = eventData.is_error === true;
+  const isError = eventData.is_error === true || eventData.success === false;
   return (
     <div className="relative">
       {showConnector && (

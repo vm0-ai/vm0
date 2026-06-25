@@ -57,6 +57,7 @@ export interface EventData {
     }
   >;
   is_error?: boolean;
+  success?: boolean;
   result?: string | null;
 }
 

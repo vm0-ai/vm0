@@ -899,6 +899,7 @@ function codexActivityEvents(): AgentEvent[] {
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
+        success: false,
         usage: {
           input_tokens: 111,
           cached_input_tokens: 22,
@@ -2090,6 +2091,7 @@ describe("activity detail polling", () => {
     expect(screen.getByText(/Codex unknown_item/u)).toBeInTheDocument();
     expect(screen.getByText("1 turns")).toBeInTheDocument();
     expect(screen.getByText("1 models")).toBeInTheDocument();
+    expect(document.querySelector('[data-variant="error"]')).toBeTruthy();
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
