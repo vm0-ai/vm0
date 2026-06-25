@@ -27,7 +27,6 @@
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
-    "@resvg/resvg-js": "^2.6.2",
     "@sentry/node": "^10.50.0",
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-core": "^0.13.11",
