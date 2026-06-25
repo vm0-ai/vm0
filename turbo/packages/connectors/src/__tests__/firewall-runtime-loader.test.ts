@@ -138,9 +138,25 @@ function requireSpecifiers(source: string): string[] {
   });
 }
 
+function importTypeSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      const specifier = stringLiteralText(node.argument.literal);
+      if (specifier !== null) {
+        specifiers.push(specifier);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parseSource(source));
+  return specifiers;
+}
+
 function moduleSpecifiers(source: string): string[] {
   return [
     ...staticModuleSpecifiers(source, { includeTypeOnly: true }),
+    ...importTypeSpecifiers(source),
     ...dynamicImportSpecifiers(source),
     ...requireSpecifiers(source),
   ];
