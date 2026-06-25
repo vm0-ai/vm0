@@ -1417,7 +1417,7 @@ jobs:
       - name: Start Stripe CLI listener on one metal host
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
@@ -1853,7 +1853,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           # The helper resolves per-architecture host subsets locally and emits
           # merged hash maps for deploy-runner-start.
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image-groups.sh
@@ -1888,7 +1888,7 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS_CANARY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
