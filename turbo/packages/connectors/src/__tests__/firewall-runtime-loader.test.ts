@@ -484,8 +484,15 @@ describe("firewall runtime loader", () => {
 
   it("loads and caches expanded connector firewalls", async () => {
     expect(isRuntimeFirewallConnectorType("slack")).toBe(true);
-    expect(isRuntimeFirewallConnectorType("cloudinary")).toBe(false);
-    await expect(loadConnectorFirewall("cloudinary")).resolves.toBeNull();
+    for (const unknownType of [
+      "cloudinary",
+      "__proto__",
+      "constructor",
+      "toString",
+    ]) {
+      expect(isRuntimeFirewallConnectorType(unknownType)).toBe(false);
+      await expect(loadConnectorFirewall(unknownType)).resolves.toBeNull();
+    }
 
     const [firstSlack, secondSlack] = await Promise.all([
       loadConnectorFirewall("slack"),
