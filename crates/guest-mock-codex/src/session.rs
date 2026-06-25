@@ -353,6 +353,7 @@ fn ambiguous_session_files_error(thread_id: &str, matches: &[PathBuf]) -> io::Er
 fn session_artifacts_for_resume(codex_home: &Path) -> io::Result<Vec<PathBuf>> {
     let root = codex_home.join("sessions");
     let mut found = Vec::new();
+    // Resume should surface a corrupt sessions root instead of starting a fresh session.
     if !ensure_existing_real_session_dir(&root)? {
         return Ok(found);
     }
