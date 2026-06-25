@@ -203,6 +203,39 @@ describe("proxy middleware: public routes", () => {
     expect(response?.status).toBe(202);
   });
 
+  it("uses the SO origin as forwarded host for SO frontend server actions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "next-action": "abc123",
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://so.vm0.ai/en");
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("so.vm0.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response?.status).toBe(202);
+  });
+
   it("does not proxy non-GET requests when so frontend forwarding is disabled", async () => {
     const request = new NextRequest("https://www.vm0.ai/en", {
       method: "POST",
