@@ -24,6 +24,7 @@ from auth_base_forwarder import (
     forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
+    release_forward_request_admission,
     resolved_auth_header_pairs,
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
@@ -700,6 +701,12 @@ def _take_auth_base_forward_admission(
     return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
 
 
+def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
+    admission = _take_auth_base_forward_admission(flow)
+    if admission is not None:
+        release_forward_request_admission(admission)
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -831,6 +838,7 @@ async def _apply_resolved_firewall_auth(
                 proxy_log_path=proxy_log_path,
             )
 
+        _release_auth_base_forward_admission(flow)
         _apply_header_query_injection(
             flow,
             headers=headers,

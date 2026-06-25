@@ -1100,6 +1100,48 @@ async def test_auth_base_requestheaders_admission_released_on_auth_failure(
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
+async def test_auth_base_requestheaders_admission_released_when_resolved_base_missing(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"ok",
+    )
+    token_meta = {
+        "headers": {"Authorization": "Bearer resolved"},
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
 @pytest.mark.parametrize(
     "request_header_pairs",
     [
