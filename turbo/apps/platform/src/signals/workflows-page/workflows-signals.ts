@@ -20,6 +20,15 @@ import { activeRoute$ } from "../active-route.ts";
 import { pathParams$ } from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
+export type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+
+export interface WorkflowDetailFileDraft {
+  readonly workflowId: string;
+  readonly filePath: string | null;
+  readonly sourceContent: string;
+  readonly content: string;
+}
+
 /**
  * The workflow uuid for the active detail route, or null elsewhere.
  */
@@ -34,6 +43,9 @@ export const currentWorkflowId$ = computed((get): string | null => {
 const internalWorkflowReload$ = state(0);
 
 const internalSelectedFilePath$ = state<string | null>(null);
+const internalWorkflowDetailTriggerSidebarOpen$ = state(false);
+const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
+const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
@@ -51,6 +63,36 @@ export const workflowSearch$ = computed((get) => {
 export const setWorkflowSearch$ = command(({ set }, value: string) => {
   set(internalWorkflowSearch$, value);
 });
+
+export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
+  return get(internalWorkflowDetailTriggerSidebarOpen$);
+});
+
+export const setWorkflowDetailTriggerSidebarOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalWorkflowDetailTriggerSidebarOpen$, open);
+  },
+);
+
+export const workflowActionDialog$ = computed((get) => {
+  return get(internalWorkflowActionDialog$);
+});
+
+export const setWorkflowActionDialog$ = command(
+  ({ set }, dialog: WorkflowDetailActionDialog) => {
+    set(internalWorkflowActionDialog$, dialog);
+  },
+);
+
+export const workflowFileDraft$ = computed((get) => {
+  return get(internalWorkflowFileDraft$);
+});
+
+export const setWorkflowFileDraft$ = command(
+  ({ set }, draft: WorkflowDetailFileDraft | null) => {
+    set(internalWorkflowFileDraft$, draft);
+  },
+);
 
 export const editingGmailTriggerId$ = computed((get) => {
   return get(internalEditingGmailTriggerId$);
