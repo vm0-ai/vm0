@@ -9,6 +9,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
+import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -64,31 +65,22 @@ function parseContextOptions(options: SearchOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context ? parseInt(options.context, 10) : 0;
+  const contextN = options.context
+    ? parseBoundedLogCount(options.context, "--context", 0, 10)
+    : 0;
   const before = options.beforeContext
-    ? parseInt(options.beforeContext, 10)
+    ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
     : contextN;
   const after = options.afterContext
-    ? parseInt(options.afterContext, 10)
+    ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
     : contextN;
-
-  if (isNaN(before) || before < 0 || before > 10) {
-    throw new Error("--before-context must be between 0 and 10");
-  }
-  if (isNaN(after) || after < 0 || after > 10) {
-    throw new Error("--after-context must be between 0 and 10");
-  }
 
   return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const limit = parseInt(value, 10);
-  if (isNaN(limit) || limit < 1 || limit > 50) {
-    throw new Error("--limit must be between 1 and 50");
-  }
-  return limit;
+  return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
 async function runLogsSource(

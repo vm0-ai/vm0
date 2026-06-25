@@ -156,6 +156,24 @@ describe("zero logs search command", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("5");
   });
 
+  it("should reject partial numeric context and limit values", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "-C", "2x"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 50");
+  });
+
   it("should pass agentId and run filters", async () => {
     let capturedUrl: URL | undefined;
     server.use(

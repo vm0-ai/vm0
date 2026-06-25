@@ -206,6 +206,15 @@ describe("zero logs list command", () => {
     expect(sinceValue).toBeLessThanOrEqual(Date.now());
   });
 
+  it("should reject partial numeric --limit values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Option --limit must be a positive integer");
+  });
+
   it("should fall back to agentId when displayName is null", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs", () => {

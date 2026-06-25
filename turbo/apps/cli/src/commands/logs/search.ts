@@ -10,6 +10,7 @@ import { formatIsoTimestamp } from "../../lib/utils/time-format";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { withErrorHandler } from "../../lib/command";
+import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -59,20 +60,15 @@ function parseContextOptions(options: SearchOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context ? parseInt(options.context, 10) : 0;
+  const contextN = options.context
+    ? parseBoundedLogCount(options.context, "--context", 0, 10)
+    : 0;
   const before = options.beforeContext
-    ? parseInt(options.beforeContext, 10)
+    ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
     : contextN;
   const after = options.afterContext
-    ? parseInt(options.afterContext, 10)
+    ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
     : contextN;
-
-  if (isNaN(before) || before < 0 || before > 10) {
-    throw new Error("--before-context must be between 0 and 10");
-  }
-  if (isNaN(after) || after < 0 || after > 10) {
-    throw new Error("--after-context must be between 0 and 10");
-  }
 
   return { before, after };
 }
@@ -82,11 +78,7 @@ function parseContextOptions(options: SearchOptions): {
  */
 function parseLimit(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const limit = parseInt(value, 10);
-  if (isNaN(limit) || limit < 1 || limit > 50) {
-    throw new Error("--limit must be between 1 and 50");
-  }
-  return limit;
+  return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
 /**

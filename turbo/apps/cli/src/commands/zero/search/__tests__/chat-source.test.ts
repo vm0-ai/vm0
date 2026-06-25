@@ -264,6 +264,41 @@ describe("zero search --source chat", () => {
     expect(errors).toContain("--before-context must be between 0 and 10");
   });
 
+  it("rejects partial numeric context and limit values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "-C",
+        "2x",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--context must be between 0 and 10");
+
+    mockConsoleError.mockClear();
+    zeroSearchCommand.setOptionValue("source", []);
+
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "hello",
+        "--source",
+        "chat",
+        "--limit",
+        "1abc",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("--limit must be between 1 and 50");
+  });
+
   it("shows the hasMore hint when the API reports more results", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/chat/search", () => {
