@@ -187,6 +187,23 @@ exit 0
     }
 
     fn write_busy_then_successful_fake_umount(fake_bin: &Path, log_path: &Path, count_path: &Path) {
+        write_busy_until_successful_fake_umount(fake_bin, log_path, count_path, 1);
+    }
+
+    fn write_busy_twice_then_successful_fake_umount(
+        fake_bin: &Path,
+        log_path: &Path,
+        count_path: &Path,
+    ) {
+        write_busy_until_successful_fake_umount(fake_bin, log_path, count_path, 2);
+    }
+
+    fn write_busy_until_successful_fake_umount(
+        fake_bin: &Path,
+        log_path: &Path,
+        count_path: &Path,
+        busy_calls: u32,
+    ) {
         let log_path = quote_shell_arg(log_path.to_str().unwrap());
         let count_path = quote_shell_arg(count_path.to_str().unwrap());
         write_executable(
@@ -201,11 +218,33 @@ fi
 count=$((count + 1))
 printf '%s\n' "$count" > {count_path}
 printf 'umount call=%s cwd=%s args=%s\n' "$count" "$(pwd)" "$*" >> {log_path}
-if [ "$count" -eq 1 ]; then
+if [ "$count" -le {busy_calls} ]; then
   echo "target is busy" >&2
   exit 32
 fi
 exit 0
+"#
+            ),
+        );
+    }
+
+    fn write_always_busy_fake_umount(fake_bin: &Path, log_path: &Path, count_path: &Path) {
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
+        let count_path = quote_shell_arg(count_path.to_str().unwrap());
+        write_executable(
+            &fake_bin.join("umount"),
+            &format!(
+                r#"#!/bin/sh
+set -eu
+count=0
+if [ -f {count_path} ]; then
+  count="$(cat {count_path})"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > {count_path}
+printf 'umount call=%s cwd=%s args=%s\n' "$count" "$(pwd)" "$*" >> {log_path}
+echo "target is busy" >&2
+exit 32
 "#
             ),
         );
@@ -441,9 +480,13 @@ exit 0
             "holder should be terminated by signal"
         );
         assert!(stderr.contains("workspace drive unmount failed; diagnosing holders"));
-        assert!(stderr.contains("workspace holder:"));
+        assert!(stderr.contains("workspace holder: phase=fast"));
         assert!(stderr.contains(&format!("pid={}", holder.id())));
         assert!(stderr.contains("ref=cwd"));
+        assert!(stderr.contains("workspace holder cleanup: TERM started"));
+        assert!(
+            stderr.contains("workspace holder cleanup: retry umount after fast cleanup succeeded")
+        );
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 2);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
@@ -488,9 +531,13 @@ exit 0
             !holder_status.success(),
             "holder should be terminated by signal"
         );
-        assert!(stderr.contains("workspace holder:"));
+        assert!(stderr.contains("workspace holder: phase=fast"));
         assert!(stderr.contains(&format!("pid={}", holder.id())));
         assert!(stderr.contains("ref=fd"));
+        assert!(stderr.contains("workspace holder cleanup: TERM started"));
+        assert!(
+            stderr.contains("workspace holder cleanup: retry umount after fast cleanup succeeded")
+        );
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 2);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
@@ -510,7 +557,7 @@ exit 0
         fs::create_dir(&fake_bin).unwrap();
         write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
         write_fake_sync(&fake_bin, &log_path);
-        write_busy_then_successful_fake_umount(&fake_bin, &log_path, &count_path);
+        write_busy_twice_then_successful_fake_umount(&fake_bin, &log_path, &count_path);
 
         let mut holder = Command::new("sh")
             .arg("-c")
@@ -533,12 +580,56 @@ exit 0
             !holder_status.success(),
             "holder should be killed after ignoring TERM"
         );
-        assert!(stderr.contains("workspace holders remain after TERM; sending KILL"));
+        assert!(
+            stderr.contains("workspace holder cleanup: retry umount after fast cleanup failed")
+        );
+        assert!(stderr.contains("workspace holder cleanup: KILL started"));
+        assert!(
+            stderr.contains(
+                "workspace holder cleanup: retry umount after fast KILL cleanup succeeded"
+            )
+        );
         assert!(stderr.contains(&format!("pid={}", holder.id())));
         let log = fs::read_to_string(log_path).unwrap();
-        assert_eq!(log.matches("umount call=").count(), 2);
+        assert_eq!(log.matches("umount call=").count(), 3);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
         assert!(log.contains("umount call=2 cwd=/ args=--"));
+        assert!(log.contains("umount call=3 cwd=/ args=--"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unmount_script_reports_no_fast_holders_before_slow_maps_scan() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        fs::create_dir(&workspace_dir).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_always_busy_fake_umount(&fake_bin, &log_path, &count_path);
+
+        let output = run_unmount_script(&workspace_dir, &workspace_device, &fake_bin);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "stderr={stderr}");
+        assert!(stderr.contains("workspace holder cleanup: fast scan started"));
+        assert!(stderr.contains("no fast workspace holder processes found"));
+        assert!(
+            stderr.contains("workspace holder cleanup: retry umount after fast cleanup failed")
+        );
+        assert!(stderr.contains("workspace holder cleanup: slow maps scan started"));
+        assert!(stderr.contains("no workspace maps holder processes found"));
+        assert!(
+            stderr.contains(
+                "workspace holder cleanup: retry umount after slow maps diagnostics failed"
+            )
+        );
+        let log = fs::read_to_string(log_path).unwrap();
+        assert_eq!(log.matches("umount call=").count(), 3);
     }
 
     #[test]
@@ -618,6 +709,8 @@ exit 0
     fn unmount_command_diagnoses_and_cleans_workspace_holders_before_retry() {
         let cmd = workspace_unmount_command();
 
+        assert!(cmd.contains("scan_workspace_fast_holder_refs()"));
+        assert!(cmd.contains("scan_workspace_maps_holder_refs()"));
         assert!(cmd.contains("scan_proc_ref \"$pid\" cwd \"$proc_dir/cwd\""));
         assert!(cmd.contains("scan_proc_ref \"$pid\" root \"$proc_dir/root\""));
         assert!(cmd.contains("scan_proc_ref \"$pid\" exe \"$proc_dir/exe\""));
@@ -627,69 +720,96 @@ exit 0
         assert!(cmd.contains("stripped_target=${target%\"$deleted_suffix\"}"));
         assert!(cmd.contains("proc_path_has_workspace_ref()"));
         assert!(cmd.contains("proc_maps_has_workspace_ref()"));
-        assert!(cmd.contains("if pid_has_workspace_ref \"$pid\"; then"));
+        assert!(cmd.contains("if pid_has_fast_workspace_ref \"$pid\"; then"));
         assert!(cmd.contains("if proc_path_has_workspace_ref \"$proc_dir/exe\"; then"));
         assert!(cmd.contains("if proc_maps_has_workspace_ref \"$proc_dir/maps\"; then"));
         assert!(cmd.contains("WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT=40"));
+        assert!(cmd.contains("WORKSPACE_HOLDER_MAPS_LINE_LIMIT=4096"));
         assert!(cmd.contains("WORKSPACE_HOLDER_VALUE_LIMIT=240"));
         assert!(cmd.contains("WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1"));
-        assert!(cmd.contains("wait_for_workspace_holders_to_clear()"));
-        assert!(cmd.contains("workspace holder diagnostics truncated"));
+        assert!(cmd.contains("wait_for_fast_workspace_holders_to_clear()"));
+        assert!(cmd.contains("diagnostics truncated after $WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT"));
+        assert!(cmd.contains("workspace holder cleanup: fast scan started"));
+        assert!(cmd.contains("workspace holder cleanup: TERM started"));
+        assert!(cmd.contains("workspace holder cleanup: KILL started"));
+        assert!(cmd.contains("workspace holder cleanup: slow maps scan started"));
+        assert!(cmd.contains("workspace holder cleanup: maps KILL started"));
         assert!(cmd.contains("pid=%s uid=%s comm=%s ref=%s path=%s"));
         assert!(cmd.contains("comm=\"$(sanitize_log_value \"$comm\")\""));
         assert!(cmd.contains("target=\"$(sanitize_log_value \"$target\")\""));
-        assert!(cmd.contains("pid_has_workspace_ref \"$pid\" || continue"));
+        assert!(cmd.contains("pid_has_fast_workspace_ref \"$pid\" || continue"));
+        assert!(cmd.contains("pid_has_maps_workspace_ref \"$pid\" || continue"));
         assert!(cmd.contains("[ \"$pid\" != \"$$\" ] || continue"));
         assert!(cmd.contains("[ \"$pid\" != \"1\" ] || continue"));
 
         let clean_unmount = cmd
             .find("if umount -- \"$workspace_dir\"")
             .expect("clean unmount");
-        let diagnose = cmd
-            .find("holder_pids=\"$(workspace_holder_pids)\"")
-            .expect("holder pid collection");
+        let fast_scan = cmd
+            .find("scan_workspace_fast_holder_refs | collect_and_log_workspace_holders")
+            .expect("fast holder scan");
         let term = cmd
-            .find("term_workspace_holder_pids \"$holder_pids\"")
+            .find("term_workspace_holder_record_pids \"$holder_records\"")
             .expect("TERM holders");
         let term_wait = cmd
-            .find("wait_for_workspace_holders_to_clear \"$WORKSPACE_HOLDER_TERM_GRACE_SECONDS\"")
+            .find(
+                "wait_for_fast_workspace_holders_to_clear \"$WORKSPACE_HOLDER_TERM_GRACE_SECONDS\"",
+            )
             .expect("TERM holder wait");
+        let term_retry = cmd
+            .find("retry_workspace_unmount \"fast cleanup\"")
+            .expect("TERM retry unmount");
         let rescan = cmd
-            .find("remaining_holder_pids=\"$(workspace_holder_pids)\"")
+            .find("scan_workspace_fast_holder_refs | collect_and_log_workspace_holders \"$remaining_holder_records\"")
             .expect("holder rescan");
         let kill = cmd
-            .find("kill_workspace_holder_pids \"$remaining_holder_pids\"")
+            .find("kill_workspace_holder_record_pids \"$remaining_holder_records\" fast")
             .expect("KILL remaining holders");
         let kill_wait = find_after(
             &cmd,
-            "wait_for_workspace_holders_to_clear \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"",
+            "wait_for_fast_workspace_holders_to_clear \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"",
             kill,
         );
-        let retry_sync = find_after(&cmd, "sync -f -- \"$workspace_dir\"", kill_wait);
-        let retry_unmount = find_after(&cmd, "umount -- \"$workspace_dir\"", retry_sync);
+        let kill_retry = find_after(
+            &cmd,
+            "retry_workspace_unmount \"fast KILL cleanup\"",
+            kill_wait,
+        );
+        let maps_scan = find_after(
+            &cmd,
+            "scan_workspace_maps_holder_refs | collect_and_log_workspace_holders",
+            kill_retry,
+        );
 
         assert!(
-            clean_unmount < diagnose,
-            "holder diagnosis must only happen after clean unmount fails"
+            clean_unmount < fast_scan,
+            "fast holder diagnosis must only happen after clean unmount fails"
         );
-        assert!(diagnose < term, "holders must be diagnosed before TERM");
+        assert!(fast_scan < term, "holders must be diagnosed before TERM");
         assert!(term < term_wait, "TERM must wait for holder refs to clear");
         assert!(
-            term_wait < rescan,
-            "holders must be rescanned after TERM wait"
+            term_wait < term_retry,
+            "TERM wait must precede retry unmount"
+        );
+        assert!(
+            term_retry < rescan,
+            "holders must be rescanned only after TERM retry fails"
         );
         assert!(
             rescan < kill,
             "KILL must only target holders confirmed by the rescan"
         );
-        assert!(kill < retry_sync, "cleanup must happen before retry sync");
         assert!(
             kill < kill_wait,
             "KILL must wait for holder refs to clear before retry sync"
         );
         assert!(
-            retry_sync < retry_unmount,
-            "retry sync must happen before retry unmount"
+            kill_wait < kill_retry,
+            "KILL wait must happen before KILL retry unmount"
+        );
+        assert!(
+            kill_retry < maps_scan,
+            "slow maps scan must run after fast TERM/KILL retries"
         );
     }
 
