@@ -15,9 +15,19 @@ function compareEntryKeys(a: LazyLoaderEntry, b: LazyLoaderEntry): number {
 }
 
 function renderLazyLoaderEntry(entry: LazyLoaderEntry): string {
-  return `  ${JSON.stringify(entry.key)}: async () => {
+  return `  [${JSON.stringify(entry.key)}]: async () => {
     return (await import(${JSON.stringify(entry.moduleSpecifier)}))[${JSON.stringify(entry.exportName)}];
   },`;
+}
+
+function validateUniqueEntryKeys(entries: readonly LazyLoaderEntry[]): void {
+  const keys = new Set<string>();
+  for (const entry of entries) {
+    if (keys.has(entry.key)) {
+      throw new Error(`Duplicate lazy loader key: ${entry.key}`);
+    }
+    keys.add(entry.key);
+  }
 }
 
 export function renderLazyLoaderRecord({
@@ -25,6 +35,8 @@ export function renderLazyLoaderRecord({
   recordType,
   entries,
 }: LazyLoaderRecordOptions): string {
+  validateUniqueEntryKeys(entries);
+
   const renderedEntries = [...entries]
     .sort(compareEntryKeys)
     .map(renderLazyLoaderEntry)
