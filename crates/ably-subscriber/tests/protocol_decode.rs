@@ -109,6 +109,13 @@ fn decode_msg_rejects_field_type_mismatches() -> TestResult {
     let encoded = encode_value(messages_as_string)?;
     expect_bad_request(&encoded)?;
 
+    let message_item_as_string = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field("messages", rmpv::Value::Array(vec![str_value("not-map")])),
+    ]);
+    let encoded = encode_value(message_item_as_string)?;
+    expect_bad_request(&encoded)?;
+
     Ok(())
 }
 
