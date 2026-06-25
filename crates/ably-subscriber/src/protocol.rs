@@ -144,6 +144,15 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     decode_protocol_message(map)
 }
 
+// Inbound decoding intentionally does not use direct rmp_serde struct
+// deserialization. Ably can send duplicate MessagePack map keys, and serde
+// rejects duplicate struct fields. The old decoder used a full
+// MessagePack -> JSON -> ProtocolMessage round trip because serde_json object
+// collection gave us last-wins duplicate-key behavior while rmpv handled
+// MessagePack binary/ext values. This decoder keeps those compatibility
+// semantics without materializing a JSON tree for the whole protocol message:
+// known protocol fields are collected in wire order, and only AblyMessage.data
+// is converted to JSON because that field is exposed as serde_json::Value.
 fn decode_protocol_message(map: MsgpackMap) -> Result<ProtocolMessage, Error> {
     let mut action = None;
     let mut id = None;
