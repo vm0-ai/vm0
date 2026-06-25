@@ -66,6 +66,25 @@ const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_insert_runner_job_queue",
   "api_dispatch_update_run_runner_group",
 ] as const;
+const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
+  "claim_route_request_prepare",
+  "claim_route_lookup_authorization",
+  "claim_route_context_parse",
+  "claim_route_feature_switch_context",
+  "claim_route_secret_materialization",
+  "claim_route_response_assembly",
+  "claim_route_transition_running",
+] as const;
+const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
+  "claim_route_transition_lock_run",
+  "claim_route_transition_lock_queue_job",
+  "claim_route_transition_update_run",
+  "claim_route_transition_delete_queue_job",
+] as const;
+const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
+  ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
+  ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
+] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
@@ -107,6 +126,24 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "environment",
   "execution_context",
   "presigned_url",
+] as const;
+const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "stored_context",
+  "sandbox_token",
+  "sandboxToken",
+  "presigned_url",
+  "response_body",
 ] as const;
 
 function modelProviderPlaceholder(
@@ -235,6 +272,26 @@ function apiDispatchTimingEventsForRun(
         event.run_id === runId &&
         typeof event.op_type === "string" &&
         event.op_type.startsWith("api_dispatch_")
+      );
+    });
+  });
+}
+
+function claimRouteTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return (
+        isRecord(event) &&
+        event.run_id === runId &&
+        typeof event.op_type === "string" &&
+        event.op_type.startsWith("claim_route_")
       );
     });
   });
@@ -2134,10 +2191,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const apiKey = await api.createApiKey(actor);
     const bearer = `Bearer ${apiKey.token}`;
+    const firstPrompt = "user runner job one";
 
     const first = await api.createRun(actor, {
       agentId,
-      prompt: "user runner job one",
+      prompt: firstPrompt,
       modelProvider: "anthropic-api-key",
     });
     const polled = await api.requestPollRunnerAs(
@@ -2167,6 +2225,64 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
+    const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
+    expect(claimRouteTimingEvents).toHaveLength(
+      CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
+    );
+    const observedClaimRouteActionTypes = new Set(
+      claimRouteTimingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of CLAIM_ROUTE_TIMING_ACTION_TYPES) {
+      expect(observedClaimRouteActionTypes).toContain(actionType);
+    }
+    for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "top_level",
+        }),
+      );
+    }
+    for (const actionType of CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "nested",
+        }),
+      );
+    }
+    for (const event of claimRouteTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          success: true,
+          run_id: first.runId,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(["top_level", "nested"]).toContain(event.span_kind);
+      for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(firstPrompt);
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [
