@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.441.0](https://github.com/vm0-ai/vm0/compare/web-v12.440.7...web-v12.441.0) (2026-06-25)
+
+
+### Features
+
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+
 ## [12.440.7](https://github.com/vm0-ai/vm0/compare/web-v12.440.6...web-v12.440.7) (2026-06-25)
 
 

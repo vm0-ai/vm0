@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.0...guest-mock-codex-v0.3.1) (2026-06-25)
+
+
+### Refactoring
+
+* consolidate mock codex session candidates ([#18956](https://github.com/vm0-ai/vm0/issues/18956)) ([0386f78](https://github.com/vm0-ai/vm0/commit/0386f78645102397aeed6a8e079b60374d57bb21))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.5...guest-mock-codex-v0.3.0) (2026-06-22)
 
 
