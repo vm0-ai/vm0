@@ -66,7 +66,7 @@ impl ControlHandle {
     /// request-loop failures happen inside that worker thread after this method
     /// returns.
     ///
-    /// Accepted control requests are dispatched to the provided
+    /// Incoming control requests are dispatched to the provided
     /// [`ActiveInputController`], and its outcome is mapped back to a local
     /// process-control response.
     pub fn spawn(shutdown: CancellationToken, active_input: ActiveInputController) -> Option<Self> {
