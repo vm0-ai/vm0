@@ -93,7 +93,7 @@ function runtimeLoaderExportNames(source: string): Map<string, string> {
   return new Map(
     [
       ...source.matchAll(
-        /^\s*"([^"]+)": async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\.([a-zA-Z_$][\w$]*);\n\s+\},$/gm,
+        /^\s*"([^"]+)": async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\["([^"]+)"\];\n\s+\},$/gm,
       ),
     ].map((match) => {
       return [match[1]!, match[2]!] as const;
@@ -317,6 +317,6 @@ describe("firewall metadata generator", () => {
       expect(specifier).toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);
     }
     expect(loaderSource).toContain('"slack": async () =>');
-    expect(loaderSource).toContain(")).slackFirewall");
+    expect(loaderSource).toContain('))["slackFirewall"]');
   });
 });

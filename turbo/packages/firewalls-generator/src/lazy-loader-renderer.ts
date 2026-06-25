@@ -16,7 +16,7 @@ function compareEntryKeys(a: LazyLoaderEntry, b: LazyLoaderEntry): number {
 
 function renderLazyLoaderEntry(entry: LazyLoaderEntry): string {
   return `  ${JSON.stringify(entry.key)}: async () => {
-    return (await import(${JSON.stringify(entry.moduleSpecifier)})).${entry.exportName};
+    return (await import(${JSON.stringify(entry.moduleSpecifier)}))[${JSON.stringify(entry.exportName)}];
   },`;
 }
 
