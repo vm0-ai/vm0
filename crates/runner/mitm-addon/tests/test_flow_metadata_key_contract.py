@@ -537,6 +537,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     ) -> tuple[set[str], bool]:
         self._metadata_alias_scopes.append(set(aliases))
         if handler.type is not None:
+            self._record_metadata_merge_key_violations(handler.type)
             self.visit(handler.type)
         if handler.name is not None:
             self._metadata_aliases.discard(handler.name)
@@ -705,6 +706,26 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for name in target_names:
             self._metadata_aliases.discard(name)
 
+    def _visit_type_parameter(self, node: ast.AST) -> None:
+        for _field_name, value in ast.iter_fields(node):
+            if isinstance(value, ast.AST):
+                self._record_metadata_merge_key_violations(value)
+                self.visit(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, ast.AST):
+                        self._record_metadata_merge_key_violations(item)
+                        self.visit(item)
+
+    def visit_TypeVar(self, node: ast.AST) -> None:
+        self._visit_type_parameter(node)
+
+    def visit_ParamSpec(self, node: ast.AST) -> None:
+        self._visit_type_parameter(node)
+
+    def visit_TypeVarTuple(self, node: ast.AST) -> None:
+        self._visit_type_parameter(node)
+
     def visit_Assign(self, node: ast.Assign) -> None:
         if any(_is_metadata_attribute(target) for target in node.targets):
             self._record_metadata_dict_key_violations(node.value)
@@ -777,9 +798,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._visit_sequence_expression(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:
-        for key, value in zip(node.keys, node.values, strict=True):
-            self._record_metadata_merge_key_violations(key)
-            self._record_metadata_merge_key_violations(value)
+        if not self._is_metadata_merge_value(node):
+            for key, value in zip(node.keys, node.values, strict=True):
+                self._record_metadata_merge_key_violations(key)
+                self._record_metadata_merge_key_violations(value)
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
@@ -824,11 +846,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        node_is_metadata_merge = self._is_metadata_merge_value(node)
         self._record_metadata_merge_key_violations(node)
+        self._record_metadata_merge_key_violations(node.func)
         for argument in node.args:
-            self._record_metadata_merge_key_violations(argument)
+            if not node_is_metadata_merge:
+                self._record_metadata_merge_key_violations(argument)
         for keyword in node.keywords:
-            self._record_metadata_merge_key_violations(keyword.value)
+            if not (node_is_metadata_merge and keyword.arg is None):
+                self._record_metadata_merge_key_violations(keyword.value)
         if isinstance(node.func, ast.Attribute) and self._is_metadata_alias_value(node.func.value):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
                 key_name = _registered_key_name(node.args[0])
@@ -856,6 +882,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_Assert(self, node: ast.Assert) -> None:
         self._record_metadata_merge_key_violations(node.test)
+        self._record_metadata_merge_key_violations(node.msg)
+        self.generic_visit(node)
+
+    def visit_Raise(self, node: ast.Raise) -> None:
+        self._record_metadata_merge_key_violations(node.exc)
+        self._record_metadata_merge_key_violations(node.cause)
         self.generic_visit(node)
 
     def visit_Yield(self, node: ast.Yield) -> None:
@@ -978,6 +1010,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if node.type is not None:
+            self._record_metadata_merge_key_violations(node.type)
             self.visit(node.type)
         base_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.append(base_aliases)
@@ -1308,6 +1341,8 @@ merged_meta = flow.metadata | {"firewall_base": "https://api.example.com"}
 merged_meta = {**merged_meta, "firewall_api_id": "run-1:0"}
 merged_meta = dict(merged_meta, firewall_action="ALLOW")
 kwargs_merged_meta = dict(**flow.metadata, vm_run_id="run-1")
+dict_inner_union_meta = dict(flow.metadata | {"vm_run_id": "run-1"})
+dict_unpack_union_meta = dict(**(flow.metadata | {"firewall_name": "github"}))
 kwargs_alias_meta = dict(**flow.metadata)
 kwargs_alias_meta["vm_run_id"] = "run-1"
 conditional_expr_meta = flow.metadata if condition else {}
@@ -1350,11 +1385,16 @@ def vararg_annotation_alias_order(
     pass
 def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
     pass
+def function_type_param_merge_meta[T: flow.metadata | {"vm_run_id": "run-1"}]():
+    pass
 async def async_function_type_param_meta[T: flow.metadata["firewall_action"]]():
     pass
 class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
     pass
+class ClassTypeParamMergeMeta[T: flow.metadata | {"firewall_name": "github"}]:
+    pass
 type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
+type TypeAliasParamMergeMeta[T: flow.metadata | {"firewall_base": "https://api.example.com"}] = int
 type TypeAliasValueMeta = flow.metadata["vm_run_id"]
 type TypeAliasMergeMeta = flow.metadata | {"firewall_action": "ALLOW"}
 default_type_param_shadow_meta = flow.metadata
@@ -1372,7 +1412,15 @@ def return_metadata_merge():
     return dict(flow.metadata, firewall_name="github")
 def assert_metadata_merge():
     assert flow.metadata | {"firewall_base": "https://api.example.com"}
+assert condition, flow.metadata | {"vm_run_id": "run-1"}
 (flow.metadata | {"firewall_action": "ALLOW"})
+(flow.metadata | {"vm_run_id": "run-1"})()
+try:
+    pass
+except flow.metadata | {"firewall_name": "github"}:
+    pass
+raise RuntimeError from (flow.metadata | {"firewall_error": "auth_failed"})
+raise flow.metadata | {"firewall_permission": "read"}
 def yield_metadata_merge():
     yield flow.metadata | {"firewall_error": "auth_failed"}
 values = [flow.metadata | {"vm_run_id": "run-1"}]
@@ -1390,6 +1438,7 @@ value = other == (flow.metadata | {"firewall_name": "github"})
 value = (flow.metadata | {"firewall_api_id": "run-1:0"}).items
 values = [*(flow.metadata | {"suppress_request_body_capture": True})]
 value = rows[:(flow.metadata | {"capture_body": True})]
+values = [{**(flow.metadata | {"connector_diagnostic_base": "https://api.example.com"})}]
 values = [flow.metadata | {"firewall_permission": "read"} for item in rows]
 for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
     pass
@@ -1486,7 +1535,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 125
+    assert len(violations) == 136
     assert all("use metadata_keys." in violation for violation in violations)
 
 
