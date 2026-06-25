@@ -12,12 +12,18 @@ import {
   zeroMapsPlacesSearch$,
   zeroMapsReverseGeocode$,
 } from "../services/zero-maps.service";
+import {
+  zeroMapsOsmDownload$,
+  zeroMapsOsmRender$,
+} from "../services/zero-maps-osm.service";
 
 const geocodeBody$ = bodyResultOf(zeroMapsContract.geocode);
 const reverseGeocodeBody$ = bodyResultOf(zeroMapsContract.reverseGeocode);
 const directionsBody$ = bodyResultOf(zeroMapsContract.directions);
 const placesSearchBody$ = bodyResultOf(zeroMapsContract.placesSearch);
 const placesDetailsBody$ = bodyResultOf(zeroMapsContract.placesDetails);
+const osmDownloadBody$ = bodyResultOf(zeroMapsContract.osmDownload);
+const osmRenderBody$ = bodyResultOf(zeroMapsContract.osmRender);
 
 const geocodeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -91,6 +97,30 @@ const placesDetailsInner$ = command(
   },
 );
 
+const osmDownloadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(osmDownloadBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  return await set(
+    zeroMapsOsmDownload$,
+    { auth, body: bodyResult.data },
+    signal,
+  );
+});
+
+const osmRenderInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(osmRenderBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  return await set(zeroMapsOsmRender$, { auth, body: bodyResult.data }, signal);
+});
+
 const mapsAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -117,5 +147,13 @@ export const zeroMapsRoutes: readonly RouteEntry[] = [
   {
     route: zeroMapsContract.placesDetails,
     handler: authRoute(mapsAuth, placesDetailsInner$),
+  },
+  {
+    route: zeroMapsContract.osmDownload,
+    handler: authRoute(mapsAuth, osmDownloadInner$),
+  },
+  {
+    route: zeroMapsContract.osmRender,
+    handler: authRoute(mapsAuth, osmRenderInner$),
   },
 ];

@@ -39,6 +39,7 @@ const GOOGLE_PLACES_SEARCH_TEXT_URL =
   "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_PLACE_DETAILS_URL =
   "https://places.googleapis.com/v1/places/ChIJtest";
+const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
@@ -627,6 +628,130 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
     expectApiError(gatedSearch.body);
     expect(gatedSearch.body.error.code).toBe("INSUFFICIENT_CREDITS");
     expect(searchMasks).toHaveLength(2);
+  });
+
+  it("charges OpenStreetMap download and PNG render usage [MAPS-OSM-A]", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const admin = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await runs.grantProEntitlement(admin);
+
+    const overpassBodies: string[] = [];
+    server.use(
+      http.post(OPENSTREETMAP_OVERPASS_URL, async ({ request }) => {
+        overpassBodies.push(await request.text());
+        return HttpResponse.json({
+          elements: [
+            {
+              type: "way",
+              id: 1,
+              tags: { highway: "residential" },
+              geometry: [
+                { lat: 37.76, lon: -122.43 },
+                { lat: 37.79, lon: -122.4 },
+              ],
+            },
+            {
+              type: "way",
+              id: 2,
+              tags: { building: "yes" },
+              geometry: [
+                { lat: 37.765, lon: -122.425 },
+                { lat: 37.765, lon: -122.42 },
+                { lat: 37.77, lon: -122.42 },
+                { lat: 37.77, lon: -122.425 },
+                { lat: 37.765, lon: -122.425 },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    const before = await billing.readBillingStatus(admin);
+    const bbox = {
+      west: -122.43,
+      south: 37.76,
+      east: -122.4,
+      north: 37.79,
+    };
+
+    const download = await billing.requestMapsOsmDownload(
+      admin,
+      { bbox, layers: ["roads", "buildings"] },
+      [200],
+    );
+    expect(download.body).toMatchObject({
+      operation: "osm.download",
+      provider: "openstreetmap",
+      billingCategory: "osm.download",
+      billingQuantity: 1,
+      creditsCharged: 1,
+      result: {
+        bbox,
+        layers: ["roads", "buildings"],
+        attribution: "© OpenStreetMap contributors",
+        featureCount: 2,
+        geojson: {
+          type: "FeatureCollection",
+        },
+      },
+    });
+    const downloadQuery = new URLSearchParams(overpassBodies.at(0)).get("data");
+    expect(downloadQuery).toContain('way["highway"]');
+    expect(downloadQuery).toContain('way["building"]');
+
+    const render = await billing.requestMapsOsmRender(
+      admin,
+      {
+        bbox,
+        layers: ["roads", "buildings"],
+        width: 640,
+        height: 480,
+        style: "guide",
+        markers: [{ lat: 37.7749, lng: -122.4194, label: "Market" }],
+      },
+      [200],
+    );
+    expect(render.body).toMatchObject({
+      operation: "osm.render",
+      provider: "openstreetmap",
+      billingCategory: "osm.render.png",
+      billingQuantity: 1,
+      creditsCharged: 2,
+      result: {
+        bbox,
+        layers: ["roads", "buildings"],
+        width: 640,
+        height: 480,
+        style: "guide",
+        attribution: "© OpenStreetMap contributors",
+        featureCount: 2,
+        image: {
+          mimeType: "image/png",
+        },
+      },
+    });
+    if (!("result" in render.body)) {
+      throw new Error("Expected OSM render to return a maps result");
+    }
+    const renderResult = render.body.result as {
+      readonly image?: { readonly base64?: string };
+    };
+    expect(typeof renderResult.image?.base64).toBe("string");
+    expect(
+      Buffer.from(renderResult.image?.base64 ?? "", "base64")
+        .subarray(1, 4)
+        .toString("utf8"),
+    ).toBe("PNG");
+    const renderQuery = new URLSearchParams(overpassBodies.at(1)).get("data");
+    expect(renderQuery).toContain('way["highway"]');
+    expect(renderQuery).toContain('way["building"]');
+
+    const settled = await billing.readBillingStatus(admin);
+    expect(settled.credits).toBe(before.credits - (1 + 2));
   });
 });
 
