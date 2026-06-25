@@ -3,9 +3,7 @@ import * as path from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
-import * as defaultFirewallEntrypoint from "../firewalls";
-import { getConnectorFirewall } from "../firewalls";
+import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "../firewall-metadata";
 import {
   isRuntimeFirewallConnectorType,
   loadConnectorFirewall,
@@ -320,7 +318,7 @@ describe("firewall runtime loader", () => {
     expect(coreRoot).not.toContain("resolveFirewallSelections");
   });
 
-  it("keeps all-catalog access behind an explicit package subpath", () => {
+  it("blocks eager all-catalog package access", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(
         path.resolve(import.meta.dirname, "../../package.json"),
@@ -333,12 +331,9 @@ describe("firewall runtime loader", () => {
     );
 
     expect(packageJson.exports["./firewalls"]).toBeNull();
-    expect(packageJson.exports["./firewalls/all"]).toStrictEqual({
-      import: "./src/firewall-runtime-all.ts",
-      types: "./src/firewall-runtime-all.ts",
-    });
+    expect(packageJson.exports).not.toHaveProperty("./firewalls/all");
     expect(packageJson.exports["./firewalls/*"]).toBeNull();
-    expect(defaultFirewallEntrypoint).not.toHaveProperty(
+    expect(exportedIdentifierNames(rootEntrypoint)).not.toContain(
       "getAllConnectorFirewalls",
     );
     expect(staticValueModuleSpecifiers(rootEntrypoint)).not.toContain(
@@ -379,15 +374,6 @@ describe("firewall runtime loader", () => {
         "FirewallPermissionGrantAction",
         "permissionGrantsToFirewallPolicies",
       ].sort(compareStrings),
-    );
-    expect(defaultFirewallEntrypoint).not.toHaveProperty(
-      "getBuiltinConnectorDisplayName",
-    );
-    expect(defaultFirewallEntrypoint).not.toHaveProperty(
-      "getPermissionCategories",
-    );
-    expect(defaultFirewallEntrypoint).not.toHaveProperty(
-      "groupPermissionsByCategory",
     );
   });
 
@@ -457,11 +443,11 @@ describe("firewall runtime loader", () => {
     }
   });
 
-  it("keeps the runtime manifest synchronized with the sync firewall registry", () => {
+  it("keeps the runtime manifest synchronized with generated metadata summaries", () => {
     expect(
       [...RUNTIME_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
     ).toStrictEqual(
-      Object.keys(getAllConnectorFirewalls()).sort(compareStrings),
+      Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).sort(compareStrings),
     );
   });
 
@@ -475,7 +461,9 @@ describe("firewall runtime loader", () => {
       loadConnectorFirewall("slack"),
     ]);
     expect(firstSlack).toBe(secondSlack);
-    expect(firstSlack).toStrictEqual(getConnectorFirewall("slack"));
+    expect(firstSlack).not.toBeNull();
+    expect(firstSlack!.name).toBe("slack");
+    expect(firstSlack!.apis.length).toBeGreaterThan(0);
 
     const repeatedSlack = await loadConnectorFirewall("slack");
     expect(repeatedSlack).toBe(firstSlack);
@@ -493,7 +481,7 @@ describe("firewall runtime loader", () => {
       "github",
       "slack",
     ]);
-    expect(firewalls.github).toStrictEqual(getConnectorFirewall("github"));
+    expect(firewalls.github?.name).toBe("github");
     expect(firewalls.slack).toBe(await loadConnectorFirewall("slack"));
   });
 });

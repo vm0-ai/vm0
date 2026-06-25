@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
-import { getConnectorFirewall } from "../../firewalls";
+import type { FirewallConfig } from "../../firewall-types";
+import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -13,8 +14,9 @@ const RUNTIME_METHODS = [
   "OPTIONS",
 ] as const;
 
+let firewall: FirewallConfig;
+
 function sentryPermissionRules(permissionName: string): readonly string[] {
-  const firewall = getConnectorFirewall("sentry");
   const permission = firewall.apis
     .flatMap((api) => {
       return api.permissions ?? [];
@@ -30,7 +32,7 @@ function sentryPermissionRules(permissionName: string): readonly string[] {
 }
 
 function sentryMatches(method: string, path: string): string[] {
-  return findMatchingPermissions(method, path, getConnectorFirewall("sentry"));
+  return findMatchingPermissions(method, path, firewall);
 }
 
 function expectSentryMatches(
@@ -54,9 +56,13 @@ function expandRuntimeRules(rule: string): string[] {
 }
 
 describe("sentry firewall", () => {
+  beforeAll(async () => {
+    firewall = await loadRequiredConnectorFirewall("sentry");
+  });
+
   it("assigns one permission owner to every runtime route", () => {
     const duplicates: string[] = [];
-    for (const api of getConnectorFirewall("sentry").apis) {
+    for (const api of firewall.apis) {
       const owners = new Map<string, string>();
       for (const permission of api.permissions ?? []) {
         for (const rule of permission.rules) {
@@ -77,8 +83,6 @@ describe("sentry firewall", () => {
   });
 
   it("keeps read permissions non-mutating", () => {
-    const firewall = getConnectorFirewall("sentry");
-
     for (const permission of firewall.apis.flatMap((api) => {
       return api.permissions ?? [];
     })) {
