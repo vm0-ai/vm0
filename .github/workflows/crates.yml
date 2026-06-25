@@ -1606,14 +1606,25 @@ jobs:
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 
-          # Test 2: deflate under memory pressure — allocate 300 MiB anonymous memory
+          # Test 2: deflate under memory pressure — allocate anonymous memory
           # in the guest to push available below deflate threshold (192 MiB).
-          # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
-          # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
+          # Refuse to allocate when the idle balloon state already leaves too
+          # little guest headroom; otherwise the allocator can starve the
+          # keepalive job and mask the assertion as "cancelled by user".
           # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
           # match on to terminate the guest-side allocator below.
           echo "--- Test 2: balloon deflate under memory pressure ---"
-          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
+          PRESSURE_ALLOC_MIB=300
+          PRESSURE_SAFETY_MARGIN_MIB=128
+          MIN_PRESSURE_AVAIL_MIB=$(( PRESSURE_ALLOC_MIB + PRESSURE_SAFETY_MARGIN_MIB ))
+          MIN_PRESSURE_AVAIL_KB=$(( MIN_PRESSURE_AVAIL_MIB * 1024 ))
+          ensure_submit_running
+          PRE_PRESSURE_AVAIL_KB=$(guest_avail_kb) || fail "failed to read guest MemAvailable before pressure allocation"
+          if [ "$PRE_PRESSURE_AVAIL_KB" -lt "$MIN_PRESSURE_AVAIL_KB" ]; then
+            fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need >= ${MIN_PRESSURE_AVAIL_KB}kB; allocation=${PRESSURE_ALLOC_MIB}MiB, margin=${PRESSURE_SAFETY_MARGIN_MIB}MiB)"
+          fi
+          echo "Pre-pressure guest MemAvailable: ${PRE_PRESSURE_AVAIL_KB}kB; allocating ${PRESSURE_ALLOC_MIB}MiB"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "import ctypes,time; b=bytearray(${PRESSURE_ALLOC_MIB}*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER" &
           ALLOC_PID=$!
 
           # Wait for balloon to deflate (actual_mib decreases)
