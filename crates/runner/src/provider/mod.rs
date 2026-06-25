@@ -31,6 +31,8 @@ pub struct JobCandidate {
     discovered_at: Instant,
     local_admission_started_at: Option<Instant>,
     poll_reason: Option<String>,
+    poll_due_to_job_discovered_elapsed: Option<Duration>,
+    poll_http_request_elapsed: Option<Duration>,
 }
 
 impl JobCandidate {
@@ -42,6 +44,8 @@ impl JobCandidate {
             discovered_at: Instant::now(),
             local_admission_started_at: None,
             poll_reason: None,
+            poll_due_to_job_discovered_elapsed: None,
+            poll_http_request_elapsed: None,
         }
     }
 
@@ -53,6 +57,8 @@ impl JobCandidate {
             discovered_at: Instant::now(),
             local_admission_started_at: None,
             poll_reason: None,
+            poll_due_to_job_discovered_elapsed: None,
+            poll_http_request_elapsed: None,
         }
     }
 
@@ -85,8 +91,26 @@ impl JobCandidate {
         self.poll_reason.as_deref()
     }
 
+    pub(crate) fn poll_due_to_job_discovered_elapsed(&self) -> Option<Duration> {
+        self.poll_due_to_job_discovered_elapsed
+    }
+
+    pub(crate) fn poll_http_request_elapsed(&self) -> Option<Duration> {
+        self.poll_http_request_elapsed
+    }
+
     pub(crate) fn with_poll_reason(mut self, poll_reason: impl Into<String>) -> Self {
         self.poll_reason = Some(poll_reason.into());
+        self
+    }
+
+    pub(crate) fn with_poll_timing(
+        mut self,
+        poll_due_to_job_discovered_elapsed: Duration,
+        poll_http_request_elapsed: Duration,
+    ) -> Self {
+        self.poll_due_to_job_discovered_elapsed = Some(poll_due_to_job_discovered_elapsed);
+        self.poll_http_request_elapsed = Some(poll_http_request_elapsed);
         self
     }
 
@@ -104,6 +128,8 @@ impl JobCandidate {
             discovered_at,
             local_admission_started_at,
             poll_reason: None,
+            poll_due_to_job_discovered_elapsed: None,
+            poll_http_request_elapsed: None,
         }
     }
 }

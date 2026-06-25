@@ -14,6 +14,26 @@ const context = testContext();
 const store = createStore();
 const SESSION_LAST_COMPLETED_AT = "2026-05-28T00:00:00.000Z";
 const NEWER_SESSION_LAST_COMPLETED_AT = "2026-05-28T00:00:01.000Z";
+const NOTIFICATION_TIMING_ACTION_TYPES = [
+  "runner_notification_target_lookup",
+  "runner_notification_realtime_publish",
+] as const;
+const FORBIDDEN_NOTIFICATION_TIMING_KEYS = [
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "user_id",
+  "userId",
+  "org_id",
+  "orgId",
+  "prompt",
+  "vars",
+  "secrets",
+  "environment",
+] as const;
 
 interface RunnerStateFixture {
   readonly runnerId: string;
@@ -24,6 +44,58 @@ interface RunnerStateFixture {
   readonly heldSessionStates?: { sessionId: string; lastCompletedAt: string }[];
   readonly mode?: string;
   readonly lastSeenAt?: Date;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function expectNotificationTiming(args: {
+  readonly runId: string;
+  readonly notificationTarget: "targeted" | "broadcast";
+}): void {
+  const events = sandboxOperationEventsForRun(args.runId);
+  for (const actionType of NOTIFICATION_TIMING_ACTION_TYPES) {
+    const matching = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matching).toHaveLength(1);
+    const event = matching[0];
+    if (!event) {
+      throw new Error(`Missing ${actionType} timing event`);
+    }
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        sandbox_type: "runner",
+        run_id: args.runId,
+        success: true,
+        runner_group: "vm0/test",
+        profile: "vm0/default",
+        notification_target: args.notificationTarget,
+      }),
+    );
+    expect(event.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    for (const forbiddenKey of FORBIDDEN_NOTIFICATION_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+  }
 }
 
 describe("runner dispatch affinity", () => {
@@ -149,6 +221,7 @@ describe("runner dispatch affinity", () => {
       profile: "vm0/default",
       targetRunnerId,
     });
+    expectNotificationTiming({ runId, notificationTarget: "targeted" });
   });
 
   it("publishes targetRunnerId for the newest matching held session", async () => {
@@ -311,5 +384,6 @@ describe("runner dispatch affinity", () => {
       runId,
       profile: "vm0/default",
     });
+    expectNotificationTiming({ runId, notificationTarget: "broadcast" });
   });
 });

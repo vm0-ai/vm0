@@ -6,6 +6,7 @@ import { and, eq, gt } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 import { publishRunnerJobNotification } from "../external/realtime";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now } from "../external/time";
 import { settle } from "../utils";
 import { logger } from "../../lib/log";
@@ -93,9 +94,11 @@ export async function notifyRunnerJob(
     readonly cliAgentSessionId: string | null;
   },
 ): Promise<boolean> {
+  const targetLookupStartedAt = now();
   const target = await settle(
     findBestRunner(db, args.runnerGroup, args.profile, args.cliAgentSessionId),
   );
+  const targetLookupFinishedAt = now();
   const targetRunnerId = target.ok ? (target.value?.runnerId ?? null) : null;
   if (!target.ok) {
     L.warn("findBestRunner failed for run, using broadcast", {
@@ -104,10 +107,39 @@ export async function notifyRunnerJob(
     });
   }
 
-  return await publishRunnerJobNotification(
+  const notificationTarget = targetRunnerId ? "targeted" : "broadcast";
+  const publishStartedAt = now();
+  const published = await publishRunnerJobNotification(
     args.runnerGroup,
     args.runId,
     args.profile,
     targetRunnerId,
   );
+  const publishFinishedAt = now();
+
+  const dimensions = {
+    runner_group: args.runnerGroup,
+    profile: args.profile,
+    notification_target: notificationTarget,
+  };
+  recordSandboxOperations([
+    {
+      sandboxType: "runner",
+      actionType: "runner_notification_target_lookup",
+      durationMs: Math.max(0, targetLookupFinishedAt - targetLookupStartedAt),
+      success: target.ok,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_notification_realtime_publish",
+      durationMs: Math.max(0, publishFinishedAt - publishStartedAt),
+      success: published,
+      runId: args.runId,
+      dimensions,
+    },
+  ]);
+
+  return published;
 }
