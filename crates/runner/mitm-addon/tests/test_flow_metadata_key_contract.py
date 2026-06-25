@@ -1,6 +1,7 @@
 """Tests for the shared flow metadata key registry contract."""
 
 import ast
+import sys
 from pathlib import Path
 from typing import TypeGuard
 
@@ -26,6 +27,11 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
 _SEQUENCE_WRAPPER_CALLS = {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
+_SUPPORTS_PEP695_SYNTAX = sys.version_info >= (3, 12)
+
+
+def _write_python_source(path: Path, source: str, *, pep695_source: str = "") -> None:
+    path.write_text(source + (pep695_source if _SUPPORTS_PEP695_SYNTAX else ""))
 
 
 def _python_files() -> list[Path]:
@@ -1592,7 +1598,8 @@ def test_registered_flow_metadata_keys_use_registry_constants():
 
 def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     source_path = tmp_path / "violations.py"
-    source_path.write_text(
+    _write_python_source(
+        source_path,
         """
 flow.metadata["vm_run_id"] = "run-1"
 flow.metadata[f"vm_run_id"] = "run-1"
@@ -1791,31 +1798,6 @@ def vararg_annotation_alias_order(
     kw: vararg_annotation_meta["vm_run_id"],
 ):
     pass
-def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
-    pass
-def function_type_param_merge_meta[T: flow.metadata | {"vm_run_id": "run-1"}]():
-    pass
-async def async_function_type_param_meta[T: flow.metadata["firewall_action"]]():
-    pass
-class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
-    pass
-class ClassTypeParamMergeMeta[T: flow.metadata | {"firewall_name": "github"}]:
-    pass
-class ClassKeywordMergeMeta(Base, option=flow.metadata | {"vm_run_id": "run-1"}):
-    pass
-type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
-type TypeAliasParamMergeMeta[T: flow.metadata | {"firewall_base": "https://api.example.com"}] = int
-type TypeAliasValueMeta = flow.metadata["vm_run_id"]
-type TypeAliasMergeMeta = flow.metadata | {"firewall_action": "ALLOW"}
-default_type_param_shadow_meta = flow.metadata
-def default_type_param_reads_outer[default_type_param_shadow_meta](
-    arg=default_type_param_shadow_meta["vm_run_id"],
-):
-    pass
-type_param_restored_meta = flow.metadata
-def type_param_scope_restores_alias[type_param_restored_meta]():
-    pass
-type_param_restored_meta["firewall_name"] = "github"
 def call_argument_metadata_merge():
     send(flow.metadata | {"vm_run_id": "run-1"})
 def return_metadata_merge():
@@ -1865,10 +1847,6 @@ def nested_function_global_reads_module_metadata():
     def inner():
         global function_global_meta
         function_global_meta["vm_run_id"] = "run-1"
-function_type_param_global_meta = flow.metadata
-def function_type_param_global_reads_module[function_type_param_global_meta]():
-    global function_type_param_global_meta
-    function_type_param_global_meta["firewall_action"] = "ALLOW"
 if conditional_meta := flow.metadata:
     conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
 branch_meta = flow.metadata
@@ -1971,12 +1949,44 @@ match flow.metadata:
 match flow.metadata:
     case guarded_match_meta if guarded_match_meta["vm_run_id"]:
         pass
-"""
+""",
+        pep695_source="""
+def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
+    pass
+def function_type_param_merge_meta[T: flow.metadata | {"vm_run_id": "run-1"}]():
+    pass
+async def async_function_type_param_meta[T: flow.metadata["firewall_action"]]():
+    pass
+class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
+    pass
+class ClassTypeParamMergeMeta[T: flow.metadata | {"firewall_name": "github"}]:
+    pass
+class ClassKeywordMergeMeta(Base, option=flow.metadata | {"vm_run_id": "run-1"}):
+    pass
+type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
+type TypeAliasParamMergeMeta[T: flow.metadata | {"firewall_base": "https://api.example.com"}] = int
+type TypeAliasValueMeta = flow.metadata["vm_run_id"]
+type TypeAliasMergeMeta = flow.metadata | {"firewall_action": "ALLOW"}
+default_type_param_shadow_meta = flow.metadata
+def default_type_param_reads_outer[default_type_param_shadow_meta](
+    arg=default_type_param_shadow_meta["vm_run_id"],
+):
+    pass
+type_param_restored_meta = flow.metadata
+def type_param_scope_restores_alias[type_param_restored_meta]():
+    pass
+type_param_restored_meta["firewall_name"] = "github"
+function_type_param_global_meta = flow.metadata
+def function_type_param_global_reads_module[function_type_param_global_meta]():
+    global function_type_param_global_meta
+    function_type_param_global_meta["firewall_action"] = "ALLOW"
+""",
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 223
+    expected_violation_count = 223 if _SUPPORTS_PEP695_SYNTAX else 210
+    assert len(violations) == expected_violation_count
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1984,7 +1994,8 @@ def test_registered_flow_metadata_guard_ignores_external_schema_and_private_mark
     tmp_path,
 ):
     source_path = tmp_path / "allowed.py"
-    source_path.write_text(
+    _write_python_source(
+        source_path,
         """
 entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
@@ -2190,31 +2201,6 @@ def annotation_walrus_local_shadow():
     value = annotation_shadow_meta["vm_run_id"]
     def inner(arg: (annotation_shadow_meta := {})):
         pass
-type_alias_shadow_meta = flow.metadata
-type type_alias_shadow_meta = int
-value = type_alias_shadow_meta["vm_run_id"]
-type_alias_value_shadow_meta = flow.metadata
-type type_alias_value_shadow_meta = type_alias_value_shadow_meta["vm_run_id"]
-function_type_alias_shadow_meta = flow.metadata
-def function_type_alias_local_shadow():
-    value = function_type_alias_shadow_meta["vm_run_id"]
-    type function_type_alias_shadow_meta = int
-class TypeAliasDoesNotSeeClassAlias:
-    class_type_alias_meta = flow.metadata
-    type class_type_alias_meta = int
-    value = class_type_alias_meta["vm_run_id"]
-type_param_shadow_meta = flow.metadata
-def function_type_param_shadows_outer[type_param_shadow_meta](
-    arg: type_param_shadow_meta["vm_run_id"],
-) -> type_param_shadow_meta["firewall_name"]:
-    type_param_shadow_meta["firewall_base"]
-class ClassTypeParamShadowsOuter[type_param_shadow_meta](type_param_shadow_meta):
-    value = type_param_shadow_meta["vm_run_id"]
-    def method(self):
-        type_param_shadow_meta["firewall_name"]
-type TypeAliasTypeParamShadowsOuter[type_param_shadow_meta] = type_param_shadow_meta[
-    "vm_run_id"
-]
 def nested_function_global_reads_external():
     function_global_external_meta = {}
     def inner():
@@ -2306,7 +2292,34 @@ try:
     pass
 except Exception as meta:
     value = meta["vm_run_id"]
-"""
+""",
+        pep695_source="""
+type_alias_shadow_meta = flow.metadata
+type type_alias_shadow_meta = int
+value = type_alias_shadow_meta["vm_run_id"]
+type_alias_value_shadow_meta = flow.metadata
+type type_alias_value_shadow_meta = type_alias_value_shadow_meta["vm_run_id"]
+function_type_alias_shadow_meta = flow.metadata
+def function_type_alias_local_shadow():
+    value = function_type_alias_shadow_meta["vm_run_id"]
+    type function_type_alias_shadow_meta = int
+class TypeAliasDoesNotSeeClassAlias:
+    class_type_alias_meta = flow.metadata
+    type class_type_alias_meta = int
+    value = class_type_alias_meta["vm_run_id"]
+type_param_shadow_meta = flow.metadata
+def function_type_param_shadows_outer[type_param_shadow_meta](
+    arg: type_param_shadow_meta["vm_run_id"],
+) -> type_param_shadow_meta["firewall_name"]:
+    type_param_shadow_meta["firewall_base"]
+class ClassTypeParamShadowsOuter[type_param_shadow_meta](type_param_shadow_meta):
+    value = type_param_shadow_meta["vm_run_id"]
+    def method(self):
+        type_param_shadow_meta["firewall_name"]
+type TypeAliasTypeParamShadowsOuter[type_param_shadow_meta] = type_param_shadow_meta[
+    "vm_run_id"
+]
+""",
     )
 
     assert _metadata_key_violations(source_path) == []
