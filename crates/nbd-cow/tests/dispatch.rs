@@ -4,9 +4,8 @@ use std::os::unix::fs::MetadataExt as _;
 use std::sync::Arc;
 
 use nbd_cow::BLOCK_SIZE;
-use nbd_cow::protocol::Command;
 use support::dispatch_client::{
-    TestResult, assert_error, assert_error_code, assert_success, create_base_file,
+    Command, TestResult, assert_error, assert_error_code, assert_success, create_base_file,
     create_cow_with_full_device, create_test_cow, request, spawn_dispatch,
     spawn_dispatch_with_shutdown, wait_for_dispatch,
 };

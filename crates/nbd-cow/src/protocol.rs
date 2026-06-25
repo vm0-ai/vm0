@@ -16,6 +16,7 @@ pub const REQUEST_HEADER_SIZE: usize = 28;
 pub const REPLY_HEADER_SIZE: usize = 16;
 
 const REQUEST_MAGIC_OFFSET: usize = 0;
+#[cfg(test)]
 const REQUEST_FLAGS_OFFSET: usize = 4;
 const REQUEST_COMMAND_OFFSET: usize = 6;
 const REQUEST_HANDLE_OFFSET: usize = 8;
@@ -53,8 +54,6 @@ impl Command {
 /// NBD request header (28 bytes, client -> server).
 #[derive(Debug, Clone)]
 pub struct NbdRequest {
-    /// Per-command flags bitmask (e.g. `NBD_CMD_FLAG_FUA = 0x0001`).
-    pub flags: u16,
     /// Decoded command type. The wire encoding is `u16`; see [`Command`].
     pub command: Command,
     /// Opaque request identifier echoed back in [`NbdReply::handle`]. The
@@ -80,14 +79,27 @@ pub struct NbdReply {
     pub handle: u64,
 }
 
+/// Errors returned while decoding fixed-size NBD transmission headers.
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {
+    /// The request header magic field did not match the NBD request magic.
+    ///
+    /// The payload is the invalid big-endian `u32` value read from the first
+    /// four bytes of the request header.
     #[error("invalid request magic: expected {REQUEST_MAGIC:#x}, got {0:#x}")]
     InvalidRequestMagic(u32),
 
+    /// The request command field contained an unsupported NBD command value.
+    ///
+    /// The payload is the raw big-endian `u16` command value from the request
+    /// header. Supported values are `0` through `4`.
     #[error("unknown NBD command: {0}")]
     UnknownCommand(u16),
 
+    /// The input buffer was too short to contain a complete request header.
+    ///
+    /// `expected` is the fixed NBD request header size and `actual` is the
+    /// number of bytes provided by the caller.
     #[error("buffer too short: need {expected} bytes, got {actual}")]
     BufferTooShort { expected: usize, actual: usize },
 }
@@ -156,7 +168,6 @@ pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
         return Err(ProtocolError::InvalidRequestMagic(magic));
     }
 
-    let flags = read_u16(header, REQUEST_FLAGS_OFFSET);
     let cmd_type = read_u16(header, REQUEST_COMMAND_OFFSET);
     let command = Command::from_u16(cmd_type)?;
     let handle = read_u64(header, REQUEST_HANDLE_OFFSET);
@@ -164,7 +175,6 @@ pub fn parse_request(buf: &[u8]) -> Result<NbdRequest, ProtocolError> {
     let length = read_u32(header, REQUEST_LENGTH_OFFSET);
 
     Ok(NbdRequest {
-        flags,
         command,
         handle,
         offset,
@@ -186,7 +196,6 @@ pub fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
 pub(crate) fn serialize_request(req: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let mut buf = [0u8; REQUEST_HEADER_SIZE];
     write_u32(&mut buf, REQUEST_MAGIC_OFFSET, REQUEST_MAGIC);
-    write_u16(&mut buf, REQUEST_FLAGS_OFFSET, req.flags);
     write_u16(&mut buf, REQUEST_COMMAND_OFFSET, req.command as u16);
     write_u64(&mut buf, REQUEST_HANDLE_OFFSET, req.handle);
     write_u64(&mut buf, REQUEST_OFFSET_FIELD_OFFSET, req.offset);
@@ -201,7 +210,6 @@ mod tests {
     #[test]
     fn round_trip_request() {
         let req = NbdRequest {
-            flags: 0,
             command: Command::Write,
             handle: 0xDEAD_BEEF_CAFE_BABE,
             offset: 4096,
@@ -210,8 +218,6 @@ mod tests {
 
         let buf = serialize_request(&req);
         let parsed = parse_request(&buf).unwrap();
-
-        assert_eq!(parsed.flags, req.flags);
         assert_eq!(parsed.command, req.command);
         assert_eq!(parsed.handle, req.handle);
         assert_eq!(parsed.offset, req.offset);
@@ -221,7 +227,6 @@ mod tests {
     #[test]
     fn parse_request_ignores_trailing_bytes() {
         let req = NbdRequest {
-            flags: 0x0001,
             command: Command::Trim,
             handle: 0xCAFE_BABE_DEAD_BEEF,
             offset: 16_384,
@@ -232,8 +237,6 @@ mod tests {
         buf.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
 
         let parsed = parse_request(&buf).unwrap();
-
-        assert_eq!(parsed.flags, req.flags);
         assert_eq!(parsed.command, req.command);
         assert_eq!(parsed.handle, req.handle);
         assert_eq!(parsed.offset, req.offset);
@@ -272,7 +275,6 @@ mod tests {
             (Command::Trim, 4),
         ] {
             let req = NbdRequest {
-                flags: 0,
                 command: cmd,
                 handle: 1,
                 offset: 0,
@@ -297,7 +299,6 @@ mod tests {
     #[test]
     fn unknown_command() {
         let req = NbdRequest {
-            flags: 0,
             command: Command::Read,
             handle: 0,
             offset: 0,
@@ -382,17 +383,17 @@ mod tests {
     }
 
     #[test]
-    fn round_trip_request_with_flags() {
+    fn parse_request_ignores_flags() {
         let req = NbdRequest {
-            flags: 0x0001, // FUA
             command: Command::Write,
             handle: 42,
             offset: 8192,
             length: 1024,
         };
-        let buf = serialize_request(&req);
+        let mut buf = serialize_request(&req);
+        write_u16(&mut buf, REQUEST_FLAGS_OFFSET, 0x0001);
+
         let parsed = parse_request(&buf).unwrap();
-        assert_eq!(parsed.flags, 0x0001);
         assert_eq!(parsed.command, Command::Write);
         assert_eq!(parsed.handle, 42);
         assert_eq!(parsed.offset, 8192);

@@ -7,10 +7,6 @@ use std::time::Duration;
 
 use nbd_cow::cow::CowLayer;
 use nbd_cow::error::Result as NbdResult;
-use nbd_cow::protocol::{
-    Command, NbdReply, NbdRequest, REPLY_HEADER_SIZE, REPLY_MAGIC, REQUEST_HEADER_SIZE,
-    REQUEST_MAGIC,
-};
 use nbd_cow::server::dispatch;
 use nbd_cow::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD};
 use tempfile::NamedTempFile;
@@ -22,6 +18,36 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 pub type TestResult<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+
+const REQUEST_MAGIC: u32 = 0x2560_9513;
+const REPLY_MAGIC: u32 = 0x6744_6698;
+const REQUEST_HEADER_SIZE: usize = 28;
+const REPLY_HEADER_SIZE: usize = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum Command {
+    Read = 0,
+    Write = 1,
+    Disconnect = 2,
+    Flush = 3,
+    Trim = 4,
+}
+
+#[derive(Debug, Clone)]
+pub struct NbdRequest {
+    flags: u16,
+    command: Command,
+    handle: u64,
+    offset: u64,
+    length: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NbdReply {
+    error: u32,
+    handle: u64,
+}
 
 pub struct DispatchClient {
     reader: OwnedReadHalf,
