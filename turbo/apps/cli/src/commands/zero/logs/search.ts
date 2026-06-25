@@ -6,10 +6,14 @@ import {
   type LogsSearchResponse,
 } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
-import { parseEvent } from "../../../lib/events/event-parser-factory";
+import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { EventRenderer } from "../../../lib/events/event-renderer";
+import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
+import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../../lib/utils/search-query";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -30,13 +34,37 @@ interface LogsSearchCommandOptions extends Omit<
   agent?: string;
 }
 
-function renderEvent(event: RunEvent, renderer: EventRenderer): void {
-  const eventData = event.eventData as Record<string, unknown>;
-  const parsed = parseEvent(eventData);
-  if (parsed) {
-    parsed.timestamp = new Date(event.createdAt);
+function supportedSearchFramework(
+  framework: string | null | undefined,
+): string | undefined {
+  const normalized = framework ?? undefined;
+  return isSupportedFramework(normalized) ? normalized : undefined;
+}
+
+function renderSearchEvent(
+  event: RunEvent,
+  framework: string | null | undefined,
+  renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
+): void {
+  const parsedEvents = normalizer.process(
+    event.eventData,
+    supportedSearchFramework(framework),
+    new Date(event.createdAt),
+  );
+  for (const parsed of parsedEvents) {
     renderer.render(parsed);
   }
+}
+
+function flushSearchRenderer(
+  renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
+): void {
+  for (const parsed of normalizer.flush()) {
+    renderer.render(parsed);
+  }
+  renderer.flush();
 }
 
 function formatRunHeader(
@@ -44,7 +72,7 @@ function formatRunHeader(
   agentName: string,
   timestamp: string,
 ): string {
-  const time = new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const time = formatIsoTimestamp(timestamp);
   return `── Run ${runId} (${agentName}, ${time}) ──────────`;
 }
 
@@ -52,31 +80,25 @@ function parseContextOptions(options: LogsSearchCliOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context ? parseInt(options.context, 10) : 0;
-  const before = options.beforeContext
-    ? parseInt(options.beforeContext, 10)
-    : contextN;
-  const after = options.afterContext
-    ? parseInt(options.afterContext, 10)
-    : contextN;
-
-  if (isNaN(before) || before < 0 || before > 10) {
-    throw new Error("--before-context must be between 0 and 10");
-  }
-  if (isNaN(after) || after < 0 || after > 10) {
-    throw new Error("--after-context must be between 0 and 10");
-  }
+  const contextN =
+    options.context !== undefined
+      ? parseBoundedLogCount(options.context, "--context", 0, 10)
+      : 0;
+  const before =
+    options.beforeContext !== undefined
+      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
+      : contextN;
+  const after =
+    options.afterContext !== undefined
+      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
+      : contextN;
 
   return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const limit = parseInt(value, 10);
-  if (isNaN(limit) || limit < 1 || limit > 50) {
-    throw new Error("--limit must be between 1 and 50");
-  }
-  return limit;
+  if (value === undefined) return undefined;
+  return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
 function renderResults(response: LogsSearchResponse): void {
@@ -112,16 +134,22 @@ function renderResults(response: LogsSearchResponse): void {
       const renderer = new EventRenderer({
         showTimestamp: true,
         verbose: false,
-        buffered: false,
       });
+      const normalizer = new EventStreamNormalizer();
 
       for (const event of result.contextBefore) {
-        renderEvent(event, renderer);
+        renderSearchEvent(event, result.framework, renderer, normalizer);
       }
-      renderEvent(result.matchedEvent, renderer);
+      renderSearchEvent(
+        result.matchedEvent,
+        result.framework,
+        renderer,
+        normalizer,
+      );
       for (const event of result.contextAfter) {
-        renderEvent(event, renderer);
+        renderSearchEvent(event, result.framework, renderer, normalizer);
       }
+      flushSearchRenderer(renderer, normalizer);
     }
   }
 
@@ -139,9 +167,18 @@ export async function runLogsSearch(
   keyword: string,
   options: LogsSearchCliOptions,
 ): Promise<void> {
+  const searchKeyword = parseSearchQuery(keyword, "Keyword");
   const { before, after } = parseContextOptions(options);
 
-  if (options.run && !isUUID(options.run)) {
+  if (options.agentId !== undefined && !isUUID(options.agentId)) {
+    console.error(
+      chalk.red(`✗ Invalid agent ID "${options.agentId}" — expected a UUID`),
+    );
+    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    process.exit(1);
+  }
+
+  if (options.run !== undefined && !isUUID(options.run)) {
     console.error(
       chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
     );
@@ -149,13 +186,14 @@ export async function runLogsSearch(
     process.exit(1);
   }
 
-  const since = options.since
-    ? parseTime(options.since)
-    : Date.now() - SEVEN_DAYS_MS;
+  const since =
+    options.since !== undefined
+      ? parseTime(options.since)
+      : Date.now() - SEVEN_DAYS_MS;
   const limit = parseLimit(options.limit);
 
   const response = await searchZeroLogs({
-    keyword,
+    keyword: searchKeyword,
     agentId: options.agentId,
     runId: options.run,
     since,

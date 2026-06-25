@@ -34,7 +34,7 @@ function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
 }
 
-const RUN_ID = "abc12345-1234-1234-1234-123456789abc";
+const RUN_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 describe("zero logs view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -137,6 +137,115 @@ describe("zero logs view command", () => {
     expect(logCalls).toContain("Page 2");
   });
 
+  it("should preserve per-page framework when a later page omits it", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:31:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "msg_1",
+                      type: "agent_message",
+                      text: "Codex zero page output",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: true,
+              nextCursor: "sequence:desc:2",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-page-1",
+                },
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Codex Started");
+    expect(logCalls).toContain("Codex zero page output");
+  });
+
+  it("should not reuse a codex framework for a later unsupported framework page", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:31:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "msg_1",
+                      type: "agent_message",
+                      text: "Codex zero page output",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: true,
+              nextCursor: "sequence:desc:2",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              makeEvent(
+                1,
+                "Future framework legacy output",
+                "2024-01-15T10:30:00Z",
+              ),
+            ],
+            framework: "future-framework",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Future framework legacy output");
+    expect(logCalls).toContain("Codex zero page output");
+  });
+
   it("should pass --since option to API as sinceTime", async () => {
     let capturedUrl: URL | undefined;
     server.use(
@@ -156,6 +265,34 @@ describe("zero logs view command", () => {
     await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--since", "5m"]);
 
     expect(capturedUrl?.searchParams.get("sinceTime")).not.toBeNull();
+    expect(capturedUrl?.searchParams.get("since")).toBeNull();
+  });
+
+  it("should pass epoch --since values to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({
+            events: [],
+            framework: "claude-code",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync([
+      "node",
+      "cli",
+      RUN_ID,
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("sinceTime")).toBe("0");
     expect(capturedUrl?.searchParams.get("since")).toBeNull();
   });
 
@@ -281,6 +418,20 @@ describe("zero logs view command", () => {
     expect(errorCalls).toContain("zero logs list");
   });
 
+  it("should reject malformed UUID-like run ID", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync([
+        "node",
+        "cli",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
   it("should render codex framework events", async () => {
     server.use(
       http.get(
@@ -381,6 +532,145 @@ describe("zero logs view command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+  });
+
+  it("should render failed Codex turn.completed with readable details", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:29:59Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-1",
+                },
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-zero-1",
+                    status: "failed",
+                    error: {
+                      message: "usage limit exceeded",
+                      additional_details: "upgrade required",
+                    },
+                  },
+                },
+              },
+            ],
+            framework: "codex",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Codex Failed");
+    expect(logCalls).toContain("usage limit exceeded");
+    expect(logCalls).toContain("upgrade required");
+    expect(logCalls).not.toContain("[object Object]");
+  });
+
+  it("should collapse same-turn Codex error and failed turn.completed in default tail output", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 3,
+                eventType: "turn.completed",
+                createdAt: "2024-01-15T10:30:02Z",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-zero-1",
+                    status: "failed",
+                    error: { message: "Rate limit exceeded" },
+                  },
+                },
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "error",
+                createdAt: "2024-01-15T10:30:01Z",
+                eventData: {
+                  type: "error",
+                  turn_id: "turn-zero-1",
+                  message: "API connection failed",
+                },
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-1",
+                },
+              },
+            ],
+            framework: "codex",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+    expect(logCalls).toContain("API connection failed");
+    expect(logCalls).toContain("Rate limit exceeded");
+  });
+
+  it("should flush pending Codex tool use at command end", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "item.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "item.started",
+                  item: {
+                    id: "cmd-pending",
+                    type: "command_execution",
+                    command: "sleep 10",
+                  },
+                },
+              },
+            ],
+            framework: "codex",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Bash");
+    expect(logCalls).toContain("sleep 10");
   });
 
   it("should handle authentication error", async () => {

@@ -801,7 +801,7 @@ export const chatSearchContract = c.router({
     path: "/api/zero/chat/search",
     headers: authHeadersSchema,
     query: z.object({
-      keyword: z.string().min(1),
+      keyword: z.string().trim().min(1),
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),

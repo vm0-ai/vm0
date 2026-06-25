@@ -33,6 +33,21 @@ describe("zero search --source slack", () => {
   });
 
   describe("zero outbound HTTP", () => {
+    it("rejects whitespace-only queries", async () => {
+      await expect(
+        zeroSearchCommand.parseAsync([
+          "node",
+          "cli",
+          "   ",
+          "--source",
+          "slack",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      const errors = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errors).toContain("Query cannot be empty");
+    });
+
     it("makes no network call (MSW would error on any unhandled request)", async () => {
       await zeroSearchCommand.parseAsync([
         "node",

@@ -15,6 +15,7 @@ import {
   getFrameworkDisplayName,
   isSupportedFramework,
 } from "@vm0/core/frameworks";
+import { formatIsoTimestamp } from "../utils/time-format";
 import {
   formatToolHeader,
   formatToolResult,
@@ -42,6 +43,29 @@ interface EventRendererOptions {
   buffered?: boolean;
 }
 
+function recordData(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function displayString(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function displayNonNegativeNumber(value: unknown): number {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : undefined;
+  return number !== undefined && Number.isFinite(number) && number >= 0
+    ? number
+    : 0;
+}
+
 /**
  * Stateful event renderer that buffers tool_use events
  * and displays them grouped with their tool_result
@@ -49,8 +73,10 @@ interface EventRendererOptions {
 export class EventRenderer {
   private pendingToolUse = new Map<
     string,
-    { toolUse: ToolUseData; prefix: string }
+    { toolUse: ToolUseData; prefix: string; rendered: boolean }
   >();
+  private ambiguousToolUseIds = new Set<string>();
+  private ambiguousRenderedToolUses = new Map<string, ToolUseData[]>();
   private options: EventRendererOptions;
   private lastEventType: string | null = null;
   private frameworkDisplayName: string = "Agent";
@@ -77,7 +103,7 @@ export class EventRenderer {
    * Format timestamp for display (without milliseconds, matching metrics format)
    */
   static formatTimestamp(timestamp: Date): string {
-    return timestamp.toISOString().replace(/\.\d{3}Z$/, "Z");
+    return formatIsoTimestamp(timestamp);
   }
 
   /**
@@ -90,9 +116,11 @@ export class EventRenderer {
 
     switch (event.type) {
       case "init":
+        this.renderPendingToolUses();
         this.renderInit(event, timestampPrefix);
         break;
       case "text":
+        this.renderPendingToolUses();
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
@@ -102,8 +130,30 @@ export class EventRenderer {
         this.handleToolResult(event, timestampPrefix);
         break;
       case "result":
+        this.renderPendingToolUses();
         this.renderResult(event, timestampPrefix);
         break;
+    }
+  }
+
+  /**
+   * Render any buffered display state that cannot wait for a future event.
+   */
+  flush(): void {
+    this.renderPendingToolUses();
+    this.pendingToolUse.clear();
+    this.ambiguousToolUseIds.clear();
+    this.ambiguousRenderedToolUses.clear();
+  }
+
+  private renderPendingToolUses(): void {
+    for (const pending of this.pendingToolUse.values()) {
+      if (pending.rendered) {
+        continue;
+      }
+      const { toolUse, prefix } = pending;
+      this.renderToolUseOnly(toolUse, prefix);
+      pending.rendered = true;
     }
   }
 
@@ -175,17 +225,35 @@ export class EventRenderer {
    * or render immediately (when not buffered, e.g., historical log viewing)
    */
   private handleToolUse(event: ParsedEvent, prefix: string): void {
-    const toolUseId = String(event.data.toolUseId || "");
-    const tool = String(event.data.tool || "");
-    const input = (event.data.input as Record<string, unknown>) || {};
+    const toolUseId = displayString(event.data.toolUseId);
+    const tool = displayString(event.data.tool);
+    const input = recordData(event.data.input);
     const toolUseData: ToolUseData = { tool, input };
 
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
-    if (this.options.buffered !== false) {
-      this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
+    if (this.options.buffered !== false && toolUseId.length > 0) {
+      const existing = this.pendingToolUse.get(toolUseId);
+      if (existing || this.ambiguousToolUseIds.has(toolUseId)) {
+        if (existing) {
+          if (!existing.rendered) {
+            this.renderToolUseOnly(existing.toolUse, existing.prefix);
+          }
+          this.rememberAmbiguousRenderedToolUse(toolUseId, existing.toolUse);
+        }
+        this.pendingToolUse.delete(toolUseId);
+        this.ambiguousToolUseIds.add(toolUseId);
+        this.renderToolUseOnly(toolUseData, prefix);
+        this.rememberAmbiguousRenderedToolUse(toolUseId, toolUseData);
+        return;
+      }
+      this.pendingToolUse.set(toolUseId, {
+        toolUse: toolUseData,
+        prefix,
+        rendered: false,
+      });
     } else {
-      // Non-buffered: render tool_use header immediately
+      // Non-buffered, or malformed tool_use without a stable id: render immediately.
       this.renderToolUseOnly(toolUseData, prefix);
     }
   }
@@ -218,18 +286,94 @@ export class EventRenderer {
    * Handle tool_result event - lookup buffered tool_use and render grouped
    */
   private handleToolResult(event: ParsedEvent, prefix: string): void {
-    const toolUseId = String(event.data.toolUseId || "");
-    const result = String(event.data.result || "");
+    const toolUseId = displayString(event.data.toolUseId);
+    const result = displayString(event.data.result);
     const isError = Boolean(event.data.isError);
+
+    if (toolUseId.length > 0 && this.ambiguousToolUseIds.has(toolUseId)) {
+      const orphanToolUse = this.getToolUseFromResultEvent(event);
+      const renderedToolUse = orphanToolUse
+        ? this.getMatchingAmbiguousRenderedToolUse(toolUseId, orphanToolUse)
+        : undefined;
+      if (renderedToolUse) {
+        this.renderToolResultOnly(renderedToolUse, { result, isError }, prefix);
+        return;
+      }
+      if (orphanToolUse) {
+        this.renderGroupedTool(orphanToolUse, { result, isError }, prefix);
+      }
+      return;
+    }
 
     const pending = this.pendingToolUse.get(toolUseId);
 
     if (pending) {
-      // Render grouped output
-      this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
+      if (pending.rendered) {
+        this.renderToolResultOnly(pending.toolUse, { result, isError }, prefix);
+      } else {
+        // Render grouped output
+        this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
+      }
       this.pendingToolUse.delete(toolUseId);
+      return;
     }
-    // Skip orphan tool_results (no matching tool_use in buffer)
+
+    const orphanToolUse = this.getToolUseFromResultEvent(event);
+    if (orphanToolUse) {
+      this.renderGroupedTool(orphanToolUse, { result, isError }, prefix);
+    }
+    // Skip orphan tool_results without enough tool metadata to render.
+  }
+
+  private getToolUseFromResultEvent(event: ParsedEvent): ToolUseData | null {
+    const tool = event.data.tool;
+    if (typeof tool !== "string" || tool.length === 0) {
+      return null;
+    }
+
+    return {
+      tool,
+      input: recordData(event.data.input),
+    };
+  }
+
+  private rememberAmbiguousRenderedToolUse(
+    toolUseId: string,
+    toolUse: ToolUseData,
+  ): void {
+    const renderedToolUses = this.ambiguousRenderedToolUses.get(toolUseId);
+    if (renderedToolUses) {
+      renderedToolUses.push(toolUse);
+      return;
+    }
+    this.ambiguousRenderedToolUses.set(toolUseId, [toolUse]);
+  }
+
+  private getMatchingAmbiguousRenderedToolUse(
+    toolUseId: string,
+    toolUse: ToolUseData,
+  ): ToolUseData | undefined {
+    const renderedToolUses = this.ambiguousRenderedToolUses.get(toolUseId);
+    if (!renderedToolUses) {
+      return undefined;
+    }
+
+    for (let index = renderedToolUses.length - 1; index >= 0; index -= 1) {
+      const renderedToolUse = renderedToolUses[index];
+      if (
+        renderedToolUse !== undefined &&
+        this.hasSameToolHeader(renderedToolUse, toolUse)
+      ) {
+        return renderedToolUse;
+      }
+    }
+    return undefined;
+  }
+
+  private hasSameToolHeader(first: ToolUseData, second: ToolUseData): boolean {
+    return (
+      formatToolHeader(first).join("\n") === formatToolHeader(second).join("\n")
+    );
   }
 
   /**
@@ -273,14 +417,39 @@ export class EventRenderer {
     this.lastEventType = "tool";
   }
 
+  private renderToolResultOnly(
+    toolUse: ToolUseData,
+    result: ToolResultData,
+    prefix: string,
+  ): void {
+    if (this.lastEventType === "text") {
+      console.log();
+    }
+
+    const verbose = this.options.verbose ?? false;
+    const cont = this.getContinuationPrefix();
+    const resultLines = formatToolResult(toolUse, result, verbose);
+
+    for (let i = 0; i < resultLines.length; i++) {
+      const line = resultLines[i];
+      if (i === 0) {
+        console.log(prefix + cont + line);
+      } else {
+        console.log(cont + line);
+      }
+    }
+    console.log();
+    this.lastEventType = "tool";
+  }
+
   private renderInit(event: ParsedEvent, prefix: string): void {
-    const frameworkStr = String(event.data.framework || "claude-code");
+    const frameworkStr = displayString(event.data.framework) || "claude-code";
     const displayName = isSupportedFramework(frameworkStr)
       ? getFrameworkDisplayName(frameworkStr)
       : frameworkStr;
     this.frameworkDisplayName = displayName;
     console.log(prefix + chalk.bold(`▷ ${displayName} Started`));
-    console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
+    console.log(`  Session: ${chalk.dim(displayString(event.data.sessionId))}`);
     if (event.data.model) {
       console.log(`  Model: ${chalk.dim(String(event.data.model))}`);
     }
@@ -296,7 +465,7 @@ export class EventRenderer {
   }
 
   private renderText(event: ParsedEvent, prefix: string): void {
-    const text = String(event.data.text || "");
+    const text = displayString(event.data.text);
     // Text events get a bullet prefix
     console.log(prefix + "● " + text);
     this.lastEventType = "text";
@@ -305,26 +474,38 @@ export class EventRenderer {
   private renderResult(event: ParsedEvent, prefix: string): void {
     console.log(); // Spacing before result
     const success = Boolean(event.data.success);
+    const eventFramework = displayString(event.data.framework);
+    const displayName =
+      eventFramework && isSupportedFramework(eventFramework)
+        ? getFrameworkDisplayName(eventFramework)
+        : eventFramework || this.frameworkDisplayName;
+    this.frameworkDisplayName = displayName;
 
     if (success) {
-      console.log(
-        prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Completed`),
-      );
+      console.log(prefix + chalk.bold(`◆ ${displayName} Completed`));
     } else {
-      console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
+      console.log(prefix + chalk.bold(`◆ ${displayName} Failed`));
+      const result = displayString(event.data.result).trim();
+      if (result.length > 0) {
+        const [firstLine, ...restLines] = result.split("\n");
+        console.log(`  Error: ${chalk.red(firstLine)}`);
+        for (const line of restLines) {
+          console.log(`         ${chalk.red(line)}`);
+        }
+      }
     }
 
-    const durationMs = Number(event.data.durationMs || 0);
+    const durationMs = displayNonNegativeNumber(event.data.durationMs);
     const durationSec = (durationMs / 1000).toFixed(1);
     console.log(`  Duration: ${chalk.dim(durationSec + "s")}`);
 
-    const numTurns = Number(event.data.numTurns || 0);
+    const numTurns = displayNonNegativeNumber(event.data.numTurns);
     console.log(`  Turns: ${chalk.dim(String(numTurns))}`);
 
     const usage = event.data.usage as Record<string, unknown>;
     if (usage && typeof usage === "object") {
-      const inputTokens = Number(usage.input_tokens || 0);
-      const outputTokens = Number(usage.output_tokens || 0);
+      const inputTokens = displayNonNegativeNumber(usage.input_tokens);
+      const outputTokens = displayNonNegativeNumber(usage.output_tokens);
 
       const formatTokens = (count: number): string => {
         if (count >= 1000) {

@@ -1422,6 +1422,9 @@ describe("CHAT-01 chat search", () => {
     expect(emptyResults.results).toStrictEqual([]);
     expect(emptyResults.hasMore).toBeFalsy();
 
+    const blankKeyword = await chat.requestSearchChat(owner, "   ", {}, [400]);
+    expectApiError(blankKeyword.body);
+
     // Peer-user isolation inside one org.
     const peerAgent = await bdd.createAgent(peer, {
       displayName: "Peer search agent",

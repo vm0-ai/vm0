@@ -6,6 +6,7 @@ import type { GetEventsResponse } from "../../lib/api/core/types";
 import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 import {
   firewallPoliciesSchema,
   type FirewallPolicies,
@@ -153,8 +154,11 @@ export function parsePermissionPolicies(
   return result.data;
 }
 
+const UUID_PATTERN =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;
+
 export function isUUID(str: string): boolean {
-  return /^[0-9a-f-]{36}$/i.test(str);
+  return UUID_PATTERN.test(str);
 }
 
 /**
@@ -320,6 +324,12 @@ const POLL_INTERVAL_MS = 1000;
 const TERMINAL_DRAIN_POLL_INTERVAL_MS = 500;
 const TERMINAL_DRAIN_IDLE_MS = 1000;
 const TERMINAL_DRAIN_MAX_MS = 3000;
+
+function supportedEventFramework(
+  framework: string | undefined,
+): string | undefined {
+  return isSupportedFramework(framework) ? framework : undefined;
+}
 
 /**
  * Options for polling/streaming events
@@ -496,6 +506,7 @@ export async function pollEvents(
     for (const parsed of normalizer.flush()) {
       renderer.render(parsed);
     }
+    renderer.flush();
   };
 
   for (;;) {
@@ -512,7 +523,7 @@ export async function pollEvents(
       for (const event of response.events) {
         const parsedEvents = normalizer.process(
           event.eventData,
-          response.framework,
+          supportedEventFramework(response.framework),
         );
         for (const parsed of parsedEvents) {
           renderer.render(parsed);

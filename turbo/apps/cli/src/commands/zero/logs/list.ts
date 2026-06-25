@@ -2,7 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listZeroLogs } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../../lib/utils/time-format";
+import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { withErrorHandler } from "../../../lib/command";
+import { isUUID } from "../../run/shared";
 
 function formatStatus(status: string): string {
   switch (status) {
@@ -23,7 +26,7 @@ function formatStatus(status: string): string {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return formatIsoTimestamp(iso);
 }
 
 export const listCommand = new Command()
@@ -58,8 +61,23 @@ Examples:
         since?: string;
         limit?: string;
       }) => {
-        const limit = options.limit ? parseInt(options.limit, 10) : undefined;
-        const since = options.since ? parseTime(options.since) : undefined;
+        const limit =
+          options.limit !== undefined
+            ? parseBoundedLogCount(options.limit, "--limit", 1, 100)
+            : undefined;
+        const since =
+          options.since !== undefined ? parseTime(options.since) : undefined;
+        if (options.agent !== undefined && !isUUID(options.agent)) {
+          console.error(
+            chalk.red(
+              `✗ Invalid agent ID "${options.agent}" — expected a UUID`,
+            ),
+          );
+          console.error(
+            chalk.dim("  Run: zero logs list    to find agent IDs"),
+          );
+          process.exit(1);
+        }
 
         const result = await listZeroLogs({
           agentId: options.agent,
