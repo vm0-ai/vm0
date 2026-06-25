@@ -142,7 +142,7 @@ function createAgentWorkflowsFactory(): (
   };
 }
 
-export const agentWorkflows = createAgentWorkflowsFactory();
+const agentWorkflows = createAgentWorkflowsFactory();
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow
