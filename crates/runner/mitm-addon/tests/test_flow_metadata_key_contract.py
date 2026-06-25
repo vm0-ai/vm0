@@ -85,6 +85,36 @@ def _argument_annotations(args: ast.arguments) -> list[ast.expr]:
     return annotations
 
 
+def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AST]:
+    if index >= len(args):
+        return []
+    argument = args[index]
+    if isinstance(argument, ast.Starred):
+        return _static_starred_argument_nodes(argument.value)
+    return [argument]
+
+
+def _static_starred_argument_nodes(node: ast.AST) -> list[ast.AST]:
+    if isinstance(node, ast.NamedExpr):
+        return _static_starred_argument_nodes(node.value)
+    if isinstance(node, ast.IfExp):
+        return [
+            *_static_starred_argument_nodes(node.body),
+            *_static_starred_argument_nodes(node.orelse),
+        ]
+    if isinstance(node, ast.BoolOp):
+        nodes: list[ast.AST] = []
+        for value in node.values:
+            nodes.extend(_static_starred_argument_nodes(value))
+        return nodes
+    if not isinstance(node, ast.List | ast.Tuple) or not node.elts:
+        return []
+    first_arg = node.elts[0]
+    if isinstance(first_arg, ast.Starred):
+        return _static_starred_argument_nodes(first_arg.value)
+    return [first_arg]
+
+
 def _type_params(node: ast.AST) -> list[ast.AST]:
     for field_name, value in ast.iter_fields(node):
         if field_name == "type_params" and isinstance(value, list):
@@ -881,9 +911,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_metadata_merge_key_violations(node.value)
         self._record_metadata_merge_key_violations(node.slice)
         if self._is_metadata_alias_value(node.value):
-            key_name = _registered_key_name(node.slice)
-            if key_name is not None:
-                self._add_violation(_violation(self.path, node, key_name))
+            self._add_violations(_metadata_key_expression_violations(self.path, node.slice))
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -891,19 +919,18 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_metadata_merge_key_violations(node)
         self._record_metadata_merge_key_violations(node.func)
         for index, argument in enumerate(node.args):
-            if not node_is_metadata_merge or index > 0:
+            if not node_is_metadata_merge or index > 0 or isinstance(argument, ast.Starred):
                 self._record_metadata_merge_key_violations(argument)
         for keyword in node.keywords:
             if not (node_is_metadata_merge and keyword.arg is None):
                 self._record_metadata_merge_key_violations(keyword.value)
         if isinstance(node.func, ast.Attribute) and self._is_metadata_alias_value(node.func.value):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
-                key_name = _registered_key_name(node.args[0])
-                if key_name is not None:
-                    self._add_violation(_violation(self.path, node, key_name))
+                for key_arg in _static_call_argument_nodes(node.args, 0):
+                    self._add_violations(_metadata_key_expression_violations(self.path, key_arg))
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
-                update_arg = None if not node.args else node.args[0]
-                self._record_metadata_dict_key_violations(update_arg)
+                for update_arg in _static_call_argument_nodes(node.args, 0):
+                    self._record_metadata_dict_key_violations(update_arg)
                 for keyword in node.keywords:
                     if keyword.arg is None:
                         self._record_metadata_dict_key_violations(keyword.value)
@@ -956,9 +983,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             and isinstance(node.ops[0], (ast.In, ast.NotIn))
             and self._is_metadata_alias_value(node.comparators[0])
         ):
-            key_name = _registered_key_name(node.left)
-            if key_name is not None:
-                self._add_violation(_violation(self.path, node, key_name))
+            self._add_violations(_metadata_key_expression_violations(self.path, node.left))
         self.generic_visit(node)
 
     def visit_Delete(self, node: ast.Delete) -> None:
@@ -1156,9 +1181,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def _record_metadata_match_pattern_key_violations(self, pattern: ast.pattern) -> None:
         if isinstance(pattern, ast.MatchMapping):
             for key in pattern.keys:
-                key_name = _registered_key_name(key)
-                if key_name is not None:
-                    self._add_violation(_violation(self.path, key, key_name))
+                self._add_violations(_metadata_key_expression_violations(self.path, key))
             return
         if isinstance(pattern, ast.MatchAs) and pattern.pattern is not None:
             self._record_metadata_match_pattern_key_violations(pattern.pattern)
@@ -1273,8 +1296,12 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
         for value in node.values:
             boolop_violations.extend(_metadata_dict_key_violations(path, value))
         return boolop_violations
+    if isinstance(node, ast.DictComp):
+        return _metadata_key_expression_violations(path, node.key)
     if isinstance(node, ast.List | ast.Tuple | ast.Set):
         return _metadata_pair_sequence_violations(path, node)
+    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+        return _metadata_pair_element_violations(path, node.elt)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return [
             *_metadata_dict_key_violations(path, node.left),
@@ -1287,8 +1314,10 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
             and node.func.value.id == "dict"
             and node.func.attr == "fromkeys"
         ):
-            keys_arg = None if not node.args else node.args[0]
-            return _metadata_key_sequence_violations(path, keys_arg)
+            fromkeys_violations: list[str] = []
+            for keys_arg in _static_call_argument_nodes(node.args, 0):
+                fromkeys_violations.extend(_metadata_key_sequence_violations(path, keys_arg))
+            return fromkeys_violations
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr == "items"
@@ -1306,15 +1335,17 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
         if isinstance(node.func, ast.Name):
             if node.func.id == "dict":
                 dict_call_violations: list[str] = []
-                update_arg = None if not node.args else node.args[0]
-                dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
+                for update_arg in _static_call_argument_nodes(node.args, 0):
+                    dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
                 dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
                 return dict_call_violations
             if node.func.id == "zip":
                 return _metadata_zip_key_violations(path, node)
             if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-                update_arg = None if not node.args else node.args[0]
-                return _metadata_dict_key_violations(path, update_arg)
+                wrapper_violations: list[str] = []
+                for update_arg in _static_call_argument_nodes(node.args, 0):
+                    wrapper_violations.extend(_metadata_dict_key_violations(path, update_arg))
+                return wrapper_violations
     if not isinstance(node, ast.Dict):
         return []
     violations: list[str] = []
@@ -1322,9 +1353,7 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
         if key is None:
             violations.extend(_metadata_dict_key_violations(path, value))
             continue
-        key_name = _registered_key_name(key)
-        if key_name is not None:
-            violations.append(_violation(path, key, key_name))
+        violations.extend(_metadata_key_expression_violations(path, key))
     return violations
 
 
@@ -1336,12 +1365,26 @@ def _metadata_pair_sequence_violations(
         if isinstance(item, ast.Starred):
             violations.extend(_metadata_pair_iterable_violations(path, item.value))
             continue
-        if not isinstance(item, ast.List | ast.Tuple) or len(item.elts) != 2:
-            continue
-        key_name = _registered_key_name(item.elts[0])
-        if key_name is not None:
-            violations.append(_violation(path, item.elts[0], key_name))
+        violations.extend(_metadata_pair_element_violations(path, item))
     return violations
+
+
+def _metadata_pair_element_violations(path: Path, node: ast.AST) -> list[str]:
+    if isinstance(node, ast.NamedExpr):
+        return _metadata_pair_element_violations(path, node.value)
+    if isinstance(node, ast.IfExp):
+        return [
+            *_metadata_pair_element_violations(path, node.body),
+            *_metadata_pair_element_violations(path, node.orelse),
+        ]
+    if isinstance(node, ast.BoolOp):
+        violations: list[str] = []
+        for value in node.values:
+            violations.extend(_metadata_pair_element_violations(path, value))
+        return violations
+    if not isinstance(node, ast.List | ast.Tuple) or len(node.elts) != 2:
+        return []
+    return _metadata_key_expression_violations(path, node.elts[0])
 
 
 def _metadata_pair_iterable_violations(path: Path, node: ast.AST) -> list[str]:
@@ -1353,12 +1396,14 @@ def _metadata_pair_iterable_violations(path: Path, node: ast.AST) -> list[str]:
             *_metadata_pair_iterable_violations(path, node.orelse),
         ]
     if isinstance(node, ast.BoolOp):
-        violations: list[str] = []
+        boolop_violations: list[str] = []
         for value in node.values:
-            violations.extend(_metadata_pair_iterable_violations(path, value))
-        return violations
+            boolop_violations.extend(_metadata_pair_iterable_violations(path, value))
+        return boolop_violations
     if isinstance(node, ast.List | ast.Tuple | ast.Set):
         return _metadata_pair_sequence_violations(path, node)
+    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+        return _metadata_pair_element_violations(path, node.elt)
     if isinstance(node, ast.Call):
         if (
             isinstance(node.func, ast.Attribute)
@@ -1378,10 +1423,10 @@ def _metadata_pair_iterable_violations(path: Path, node: ast.AST) -> list[str]:
             if node.func.id == "zip":
                 return _metadata_zip_key_violations(path, node)
             if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-                update_arg = None if not node.args else node.args[0]
-                if update_arg is None:
-                    return []
-                return _metadata_pair_iterable_violations(path, update_arg)
+                violations: list[str] = []
+                for update_arg in _static_call_argument_nodes(node.args, 0):
+                    violations.extend(_metadata_pair_iterable_violations(path, update_arg))
+                return violations
     return []
 
 
@@ -1405,15 +1450,17 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
             *_metadata_key_sequence_violations(path, node.left),
             *_metadata_key_sequence_violations(path, node.right),
         ]
+    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+        return _metadata_key_expression_violations(path, node.elt)
+    if isinstance(node, ast.DictComp):
+        return _metadata_key_expression_violations(path, node.key)
     if isinstance(node, ast.Dict):
         dict_key_violations: list[str] = []
         for key, value in zip(node.keys, node.values, strict=True):
             if key is None:
                 dict_key_violations.extend(_metadata_key_sequence_violations(path, value))
                 continue
-            key_name = _registered_key_name(key)
-            if key_name is not None:
-                dict_key_violations.append(_violation(path, key, key_name))
+            dict_key_violations.extend(_metadata_key_expression_violations(path, key))
         return dict_key_violations
     if (
         isinstance(node, ast.Call)
@@ -1435,8 +1482,10 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
         if node.func.id == "dict":
             return _metadata_dict_key_violations(path, node)
         if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-            keys_arg = None if not node.args else node.args[0]
-            return _metadata_key_sequence_violations(path, keys_arg)
+            wrapper_violations: list[str] = []
+            for keys_arg in _static_call_argument_nodes(node.args, 0):
+                wrapper_violations.extend(_metadata_key_sequence_violations(path, keys_arg))
+            return wrapper_violations
     if not isinstance(node, ast.List | ast.Tuple | ast.Set):
         return []
     violations: list[str] = []
@@ -1444,15 +1493,34 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
         if isinstance(element, ast.Starred):
             violations.extend(_metadata_key_sequence_violations(path, element.value))
             continue
-        key_name = _registered_key_name(element)
-        if key_name is not None:
-            violations.append(_violation(path, element, key_name))
+        violations.extend(_metadata_key_expression_violations(path, element))
     return violations
 
 
 def _metadata_zip_key_violations(path: Path, node: ast.Call) -> list[str]:
-    keys_arg = None if not node.args else node.args[0]
-    return _metadata_key_sequence_violations(path, keys_arg)
+    violations: list[str] = []
+    for keys_arg in _static_call_argument_nodes(node.args, 0):
+        violations.extend(_metadata_key_sequence_violations(path, keys_arg))
+    return violations
+
+
+def _metadata_key_expression_violations(path: Path, node: ast.AST) -> list[str]:
+    if isinstance(node, ast.NamedExpr):
+        return _metadata_key_expression_violations(path, node.value)
+    if isinstance(node, ast.IfExp):
+        return [
+            *_metadata_key_expression_violations(path, node.body),
+            *_metadata_key_expression_violations(path, node.orelse),
+        ]
+    if isinstance(node, ast.BoolOp):
+        violations: list[str] = []
+        for value in node.values:
+            violations.extend(_metadata_key_expression_violations(path, value))
+        return violations
+    key_name = _registered_key_name(node)
+    if key_name is None:
+        return []
+    return [_violation(path, node, key_name)]
 
 
 def _metadata_keyword_violations(path: Path, keywords: list[ast.keyword]) -> list[str]:
@@ -1480,9 +1548,13 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     source_path.write_text(
         """
 flow.metadata["vm_run_id"] = "run-1"
+flow.metadata["vm_run_id" if condition else "firewall_name"] = "run-1"
 flow.metadata.get("firewall_action")
+flow.metadata.get("firewall_action" if condition else "firewall_error")
 "original_url" in flow.metadata
+("firewall_base" if condition else "firewall_permission") in flow.metadata
 flow.metadata.update({"firewall_base": "https://api.example.com"})
+flow.metadata.update({("auth_cache_hit" if condition else "auth_url_rewrite"): True})
 flow.metadata.update(firewall_permission="read")
 flow.metadata |= {"vm_network_log_path": "network.jsonl"}
 flow.metadata = dict(vm_proxy_log_path="proxy.jsonl")
@@ -1529,6 +1601,23 @@ flow.metadata.update([*sorted([("vm_network_log_path", "network.jsonl")])])
 flow.metadata.update([*[("vm_proxy_log_path", "proxy.jsonl")].copy()])
 flow.metadata.update(dict.fromkeys([*["firewall_error"]], "auth_failed"))
 flow.metadata.update(dict.fromkeys((*["auth_cache_hit"],), False))
+flow.metadata.update({"vm_run_id": value for value in rows})
+flow.metadata = {"firewall_name": value for value in rows}
+flow.metadata.update(*[{"vm_run_id": "run-1"}])
+flow.metadata.update(*[dict(firewall_name="github")])
+flow.metadata.update(*[[("firewall_action", "ALLOW")]])
+flow.metadata = dict(*[{"firewall_permission": "read"}])
+flow.metadata.get(*["firewall_base"])
+flow.metadata.update(dict.fromkeys(*[["firewall_error"], "auth_failed"]))
+flow.metadata.update(dict.fromkeys(*[["auth_cache_hit"]], False))
+flow.metadata.update((("firewall_action", value) for value in rows))
+flow.metadata.update([("firewall_permission", value) for value in rows])
+flow.metadata.update({("firewall_base", value) for value in rows})
+flow.metadata = dict((("auth_url_rewrite", value) for value in rows))
+flow.metadata.update(dict.fromkeys(("firewall_error" for value in rows), "auth_failed"))
+flow.metadata.update(dict.fromkeys(["auth_cache_hit" for value in rows], False))
+flow.metadata.update(dict.fromkeys({"network_log_target" for value in rows}, {}))
+flow.metadata.update(dict.fromkeys({"vm_network_log_path": value for value in rows}, "path"))
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
@@ -1828,7 +1917,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 186
+    assert len(violations) == 211
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1842,6 +1931,14 @@ entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
+flow.metadata[metadata_keys.VM_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
+flow.metadata.get(
+    metadata_keys.FIREWALL_ACTION if condition else metadata_keys.FIREWALL_ERROR
+)
+(metadata_keys.FIREWALL_BASE if condition else metadata_keys.FIREWALL_PERMISSION) in flow.metadata
+flow.metadata.update(
+    {(metadata_keys.AUTH_CACHE_HIT if condition else metadata_keys.AUTH_URL_REWRITE): True}
+)
 external_meta_value = flow.metadata
 payload = {"vm_run_id": "external", "metadata": external_meta_value}
 meta = flow.metadata
@@ -1901,6 +1998,25 @@ flow.metadata.update([*sorted([(metadata_keys.VM_NETWORK_LOG_PATH, "network.json
 flow.metadata.update([*[(metadata_keys.VM_PROXY_LOG_PATH, "proxy.jsonl")].copy()])
 flow.metadata.update(dict.fromkeys([*[metadata_keys.FIREWALL_ERROR]], "auth_failed"))
 flow.metadata.update(dict.fromkeys((*[metadata_keys.AUTH_CACHE_HIT],), False))
+flow.metadata.update({metadata_keys.VM_RUN_ID: value for value in rows})
+flow.metadata = {metadata_keys.FIREWALL_NAME: value for value in rows}
+flow.metadata.update(*[{metadata_keys.VM_RUN_ID: "run-1"}])
+flow.metadata.update(*[dict({metadata_keys.FIREWALL_NAME: "github"})])
+flow.metadata.update(*[[(metadata_keys.FIREWALL_ACTION, "ALLOW")]])
+flow.metadata = dict(*[{metadata_keys.FIREWALL_PERMISSION: "read"}])
+flow.metadata.get(*[metadata_keys.FIREWALL_BASE])
+flow.metadata.update(dict.fromkeys(*[[metadata_keys.FIREWALL_ERROR], "auth_failed"]))
+flow.metadata.update(dict.fromkeys(*[[metadata_keys.AUTH_CACHE_HIT]], False))
+flow.metadata.update(((metadata_keys.FIREWALL_ACTION, value) for value in rows))
+flow.metadata.update([(metadata_keys.FIREWALL_PERMISSION, value) for value in rows])
+flow.metadata.update({(metadata_keys.FIREWALL_BASE, value) for value in rows})
+flow.metadata = dict(((metadata_keys.AUTH_URL_REWRITE, value) for value in rows))
+flow.metadata.update(dict.fromkeys((metadata_keys.FIREWALL_ERROR for value in rows), "error"))
+flow.metadata.update(dict.fromkeys([metadata_keys.AUTH_CACHE_HIT for value in rows], False))
+flow.metadata.update(dict.fromkeys({metadata_keys.NETWORK_LOG_TARGET for value in rows}, {}))
+flow.metadata.update(
+    dict.fromkeys({metadata_keys.VM_NETWORK_LOG_PATH: value for value in rows}, "path")
+)
 external_conditional_meta = {"vm_run_id": "external"} if condition else {}
 value = external_conditional_meta["vm_run_id"]
 external_bool_meta = fallback_meta or {"vm_run_id": "external"}
