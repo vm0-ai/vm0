@@ -242,6 +242,103 @@ function LoadingState({ layout }: { readonly layout: "page" | "drawer" }) {
   return <LoadingCard />;
 }
 
+function ConnectorPickerRow({
+  agentId,
+  workflowId,
+  triggerId,
+  type,
+  connectorEnabled,
+  saving,
+  onSelectConnector,
+  onToggleConnector,
+}: {
+  readonly agentId: string;
+  readonly workflowId: string;
+  readonly triggerId: string;
+  readonly type: ConnectorType;
+  readonly connectorEnabled: boolean;
+  readonly saving: boolean;
+  readonly onSelectConnector?: (connectorRef: ConnectorType) => void;
+  readonly onToggleConnector: (
+    connectorRef: ConnectorType,
+    enabled: boolean,
+  ) => void;
+}) {
+  const config = CONNECTOR_TYPES[type];
+  const rowClass =
+    "flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/40";
+  const content = (
+    <>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
+        <ConnectorIcon type={type} size={19} />
+      </span>
+      <span className="min-w-0 flex flex-1 flex-col gap-1">
+        <span className="text-sm font-medium text-foreground">
+          {config.label}
+        </span>
+        {config.helpText && (
+          <span className="line-clamp-1 text-xs text-muted-foreground">
+            {config.helpText}
+          </span>
+        )}
+      </span>
+    </>
+  );
+  const toggle = (
+    <LoadingSwitch
+      checked={connectorEnabled}
+      loading={saving}
+      ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${config.label}`}
+      onCheckedChange={(enabled) => {
+        onToggleConnector(type, enabled);
+      }}
+    />
+  );
+
+  if (onSelectConnector) {
+    return (
+      <div className={rowClass}>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          onClick={() => {
+            onSelectConnector(type);
+          }}
+        >
+          {content}
+        </button>
+        {toggle}
+        <IconChevronRight
+          size={16}
+          stroke={1.5}
+          className="shrink-0 text-muted-foreground"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={rowClass}>
+      <Link
+        pathname={ROUTES.agentWorkflowTriggerPermissions}
+        options={{
+          pathParams: { agentId, workflowId, triggerId },
+          searchParams: new URLSearchParams({ ref: type }),
+        }}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        {content}
+      </Link>
+      {toggle}
+      <IconChevronRight
+        size={16}
+        stroke={1.5}
+        className="shrink-0 text-muted-foreground"
+      />
+    </div>
+  );
+}
+
 function ConnectorPicker({
   agentId,
   workflowId,
@@ -277,13 +374,35 @@ function ConnectorPicker({
     return <ErrorMessage message="Failed to load trigger" />;
   }
 
-  const trigger = providedTrigger ?? triggerLoadable.data;
+  const trigger =
+    providedTrigger ??
+    (triggerLoadable.state === "hasData" ? triggerLoadable.data : null);
   if (!trigger) {
     return <ErrorMessage message="Trigger not found" />;
   }
 
   const connectorRefs = trigger.unattendedConnectorRefs;
   const saving = saveLoadable.state === "loading";
+  const handleToggleConnector = (
+    connectorRef: ConnectorType,
+    enabled: boolean,
+  ) => {
+    detach(
+      save(
+        {
+          triggerId,
+          unattendedConnectorRefs: toggleConnectorRef(
+            connectorRefs,
+            connectorRef,
+            enabled,
+          ),
+          unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <div className={containerClass}>
@@ -307,94 +426,19 @@ function ConnectorPicker({
       />
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/70">
         {visibleConnectors.map((type) => {
-          const config = CONNECTOR_TYPES[type as ConnectorType];
-          const connectorEnabled = connectorRefs.includes(type);
-          const rowClass =
-            "flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/40";
-          const content = (
-            <>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
-                <ConnectorIcon type={type as ConnectorType} size={19} />
-              </span>
-              <span className="min-w-0 flex flex-1 flex-col gap-1">
-                <span className="text-sm font-medium text-foreground">
-                  {config.label}
-                </span>
-                {config.helpText && (
-                  <span className="line-clamp-1 text-xs text-muted-foreground">
-                    {config.helpText}
-                  </span>
-                )}
-              </span>
-            </>
-          );
-          const toggle = (
-            <LoadingSwitch
-              checked={connectorEnabled}
-              loading={saving}
-              ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${
-                config.label
-              }`}
-              onCheckedChange={(enabled) => {
-                detach(
-                  save(
-                    {
-                      triggerId,
-                      unattendedConnectorRefs: toggleConnectorRef(
-                        connectorRefs,
-                        type,
-                        enabled,
-                      ),
-                      unattendedPermissionPolicy:
-                        trigger.unattendedPermissionPolicy,
-                    },
-                    pageSignal,
-                  ),
-                  Reason.DomCallback,
-                );
-              }}
-            />
-          );
-          if (onSelectConnector) {
-            return (
-              <div key={type} className={rowClass}>
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  onClick={() => {
-                    onSelectConnector(type as ConnectorType);
-                  }}
-                >
-                  {content}
-                </button>
-                {toggle}
-                <IconChevronRight
-                  size={16}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-              </div>
-            );
-          }
+          const connectorType = type as ConnectorType;
           return (
-            <div key={type} className={rowClass}>
-              <Link
-                pathname={ROUTES.agentWorkflowTriggerPermissions}
-                options={{
-                  pathParams: { agentId, workflowId, triggerId },
-                  searchParams: new URLSearchParams({ ref: type }),
-                }}
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
-              >
-                {content}
-              </Link>
-              {toggle}
-              <IconChevronRight
-                size={16}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
-            </div>
+            <ConnectorPickerRow
+              key={type}
+              agentId={agentId}
+              workflowId={workflowId}
+              triggerId={triggerId}
+              type={connectorType}
+              connectorEnabled={connectorRefs.includes(type)}
+              saving={saving}
+              onSelectConnector={onSelectConnector}
+              onToggleConnector={handleToggleConnector}
+            />
           );
         })}
         {visibleConnectors.length === 0 ? (
@@ -979,6 +1023,74 @@ function TriggerPermissionEditorFooter({
   );
 }
 
+function useConnectorPermissionEditorActions({
+  triggerId,
+  connectorRef,
+  metadata,
+  connectorRefs,
+  savedPolicy,
+  actionFor,
+  onApplied,
+}: {
+  readonly triggerId: string;
+  readonly connectorRef: string;
+  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly connectorRefs: UnattendedTriggerConnectorRefs;
+  readonly savedPolicy: UnattendedTriggerPermissionPolicy | null;
+  readonly actionFor: (permission: string) => UnattendedTriggerPermissionAction;
+  readonly onApplied?: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [saveLoadable, save] = useLoadableSet(
+    setWorkflowTriggerPermissionPolicy$,
+  );
+  const saving = saveLoadable.state === "loading";
+  const saved = saveLoadable.state === "hasData";
+
+  const handleSave = () => {
+    const merged = mergeConnectorPolicy(
+      savedPolicy,
+      connectorRef,
+      metadata,
+      materializeTriggerPermissionPolicies(metadata, actionFor),
+    );
+    detach(
+      (async () => {
+        await save(
+          {
+            triggerId,
+            unattendedConnectorRefs: connectorRefs,
+            unattendedPermissionPolicy: merged,
+          },
+          pageSignal,
+        );
+        onApplied?.();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleToggleConnector = (enabled: boolean) => {
+    detach(
+      save(
+        {
+          triggerId,
+          unattendedConnectorRefs: toggleConnectorRef(
+            connectorRefs,
+            connectorRef,
+            enabled,
+          ),
+          unattendedPermissionPolicy: savedPolicy,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return { handleSave, handleToggleConnector, saved, saving };
+}
+
 function ConnectorPermissionEditorCard({
   triggerId,
   connectorRef,
@@ -1000,12 +1112,6 @@ function ConnectorPermissionEditorCard({
   onBackToConnectors?: () => void;
   onApplied?: () => void;
 }) {
-  const pageSignal = useGet(pageSignal$);
-  const [saveLoadable, save] = useLoadableSet(
-    setWorkflowTriggerPermissionPolicy$,
-  );
-  const saving = saveLoadable.state === "loading";
-  const saved = saveLoadable.state === "hasData";
   const connectorConfig = isFirewallMetadataConnectorType(connectorRef)
     ? CONNECTOR_TYPES[connectorRef]
     : undefined;
@@ -1019,49 +1125,16 @@ function ConnectorPermissionEditorCard({
     savedPolicy,
     triggerId,
   });
-
-  const handleSave = () => {
-    const merged = mergeConnectorPolicy(
-      savedPolicy,
+  const { handleSave, handleToggleConnector, saved, saving } =
+    useConnectorPermissionEditorActions({
+      actionFor: model.actionFor,
       connectorRef,
+      connectorRefs,
       metadata,
-      materializeTriggerPermissionPolicies(metadata, model.actionFor),
-    );
-    // After the save, `reloadWorkflows$` refetches the trigger; once its policy
-    // reflects the merge, the local overrides match the saved state and `dirty`
-    // collapses to false on its own — no explicit reset needed.
-    detach(
-      (async () => {
-        await save(
-          {
-            triggerId,
-            unattendedConnectorRefs: connectorRefs,
-            unattendedPermissionPolicy: merged,
-          },
-          pageSignal,
-        );
-        onApplied?.();
-      })(),
-      Reason.DomCallback,
-    );
-  };
-  const handleToggleConnector = (enabled: boolean) => {
-    detach(
-      save(
-        {
-          triggerId,
-          unattendedConnectorRefs: toggleConnectorRef(
-            connectorRefs,
-            connectorRef,
-            enabled,
-          ),
-          unattendedPermissionPolicy: savedPolicy,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
+      onApplied,
+      savedPolicy,
+      triggerId,
+    });
   const containerClass =
     layout === "page"
       ? "mx-auto flex w-full max-w-[640px] flex-col gap-4 px-6 py-10"
