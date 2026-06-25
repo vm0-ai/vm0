@@ -50,6 +50,40 @@ function makeCodexMessageEvent(
   };
 }
 
+function makeCodexErrorEvent(
+  sequenceNumber: number,
+  message: string,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "error",
+    createdAt,
+    eventData: {
+      type: "error",
+      turn_id: "turn-1",
+      message,
+    },
+  };
+}
+
+function makeCodexTurnFailedEvent(
+  sequenceNumber: number,
+  message: string,
+  createdAt = "2024-01-15T10:30:01Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "turn.failed",
+    createdAt,
+    eventData: {
+      type: "turn.failed",
+      turn_id: "turn-1",
+      error: { message },
+    },
+  };
+}
+
 describe("logs search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -145,6 +179,32 @@ describe("logs search command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("codex-agent");
     expect(logCalls).toContain("Codex found the issue");
+  });
+
+  it("should collapse paired codex error and terminal failure events in search context", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "abc12345-1234-1234-1234-123456789abc",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexTurnFailedEvent(4, "Turn failed"),
+              contextBefore: [makeCodexErrorEvent(3, "Sandbox terminated")],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "terminated"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Sandbox terminated");
+    expect(logCalls.match(/Codex Failed/g) ?? []).toHaveLength(1);
   });
 
   it("should pass context params to API", async () => {

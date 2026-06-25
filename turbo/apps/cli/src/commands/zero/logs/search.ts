@@ -7,8 +7,8 @@ import {
 } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
-import { parseEvent } from "../../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../../lib/events/event-renderer";
+import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
@@ -36,13 +36,26 @@ function renderSearchEvent(
   event: RunEvent,
   framework: string | null | undefined,
   renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
 ): void {
-  const eventData = event.eventData as Record<string, unknown>;
-  const parsed = parseEvent(eventData, framework ?? undefined);
-  if (parsed) {
-    parsed.timestamp = new Date(event.createdAt);
+  const parsedEvents = normalizer.process(
+    event.eventData,
+    framework ?? undefined,
+    new Date(event.createdAt),
+  );
+  for (const parsed of parsedEvents) {
     renderer.render(parsed);
   }
+}
+
+function flushSearchRenderer(
+  renderer: EventRenderer,
+  normalizer: EventStreamNormalizer,
+): void {
+  for (const parsed of normalizer.flush()) {
+    renderer.render(parsed);
+  }
+  renderer.flush();
 }
 
 function formatRunHeader(
@@ -109,16 +122,22 @@ function renderResults(response: LogsSearchResponse): void {
       const renderer = new EventRenderer({
         showTimestamp: true,
         verbose: false,
-        buffered: false,
       });
+      const normalizer = new EventStreamNormalizer();
 
       for (const event of result.contextBefore) {
-        renderSearchEvent(event, result.framework, renderer);
+        renderSearchEvent(event, result.framework, renderer, normalizer);
       }
-      renderSearchEvent(result.matchedEvent, result.framework, renderer);
+      renderSearchEvent(
+        result.matchedEvent,
+        result.framework,
+        renderer,
+        normalizer,
+      );
       for (const event of result.contextAfter) {
-        renderSearchEvent(event, result.framework, renderer);
+        renderSearchEvent(event, result.framework, renderer, normalizer);
       }
+      flushSearchRenderer(renderer, normalizer);
     }
   }
 

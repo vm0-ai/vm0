@@ -52,6 +52,46 @@ function makeCodexMessageEvent(
   };
 }
 
+function makeCodexCommandStartedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:00Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.started",
+    createdAt,
+    eventData: {
+      type: "item.started",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+      },
+    },
+  };
+}
+
+function makeCodexCommandCompletedEvent(
+  sequenceNumber: number,
+  createdAt = "2024-01-15T10:30:01Z",
+) {
+  return {
+    sequenceNumber,
+    eventType: "item.completed",
+    createdAt,
+    eventData: {
+      type: "item.completed",
+      item: {
+        id: "cmd-1",
+        type: "command_execution",
+        command: "npm test",
+        aggregated_output: "tests passed",
+        exit_code: 0,
+      },
+    },
+  };
+}
+
 describe("zero logs search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -147,6 +187,32 @@ describe("zero logs search command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("codex-agent");
     expect(logCalls).toContain("Codex found the issue");
+  });
+
+  it("should group paired codex tool events in search context", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        return HttpResponse.json({
+          results: [
+            {
+              runId: "abc12345-1234-1234-1234-123456789abc",
+              agentName: "codex-agent",
+              framework: "codex",
+              matchedEvent: makeCodexCommandCompletedEvent(4),
+              contextBefore: [makeCodexCommandStartedEvent(3)],
+              contextAfter: [],
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await searchCommand.parseAsync(["node", "cli", "tests"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("tests passed");
+    expect(logCalls.match(/Bash/g) ?? []).toHaveLength(1);
   });
 
   it("should handle no matches", async () => {
