@@ -169,6 +169,30 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expect(logs.body.data).toStrictEqual([]);
     const searched = await api.searchLogs(admin, "nothing-here");
     expect(searched.body.results).toStrictEqual([]);
+    const invalidSearchLimit = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchLimit.body);
+    const invalidSearchBefore = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", before: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchBefore.body);
+    const invalidSearchAfter = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", after: 1.5 },
+      [400],
+    );
+    expectApiError(invalidSearchAfter.body);
+    const invalidSearchRunId = await api.requestSearchLogs(
+      admin,
+      { keyword: "nothing-here", runId: "not-a-uuid" },
+      [400],
+    );
+    expectApiError(invalidSearchRunId.body);
     const missingLog = await api.readLog(admin, randomUUID(), [404]);
     expectApiError(missingLog.body);
   });

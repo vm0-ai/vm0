@@ -2,6 +2,7 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
+import type { z } from "zod";
 import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
@@ -41,6 +42,10 @@ import { createZeroRouteMocks } from "./zero-route-test";
 interface AuthHeaders {
   readonly authorization?: string;
 }
+
+type ZeroLogsSearchQuery = z.input<
+  (typeof zeroLogsSearchContract.searchLogs)["query"]
+>;
 
 interface ClerkOrg {
   readonly imageUrl: string | null;
@@ -112,6 +117,21 @@ function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
       yield buffer;
     },
   };
+}
+
+async function requestZeroLogsSearch<TStatus extends 200 | 400 | 401 | 403>(
+  context: TestContext,
+  actor: ApiTestUser | null,
+  query: ZeroLogsSearchQuery,
+  statuses: readonly TStatus[],
+) {
+  return await accept(
+    setupApp({ context })(zeroLogsSearchContract).searchLogs({
+      headers: authenticate(context, actor),
+      query,
+    }),
+    statuses,
+  );
 }
 
 export function createMiscRoutesApi(context: TestContext) {
@@ -498,14 +518,16 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
+    async requestSearchLogs<TStatus extends 200 | 400 | 401 | 403>(
+      actor: ApiTestUser | null,
+      query: ZeroLogsSearchQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await requestZeroLogsSearch(context, actor, query, statuses);
+    },
+
     async searchLogs(actor: ApiTestUser, keyword: string) {
-      return await accept(
-        setupApp({ context })(zeroLogsSearchContract).searchLogs({
-          headers: authenticate(context, actor),
-          query: { keyword },
-        }),
-        [200],
-      );
+      return await requestZeroLogsSearch(context, actor, { keyword }, [200]);
     },
 
     async readLog(
