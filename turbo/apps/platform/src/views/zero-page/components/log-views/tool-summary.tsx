@@ -199,6 +199,14 @@ function shouldFilterKey(lowerName: string, key: string): boolean {
   return false;
 }
 
+function getStringField(
+  input: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 function ToolInputDetails({
   input,
   toolName,
@@ -210,7 +218,7 @@ function ToolInputDetails({
 
   // Bash - show full command
   if (lowerName === "bash") {
-    const command = input.command as string | undefined;
+    const command = getStringField(input, "command");
     if (command) {
       return (
         <pre className="font-mono text-xs text-foreground whitespace-pre-wrap break-all overflow-hidden leading-5">
@@ -222,8 +230,8 @@ function ToolInputDetails({
 
   // Skill - show skill name and args with labels
   if (lowerName === "skill") {
-    const skill = input.skill as string | undefined;
-    const args = input.args as string | undefined;
+    const skill = getStringField(input, "skill");
+    const args = getStringField(input, "args");
     if (skill) {
       return (
         <div className="font-mono text-xs">
@@ -242,7 +250,7 @@ function ToolInputDetails({
 
   // Write - show full content in a code block
   if (lowerName === "write") {
-    const content = input.content as string | undefined;
+    const content = getStringField(input, "content");
     if (content) {
       return (
         <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all">
@@ -254,8 +262,8 @@ function ToolInputDetails({
 
   // Edit - show old_string and new_string
   if (lowerName === "edit") {
-    const oldString = input.old_string as string | undefined;
-    const newString = input.new_string as string | undefined;
+    const oldString = getStringField(input, "old_string");
+    const newString = getStringField(input, "new_string");
     if (oldString || newString) {
       return (
         <div className="space-y-1">

@@ -311,7 +311,8 @@ function SystemMessageCard({
   searchTerm?: string;
   showConnector?: boolean;
 }) {
-  const subtype = eventData.subtype;
+  const subtype =
+    typeof eventData.subtype === "string" ? eventData.subtype : undefined;
 
   // Task events are rendered by TaskMessageCard
   if (subtype === "task_started" || subtype === "task_notification") {

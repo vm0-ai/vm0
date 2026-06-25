@@ -139,11 +139,54 @@ function CategoryPopover({
   );
 }
 
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => {
+    return typeof item === "string";
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function toModelUsage(
+  value: unknown,
+): NonNullable<EventData["modelUsage"]> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value).flatMap(([model, usage]) => {
+    if (!isRecord(usage)) {
+      return [];
+    }
+    return [
+      [
+        model,
+        {
+          costUSD: toNullableNumber(usage.costUSD),
+          inputTokens: toNullableNumber(usage.inputTokens),
+          outputTokens: toNullableNumber(usage.outputTokens),
+        },
+      ],
+    ];
+  });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 // Exported for use in GroupedMessageCard
 export function SystemInitContent({ eventData }: { eventData: EventData }) {
-  const tools = eventData.tools ?? [];
-  const agents = eventData.agents ?? [];
-  const slashCommands = eventData.slash_commands ?? [];
+  const tools = toStringList(eventData.tools);
+  const agents = toStringList(eventData.agents);
+  const slashCommands = toStringList(eventData.slash_commands);
 
   const hasAnyItems =
     tools.length > 0 || agents.length > 0 || slashCommands.length > 0;
@@ -240,10 +283,12 @@ function ModelUsagePopover({
 
 // Exported for use in GroupedMessageCard
 export function ResultEventContent({ eventData }: { eventData: EventData }) {
-  const durationMs = eventData.duration_ms;
-  const numTurns = eventData.num_turns;
-  const modelUsage = eventData.modelUsage;
-  const result = eventData.result;
+  const durationMs =
+    typeof eventData.duration_ms === "number" ? eventData.duration_ms : null;
+  const numTurns =
+    typeof eventData.num_turns === "number" ? eventData.num_turns : null;
+  const modelUsage = toModelUsage(eventData.modelUsage);
+  const result = typeof eventData.result === "string" ? eventData.result : null;
 
   return (
     <div className="space-y-2">

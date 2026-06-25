@@ -2437,6 +2437,152 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Raw result failed")).not.toHaveLength(0);
   });
 
+  it("keeps rendering activity details when event payloads are malformed", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000303";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Malformed Event Payloads",
+          status: "completed",
+          prompt: "Render malformed activity payloads",
+          startedAt: "2026-03-10T16:20:01Z",
+          completedAt: "2026-03-10T16:20:03Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "system",
+              eventData: {
+                subtype: "init",
+                tools: "Bash",
+                agents: ["checkout-agent", 1],
+                slash_commands: { review: true },
+              },
+              createdAt: "2026-03-10T16:20:01Z",
+            },
+            {
+              sequenceNumber: 1,
+              eventType: "assistant",
+              eventData: null,
+              createdAt: "2026-03-10T16:20:02Z",
+            },
+            {
+              sequenceNumber: 2,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: { type: "text", text: "not an array" },
+                },
+              },
+              createdAt: "2026-03-10T16:20:03Z",
+            },
+            {
+              sequenceNumber: 3,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [
+                    null,
+                    1,
+                    {
+                      type: "tool_use",
+                      id: "tool-todo-malformed",
+                      name: "TodoWrite",
+                      input: {
+                        todos: [
+                          null,
+                          "plain malformed todo",
+                          {
+                            content: "Recover malformed todo",
+                            status: "in_progress",
+                          },
+                        ],
+                      },
+                    },
+                    {
+                      type: "tool_use",
+                      id: "tool-bash-malformed",
+                      name: "Bash",
+                      input: { command: { nested: true } },
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T16:20:04Z",
+            },
+            {
+              sequenceNumber: 4,
+              eventType: "user",
+              eventData: {
+                message: {
+                  content: [
+                    null,
+                    {
+                      type: "tool_result",
+                      tool_use_id: "tool-bash-malformed",
+                      content: { ok: true },
+                      is_error: false,
+                    },
+                  ],
+                },
+                tool_use_result: { durationMs: "5", bytes: { nested: true } },
+              },
+              createdAt: "2026-03-10T16:20:05Z",
+            },
+            {
+              sequenceNumber: 5,
+              eventType: "result",
+              eventData: null,
+              createdAt: "2026-03-10T16:20:06Z",
+            },
+            {
+              sequenceNumber: 6,
+              eventType: "result",
+              eventData: {
+                type: "result",
+                is_error: false,
+                result: "Survived malformed payloads.",
+                num_turns: 1,
+                duration_ms: 100,
+              },
+              createdAt: "2026-03-10T16:20:07Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Malformed Event Payloads" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Initialize")).toBeInTheDocument();
+    expect(screen.getByText("1 agents")).toBeInTheDocument();
+    expect(screen.getAllByText("Recover malformed todo")).not.toHaveLength(0);
+    expect(
+      screen.getByText("Survived malformed payloads."),
+    ).toBeInTheDocument();
+  });
+
   it("normalizes codex app-server adapter events in activity details", async () => {
     const runId = "a0000000-0000-4000-a000-000000000301";
 

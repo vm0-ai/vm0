@@ -1,24 +1,6 @@
 import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
 import { normalizeCodexEventsForGrouping } from "./codex-activity-normalizer.ts";
 
-// Type definitions for extracting visible text
-interface TextContent {
-  type: "text";
-  text: string;
-}
-
-interface ThinkingContent {
-  type: "thinking";
-  thinking?: string;
-}
-
-interface ToolUseContent {
-  type: "tool_use";
-  id?: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
 interface ToolResultContent {
   type: "tool_result";
   tool_use_id?: string;
@@ -35,14 +17,14 @@ function normalizeToolResultContent(content: unknown): string {
   if (typeof content === "string") {
     return content;
   }
-  return String(content ?? "");
+  if (content === null || content === undefined) {
+    return "";
+  }
+  if (typeof content === "number" || typeof content === "boolean") {
+    return String(content);
+  }
+  return JSON.stringify(content) ?? String(content);
 }
-
-type MessageContent =
-  | TextContent
-  | ThinkingContent
-  | ToolUseContent
-  | ToolResultContent;
 
 // ============ GROUPED MESSAGE TYPES ============
 
@@ -96,7 +78,7 @@ interface GroupingEventData {
   subtype?: string;
   parent_tool_use_id?: string;
   message?: {
-    content: MessageContent[] | null;
+    content: unknown[] | null;
   };
   tool_use_result?: ToolResultMeta;
   tools?: string[];
@@ -123,12 +105,47 @@ interface TaskEventData extends GroupingEventData {
   task_completed_at?: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function isTaskEventData(data: unknown): data is TaskEventData {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    typeof (data as Record<string, unknown>).task_id === "string"
-  );
+  return isRecord(data) && typeof data.task_id === "string";
+}
+
+function toGroupingEventData(data: unknown): GroupingEventData {
+  return isRecord(data) ? (data as GroupingEventData) : {};
+}
+
+function getMessageContents(eventData: GroupingEventData): unknown[] {
+  const contents = eventData.message?.content;
+  return Array.isArray(contents) ? contents : [];
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => {
+    return typeof item === "string";
+  });
+}
+
+function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const meta: ToolResultMeta = {};
+  if (typeof value.bytes === "number") {
+    meta.bytes = value.bytes;
+  }
+  if (typeof value.durationMs === "number") {
+    meta.durationMs = value.durationMs;
+  }
+  return meta.bytes === undefined && meta.durationMs === undefined
+    ? undefined
+    : meta;
 }
 
 /**
@@ -193,7 +210,7 @@ function extractKeyParam(
 /**
  * Parse assistant event content into text parts and tool operations.
  */
-function parseAssistantContent(contents: MessageContent[]): {
+function parseAssistantContent(contents: readonly unknown[]): {
   thinkingParts: string[];
   textParts: string[];
   toolOperations: ToolOperation[];
@@ -205,24 +222,32 @@ function parseAssistantContent(contents: MessageContent[]): {
   let foundToolUse = false;
 
   for (const content of contents) {
+    if (!isRecord(content)) {
+      continue;
+    }
     if (content.type === "thinking") {
-      if (content.thinking) {
+      if (typeof content.thinking === "string" && content.thinking) {
         thinkingParts.push(content.thinking);
       }
     } else if (content.type === "text") {
-      const textContent = content as TextContent;
-      if (textContent.text) {
-        textParts.push(textContent.text);
+      if (typeof content.text === "string" && content.text) {
+        textParts.push(content.text);
       }
     } else if (content.type === "tool_use") {
+      if (typeof content.name !== "string" || !content.name) {
+        continue;
+      }
       foundToolUse = true;
-      const toolContent = content as ToolUseContent;
-      const toolUseId = toolContent.id ?? `unknown-${Math.random()}`;
+      const input = isRecord(content.input) ? content.input : {};
+      const toolUseId =
+        typeof content.id === "string"
+          ? content.id
+          : `unknown-${Math.random()}`;
       toolOperations.push({
         toolUseId,
-        toolName: toolContent.name,
-        keyParam: extractKeyParam(toolContent.name, toolContent.input),
-        input: toolContent.input,
+        toolName: content.name,
+        keyParam: extractKeyParam(content.name, input),
+        input,
       });
     }
   }
@@ -278,7 +303,7 @@ function processToolResult(
         },
       },
     ],
-    eventData: event.eventData,
+    eventData: toGroupingEventData(event.eventData),
   });
 }
 
@@ -336,9 +361,10 @@ function processTodoWrite(
   }
   let newInProgressTask: string | null = null;
   for (const todo of todos) {
-    const item = todo as { content?: string; status?: string };
-    const content = item.content ?? String(todo);
-    const status = item.status ?? "pending";
+    const item = isRecord(todo) ? todo : {};
+    const content =
+      typeof item.content === "string" ? item.content : String(todo);
+    const status = typeof item.status === "string" ? item.status : "pending";
     todoState.set(content, { content, status });
     if (status === "in_progress") {
       newInProgressTask = content;
@@ -361,7 +387,7 @@ interface GroupingContext {
 }
 
 function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
-  const eventData = event.eventData as GroupingEventData;
+  const eventData = toGroupingEventData(event.eventData);
   const subtype = eventData.subtype;
 
   if (subtype === "thinking_tokens") {
@@ -373,7 +399,7 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
       type: "system",
       sequenceNumber: event.sequenceNumber,
       createdAt: event.createdAt,
-      eventData: event.eventData,
+      eventData,
     });
     return;
   }
@@ -429,7 +455,7 @@ function processResultEvent(event: AgentEvent, ctx: GroupingContext): void {
     type: "result",
     sequenceNumber: event.sequenceNumber,
     createdAt: event.createdAt,
-    eventData: event.eventData,
+    eventData: toGroupingEventData(event.eventData),
   });
 }
 
@@ -491,7 +517,7 @@ function processChildAssistantEvent(
   parentTask: GroupedMessage,
   ctx: GroupingContext,
 ): void {
-  const contents = eventData.message?.content ?? [];
+  const contents = getMessageContents(eventData);
   const { thinkingParts, textParts, toolOperations } =
     parseAssistantContent(contents);
   const hasThinking = thinkingParts.length > 0;
@@ -503,7 +529,7 @@ function processChildAssistantEvent(
   }
 
   // Merge tool-only events into the last child assistant message
-  if (!hasText && hasTools) {
+  if (!hasThinking && !hasText && hasTools) {
     if (
       mergeToolsIntoLastChild(parentTask, toolOperations, ctx.pendingToolUses)
     ) {
@@ -538,7 +564,7 @@ function processAssistantEvent(
     return;
   }
 
-  const contents = eventData.message?.content ?? [];
+  const contents = getMessageContents(eventData);
   const { thinkingParts, textParts, toolOperations } =
     parseAssistantContent(contents);
   const hasThinking = thinkingParts.length > 0;
@@ -560,7 +586,7 @@ function processAssistantEvent(
   const hasOtherTools = otherToolOps.length > 0;
 
   // Rule: Tools without text get appended to the previous assistant card
-  if (!hasText && hasOtherTools && todoWriteOps.length === 0) {
+  if (!hasThinking && !hasText && hasOtherTools && todoWriteOps.length === 0) {
     const lastAssistant = getLastMergeableAssistant(ctx.grouped);
     if (lastAssistant) {
       appendToolsToMessage(lastAssistant, otherToolOps, ctx.pendingToolUses);
@@ -611,19 +637,28 @@ function processUserEvent(
   const parentTask = findParentTask(eventData, ctx);
   const target = parentTask?.childMessages ?? ctx.grouped;
 
-  const contents = eventData.message?.content ?? [];
-  const toolMeta = eventData.tool_use_result;
+  const contents = getMessageContents(eventData);
+  const toolMeta = toToolResultMeta(eventData.tool_use_result);
 
   for (const content of contents) {
-    if (content.type === "tool_result") {
-      processToolResult(
-        content as ToolResultContent,
-        toolMeta,
-        ctx.pendingToolUses,
-        event,
-        target,
-      );
+    if (!isRecord(content) || content.type !== "tool_result") {
+      continue;
     }
+    const resultContent: ToolResultContent = {
+      type: "tool_result",
+      content: content.content,
+      is_error: content.is_error === true,
+    };
+    if (typeof content.tool_use_id === "string") {
+      resultContent.tool_use_id = content.tool_use_id;
+    }
+    processToolResult(
+      resultContent,
+      toolMeta,
+      ctx.pendingToolUses,
+      event,
+      target,
+    );
   }
 }
 
@@ -662,7 +697,7 @@ export function groupEventsIntoMessages(
   const normalizedEvents = normalizeCodexEventsForGrouping(deduped, options);
 
   for (const event of normalizedEvents) {
-    const eventData = event.eventData as GroupingEventData;
+    const eventData = toGroupingEventData(event.eventData);
 
     if (event.eventType === "system") {
       processSystemEvent(event, ctx);
@@ -711,10 +746,10 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
   }
 
   // For system/result events, also extract from eventData
-  const eventData = message.eventData as GroupingEventData;
+  const eventData = toGroupingEventData(message.eventData);
 
   if (message.type === "system") {
-    if (eventData.subtype) {
+    if (typeof eventData.subtype === "string" && eventData.subtype) {
       parts.push(eventData.subtype);
     }
     // Include task description/summary for search
@@ -726,22 +761,19 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
         parts.push(message.eventData.task_summary);
       }
     }
-    if (eventData.tools) {
-      parts.push(...eventData.tools);
-    }
-    if (eventData.agents) {
-      parts.push(...eventData.agents);
-    }
-    if (eventData.slash_commands) {
+    parts.push(...toStringList(eventData.tools));
+    parts.push(...toStringList(eventData.agents));
+    const slashCommands = toStringList(eventData.slash_commands);
+    if (slashCommands.length > 0) {
       parts.push(
-        ...eventData.slash_commands.map((cmd) => {
+        ...slashCommands.map((cmd) => {
           return `/${cmd}`;
         }),
       );
     }
   }
 
-  if (message.type === "result" && eventData.result) {
+  if (message.type === "result" && typeof eventData.result === "string") {
     parts.push(eventData.result);
   }
 
