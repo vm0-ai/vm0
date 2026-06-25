@@ -4,6 +4,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -263,21 +264,101 @@ describe("zero attachment chips", () => {
     });
 
     const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
-    const zoomContent = zoomStage.querySelector<HTMLElement>(
-      ".react-transform-component",
-    );
-    if (!zoomContent) {
-      throw new Error("Zoomable image content not found");
-    }
-    expect(zoomContent.style.height).toBe("");
-    expect(zoomContent.style.width).toBe("");
-    expect(zoomContent.style.maxHeight).toBe("100%");
-    expect(zoomContent.style.maxWidth).toBe("100%");
+    expect(zoomStage).toHaveClass("overflow-auto");
+    expect(
+      screen.getByTestId("artifact-dialog-image-stage-content"),
+    ).toBeInTheDocument();
+
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    Object.defineProperty(zoomStage, "clientWidth", {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
 
     click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
       expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "920px" });
     });
+
+    const zoomInButton = screen.getByLabelText("Zoom in");
+    for (let i = 0; i < 13; i += 1) {
+      click(zoomInButton);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "2400px" });
+      expect(zoomInButton).toBeDisabled();
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("pans an uploaded image preview from image-originating drag and wheel gestures", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    zoomStage.scrollLeft = 120;
+    zoomStage.scrollTop = 80;
+
+    const mouseDownEvent = createEvent.mouseDown(lightboxImage, {
+      button: 0,
+      buttons: 1,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent(lightboxImage, mouseDownEvent);
+    expect(mouseDownEvent.defaultPrevented).toBeTruthy();
+
+    fireEvent.mouseMove(window, {
+      buttons: 1,
+      clientX: 70,
+      clientY: 60,
+    });
+
+    expect(zoomStage.scrollLeft).toBe(150);
+    expect(zoomStage.scrollTop).toBe(120);
+
+    fireEvent.mouseUp(window);
+
+    let wheelReachedStage = false;
+    const markWheelReachedStage = () => {
+      wheelReachedStage = true;
+    };
+    zoomStage.addEventListener("wheel", markWheelReachedStage);
+
+    const trackpadPanEvent = createEvent.wheel(lightboxImage, {
+      deltaX: 12,
+      deltaY: 24,
+    });
+    fireEvent(lightboxImage, trackpadPanEvent);
+    zoomStage.removeEventListener("wheel", markWheelReachedStage);
+
+    expect(wheelReachedStage).toBeTruthy();
+    expect(trackpadPanEvent.defaultPrevented).toBeFalsy();
 
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
@@ -765,11 +846,12 @@ describe("zero attachment chips", () => {
     });
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     expect(lightboxImage.tagName).toBe("IMG");
-    expect(lightboxImage).not.toHaveAttribute("draggable", "false");
-    expect(lightboxImage).toHaveClass("zero-native-media-interaction");
+    expect(lightboxImage).toHaveAttribute("draggable", "false");
+    expect(lightboxImage).not.toHaveClass("zero-native-media-interaction");
     expect(lightboxImage).toHaveStyle({
       pointerEvents: "auto",
-      userSelect: "auto",
+      userSelect: "none",
+      width: "100%",
     });
 
     click(screen.getByLabelText("Close"));
