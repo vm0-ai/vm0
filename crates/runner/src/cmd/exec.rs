@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use clap::Args;
 use sandbox::{ExecTermination, RemoteExecResult, SandboxControl, SandboxControlError};
+use shell_quote::quote_shell_arg;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -58,29 +59,6 @@ pub struct ExecArgs {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// POSIX shell-quote a single argument so its boundary is preserved when the
-/// resulting command string is re-parsed by `sh -c` on the guest.
-///
-/// Arguments consisting entirely of alphanumerics and a small safe punctuation
-/// set (`_-./:+@%`) pass through unquoted for readability. Anything else is
-/// wrapped in single quotes, with embedded `'` escaped as `'\''`.
-///
-/// Note: `=` is intentionally excluded so that an argv like `["FOO=bar", ...]`
-/// is emitted as `'FOO=bar' ...` and the guest shell treats it as a command
-/// name rather than a variable assignment.
-fn shell_quote(arg: &str) -> String {
-    let is_safe = !arg.is_empty()
-        && arg.bytes().all(|b| {
-            b.is_ascii_alphanumeric()
-                || matches!(b, b'_' | b'-' | b'.' | b'/' | b':' | b'+' | b'@' | b'%')
-        });
-    if is_safe {
-        arg.to_string()
-    } else {
-        format!("'{}'", arg.replace('\'', "'\\''"))
-    }
-}
-
 /// Executes the requested command inside a running sandbox.
 ///
 /// `--sandbox` targets are used directly as sandbox identifiers. `--run`
@@ -113,7 +91,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     let command = args
         .command
         .iter()
-        .map(|a| shell_quote(a))
+        .map(|a| quote_shell_arg(a))
         .collect::<Vec<_>>()
         .join(" ");
     let timeout = Duration::from_secs(u64::from(args.timeout));
@@ -465,7 +443,7 @@ mod tests {
     // ---- argument quoting -------------------------------------------------
 
     #[tokio::test]
-    async fn safe_ascii_args_pass_through_unquoted() {
+    async fn safe_ascii_args_are_quoted() {
         let control = MockSandboxControl::new("/tmp");
         run_exec(make_args_vec(vec!["ls", "-la", "/var/log"]), &control)
             .await
@@ -473,7 +451,7 @@ mod tests {
 
         assert_eq!(
             control.recorded_commands(),
-            vec!["ls -la /var/log".to_string()],
+            vec!["'ls' '-la' '/var/log'".to_string()],
         );
     }
 
@@ -489,7 +467,7 @@ mod tests {
 
         assert_eq!(
             control.recorded_commands(),
-            vec!["cat '/var/log/some file.log'".to_string()],
+            vec!["'cat' '/var/log/some file.log'".to_string()],
         );
     }
 
@@ -502,7 +480,7 @@ mod tests {
 
         assert_eq!(
             control.recorded_commands(),
-            vec!["echo 'it'\\''s'".to_string()],
+            vec!["'echo' 'it'\\''s'".to_string()],
         );
     }
 
@@ -518,7 +496,7 @@ mod tests {
 
         assert_eq!(
             control.recorded_commands(),
-            vec!["bash -c 'echo a | tr a b'".to_string()],
+            vec!["'bash' '-c' 'echo a | tr a b'".to_string()],
         );
     }
 
@@ -532,7 +510,36 @@ mod tests {
         // `$` must be quoted so the guest shell does not expand it.
         assert_eq!(
             control.recorded_commands(),
-            vec!["echo '$HOME'".to_string()],
+            vec!["'echo' '$HOME'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn command_separator_in_arg_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["echo", "ok; uname -a"]), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'echo' 'ok; uname -a'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn expansion_and_redirection_syntax_in_args_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(
+            make_args_vec(vec!["printf", "$(id)", "`id`", "*", "x > out"]),
+            &control,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'printf' '$(id)' '`id`' '*' 'x > out'".to_string()],
         );
     }
 
@@ -543,7 +550,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(control.recorded_commands(), vec!["echo ''".to_string()]);
+        assert_eq!(control.recorded_commands(), vec!["'echo' ''".to_string()],);
     }
 
     #[tokio::test]
@@ -553,12 +560,19 @@ mod tests {
             .await
             .unwrap();
 
-        // `=` is not in the safe set, so `FOO=bar` is quoted. This prevents
-        // the guest shell from interpreting it as a variable assignment —
-        // it is treated as a command name, matching argv semantics.
+        // `FOO=bar` must be quoted so the guest shell treats it as a command
+        // name instead of a variable assignment.
         assert_eq!(
             control.recorded_commands(),
-            vec!["'FOO=bar' env".to_string()],
+            vec!["'FOO=bar' 'env'".to_string()],
         );
+    }
+
+    #[tokio::test]
+    async fn reserved_word_command_name_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["if"]), &control).await.unwrap();
+
+        assert_eq!(control.recorded_commands(), vec!["'if'".to_string()]);
     }
 }

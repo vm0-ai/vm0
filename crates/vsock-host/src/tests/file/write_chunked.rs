@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use shell_quote::quote_shell_arg;
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 use tokio::sync::oneshot;
@@ -28,10 +29,6 @@ struct ChunkedWriteFixture {
     target_path: &'static str,
     temp_path: Option<String>,
     sudo: bool,
-}
-
-fn shell_quote_for_test(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 impl ChunkedWriteFixture {
@@ -103,13 +100,13 @@ impl ChunkedWriteFixture {
     fn expected_rename_command(&self) -> String {
         format!(
             "mv -fT -- {} {}",
-            shell_quote_for_test(self.temp_path()),
-            shell_quote_for_test(self.target_path)
+            quote_shell_arg(self.temp_path()),
+            quote_shell_arg(self.target_path)
         )
     }
 
     fn expected_cleanup_command(&self) -> String {
-        format!("rm -f -- {}", shell_quote_for_test(self.temp_path()))
+        format!("rm -f -- {}", quote_shell_arg(self.temp_path()))
     }
 
     fn assert_readiness(&self, expected: NormalOperationReadiness) {
@@ -652,8 +649,8 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
                     .find_map(|(temp_path, (_marker, chunk_count))| {
                         let expected_command = format!(
                             "mv -fT -- {} {}",
-                            shell_quote_for_test(temp_path),
-                            shell_quote_for_test(target_path)
+                            quote_shell_arg(temp_path),
+                            quote_shell_arg(target_path)
                         );
                         (decoded.command == expected_command && *chunk_count == 2)
                             .then(|| temp_path.clone())
@@ -787,14 +784,14 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
             "write-file-rename" => {
                 let expected_command = format!(
                     "mv -fT -- {} {}",
-                    shell_quote_for_test(success_temp),
-                    shell_quote_for_test(target_path)
+                    quote_shell_arg(success_temp),
+                    quote_shell_arg(target_path)
                 );
                 assert_eq!(decoded.command, expected_command);
                 successful_temp_renamed = true;
             }
             "exec-cleanup" => {
-                let expected_command = format!("rm -f -- {}", shell_quote_for_test(failed_temp));
+                let expected_command = format!("rm -f -- {}", quote_shell_arg(failed_temp));
                 assert_eq!(decoded.command, expected_command);
                 failed_temp_cleaned = true;
             }
@@ -1507,7 +1504,7 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     let expected_cleanup_command =
-                        format!("rm -f -- {}", shell_quote_for_test(temp_path));
+                        format!("rm -f -- {}", quote_shell_arg(temp_path));
                     assert_eq!(decoded.command, expected_cleanup_command.as_str());
                     assert_eq!(decoded.label, "exec-cleanup");
                     assert!(!decoded.sudo);

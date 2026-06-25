@@ -33,6 +33,7 @@ zstd.workspace = true
 [dev-dependencies]
 httpmock.workspace = true
 nix = { workspace = true, features = ["inotify"] }
+shell-quote.workspace = true
 vsock-host.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-proto.workspace = true
