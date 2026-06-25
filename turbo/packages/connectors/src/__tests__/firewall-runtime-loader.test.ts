@@ -232,6 +232,10 @@ function expectNoGeneratedRuntimeImports(source: string): void {
   }
 }
 
+function isEagerRegistryIndexSpecifier(specifier: string): boolean {
+  return /^\.\/index(?:\.[cm]?[jt]sx?)?$/.test(specifier);
+}
+
 function generatedFirewallSourceFiles(): string[] {
   const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
   return fs
@@ -400,8 +404,13 @@ describe("firewall runtime loader", () => {
     expect(generatedFiles.length).toBeGreaterThan(0);
     for (const filePath of generatedFiles) {
       const source = fs.readFileSync(filePath, "utf-8");
-      if (moduleSpecifiers(source).includes("./index")) {
-        offenders.push(path.basename(filePath));
+      const eagerIndexSpecifiers = moduleSpecifiers(source).filter(
+        isEagerRegistryIndexSpecifier,
+      );
+      if (eagerIndexSpecifiers.length > 0) {
+        offenders.push(
+          `${path.basename(filePath)}: ${eagerIndexSpecifiers.join(", ")}`,
+        );
       }
     }
 
