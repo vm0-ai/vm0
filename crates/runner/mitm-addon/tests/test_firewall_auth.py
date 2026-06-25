@@ -1500,7 +1500,7 @@ class TestHandleFirewallRequest:
                 await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
                 task.cancel()
                 with pytest.raises(asyncio.CancelledError):
-                    await task
+                    _ = await task
             finally:
                 release_auth_resolution.set()
                 await cancel_pending_task(task)
