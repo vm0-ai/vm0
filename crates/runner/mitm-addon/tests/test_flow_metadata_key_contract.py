@@ -61,6 +61,17 @@ def _metadata_key_violations(path: Path) -> list[str]:
             if node.func.attr == "update":
                 violations.extend(_metadata_update_violations(path, node))
 
+        if isinstance(node, ast.AugAssign) and _is_metadata_attribute(node.target):
+            violations.extend(_metadata_dict_key_violations(path, node.value))
+
+        if isinstance(node, ast.Assign) and any(
+            _is_metadata_attribute(target) for target in node.targets
+        ):
+            violations.extend(_metadata_dict_key_violations(path, node.value))
+
+        if isinstance(node, ast.AnnAssign) and _is_metadata_attribute(node.target):
+            violations.extend(_metadata_dict_key_violations(path, node.value))
+
         if isinstance(node, ast.Compare) and len(node.comparators) == 1:
             if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
                 continue
@@ -74,18 +85,52 @@ def _metadata_key_violations(path: Path) -> list[str]:
 
 
 def _metadata_update_violations(path: Path, node: ast.Call) -> list[str]:
-    if not node.args:
+    violations: list[str] = []
+    update_arg = None if not node.args else node.args[0]
+    violations.extend(_metadata_dict_key_violations(path, update_arg))
+    violations.extend(_metadata_keyword_violations(path, node.keywords))
+    return violations
+
+
+def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]:
+    if node is None:
         return []
-    update_arg = node.args[0]
-    if not isinstance(update_arg, ast.Dict):
+    if isinstance(node, ast.List | ast.Tuple):
+        return _metadata_pair_sequence_violations(path, node)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        return _metadata_keyword_violations(path, node.keywords)
+    if not isinstance(node, ast.Dict):
         return []
     violations: list[str] = []
-    for key in update_arg.keys:
+    for key in node.keys:
         if key is None:
             continue
         key_name = _registered_key_name(key)
         if key_name is not None:
             violations.append(_violation(path, key, key_name))
+    return violations
+
+
+def _metadata_pair_sequence_violations(path: Path, node: ast.List | ast.Tuple) -> list[str]:
+    violations: list[str] = []
+    for item in node.elts:
+        if not isinstance(item, ast.List | ast.Tuple) or len(item.elts) != 2:
+            continue
+        key_name = _registered_key_name(item.elts[0])
+        if key_name is not None:
+            violations.append(_violation(path, item.elts[0], key_name))
+    return violations
+
+
+def _metadata_keyword_violations(path: Path, keywords: list[ast.keyword]) -> list[str]:
+    violations: list[str] = []
+    for keyword in keywords:
+        if keyword.arg is None:
+            violations.extend(_metadata_dict_key_violations(path, keyword.value))
+            continue
+        key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
+        if key_name is not None:
+            violations.append(_violation(path, keyword, key_name))
     return violations
 
 
