@@ -61,7 +61,7 @@ Files run in PARALLEL (up to -j 10)
 
 ### 5. Timeout Management
 
-Each test case has a timeout: **30s for serial**, **60s for parallel/runner tests**.
+Each test case has a timeout: **30s for serial**, **240s for parallel/runner tests**.
 
 **Don't stack multiple `vm0 run` in one case - will timeout!**
 
@@ -419,5 +419,5 @@ Before committing E2E tests:
 ## Reference
 
 - BATS documentation: https://bats-core.readthedocs.io/en/stable/writing-tests.html
-- Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=120` (parallel/runner)
+- Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=240` (parallel/runner)
 - Parallelization: `-j 10 --no-parallelize-within-files`

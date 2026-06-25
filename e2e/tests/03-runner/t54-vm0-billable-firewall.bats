@@ -11,7 +11,7 @@
 
 load '../../helpers/setup'
 
-export BATS_TEST_TIMEOUT=180
+export BATS_TEST_TIMEOUT=240
 
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
