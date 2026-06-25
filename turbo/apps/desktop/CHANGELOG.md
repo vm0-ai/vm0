@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.1...desktop-v0.20.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* **desktop:** raise helper app hang threshold ([#18964](https://github.com/vm0-ai/vm0/issues/18964)) ([c88e91a](https://github.com/vm0-ai/vm0/commit/c88e91a77134859f6995319fdc0763f0c30e926e))
+
 ## [0.20.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.0...desktop-v0.20.1) (2026-06-25)
 
 
