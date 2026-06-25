@@ -263,6 +263,30 @@ fn decode_msg_accepts_duplicate_message_fields_from_msgpack() -> TestResult {
 }
 
 #[test]
+fn decode_msg_accepts_duplicate_nested_field_when_later_value_is_valid() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![
+                field("name", rmpv::Value::Array(Vec::new())),
+                field("name", str_value("job")),
+                field("timestamp", str_value("not-a-number")),
+                field("timestamp", rmpv::Value::from(2)),
+            ])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(message.name.as_deref(), Some("job"));
+    assert_eq!(message.timestamp, Some(2));
+    Ok(())
+}
+
+#[test]
 fn decode_msg_ignores_unknown_fields() -> TestResult {
     let payload = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::MESSAGE)),
