@@ -5,6 +5,7 @@ auth.base forwarding, local failure responses, and AWS SigV4 signing together.
 Cache state and platform API calls live in dedicated owner modules.
 """
 
+import asyncio
 import json
 import urllib.parse
 from dataclasses import dataclass
@@ -875,6 +876,14 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
             context.api_id,
             context.auth_request,
         )
+    except asyncio.CancelledError:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_path_snapshot=request_path_snapshot,
+        )
+        raise
     except Exception:
         _restore_header_phase_probe_state(
             flow,
@@ -910,7 +919,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
             headers=headers,
             resolved_query=resolved_query,
         )
-    except (InvalidResolvedAuthHeaderError, KeyError, TypeError):
+    except Exception:
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,

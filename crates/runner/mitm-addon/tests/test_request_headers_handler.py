@@ -1,5 +1,6 @@
 """Tests for requestheaders() request-stream setup."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -485,6 +486,61 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
     assert flow.response is not None
     assert flow.response.status_code == 424
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
+
+
+async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("X-Client", "original"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    get_headers = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is not None
+        with pytest.raises(asyncio.CancelledError):
+            await requestheaders_result
+
+    get_headers.assert_awaited_once()
+    _assert_no_request_stream(flow)
+    assert flow.request.headers["X-Client"] == "original"
+    assert "Authorization" not in flow.request.headers
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
 
 
 @pytest.mark.parametrize(
