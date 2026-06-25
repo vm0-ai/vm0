@@ -40,9 +40,23 @@ def _is_metadata_attribute(node: ast.AST) -> bool:
 
 
 def _registered_key_name(node: ast.AST) -> str | None:
-    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+    value = _static_string_value(node)
+    if value is None:
         return None
-    return _REGISTERED_METADATA_KEYS.get(node.value)
+    return _REGISTERED_METADATA_KEYS.get(value)
+
+
+def _static_string_value(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for value in node.values:
+            if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+                return None
+            parts.append(value.value)
+        return "".join(parts)
+    return None
 
 
 def _violation(path: Path, node: ast.AST, key_name: str) -> str:
@@ -1576,12 +1590,16 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     source_path.write_text(
         """
 flow.metadata["vm_run_id"] = "run-1"
+flow.metadata[f"vm_run_id"] = "run-1"
 flow.metadata["vm_run_id" if condition else "firewall_name"] = "run-1"
 flow.metadata.get("firewall_action")
+flow.metadata.get(f"firewall_action")
 flow.metadata.get("firewall_action" if condition else "firewall_error")
 "original_url" in flow.metadata
+f"firewall_name" in flow.metadata
 ("firewall_base" if condition else "firewall_permission") in flow.metadata
 flow.metadata.update({"firewall_base": "https://api.example.com"})
+flow.metadata.update({f"firewall_base": "https://api.example.com"})
 flow.metadata.update({("auth_cache_hit" if condition else "auth_url_rewrite"): True})
 flow.metadata.update(firewall_permission="read")
 flow.metadata |= {"vm_network_log_path": "network.jsonl"}
@@ -1628,7 +1646,9 @@ flow.metadata.update([*zip(["network_log_target"], [{}])])
 flow.metadata.update([*sorted([("vm_network_log_path", "network.jsonl")])])
 flow.metadata.update([*[("vm_proxy_log_path", "proxy.jsonl")].copy()])
 flow.metadata.update(dict.fromkeys([*["firewall_error"]], "auth_failed"))
+flow.metadata.update(dict.fromkeys([f"firewall_error"], "auth_failed"))
 flow.metadata.update(dict.fromkeys((*["auth_cache_hit"],), False))
+flow.metadata.update([(f"firewall_permission", "read")])
 flow.metadata.update({"vm_run_id": value for value in rows})
 flow.metadata = {"firewall_name": value for value in rows}
 flow.metadata.update(*[{"vm_run_id": "run-1"}])
@@ -1950,7 +1970,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 216
+    assert len(violations) == 222
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1964,6 +1984,7 @@ entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
+flow.metadata[f"vm_{dynamic_suffix}"] = "run-1"
 flow.metadata[metadata_keys.VM_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
 flow.metadata.get(
     metadata_keys.FIREWALL_ACTION if condition else metadata_keys.FIREWALL_ERROR
