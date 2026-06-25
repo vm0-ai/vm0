@@ -156,6 +156,12 @@ export function createHtmlArtifactAuthoringPacket(
     previewKind: "hosted-url",
     outputDir,
   } as const;
+  const presentationVerificationRules =
+    options.kind === "presentation"
+      ? [
+          `- Run \`node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ${outputDir}/index.html\` before publishing when Playwright and Chromium are available. Fix failures before hosting, or state why the QA script could not run.`,
+        ]
+      : [];
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
@@ -249,6 +255,7 @@ export function createHtmlArtifactAuthoringPacket(
     "- Check that keyboard/click interactions work when present.",
     "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
     "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
+    ...presentationVerificationRules,
     "- Run the final hosting command only after the artifact looks correct.",
     "",
     "## Publish",
