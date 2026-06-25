@@ -2,15 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 
 describe("render firewall", () => {
-  it("registers the Render public API firewall with API key auth", () => {
-    expect(isFirewallConnectorType("render")).toBe(true);
-    const firewall = getConnectorFirewall("render");
+  it("registers the Render public API firewall with API key auth", async () => {
+    const firewall = await loadRequiredConnectorFirewall("render");
 
     expect(firewall.name).toBe("render");
     expect(firewall.apis).toHaveLength(1);
@@ -27,7 +25,7 @@ describe("render firewall", () => {
       "RENDER_API_KEY",
     ]);
     expect(firewall.placeholders).toHaveProperty("RENDER_API_KEY");
-    expect(getDefaultFirewallPolicies("render")).toStrictEqual({
+    await expect(loadDefaultFirewallPolicies("render")).resolves.toStrictEqual({
       policies: {},
       unknownPolicy: "allow",
     });

@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
+import type { FirewallConfig } from "../../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-} from "../../firewalls";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 import {
   googleCloudCategories,
   googleCloudCategoryOrder,
@@ -12,7 +13,7 @@ import {
   googleCloudGenerationStats,
 } from "../../firewalls/google-cloud.generated";
 
-const googleCloudFirewall = getConnectorFirewall("google-cloud");
+let googleCloudFirewall: FirewallConfig;
 
 function findPermissions(
   apiBase: string,
@@ -35,6 +36,10 @@ function permissionNames(): string[] {
 }
 
 describe("google-cloud firewall", () => {
+  beforeAll(async () => {
+    googleCloudFirewall = await loadRequiredConnectorFirewall("google-cloud");
+  });
+
   it("keeps the existing Google Cloud host coverage", () => {
     expect(
       googleCloudFirewall.apis.map((api) => {
@@ -363,8 +368,8 @@ describe("google-cloud firewall", () => {
     );
   });
 
-  it("defaults Google Cloud read-like permissions to allow and sensitive operations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-cloud");
+  it("defaults Google Cloud read-like permissions to allow and sensitive operations to deny", async () => {
+    const policy = await loadDefaultFirewallPolicies("google-cloud");
 
     expect(policy.policies["compute.instances.get"]).toBe("allow");
     expect(policy.policies["compute.instances.list"]).toBe("allow");

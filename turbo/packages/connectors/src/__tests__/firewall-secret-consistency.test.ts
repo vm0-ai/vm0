@@ -9,7 +9,7 @@ import {
   parseBasicAuthTemplates,
   type FirewallConfig,
 } from "../firewall-types";
-import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
+import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
@@ -142,6 +142,12 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
   return placeholderKeys;
 }
 
+function assertConnectorType(type: string): asserts type is ConnectorType {
+  if (!connectorTypeSchema.safeParse(type).success) {
+    throw new Error(`Unknown connector type: ${type}`);
+  }
+}
+
 /**
  * Verify that every builtin firewall's placeholder names match the
  * secret-backed environment names exposed by the connector that references it.
@@ -152,15 +158,13 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
  * otherwise the proxy won't find the secret to inject.
  */
 describe("firewall secret name consistency", () => {
-  const connectorTypes = connectorTypeSchema.options;
-
-  for (const connectorType of connectorTypes) {
-    if (!isFirewallConnectorType(connectorType)) continue;
-
-    it(`${connectorType} → firewall placeholder keys match connector secrets`, () => {
+  it("keeps firewall placeholder keys aligned with connector secrets", async () => {
+    for (const [
+      connectorType,
+      firewall,
+    ] of await loadRuntimeFirewallEntries()) {
+      assertConnectorType(connectorType);
       const validPlaceholderKeys = connectorPlaceholderKeys(connectorType);
-
-      const firewall = getConnectorFirewall(connectorType);
       const placeholderKeys = Object.keys(firewall.placeholders ?? {});
       for (const key of placeholderKeys) {
         expect(
@@ -168,17 +172,27 @@ describe("firewall secret name consistency", () => {
           `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...validPlaceholderKeys].join(", ")}]`,
         ).toBe(true);
       }
-    });
+    }
+  });
 
-    it(`${connectorType} → firewall basic auth templates are valid`, () => {
-      const firewall = getConnectorFirewall(connectorType);
+  it("keeps firewall basic auth templates valid", async () => {
+    for (const [
+      connectorType,
+      firewall,
+    ] of await loadRuntimeFirewallEntries()) {
+      assertConnectorType(connectorType);
       expectValidBasicAuthTemplates(connectorType, firewall.apis);
-    });
+    }
+  });
 
-    it(`${connectorType} → firewall auth templates match connector value sources`, () => {
+  it("keeps firewall auth templates aligned with connector value sources", async () => {
+    for (const [
+      connectorType,
+      firewall,
+    ] of await loadRuntimeFirewallEntries()) {
+      assertConnectorType(connectorType);
       const { secretBackedKeys, variableBackedKeys } =
         connectorAuthSources(connectorType);
-      const firewall = getConnectorFirewall(connectorType);
       const references = extractFirewallTemplateReferences(firewall.apis);
 
       for (const key of references.secrets) {
@@ -193,6 +207,6 @@ describe("firewall secret name consistency", () => {
           `firewall "${connectorType}" vars.${key} is not backed by a connector variable: [${[...variableBackedKeys].join(", ")}]`,
         ).toBe(true);
       }
-    });
-  }
+    }
+  });
 });
