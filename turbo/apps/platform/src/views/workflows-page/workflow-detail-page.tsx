@@ -43,7 +43,7 @@ import {
   SelectValue,
 } from "@vm0/ui";
 
-import { agents$, currentAgentId$ } from "../../signals/agent.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
@@ -62,10 +62,12 @@ import {
   setSelectedWorkflowFilePath$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
+  setWorkflowTriggerPermissionsDrawerTriggerId$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflow$,
   workflowTriggerCreateDialog$,
   workflowDetail,
+  workflowTriggerPermissionsDrawerTriggerId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -73,6 +75,7 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
+import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
 import {
   buildWorkflowFileTree,
   isMarkdownPath,
@@ -171,17 +174,46 @@ function WorkflowDetailBody({
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
+  const permissionTriggerId = useGet(
+    workflowTriggerPermissionsDrawerTriggerId$,
+  );
+  const setPermissionTriggerId = useSet(
+    setWorkflowTriggerPermissionsDrawerTriggerId$,
+  );
+  const permissionTrigger =
+    detail.triggers.find((trigger) => {
+      return trigger.id === permissionTriggerId;
+    }) ?? null;
+
   return (
-    <div className="flex flex-col gap-4">
-      <DetailHeader detail={detail} />
-      <ShadowWarning detail={detail} />
-      <MetadataEditor detail={detail} />
-      <InstructionEditor detail={detail} />
-      <SupplementaryFiles detail={detail} />
-      <TriggersSection detail={detail} />
-      <VisibilitySection detail={detail} />
-      <DangerZone detail={detail} />
-    </div>
+    <>
+      <div className="flex flex-col gap-4">
+        <DetailHeader detail={detail} />
+        <ShadowWarning detail={detail} />
+        <MetadataEditor detail={detail} />
+        <InstructionEditor detail={detail} />
+        <SupplementaryFiles detail={detail} />
+        <TriggersSection
+          detail={detail}
+          onOpenTriggerPermissions={setPermissionTriggerId}
+        />
+        <VisibilitySection detail={detail} />
+        <DangerZone detail={detail} />
+      </div>
+      {permissionTrigger ? (
+        <TriggerPermissionsDrawer
+          agentId={detail.agentId}
+          workflowId={detail.id}
+          trigger={permissionTrigger}
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPermissionTriggerId(null);
+            }
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -783,8 +815,10 @@ function gmailMatcherDefaultValue(
 
 function TriggersSection({
   detail,
+  onOpenTriggerPermissions,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
+  readonly onOpenTriggerPermissions: (triggerId: string) => void;
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
@@ -861,9 +895,9 @@ function TriggersSection({
               return (
                 <TriggerRow
                   key={trigger.id}
-                  workflowId={detail.id}
                   trigger={trigger}
                   canManage={trigger.ownerUserId === currentUserId}
+                  onOpenPermissions={onOpenTriggerPermissions}
                 />
               );
             })}
@@ -1145,13 +1179,13 @@ function CreateGmailNewMessageTriggerDialog({
 }
 
 function TriggerRow({
-  workflowId,
   trigger,
   canManage,
+  onOpenPermissions,
 }: {
-  readonly workflowId: string;
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
+  readonly onOpenPermissions: (triggerId: string) => void;
 }) {
   const editingTriggerId = useGet(editingGmailTriggerId$);
   const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
@@ -1204,9 +1238,9 @@ function TriggerRow({
         ) : null}
         {canManage ? (
           <TriggerControls
-            workflowId={workflowId}
             trigger={trigger}
             editingMatch={editingMatch}
+            onOpenPermissions={onOpenPermissions}
           />
         ) : null}
         {canManage && trigger.kind === "event" && editingMatch ? (
@@ -1223,15 +1257,14 @@ function TriggerRow({
 }
 
 function TriggerControls({
-  workflowId,
   trigger,
   editingMatch,
+  onOpenPermissions,
 }: {
-  readonly workflowId: string;
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly editingMatch: boolean;
+  readonly onOpenPermissions: (triggerId: string) => void;
 }) {
-  const agentId = useGet(currentAgentId$);
   const pageSignal = useGet(pageSignal$);
   const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
@@ -1245,22 +1278,17 @@ function TriggerControls({
 
   return (
     <div className="mt-1 flex items-center gap-2">
-      {agentId ? (
-        <Link
-          pathname={ROUTES.agentWorkflowTriggerPermissions}
-          options={{
-            pathParams: {
-              agentId,
-              workflowId,
-              triggerId: trigger.id,
-            },
-          }}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <IconShieldLock size={13} stroke={1.5} />
-          <span>Permissions</span>
-        </Link>
-      ) : null}
+      <button
+        type="button"
+        disabled={busy}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+        onClick={() => {
+          onOpenPermissions(trigger.id);
+        }}
+      >
+        <IconShieldLock size={13} stroke={1.5} />
+        <span>Permissions</span>
+      </button>
       {trigger.kind === "event" && !editingMatch ? (
         <button
           type="button"

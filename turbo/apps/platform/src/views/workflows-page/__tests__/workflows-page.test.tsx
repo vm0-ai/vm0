@@ -320,13 +320,18 @@ describe("workflow detail page", () => {
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    const permissionsLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent?.trim() === "Permissions";
+    const permissionsButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Permissions";
     });
-    expect(permissionsLink).toHaveAttribute(
-      "href",
-      `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}/triggers/workflow-trigger-weekday-brief/permissions`,
-    );
+    expect(permissionsButton).toBeDefined();
+    click(permissionsButton!);
+    await waitFor(() => {
+      expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByPlaceholderText("Search connectors"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Slack")).toBeInTheDocument();
 
     click(screen.getByLabelText("Open config/settings.json"));
     await waitFor(() => {

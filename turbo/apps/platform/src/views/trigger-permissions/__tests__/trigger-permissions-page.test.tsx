@@ -105,7 +105,7 @@ function mockTriggerPolicyApis(
 
 function permissionRow(labelText: string): HTMLElement {
   const label = screen.getByText(labelText);
-  const row = label.parentElement;
+  const row = label.parentElement?.parentElement;
   if (!row) {
     throw new Error("Expected a permission row");
   }
