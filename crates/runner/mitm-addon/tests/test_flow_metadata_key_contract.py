@@ -202,7 +202,7 @@ def test_registered_flow_metadata_guard_ignores_external_schema_and_private_mark
 entry["firewall_name"] = "github"
 payload = {"vm_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
-flow.metadata["firewall_rule"] = "domain:*.example.com"
+flow.metadata["_local_marker"] = "private"
 """
     )
 

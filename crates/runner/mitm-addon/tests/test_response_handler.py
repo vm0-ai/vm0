@@ -1632,7 +1632,6 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-        flow.metadata["firewall_rule"] = "domain:*.example.com"
         flow.metadata[metadata_keys.ORIGINAL_URL] = (
             "https://api.example.com/fail?api_key=secret#frag"
         )
