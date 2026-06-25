@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.129.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.20...runner-rs-v0.129.21) (2026-06-25)
+
+
+### Bug Fixes
+
+* classify claude stream idle timeout failures ([#18941](https://github.com/vm0-ai/vm0/issues/18941)) ([2f30e00](https://github.com/vm0-ai/vm0/commit/2f30e005ce1d4d85d55674c7f384d51c701fb0bf))
+
+
+### Refactoring
+
+* move firewall registry to generator manifest ([#18930](https://github.com/vm0-ai/vm0/issues/18930)) ([2e4271b](https://github.com/vm0-ai/vm0/commit/2e4271b120828ac2ed0137e30e3ab9df5ea19f56))
+
 ## [0.129.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.19...runner-rs-v0.129.20) (2026-06-25)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.178.3](https://github.com/vm0-ai/vm0/compare/api-v1.178.2...api-v1.178.3) (2026-06-25)
+
+
+### Bug Fixes
+
+* constrain presentation template imagery ([#18938](https://github.com/vm0-ai/vm0/issues/18938)) ([75c9003](https://github.com/vm0-ai/vm0/commit/75c9003900b875b9f3f467e37840cd6a179044d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+    * @vm0/db bumped to 1.71.2
+
 ## [1.178.2](https://github.com/vm0-ai/vm0/compare/api-v1.178.1...api-v1.178.2) (2026-06-25)
 
 
