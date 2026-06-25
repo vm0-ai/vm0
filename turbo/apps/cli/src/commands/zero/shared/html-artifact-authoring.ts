@@ -159,7 +159,7 @@ export function createHtmlArtifactAuthoringPacket(
   const presentationVerificationRules =
     options.kind === "presentation"
       ? [
-          `- Run \`node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ${outputDir}/index.html\` before publishing when Playwright and Chromium are available. Fix failures before hosting, or state why the QA script could not run.`,
+          `- After generating the deck, run \`node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ${outputDir}/index.html\` to QA the final HTML. Fix failures before hosting, or state why the QA script could not run.`,
         ]
       : [];
   const instructions = [
