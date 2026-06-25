@@ -169,8 +169,18 @@ impl DispatchClient {
 }
 
 pub fn request(command: Command, handle: u64, offset: u64, length: u32) -> NbdRequest {
+    request_with_flags(command, handle, offset, length, 0)
+}
+
+pub fn request_with_flags(
+    command: Command,
+    handle: u64,
+    offset: u64,
+    length: u32,
+    flags: u16,
+) -> NbdRequest {
     NbdRequest {
-        flags: 0,
+        flags,
         command,
         handle,
         offset,
