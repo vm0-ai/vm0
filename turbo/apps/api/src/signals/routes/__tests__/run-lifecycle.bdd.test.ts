@@ -62,6 +62,7 @@ const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
@@ -347,6 +348,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     for (const actionType of API_DISPATCH_TIMING_ACTION_TYPES) {
       expect(observedActionTypes).toContain(actionType);
     }
+    const preCreateEvents = timingEvents.filter((event) => {
+      return event.op_type === "api_dispatch_pre_create_agent_run";
+    });
+    expect(preCreateEvents).toHaveLength(1);
+    expect(preCreateEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: "top_level",
+      }),
+    );
     expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
 

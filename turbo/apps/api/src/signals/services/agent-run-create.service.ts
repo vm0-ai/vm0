@@ -178,6 +178,7 @@ const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
 type ApiDispatchTimingActionType =
+  | "api_dispatch_pre_create_agent_run"
   | "api_dispatch_check_org_tier"
   | "api_dispatch_prepare_run_context"
   | "api_dispatch_prepare_context_feature_switches"
@@ -214,22 +215,29 @@ interface ApiDispatchTimingRecord {
 class ApiDispatchTimingCollector {
   private readonly records: ApiDispatchTimingRecord[] = [];
 
+  recordElapsed(
+    actionType: ApiDispatchTimingActionType,
+    spanKind: ApiDispatchTimingSpanKind,
+    startedAt: number,
+    finishedAt: number = now(),
+  ): void {
+    this.records.push({
+      actionType,
+      spanKind,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      timestamp: new Date(finishedAt).toISOString(),
+    });
+  }
+
   measure<T>(
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     operation: () => Promise<T>,
   ): Promise<T> {
     const startedAt = now();
-    const record = (): void => {
-      const finishedAt = now();
-      this.records.push({
-        actionType,
-        spanKind,
-        durationMs: Math.max(0, finishedAt - startedAt),
-        timestamp: new Date(finishedAt).toISOString(),
-      });
-    };
-    return operation().finally(record);
+    return operation().finally(() => {
+      this.recordElapsed(actionType, spanKind, startedAt);
+    });
   }
 
   flush(args: {
@@ -5038,6 +5046,11 @@ export const createAgentRun$ = command(
   ): Promise<CreateRunRouteResult> => {
     const db = set(writeDb$);
     const timing = new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_agent_run",
+      "top_level",
+      args.apiStartTime,
+    );
     const tierGate = await timing.measure(
       "api_dispatch_check_org_tier",
       "top_level",
