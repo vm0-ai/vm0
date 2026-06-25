@@ -35,20 +35,23 @@ describe("prompt query parameter injection", () => {
 
   it("starts an optimistic chat from the prompt route", async () => {
     let runPrompt: string | undefined;
+    let selectedModel: string | null | undefined;
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        selectedModel = body.modelSelection?.selectedModel;
       },
     });
 
     detachedSetupPage({
       context,
-      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack",
+      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-pro",
     });
 
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
+      expect(selectedModel).toBe("deepseek-v4-pro");
     });
   });
 });
