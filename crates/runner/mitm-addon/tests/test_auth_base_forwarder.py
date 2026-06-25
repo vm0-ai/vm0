@@ -899,7 +899,6 @@ class TestForwardRequestAsyncWrapper:
                 with lock:
                     active -= 1
 
-        second_task = None
         executors: list[_SubmitRecordingThreadPoolExecutor] = []
 
         def create_executor(*args, **kwargs):
@@ -937,8 +936,6 @@ class TestForwardRequestAsyncWrapper:
             finally:
                 release_first.set()
                 await asyncio.gather(first_task, return_exceptions=True)
-                if second_task is not None:
-                    await asyncio.gather(second_task, return_exceptions=True)
 
         assert not second_entered.is_set()
         assert max_active == 1
