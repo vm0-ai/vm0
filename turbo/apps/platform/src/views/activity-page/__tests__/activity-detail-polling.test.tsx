@@ -1262,6 +1262,50 @@ function codexAdapterActivityEvents(): AgentEvent[] {
       },
       createdAt: "2026-03-10T16:00:16Z",
     },
+    {
+      sequenceNumber: 16,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-4",
+        message: "Recoverable adapter error",
+      },
+      createdAt: "2026-03-10T16:00:17Z",
+    },
+    {
+      sequenceNumber: 17,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-4",
+        item: {
+          id: "msg-after-recoverable-error",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text after recoverable error.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:18Z",
+    },
+    {
+      sequenceNumber: 18,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-4",
+          status: "completed",
+          duration_ms: 9876,
+        },
+        usage: {
+          input_tokens: 12,
+          output_tokens: 3,
+        },
+      },
+      createdAt: "2026-03-10T16:00:19Z",
+    },
   ];
 }
 
@@ -2662,7 +2706,7 @@ describe("activity detail polling", () => {
           prompt: "Exercise Codex adapter events",
           error: "Adapter transport failed",
           startedAt: "2026-03-10T16:00:01Z",
-          completedAt: "2026-03-10T16:00:16Z",
+          completedAt: "2026-03-10T16:00:19Z",
         }),
       );
     });
@@ -2707,6 +2751,9 @@ describe("activity detail polling", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText("Visible Codex assistant text after top-level error."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text after recoverable error."),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(screen.getAllByText("pnpm test adapter")).not.toHaveLength(0);
@@ -2758,6 +2805,13 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText(/Different turn interrupted \(user interrupt\)/u),
     ).toBeInTheDocument();
+    expect(screen.getByText("Recoverable adapter error")).toBeInTheDocument();
+    const detailText = document.body.textContent ?? "";
+    expect(detailText.indexOf("Recoverable adapter error")).toBeGreaterThan(-1);
+    expect(detailText.indexOf("9.9s")).toBeGreaterThan(-1);
+    expect(detailText.indexOf("Recoverable adapter error")).toBeLessThan(
+      detailText.indexOf("9.9s"),
+    );
     expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
 
     await fill(

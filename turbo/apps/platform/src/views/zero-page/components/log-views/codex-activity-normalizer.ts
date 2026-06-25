@@ -22,6 +22,7 @@ interface CodexNormalizedEvent {
   codexType?: string;
   turnId?: string;
   isTopLevelError?: boolean;
+  isTerminal?: boolean;
   isTerminalFailure?: boolean;
 }
 
@@ -792,6 +793,7 @@ function normalizeCodexRunEvent(
         }),
         codexType,
         turnId,
+        isTerminal: true,
         isTerminalFailure: failed,
       };
     }
@@ -807,6 +809,7 @@ function normalizeCodexRunEvent(
         }),
         codexType,
         turnId,
+        isTerminal: true,
         isTerminalFailure: true,
       };
     }
@@ -1251,6 +1254,12 @@ export function normalizeCodexEventsForGrouping(
         pendingCodexError = null;
         continue;
       }
+      flushPendingCodexError();
+      normalizedEvents.push(normalized.event);
+      continue;
+    }
+
+    if (normalized.isTerminal && normalized.event) {
       flushPendingCodexError();
       normalizedEvents.push(normalized.event);
       continue;
