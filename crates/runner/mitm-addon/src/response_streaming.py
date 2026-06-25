@@ -32,7 +32,6 @@ _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
-_MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT = 64
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 
@@ -340,10 +339,11 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     Called from ``websocket_message()`` only for server-originated frames. Reads
     ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
     and temporarily writes per-response sources to
-    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` until they are accepted into
-    the source-preserving usage buffer. Frames without a response id fall back
-    to ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is not idempotent for
-    the same frame; callers must feed each server frame once.
+    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` while attempting a
+    source-preserving report, then releases them from flow metadata. Frames
+    without a response id fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``.
+    This helper is not idempotent for the same frame; callers must feed each
+    server frame once.
     """
     if not is_model_websocket_usage_enabled(flow):
         return
@@ -363,19 +363,13 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             usage_sources[message_id] = usage_target
         usage.merge_openai_responses_usage_result(usage_target, usage_result)
         run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-        source_disposition = usage.report_model_provider_usage_source(
+        usage.report_model_provider_usage_source(
             flow,
             run_id,
             message_id,
             usage_target,
         )
-        # Retain only sources that may still become reportable on a later
-        # same-response-id frame. Buffered or permanently unreportable sources
-        # do not need to stay in per-flow metadata until websocket_end/error.
-        if source_disposition == "release":
-            usage_sources.pop(message_id, None)
-        else:
-            _retain_zero_usage_websocket_source(flow, usage_sources, message_id, usage_target)
+        usage_sources.pop(message_id, None)
         return
 
     usage_target = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
@@ -383,44 +377,6 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
         usage_target = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_target
     usage.merge_openai_responses_usage_result(usage_target, usage_result)
-
-
-def _retain_zero_usage_websocket_source(
-    flow: http.HTTPFlow,
-    usage_sources: dict,
-    message_id: str,
-    source_usage: dict,
-) -> None:
-    if usage.has_positive_model_provider_usage(source_usage):
-        return
-    if _string_or_none(source_usage.get("model")) is None:
-        usage_sources.pop(message_id, None)
-        return
-    if _string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER)) is not None:
-        usage_sources.pop(message_id, None)
-        return
-
-    zero_usage_source_ids = [
-        source_message_id
-        for source_message_id, retained_source_usage in usage_sources.items()
-        if (
-            isinstance(source_message_id, str)
-            and isinstance(retained_source_usage, dict)
-            and not usage.has_positive_model_provider_usage(retained_source_usage)
-            and _string_or_none(retained_source_usage.get("model")) is not None
-        )
-    ]
-    over_limit = len(zero_usage_source_ids) - _MODEL_WEBSOCKET_ZERO_USAGE_SOURCE_LIMIT
-    if over_limit <= 0:
-        return
-    for source_message_id in zero_usage_source_ids[:over_limit]:
-        usage_sources.pop(source_message_id, None)
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str) or not value:
-        return None
-    return value
 
 
 def finalize_connector_response_state(flow: http.HTTPFlow) -> None:

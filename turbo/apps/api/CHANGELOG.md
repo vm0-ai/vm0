@@ -1,5 +1,89 @@
 # Changelog
 
+## [1.177.2](https://github.com/vm0-ai/vm0/compare/api-v1.177.1...api-v1.177.2) (2026-06-25)
+
+
+### Refactoring
+
+* remove eager firewall all-catalog ([#18871](https://github.com/vm0-ai/vm0/issues/18871)) ([76893cf](https://github.com/vm0-ai/vm0/commit/76893cf76433d5e241934faf1c6c7e54987afc10))
+
+
+### Performance Improvements
+
+* add pre-create dispatch timing ([#18883](https://github.com/vm0-ai/vm0/issues/18883)) ([b86c8f6](https://github.com/vm0-ai/vm0/commit/b86c8f68774a2ed1a5a517a1b42bb1daab8baf6f))
+* split prepare run context timing ([#18854](https://github.com/vm0-ai/vm0/issues/18854)) ([e872ad3](https://github.com/vm0-ai/vm0/commit/e872ad37e35e700b3228b2e9173981135bada39e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+    * @vm0/core bumped to 8.369.0
+    * @vm0/db bumped to 1.70.3
+
+## [1.177.1](https://github.com/vm0-ai/vm0/compare/api-v1.177.0...api-v1.177.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* require model usage provider for model observations ([#18800](https://github.com/vm0-ai/vm0/issues/18800)) ([92609b6](https://github.com/vm0-ai/vm0/commit/92609b62d6073d8c9c93167dac68c02f508df150))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.2
+    * @vm0/core bumped to 8.368.2
+    * @vm0/db bumped to 1.70.2
+
+## [1.177.0](https://github.com/vm0-ai/vm0/compare/api-v1.176.0...api-v1.177.0) (2026-06-24)
+
+
+### Features
+
+* **triggers:** trigger-aware permission-change link + blocked-run feedback ([#18839](https://github.com/vm0-ai/vm0/issues/18839)) ([0c523b2](https://github.com/vm0-ai/vm0/commit/0c523b20a11c5d3a8866cd4df3989c323336cea0))
+
+
+### Bug Fixes
+
+* update run group fold copy ([#18830](https://github.com/vm0-ai/vm0/issues/18830)) ([b49fe6b](https://github.com/vm0-ai/vm0/commit/b49fe6ba5851b0849acd51acb2bc7f44b5d40977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+    * @vm0/db bumped to 1.70.1
+
+## [1.176.0](https://github.com/vm0-ai/vm0/compare/api-v1.175.1...api-v1.176.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+* **triggers:** add session-gated route to set unattended permission policy ([#18819](https://github.com/vm0-ai/vm0/issues/18819)) ([26cd67e](https://github.com/vm0-ai/vm0/commit/26cd67ef4a04577178f51653167320caa673a0dc))
+* **triggers:** add unattendedPermissionPolicy column and contract type ([#18806](https://github.com/vm0-ai/vm0/issues/18806)) ([e452d86](https://github.com/vm0-ai/vm0/commit/e452d8677c93183c64d5139dca0a8c7d72e09c56))
+
+
+### Performance Improvements
+
+* add api dispatch timing telemetry ([#18816](https://github.com/vm0-ai/vm0/issues/18816)) ([03237da](https://github.com/vm0-ai/vm0/commit/03237da88a861b159808f2b080ac031786956ba5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+    * @vm0/db bumped to 1.70.0
+
 ## [1.175.1](https://github.com/vm0-ai/vm0/compare/api-v1.175.0...api-v1.175.1) (2026-06-24)
 
 

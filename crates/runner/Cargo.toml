@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.129.13"
+version = "0.129.17"
 edition.workspace = true
 
 [dependencies]
@@ -11,6 +11,7 @@ guest-contracts.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }
+shell-quote = { workspace = true }
 
 async-trait = { workspace = true }
 aws-sdk-s3 = { workspace = true, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }

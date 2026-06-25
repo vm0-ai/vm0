@@ -20,6 +20,8 @@ from typing import NamedTuple
 
 from mitmproxy import http
 
+from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
+
 HOP_BY_HOP: frozenset[str] = frozenset(
     (
         "connection",
@@ -84,11 +86,6 @@ _AWS_SIGV4_AUTHORIZATION_PREFIXES: tuple[str, ...] = (
     "AWS4-HMAC-SHA256 ",
     "AWS4-ECDSA-P256-SHA256 ",
 )
-_HTTP_TOKEN_CHARS: frozenset[str] = frozenset(
-    "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-)
-_ASCII_CONTROL_MAX = 0x1F
-_ASCII_DELETE = 0x7F
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
@@ -329,17 +326,9 @@ def forwarded_auth_base_client_header_pairs(
 
 
 def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> None:
-    if (
-        not isinstance(header_name, str)
-        or not header_name
-        or any(char not in _HTTP_TOKEN_CHARS for char in header_name)
-    ):
+    if not isinstance(header_name, str) or not is_http_header_name(header_name):
         raise InvalidResolvedAuthHeaderError("Resolved auth header name is invalid")
-    if (
-        not isinstance(header_value, str)
-        or any(ord(char) <= _ASCII_CONTROL_MAX and char != "\t" for char in header_value)
-        or chr(_ASCII_DELETE) in header_value
-    ):
+    if not isinstance(header_value, str) or has_forbidden_header_value_control(header_value):
         raise InvalidResolvedAuthHeaderError(f"Resolved auth header {header_name} value is invalid")
     try:
         header_value.encode("latin-1")

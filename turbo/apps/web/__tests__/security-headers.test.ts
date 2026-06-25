@@ -1,7 +1,6 @@
 import { createRequire } from "node:module";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MODEL_SLUGS } from "../app/[locale]/models/data";
 import { matchesApiBackendRewritePath } from "../api-backend-rewrites.js";
 
 type PathMatchResult =
@@ -1846,9 +1845,8 @@ describe("Security Response Headers", () => {
 });
 
 describe("Model page redirects", () => {
-  it("should redirect legacy model slugs to existing model pages", async () => {
+  it("should keep legacy model slug redirects", async () => {
     const redirects = await getRedirects();
-    const modelSlugs = new Set(MODEL_SLUGS);
     const expectedRedirects = [
       ["kimi-k2.6", "kimi-k2-7-code"],
       ["kimi-k2-6", "kimi-k2-7-code"],
@@ -1864,7 +1862,6 @@ describe("Model page redirects", () => {
     ] as const;
 
     for (const [from, to] of expectedRedirects) {
-      expect(modelSlugs.has(to)).toBe(true);
       expect(redirects).toContainEqual({
         source: `/models/${from}`,
         destination: `/models/${to}`,

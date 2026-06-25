@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.17.43](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.42...vsock-host-v0.17.43) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
+## [0.17.42](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.41...vsock-host-v0.17.42) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+
+## [0.17.41](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.40...vsock-host-v0.17.41) (2026-06-24)
+
+
+### Refactoring
+
+* **vsock-host:** collapse exec request assembly ([#18820](https://github.com/vm0-ai/vm0/issues/18820)) ([19f0757](https://github.com/vm0-ai/vm0/commit/19f0757e62a55ce3a1eb368c8f8179d4a3ed199a))
+
 ## [0.17.40](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.39...vsock-host-v0.17.40) (2026-06-23)
 
 

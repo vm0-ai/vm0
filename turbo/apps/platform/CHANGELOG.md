@@ -1,5 +1,76 @@
 # Changelog
 
+## [0.490.0](https://github.com/vm0-ai/vm0/compare/app-v0.489.1...app-v0.490.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger permission entry ([#18881](https://github.com/vm0-ai/vm0/issues/18881)) ([b745640](https://github.com/vm0-ai/vm0/commit/b745640002460a8adf1efe417e470c803f3256cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+    * @vm0/core bumped to 8.369.0
+
+## [0.489.1](https://github.com/vm0-ai/vm0/compare/app-v0.489.0...app-v0.489.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.2
+    * @vm0/core bumped to 8.368.2
+
+## [0.489.0](https://github.com/vm0-ai/vm0/compare/app-v0.488.0...app-v0.489.0) (2026-06-24)
+
+
+### Features
+
+* **triggers:** add trigger permission editor UI ([#18836](https://github.com/vm0-ai/vm0/issues/18836)) ([15baec8](https://github.com/vm0-ai/vm0/commit/15baec835aec900054a4471742517ebd2188eaeb))
+
+
+### Bug Fixes
+
+* count folded run groups in chat render window ([#18838](https://github.com/vm0-ai/vm0/issues/18838)) ([d040ab1](https://github.com/vm0-ai/vm0/commit/d040ab13d2685903cd4d42bdea7ee0e8e859aea3))
+* update run group fold copy ([#18830](https://github.com/vm0-ai/vm0/issues/18830)) ([b49fe6b](https://github.com/vm0-ai/vm0/commit/b49fe6ba5851b0849acd51acb2bc7f44b5d40977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+
+## [0.488.0](https://github.com/vm0-ai/vm0/compare/app-v0.487.3...app-v0.488.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+* **triggers:** add unattendedPermissionPolicy column and contract type ([#18806](https://github.com/vm0-ai/vm0/issues/18806)) ([e452d86](https://github.com/vm0-ai/vm0/commit/e452d8677c93183c64d5139dca0a8c7d72e09c56))
+
+
+### Bug Fixes
+
+* deepen computer-use menu hover from white overlay to gray step ([#18825](https://github.com/vm0-ai/vm0/issues/18825)) ([3b0eb6e](https://github.com/vm0-ai/vm0/commit/3b0eb6e9b511fe0112827e94d86eba6a259d9262))
+* preserve presentation template picker scroll ([#18818](https://github.com/vm0-ai/vm0/issues/18818)) ([daa7816](https://github.com/vm0-ai/vm0/commit/daa78162bd0022749b28909a7a9c27654f7261c0))
+* render presentation detail thumbnails from html ([#18826](https://github.com/vm0-ai/vm0/issues/18826)) ([f571c28](https://github.com/vm0-ai/vm0/commit/f571c28a375a6b88ee32b150717366c82e41af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+
 ## [0.487.3](https://github.com/vm0-ai/vm0/compare/app-v0.487.2...app-v0.487.3) (2026-06-24)
 
 

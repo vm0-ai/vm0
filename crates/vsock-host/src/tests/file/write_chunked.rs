@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use shell_quote::quote_shell_arg;
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 use tokio::sync::oneshot;
@@ -17,7 +18,7 @@ use super::super::support::{
 };
 use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
-    send_write_file_failure, send_write_file_success, spawn_write_file,
+    send_write_file_failure, send_write_file_success, spawn_write_file, spawn_write_private_file,
 };
 use crate::{FrameWriteObserver, VsockHost, operation_tracker::NormalOperationReadiness};
 use crate::{exec_operation, file as file_impl};
@@ -28,10 +29,6 @@ struct ChunkedWriteFixture {
     target_path: &'static str,
     temp_path: Option<String>,
     sudo: bool,
-}
-
-fn shell_quote_for_test(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 impl ChunkedWriteFixture {
@@ -66,6 +63,7 @@ impl ChunkedWriteFixture {
     async fn expect_chunk(&mut self) -> WriteFileFrame {
         let frame = expect_write_file(&mut self.guest).await;
         assert_eq!(frame.sudo, self.sudo);
+        assert!(!frame.private);
         if let Some(temp_path) = &self.temp_path {
             assert_eq!(frame.path.as_str(), temp_path);
             assert!(frame.append);
@@ -102,13 +100,13 @@ impl ChunkedWriteFixture {
     fn expected_rename_command(&self) -> String {
         format!(
             "mv -fT -- {} {}",
-            shell_quote_for_test(self.temp_path()),
-            shell_quote_for_test(self.target_path)
+            quote_shell_arg(self.temp_path()),
+            quote_shell_arg(self.target_path)
         )
     }
 
     fn expected_cleanup_command(&self) -> String {
-        format!("rm -f -- {}", shell_quote_for_test(self.temp_path()))
+        format!("rm -f -- {}", quote_shell_arg(self.temp_path()))
     }
 
     fn assert_readiness(&self, expected: NormalOperationReadiness) {
@@ -343,6 +341,210 @@ async fn test_write_file_chunked() {
 }
 
 #[tokio::test]
+async fn write_private_file_single_chunk_sets_private_flag() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task =
+        spawn_write_private_file(Arc::clone(&host), "/tmp/private.env", b"secret".to_vec());
+
+    let frame = expect_write_file(&mut guest).await;
+    assert_eq!(frame.path, "/tmp/private.env");
+    assert_eq!(frame.content, b"secret");
+    assert!(!frame.sudo);
+    assert!(!frame.append);
+    assert!(frame.private);
+    send_write_file_success(&mut guest, frame.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_writes_final_path_without_rename() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content = vec![0xCD; chunk_limit + 100];
+    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-big.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-big.env");
+    assert_eq!(first.content.len(), chunk_limit);
+    assert!(!first.sudo);
+    assert!(!first.append);
+    assert!(first.private);
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-big.env");
+    assert_eq!(second.content.len(), 100);
+    assert!(!second.sudo);
+    assert!(second.append);
+    assert!(second.private);
+    send_write_file_success(&mut guest, second.seq()).await;
+
+    tokio::time::timeout(Duration::from_secs(1), write_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_guest_failure_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content = vec![0xCD; chunk_limit + 100];
+    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-fail.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-fail.env");
+    assert!(!first.sudo);
+    assert!(!first.append);
+    assert!(first.private);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-fail.env");
+    assert!(!second.sudo);
+    assert!(second.append);
+    assert!(second.private);
+    send_write_file_failure(&mut guest, second.seq(), "disk full").await;
+
+    let err = tokio::time::timeout(Duration::from_secs(1), write_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_private_file_with_write_observer(
+                "/tmp/private-blocked.env",
+                &content,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_request_count(&host) != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_chunk_observer_error_keeps_tracker_fail_closed() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let content = ChunkedWriteFixture::two_chunk_content();
+
+    let err = host
+        .write_private_file_with_write_observer(
+            "/tmp/private-observer.env",
+            &content,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Err(io::Error::other("private chunk observer failed"))
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("private chunk observer failed"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send private write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn write_private_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task =
+        spawn_write_private_file(Arc::clone(&host), "/tmp/private-unexpected.env", content);
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-unexpected.env");
+    assert!(!first.append);
+    assert!(first.private);
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-unexpected.env");
+    assert!(second.append);
+    assert!(second.private);
+    guest
+        .write_all(&vsock_proto::encode(MSG_EXEC_START, second.seq(), &[]).unwrap())
+        .await
+        .unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => {
+            panic!("private write must not send cleanup after unexpected response; read {n} bytes")
+        }
+        Err(err) => panic!("unexpected read error after unexpected response: {err}"),
+    }
+}
+
+#[tokio::test]
 async fn write_file_chunked_quotes_target_path_with_single_quote() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big'quote.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
@@ -411,9 +613,10 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
         let msg = read_guest_message(&mut guest).await;
         match msg.msg_type {
             MSG_WRITE_FILE => {
-                let (path, content, sudo, append) =
+                let (path, content, sudo, append, private) =
                     vsock_proto::decode_write_file(&msg.payload).unwrap();
                 assert!(!sudo);
+                assert!(!private);
                 assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
                 let marker = *content.first().expect("chunk content");
                 assert!(matches!(marker, 0xAA | 0xBB));
@@ -446,8 +649,8 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
                     .find_map(|(temp_path, (_marker, chunk_count))| {
                         let expected_command = format!(
                             "mv -fT -- {} {}",
-                            shell_quote_for_test(temp_path),
-                            shell_quote_for_test(target_path)
+                            quote_shell_arg(temp_path),
+                            quote_shell_arg(target_path)
                         );
                         (decoded.command == expected_command && *chunk_count == 2)
                             .then(|| temp_path.clone())
@@ -502,8 +705,10 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     while first_chunks.len() < 2 {
         let msg = read_guest_message(&mut guest).await;
         assert_eq!(msg.msg_type, MSG_WRITE_FILE);
-        let (path, content, sudo, append) = vsock_proto::decode_write_file(&msg.payload).unwrap();
+        let (path, content, sudo, append, private) =
+            vsock_proto::decode_write_file(&msg.payload).unwrap();
         assert!(!sudo);
+        assert!(!private);
         assert!(!append);
         assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
         assert_eq!(content.len(), chunk_limit);
@@ -522,8 +727,10 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     while second_chunks.len() < 2 {
         let msg = read_guest_message(&mut guest).await;
         assert_eq!(msg.msg_type, MSG_WRITE_FILE);
-        let (path, content, sudo, append) = vsock_proto::decode_write_file(&msg.payload).unwrap();
+        let (path, content, sudo, append, private) =
+            vsock_proto::decode_write_file(&msg.payload).unwrap();
         assert!(!sudo);
+        assert!(!private);
         assert!(append);
         assert_eq!(content.len(), 1);
         let marker = *content.first().expect("chunk content");
@@ -577,14 +784,14 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
             "write-file-rename" => {
                 let expected_command = format!(
                     "mv -fT -- {} {}",
-                    shell_quote_for_test(success_temp),
-                    shell_quote_for_test(target_path)
+                    quote_shell_arg(success_temp),
+                    quote_shell_arg(target_path)
                 );
                 assert_eq!(decoded.command, expected_command);
                 successful_temp_renamed = true;
             }
             "exec-cleanup" => {
-                let expected_command = format!("rm -f -- {}", shell_quote_for_test(failed_temp));
+                let expected_command = format!("rm -f -- {}", quote_shell_arg(failed_temp));
                 assert_eq!(decoded.command, expected_command);
                 failed_temp_cleaned = true;
             }
@@ -1275,9 +1482,10 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
             let msg = guest.read_message().await;
             match msg.msg_type {
                 MSG_WRITE_FILE => {
-                    let (path, _chunk, sudo, append) =
+                    let (path, _chunk, sudo, append, private) =
                         vsock_proto::decode_write_file(&msg.payload).unwrap();
                     assert!(!sudo);
+                    assert!(!private);
                     if let Some(temp_path) = &temp_path {
                         assert_eq!(path, temp_path);
                         assert!(append);
@@ -1296,7 +1504,7 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     let expected_cleanup_command =
-                        format!("rm -f -- {}", shell_quote_for_test(temp_path));
+                        format!("rm -f -- {}", quote_shell_arg(temp_path));
                     assert_eq!(decoded.command, expected_cleanup_command.as_str());
                     assert_eq!(decoded.label, "exec-cleanup");
                     assert!(!decoded.sudo);

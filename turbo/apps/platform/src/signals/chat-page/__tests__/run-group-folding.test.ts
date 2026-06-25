@@ -3,7 +3,11 @@ import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
 } from "../chat-message.ts";
-import { buildRunGroupFolding } from "../run-group-folding.ts";
+import {
+  buildRunGroupFolding,
+  previousRunGroupVisualWindowStartIndex,
+  runGroupVisualWindowStartIndex,
+} from "../run-group-folding.ts";
 
 function userMessage(params: {
   readonly id: string;
@@ -59,6 +63,24 @@ function messageIds(groups: readonly GroupedChatMessageGroup[]): string[] {
     return item.messages.map((message) => {
       return message.id;
     });
+  });
+}
+
+function assistantRunGroups(params: {
+  readonly label: string;
+  readonly count: number;
+  readonly runGroupId?: string;
+}): GroupedChatMessageGroup[] {
+  return Array.from({ length: params.count }, (_, index) => {
+    const itemNumber = index + 1;
+    const id = `${params.label}-${itemNumber}`;
+    return group("assistant", [
+      assistantMessage({
+        id,
+        runId: `${params.label}-run-${itemNumber}`,
+        runGroupId: params.runGroupId,
+      }),
+    ]);
   });
 }
 
@@ -165,5 +187,93 @@ describe("buildRunGroupFolding", () => {
       "a3a",
     ]);
     expect(firstFold?.key).not.toBe(secondFold?.key);
+  });
+});
+
+describe("runGroupVisualWindowStartIndex", () => {
+  it("counts a folded tail run group as one visual item", () => {
+    const groups = [
+      ...assistantRunGroups({
+        label: "A",
+        count: 11,
+        runGroupId: "group-a",
+      }),
+      ...assistantRunGroups({
+        label: "B",
+        count: 1,
+        runGroupId: "group-b",
+      }),
+    ];
+
+    const startIndex = runGroupVisualWindowStartIndex(groups, null, 10);
+    const folding = buildRunGroupFolding(groups.slice(startIndex));
+
+    expect(startIndex).toBe(0);
+    expect(folding?.foldsByNextGroupId.get("A-11")?.[0]?.hiddenRunCount).toBe(
+      10,
+    );
+    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+      "A-11",
+      "B-1",
+    ]);
+  });
+
+  it("keeps the item before a folded middle run group in the initial window", () => {
+    const groups = [
+      ...assistantRunGroups({
+        label: "A",
+        count: 1,
+        runGroupId: "group-a",
+      }),
+      ...assistantRunGroups({
+        label: "B",
+        count: 10,
+        runGroupId: "group-b",
+      }),
+      ...assistantRunGroups({
+        label: "C",
+        count: 1,
+        runGroupId: "group-c",
+      }),
+    ];
+
+    const startIndex = runGroupVisualWindowStartIndex(groups, null, 10);
+    const folding = buildRunGroupFolding(groups.slice(startIndex));
+
+    expect(startIndex).toBe(0);
+    expect(folding?.foldsByNextGroupId.get("B-10")?.[0]?.hiddenRunCount).toBe(
+      9,
+    );
+    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+      "A-1",
+      "B-10",
+      "C-1",
+    ]);
+  });
+
+  it("moves the cursor by visual items when loading more", () => {
+    const groups = [
+      ...assistantRunGroups({ label: "older", count: 12 }),
+      ...assistantRunGroups({
+        label: "A",
+        count: 11,
+        runGroupId: "group-a",
+      }),
+      ...assistantRunGroups({
+        label: "B",
+        count: 1,
+        runGroupId: "group-b",
+      }),
+    ];
+
+    const initialStartIndex = runGroupVisualWindowStartIndex(groups, null, 10);
+    const previousStartIndex = previousRunGroupVisualWindowStartIndex(
+      groups,
+      initialStartIndex,
+      10,
+    );
+
+    expect(groups[initialStartIndex]?.beginMessageId).toBe("older-5");
+    expect(previousStartIndex).toBe(0);
   });
 });

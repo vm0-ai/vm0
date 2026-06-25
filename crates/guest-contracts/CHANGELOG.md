@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.3...guest-contracts-v0.2.4) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+
 ## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.2...guest-contracts-v0.2.3) (2026-06-22)
 
 

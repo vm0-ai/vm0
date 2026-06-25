@@ -248,9 +248,16 @@ async fn snapshot_artifact_entries(
         // locally-recomputed hash is sufficient — no extra metadata needed.
         // See #10967 for the ~3.9s-per-checkpoint motivation.
         let skip_check_start = std::time::Instant::now();
+        let content_hash_start = std::time::Instant::now();
         let local_hash = content_hash::compute_content_hash(
             &entry.storage_id,
             files.iter().map(|f| (f.path.as_str(), f.hash.as_str())),
+        );
+        record_sandbox_op(
+            "artifact_content_hash_compute",
+            content_hash_start.elapsed(),
+            true,
+            None,
         );
         if local_hash == entry.version_id {
             log_info!(

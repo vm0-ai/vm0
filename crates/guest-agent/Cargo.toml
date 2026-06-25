@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.41.1"
+version = "0.41.5"
 edition.workspace = true
 
 [dependencies]
@@ -33,6 +33,7 @@ zstd.workspace = true
 [dev-dependencies]
 httpmock.workspace = true
 nix = { workspace = true, features = ["inotify"] }
+shell-quote.workspace = true
 vsock-host.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-proto.workspace = true

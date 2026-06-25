@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.112.3",
+  "version": "1.113.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -27,7 +27,7 @@
     "./firewalls/*": null
   },
   "scripts": {
-    "generate:rust": "pnpm -F @vm0/firewalls-generator generate && tsx src/rust-bindings/generate.ts",
+    "generate:rust": "tsx src/rust-bindings/generate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
@@ -41,7 +41,6 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
-    "@vm0/firewalls-generator": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",

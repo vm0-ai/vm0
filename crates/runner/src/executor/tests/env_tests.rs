@@ -4,7 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
-use sandbox::{ExecResult, ExecTermination, SandboxId};
+use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 
 use super::super::cli_framework::{
@@ -18,7 +18,7 @@ use super::super::env::{
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_host_env, context_with_env, minimal_context,
+    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -880,12 +880,12 @@ async fn write_user_env_file_skips_empty_env() {
     assert!(path.is_none());
     assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
+    assert!(sandbox.private_write_file_calls().is_empty());
 }
 
 #[tokio::test]
-async fn write_user_env_file_uses_single_stdin_exec_for_small_env() {
+async fn write_user_env_file_uses_private_write_for_small_env() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     let run_id = RunId::nil();
     let user_env = HashMap::from([
         ("CUSTOM_ENV".to_string(), "value".to_string()),
@@ -898,36 +898,25 @@ async fn write_user_env_file_uses_single_stdin_exec_for_small_env() {
         .unwrap();
 
     assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    let call = &exec_calls[0];
-    assert!(!call.sudo);
-    assert!(call.env_keys.is_empty());
-    assert!(call.cmd.contains("umask 077"));
-    assert!(call.cmd.contains("mkdir -p -m 700 --"));
-    assert!(call.cmd.contains("chmod 700 --"));
-    assert!(call.cmd.contains("cat >"));
-    assert!(call.cmd.contains("chmod 600 --"));
-    let stdin_bytes = call.stdin_bytes.as_ref().unwrap();
-    let decoded: HashMap<String, String> = serde_json::from_slice(stdin_bytes).unwrap();
-    assert_eq!(decoded, user_env);
+    assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
+    let writes = sandbox.private_write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, path);
+    let decoded: HashMap<String, String> = serde_json::from_slice(&writes[0].content).unwrap();
+    assert_eq!(decoded, user_env);
 }
 
 #[tokio::test]
-async fn write_user_env_file_uses_stdin_exec_at_protocol_limit() {
+async fn write_user_env_file_uses_private_write_for_large_env() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     let run_id = RunId::nil();
-    let empty_payload_len = serde_json::to_vec(&HashMap::from([("A".to_string(), String::new())]))
-        .unwrap()
-        .len();
     let user_env = HashMap::from([(
-        "A".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES - empty_payload_len),
+        "CUSTOM_ENV".to_string(),
+        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
     )]);
     let payload = serde_json::to_vec(&user_env).unwrap();
-    assert_eq!(payload.len(), vsock_proto::MAX_EXEC_STDIN_BYTES);
+    assert!(payload.len() > vsock_proto::MAX_EXEC_STDIN_BYTES);
 
     let path = write_user_env_file(&sandbox, run_id, &user_env)
         .await
@@ -935,26 +924,18 @@ async fn write_user_env_file_uses_stdin_exec_at_protocol_limit() {
         .unwrap();
 
     assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    assert_eq!(
-        exec_calls[0].stdin_bytes.as_ref().unwrap().len(),
-        vsock_proto::MAX_EXEC_STDIN_BYTES
-    );
+    assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
+    let writes = sandbox.private_write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, path);
+    assert_eq!(writes[0].content, payload);
 }
 
 #[tokio::test]
-async fn write_user_env_file_fails_on_non_exited_fast_path_result() {
+async fn write_user_env_file_returns_private_write_error() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ExecTermination::Cancelled,
-        stdout: Vec::new(),
-        stderr: b"cancelled".to_vec(),
-        diagnostic: String::new(),
-        stdout_truncated: false,
-        stderr_truncated: false,
-    }));
+    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
     let run_id = RunId::nil();
     let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
 
@@ -963,100 +944,11 @@ async fn write_user_env_file_fails_on_non_exited_fast_path_result() {
         .unwrap_err();
     let message = err.to_string();
 
-    assert!(
-        message.contains("user env file write failed (cancelled)"),
-        "got: {message}"
-    );
+    assert!(message.contains("private write failed"), "got: {message}");
+    assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
-}
-
-#[tokio::test]
-async fn write_user_env_file_falls_back_for_oversized_env() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-
-    let path = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 2);
-    assert!(exec_calls[0].cmd.contains("mkdir -p -m 700 --"));
-    assert!(exec_calls[0].stdin_bytes.is_none());
-    assert!(exec_calls[1].cmd.contains("chmod 600 --"));
-    assert!(exec_calls[1].stdin_bytes.is_none());
-    let writes = sandbox.write_file_calls();
+    let writes = sandbox.private_write_file_calls();
     assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: HashMap<String, String> = serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, user_env);
-}
-
-#[tokio::test]
-async fn write_user_env_file_fallback_fails_on_non_exited_mkdir_result() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ExecTermination::Cancelled,
-        stdout: Vec::new(),
-        stderr: b"cancelled".to_vec(),
-        diagnostic: String::new(),
-        stdout_truncated: false,
-        stderr_truncated: false,
-    }));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-
-    let err = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(
-        message.contains("user env directory creation failed (cancelled)"),
-        "got: {message}"
-    );
-    assert!(sandbox.write_file_calls().is_empty());
-}
-
-#[tokio::test]
-async fn write_user_env_file_fallback_fails_on_non_exited_chmod_result() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Ok(ExecResult {
-        termination: ExecTermination::Cancelled,
-        stdout: Vec::new(),
-        stderr: b"cancelled".to_vec(),
-        diagnostic: String::new(),
-        stdout_truncated: false,
-        stderr_truncated: false,
-    }));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-
-    let err = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(
-        message.contains("user env file permission update failed (cancelled)"),
-        "got: {message}"
-    );
-    assert_eq!(sandbox.write_file_calls().len(), 1);
 }
 
 #[test]

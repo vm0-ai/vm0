@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { extractSecretNamesFromApis } from "../../firewall-types";
+import {
+  extractSecretNamesFromApis,
+  type FirewallConfig,
+} from "../../firewall-types";
 import { matchFirewallBaseUrl } from "../../firewall-rule-matcher";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+  loadDefaultFirewallPolicies,
+  loadRequiredConnectorFirewall,
+} from "../firewall-test-helpers";
 
 const FORBIDDEN_PLACEHOLDER_WORD_RE = /placeholder|fake|dummy|test|example/i;
 
-function matchesAwsFirewall(url: string): boolean {
-  const firewall = getConnectorFirewall("aws");
+function matchesAwsFirewall(url: string, firewall: FirewallConfig): boolean {
   return firewall.apis.some((api) => {
     return matchFirewallBaseUrl(url, api.base) !== null;
   });
@@ -23,9 +24,8 @@ function expectRecognizablePlaceholder(value: string | undefined): void {
 }
 
 describe("aws firewall", () => {
-  it("registers AWS as an auth-only SigV4 firewall connector", () => {
-    expect(isFirewallConnectorType("aws")).toBe(true);
-    const firewall = getConnectorFirewall("aws");
+  it("registers AWS as an auth-only SigV4 firewall connector", async () => {
+    const firewall = await loadRequiredConnectorFirewall("aws");
 
     expect(firewall.name).toBe("aws");
     expect(firewall.apis).toStrictEqual([
@@ -80,13 +80,14 @@ describe("aws firewall", () => {
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_ACCESS_KEY_ID);
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_SECRET_ACCESS_KEY);
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
-    expect(getDefaultFirewallPolicies("aws")).toStrictEqual({
+    await expect(loadDefaultFirewallPolicies("aws")).resolves.toStrictEqual({
       policies: {},
       unknownPolicy: "allow",
     });
   });
 
-  it("matches common AWS-owned endpoints", () => {
+  it("matches common AWS-owned endpoints", async () => {
+    const firewall = await loadRequiredConnectorFirewall("aws");
     const urls = [
       "https://sts.amazonaws.com/",
       "https://iam.amazonaws.com/",
@@ -101,11 +102,12 @@ describe("aws firewall", () => {
     ];
 
     for (const url of urls) {
-      expect(matchesAwsFirewall(url)).toBe(true);
+      expect(matchesAwsFirewall(url, firewall)).toBe(true);
     }
   });
 
-  it("does not match custom S3-compatible or lookalike domains", () => {
+  it("does not match custom S3-compatible or lookalike domains", async () => {
+    const firewall = await loadRequiredConnectorFirewall("aws");
     const urls = [
       "https://minio.example.com/my-bucket",
       "https://s3.amazonaws.com.evil.example/my-bucket",
@@ -114,7 +116,7 @@ describe("aws firewall", () => {
     ];
 
     for (const url of urls) {
-      expect(matchesAwsFirewall(url)).toBe(false);
+      expect(matchesAwsFirewall(url, firewall)).toBe(false);
     }
   });
 });

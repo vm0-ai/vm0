@@ -1,3 +1,16 @@
+//! Guest-agent process-control sink for active input.
+//!
+//! The `process-control-ipc` crate owns the local wire protocol and transport
+//! framing. This module owns the guest-agent side of that channel: starting the
+//! blocking control worker, dispatching control requests to
+//! [`ActiveInputController`], and shutting the worker down with the rest of the
+//! guest-agent background tasks.
+//!
+//! This is a guest-agent local runtime boundary. It is public because the
+//! binary imports modules through the library crate boundary, while integration
+//! tests exercise this runtime path through the spawned guest-agent process. It
+//! is not a stable external API.
+
 use std::io;
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -12,6 +25,18 @@ use tokio_util::sync::CancellationToken;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Handle for the guest-agent process-control worker.
+///
+/// A handle owns one blocking worker thread for one guest-agent run. After the
+/// worker connects to the host-provided process-control endpoint, it stores a
+/// cloned connected stream so shutdown can wake the worker when it is blocked
+/// waiting for a request.
+///
+/// The supplied cancellation token coordinates this worker with the normal
+/// guest-agent shutdown path. Calling [`ControlHandle::join`] or dropping the
+/// handle cancels the token, shuts down the stored stream clone when one exists,
+/// and joins the worker thread. That shutdown path may block until the worker
+/// observes cancellation or the stream shutdown and exits.
 pub struct ControlHandle {
     join: Option<thread::JoinHandle<()>>,
     stream: Arc<Mutex<Option<UnixStream>>>,
@@ -29,6 +54,22 @@ impl Drop for StreamSlotCleanup {
 }
 
 impl ControlHandle {
+    /// Starts the process-control worker when process control is bootstrapped.
+    ///
+    /// The bootstrap endpoint is read from [`process_control_ipc::BOOTSTRAP_ENV`],
+    /// whose environment variable name is `VM0_PROCESS_CONTROL_ENDPOINT`.
+    /// Missing or empty values mean this guest-agent run has no process-control
+    /// endpoint, so this method returns `None`.
+    ///
+    /// This method also returns `None` if the worker thread cannot be spawned.
+    /// A returned `Some(ControlHandle)` only means the worker thread was
+    /// started. Socket connection, stream-clone storage, hello exchange, and
+    /// request-loop failures happen inside that worker thread after this method
+    /// returns.
+    ///
+    /// Incoming control requests are dispatched to the provided
+    /// [`ActiveInputController`], and its outcome is mapped back to a local
+    /// process-control response.
     pub fn spawn(shutdown: CancellationToken, active_input: ActiveInputController) -> Option<Self> {
         let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
             Ok(endpoint) if !endpoint.is_empty() => endpoint,
@@ -59,6 +100,14 @@ impl ControlHandle {
         })
     }
 
+    /// Cancels and joins the process-control worker.
+    ///
+    /// This consumes the handle, cancels the shared shutdown token, shuts down
+    /// the stored stream clone when present to wake a blocking read, and joins
+    /// the worker thread. A worker panic is logged and is not propagated to the
+    /// caller.
+    ///
+    /// Dropping [`ControlHandle`] runs the same shutdown and join path.
     pub fn join(mut self) {
         self.shutdown_and_join();
     }

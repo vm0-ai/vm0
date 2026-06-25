@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
-import {
-  getConnectorFirewall,
-  isFirewallConnectorType,
-} from "../../firewalls/index";
+import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
 describe("ashby firewall", () => {
-  it("registers the Ashby firewall with Basic auth over the raw API key", () => {
-    expect(isFirewallConnectorType("ashby")).toBe(true);
-    const firewall = getConnectorFirewall("ashby");
+  it("registers the Ashby firewall with Basic auth over the raw API key", async () => {
+    const firewall = await loadRequiredConnectorFirewall("ashby");
 
     expect(firewall.name).toBe("ashby");
     expect(firewall.apis).toHaveLength(1);
@@ -29,8 +25,8 @@ describe("ashby firewall", () => {
     });
   });
 
-  it("does not declare provider-specific permissions yet", () => {
-    const firewall = getConnectorFirewall("ashby");
+  it("does not declare provider-specific permissions yet", async () => {
+    const firewall = await loadRequiredConnectorFirewall("ashby");
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });
 });

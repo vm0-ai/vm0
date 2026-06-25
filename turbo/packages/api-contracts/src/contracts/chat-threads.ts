@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
+import { triggerSourceSchema } from "./logs";
 import {
   isSupportedRunModel,
   modelProviderCredentialScopeSchema,
@@ -211,6 +212,7 @@ const pagedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
+  triggerSource: triggerSourceSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalEvent: zeroGoalEventSchema.optional(),
@@ -230,6 +232,13 @@ const pagedChatMessageBaseSchema = z.object({
     .object({
       id: z.string(),
       title: z.string(),
+      description: z.string().nullable(),
+    })
+    .optional(),
+  workflowSnapshot: z
+    .object({
+      name: z.string(),
+      displayName: z.string().nullable(),
       description: z.string().nullable(),
     })
     .optional(),

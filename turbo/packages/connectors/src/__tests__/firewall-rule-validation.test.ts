@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { connectorTypeSchema } from "../connectors";
-import {
-  BILLABLE_CONNECTORS,
-  isFirewallConnectorType,
-  getConnectorFirewall,
-} from "../firewalls";
 import { collectAndValidatePermissions } from "../firewall-expander";
+import { getFirewallExecutionMetadata } from "../firewall-metadata/server";
 import {
   matchFirewallHost,
   matchFirewallBaseUrl,
@@ -14,6 +9,10 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallConfig,
 } from "../firewall-types";
+import {
+  loadRequiredConnectorFirewall,
+  loadRuntimeFirewallEntries,
+} from "./firewall-test-helpers";
 
 interface FirewallBaseEntry {
   readonly connectorType: string;
@@ -96,11 +95,11 @@ function firewallBaseLabel(entry: FirewallBaseEntry): string {
   return `${entry.connectorType}[${entry.apiIndex}] ${entry.base}`;
 }
 
-function collectBuiltinFirewallBaseEntries(): FirewallBaseEntry[] {
+function collectBuiltinFirewallBaseEntries(
+  firewalls: readonly (readonly [string, FirewallConfig])[],
+): FirewallBaseEntry[] {
   const entries: FirewallBaseEntry[] = [];
-  for (const connectorType of connectorTypeSchema.options) {
-    if (!isFirewallConnectorType(connectorType)) continue;
-    const firewall = getConnectorFirewall(connectorType);
+  for (const [connectorType, firewall] of firewalls) {
     firewall.apis.forEach((api, apiIndex) => {
       const sampleUrls = baseSampleUrls(api.base);
       const parsedBase = baseProtocolAndAuthority(api.base);
@@ -146,8 +145,10 @@ function entriesMayShareAuthority(
   );
 }
 
-function findBuiltinFirewallBaseOverlaps(): string[] {
-  const entries = collectBuiltinFirewallBaseEntries();
+function findBuiltinFirewallBaseOverlaps(
+  firewalls: readonly (readonly [string, FirewallConfig])[],
+): string[] {
+  const entries = collectBuiltinFirewallBaseEntries(firewalls);
   const overlaps = new Set<string>();
   for (let leftIndex = 0; leftIndex < entries.length; leftIndex += 1) {
     for (
@@ -185,32 +186,30 @@ function findBuiltinFirewallBaseOverlaps(): string[] {
  * in via OpenAPI specs during code generation.
  */
 describe("builtin firewall validation", () => {
-  const connectorTypes = connectorTypeSchema.options;
-
-  for (const connectorType of connectorTypes) {
-    if (!isFirewallConnectorType(connectorType)) continue;
-
-    it(`${connectorType} — passes full firewall validation`, () => {
-      const firewall = getConnectorFirewall(connectorType);
+  it("passes full firewall validation for every runtime connector", async () => {
+    for (const [
+      connectorType,
+      firewall,
+    ] of await loadRuntimeFirewallEntries()) {
       expect(() => {
         return collectAndValidatePermissions(firewall);
-      }).not.toThrow();
-    });
-  }
+      }, connectorType).not.toThrow();
+    }
+  });
 });
 
 describe("billable connector firewall contracts", () => {
-  it("keeps X registered as a billable firewall", () => {
-    const firewall = getConnectorFirewall("x");
+  it("keeps X registered as a billable firewall", async () => {
+    const firewall = await loadRequiredConnectorFirewall("x");
 
     expect(firewall.name).toBe("x");
-    expect(BILLABLE_CONNECTORS).toContain("x");
+    expect(getFirewallExecutionMetadata("x")?.billable).toBe(true);
   });
 });
 
 describe("Google Drive firewall permissions", () => {
-  it("uses vm0 permission names instead of Google OAuth scope names", () => {
-    const firewall = getConnectorFirewall("google-drive");
+  it("uses vm0 permission names instead of Google OAuth scope names", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-drive");
     const names = firewall.apis.flatMap((api) => {
       return (
         api.permissions?.map((permission) => {
@@ -230,8 +229,8 @@ describe("Google Drive firewall permissions", () => {
     ).toBe(true);
   });
 
-  it("keeps apps.read limited to Drive app routes", () => {
-    const firewall = getConnectorFirewall("google-drive");
+  it("keeps apps.read limited to Drive app routes", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-drive");
     const appsReadRules = firewall.apis.flatMap((api) => {
       return (
         api.permissions
@@ -268,8 +267,10 @@ describe("reserved firewall permission names", () => {
 });
 
 describe("builtin firewall base overlap guard", () => {
-  it("does not introduce new builtin base overlaps", () => {
-    const overlaps = findBuiltinFirewallBaseOverlaps();
+  it("does not introduce new builtin base overlaps", async () => {
+    const overlaps = findBuiltinFirewallBaseOverlaps(
+      await loadRuntimeFirewallEntries(),
+    );
     const unexpectedOverlaps = overlaps.filter((overlap) => {
       return !ALLOWED_FIREWALL_BASE_OVERLAPS.has(overlap);
     });
@@ -291,9 +292,10 @@ describe("builtin firewall base overlap guard", () => {
 });
 
 describe("known endpoint-scoped firewall bases", () => {
-  it("keeps Gmail permission names resource-oriented instead of OAuth-scope based", () => {
+  it("keeps Gmail permission names resource-oriented instead of OAuth-scope based", async () => {
+    const firewall = await loadRequiredConnectorFirewall("gmail");
     const names = new Set(
-      getConnectorFirewall("gmail").apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return (
           api.permissions?.map((permission) => {
             return permission.name;
@@ -314,8 +316,8 @@ describe("known endpoint-scoped firewall bases", () => {
     ).toEqual([]);
   });
 
-  it("keeps Gmail send routes out of draft write permission", () => {
-    const firewall = getConnectorFirewall("gmail");
+  it("keeps Gmail send routes out of draft write permission", async () => {
+    const firewall = await loadRequiredConnectorFirewall("gmail");
     const rulesByPermission = new Map<string, Set<string>>();
 
     for (const api of firewall.apis) {
@@ -338,16 +340,19 @@ describe("known endpoint-scoped firewall bases", () => {
     );
   });
 
-  it("keeps Google Search Console off the shared www.googleapis.com root", () => {
-    const bases = apiBases(getConnectorFirewall("google-search-console"));
+  it("keeps Google Search Console off the shared www.googleapis.com root", async () => {
+    const bases = apiBases(
+      await loadRequiredConnectorFirewall("google-search-console"),
+    );
 
     expect(bases).toContain("https://searchconsole.googleapis.com");
     expect(bases).not.toContain("https://www.googleapis.com");
   });
 
-  it("keeps Google Sheets permission names resource-oriented instead of OAuth-scope based", () => {
+  it("keeps Google Sheets permission names resource-oriented instead of OAuth-scope based", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-sheets");
     const names = new Set(
-      getConnectorFirewall("google-sheets").apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return (
           api.permissions?.map((permission) => {
             return permission.name;
@@ -366,8 +371,8 @@ describe("known endpoint-scoped firewall bases", () => {
     expect(names).not.toContain("spreadsheets.readonly");
   });
 
-  it("keeps Google Sheets value read routes out of write and clear permissions", () => {
-    const firewall = getConnectorFirewall("google-sheets");
+  it("keeps Google Sheets value read routes out of write and clear permissions", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-sheets");
     const rulesByPermission = new Map<string, Set<string>>();
 
     for (const api of firewall.apis) {
@@ -392,9 +397,12 @@ describe("known endpoint-scoped firewall bases", () => {
     );
   });
 
-  it("keeps Google Search Console permission names resource-oriented instead of OAuth-scope based", () => {
+  it("keeps Google Search Console permission names resource-oriented instead of OAuth-scope based", async () => {
+    const firewall = await loadRequiredConnectorFirewall(
+      "google-search-console",
+    );
     const names = new Set(
-      getConnectorFirewall("google-search-console").apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return (
           api.permissions?.map((permission) => {
             return permission.name;
@@ -415,9 +423,10 @@ describe("known endpoint-scoped firewall bases", () => {
     ).toEqual([]);
   });
 
-  it("keeps YouTube permission names resource-oriented instead of OAuth-scope based", () => {
+  it("keeps YouTube permission names resource-oriented instead of OAuth-scope based", async () => {
+    const firewall = await loadRequiredConnectorFirewall("youtube");
     const names = new Set(
-      getConnectorFirewall("youtube").apis.flatMap((api) => {
+      firewall.apis.flatMap((api) => {
         return (
           api.permissions?.map((permission) => {
             return permission.name;
@@ -440,8 +449,8 @@ describe("known endpoint-scoped firewall bases", () => {
     ).toEqual([]);
   });
 
-  it("keeps YouTube upload routes attached to upload-specific permissions", () => {
-    const firewall = getConnectorFirewall("youtube");
+  it("keeps YouTube upload routes attached to upload-specific permissions", async () => {
+    const firewall = await loadRequiredConnectorFirewall("youtube");
     const rulesByPermission = new Map<string, Set<string>>();
 
     for (const api of firewall.apis) {
@@ -467,8 +476,8 @@ describe("known endpoint-scoped firewall bases", () => {
     );
   });
 
-  it("narrows Xero tenant discovery to the Connections endpoint", () => {
-    const firewall = getConnectorFirewall("xero");
+  it("narrows Xero tenant discovery to the Connections endpoint", async () => {
+    const firewall = await loadRequiredConnectorFirewall("xero");
     const bases = apiBases(firewall);
     const connectionsApi = firewall.apis.find((api) => {
       return api.base === "https://api.xero.com/Connections";

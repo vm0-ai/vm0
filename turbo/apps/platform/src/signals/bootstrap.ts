@@ -10,6 +10,7 @@ import {
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
+  type RouterPathParams,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
 import { onDomEventFn } from "./utils.ts";
@@ -52,6 +53,7 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
+import { setupTriggerPermissionsPage$ } from "./trigger-permissions/trigger-permissions-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
@@ -91,10 +93,7 @@ function redirectWithId(target: RoutePath, targetParam: string) {
   return command(({ get, set }) => {
     const params = get(pathParams$) ?? {};
     set(detachedNavigateTo$, target, {
-      pathParams: { [targetParam]: String(params.id) } as Record<
-        string,
-        string
-      >,
+      pathParams: { [targetParam]: String(params.id) } as RouterPathParams,
       replace: true,
     });
   });
@@ -173,6 +172,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.reportError,
     setup: setupAuthPageWrapper(setupReportErrorPage$),
+  },
+  {
+    path: ROUTES.agentWorkflowTriggerPermissions,
+    setup: setupAuthSidebarPageWrapper(setupTriggerPermissionsPage$),
   },
   {
     path: ROUTES.agentWorkflowDetail,

@@ -1549,7 +1549,12 @@ async def request(flow: http.HTTPFlow) -> None:
 
 def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
     """Return whether a firewall can produce model usage observations."""
-    return firewall_name.startswith("model-provider:") and bool(vm_info.get("modelUsageProvider"))
+    model_usage_provider = vm_info.get("modelUsageProvider")
+    return (
+        firewall_name.startswith("model-provider:")
+        and isinstance(model_usage_provider, str)
+        and bool(model_usage_provider)
+    )
 
 
 def _maybe_track_usage_flow(

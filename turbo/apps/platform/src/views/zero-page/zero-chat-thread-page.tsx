@@ -3220,27 +3220,51 @@ function CompletedWorkFoldRow({
   );
 }
 
-function compactRunGroupLabel(value: string): string {
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= 56) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, 53).trimEnd()}...`;
+function normalizedInlineLabel(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
+  return fold.labelGroups.flatMap((group) => {
+    return group.messages;
+  });
 }
 
 function runGroupFoldSourceLabel(fold: RunGroupFold): string {
-  const messages = fold.labelGroups.flatMap((group) => {
-    return group.messages;
-  });
+  const messages = runGroupFoldMessages(fold);
   const automationMessage = messages.find(isAutomationUserMessage);
   if (automationMessage) {
-    return compactRunGroupLabel(automationMessageLabel(automationMessage));
+    return normalizedInlineLabel(automationMessageLabel(automationMessage));
+  }
+  const workflowLabel = runGroupFoldWorkflowLabel(fold);
+  if (workflowLabel) {
+    return workflowLabel;
   }
   const userMessage = messages.find((message) => {
     return message.role === "user" && (message.content?.trim().length ?? 0) > 0;
   });
   const content = userMessage?.content?.trim();
-  return content ? compactRunGroupLabel(content) : "Automated run";
+  return content ? normalizedInlineLabel(content) : "Automated run";
+}
+
+function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
+  for (const message of runGroupFoldMessages(fold)) {
+    const workflowSnapshot = message.workflowSnapshot;
+    const label =
+      workflowSnapshot?.description?.trim() ||
+      workflowSnapshot?.displayName?.trim() ||
+      workflowSnapshot?.name?.trim();
+    if (label) {
+      return normalizedInlineLabel(label);
+    }
+  }
+  return null;
+}
+
+function runGroupFoldGoalLabel(fold: RunGroupFold): string {
+  const goalMessage = runGroupFoldMessages(fold).find(isGoalUserMessage);
+  const content = goalMessage?.content?.trim();
+  return content ? normalizedInlineLabel(content) : "goal";
 }
 
 function isGoalUserMessage(
@@ -3260,23 +3284,46 @@ function isGoalRunGroupFold(fold: RunGroupFold): boolean {
   });
 }
 
-function durationLabelForRunGroupFold(fold: RunGroupFold): string | null {
-  const groups = fold.labelGroups.flatMap((group) => {
-    const messages = group.messages.filter((message) => {
-      return message.runGroupId === fold.runGroupId;
+function verboseDurationLabelForRunGroupFold(
+  fold: RunGroupFold,
+): string | null {
+  const timestamps = fold.labelGroups.flatMap((group) => {
+    return group.messages.flatMap((message) => {
+      if (message.runGroupId !== fold.runGroupId) {
+        return [];
+      }
+      const timestamp = parseMessageTime(message.createdAt);
+      return timestamp === null ? [] : [timestamp];
     });
-    return messages.length > 0 ? [{ ...group, messages }] : [];
   });
-  return durationLabelForGroups(groups);
+  if (timestamps.length < 2) {
+    return null;
+  }
+  const elapsedMinutes = Math.max(
+    1,
+    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 60_000),
+  );
+  const hours = Math.floor(elapsedMinutes / 60);
+  const minutes = elapsedMinutes % 60;
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  }
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(`${minutes} ${minutes === 1 ? "min" : "mins"}`);
+  }
+  return parts.join(" ");
 }
 
 function runGroupFoldLabel(fold: RunGroupFold): string {
   if (isGoalRunGroupFold(fold)) {
-    const duration = durationLabelForRunGroupFold(fold);
-    return duration ? `Archived goal for ${duration}` : "Archived goal";
+    const duration = verboseDurationLabelForRunGroupFold(fold);
+    const label = runGroupFoldGoalLabel(fold);
+    return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  return `Folded ${fold.hiddenRunCount} "${runGroupFoldSourceLabel(fold)}" ${runLabel}`;
+  const sourceLabel = runGroupFoldSourceLabel(fold);
+  return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
 function RunGroupFoldRow({
@@ -3305,7 +3352,7 @@ function RunGroupFoldRow({
         }
         onClick={onToggle}
         className={cn(
-          "inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50",
+          "inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50",
           embedded && "mt-1.5",
         )}
       >
@@ -3314,7 +3361,9 @@ function RunGroupFoldRow({
           size={14}
           className="shrink-0 text-muted-foreground/70"
         />
-        <span className="text-[13px]">{label}</span>
+        <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
+          {label}
+        </span>
         <IconChevronRight
           aria-hidden
           size={14}

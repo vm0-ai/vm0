@@ -1,5 +1,58 @@
 # Changelog
 
+## [8.369.0](https://github.com/vm0-ai/vm0/compare/core-v8.368.2...core-v8.369.0) (2026-06-25)
+
+
+### Features
+
+* enable MobileSingleLineComposer and CustomConnectorProposals for all users ([#18867](https://github.com/vm0-ai/vm0/issues/18867)) ([72b31a4](https://github.com/vm0-ai/vm0/commit/72b31a4ac6029fb2f018d891d1c2cbefe810e895))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+
+## [8.368.2](https://github.com/vm0-ai/vm0/compare/core-v8.368.1...core-v8.368.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.2
+
+## [8.368.1](https://github.com/vm0-ai/vm0/compare/core-v8.368.0...core-v8.368.1) (2026-06-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+
+## [8.368.0](https://github.com/vm0-ai/vm0/compare/core-v8.367.1...core-v8.368.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+
+
+### Bug Fixes
+
+* render presentation detail thumbnails from html ([#18826](https://github.com/vm0-ai/vm0/issues/18826)) ([f571c28](https://github.com/vm0-ai/vm0/commit/f571c28a375a6b88ee32b150717366c82e41af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+
 ## [8.367.1](https://github.com/vm0-ai/vm0/compare/core-v8.367.0...core-v8.367.1) (2026-06-24)
 
 

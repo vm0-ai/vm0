@@ -201,6 +201,10 @@ impl Sandbox for CancelAfterWaitSandbox {
         self.inner.write_file(path, content).await
     }
 
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_private_file(path, content).await
+    }
+
     async fn start_process(
         &self,
         request: &StartProcessRequest<'_>,
@@ -335,6 +339,10 @@ impl Sandbox for QueuedCopyFileSandbox {
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         self.inner.write_file(path, content).await
+    }
+
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_private_file(path, content).await
     }
 
     async fn start_process(

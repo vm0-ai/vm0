@@ -119,6 +119,14 @@ pub(super) fn spawn_write_file(
     tokio::spawn(async move { host.write_file(path, &content, sudo).await })
 }
 
+pub(super) fn spawn_write_private_file(
+    host: Arc<VsockHost>,
+    path: &'static str,
+    content: Vec<u8>,
+) -> JoinHandle<io::Result<()>> {
+    tokio::spawn(async move { host.write_private_file(path, &content).await })
+}
+
 pub(super) struct ExecStartFrame {
     pub(super) msg: RawMessage,
     pub(super) command: String,
@@ -179,6 +187,7 @@ pub(super) struct WriteFileFrame {
     pub(super) content: Vec<u8>,
     pub(super) sudo: bool,
     pub(super) append: bool,
+    pub(super) private: bool,
 }
 
 impl WriteFileFrame {
@@ -190,9 +199,10 @@ impl WriteFileFrame {
 pub(super) async fn expect_write_file(guest: &mut UnixStream) -> WriteFileFrame {
     let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
-    let (path, content, sudo, append) = {
-        let (path, content, sudo, append) = vsock_proto::decode_write_file(&msg.payload).unwrap();
-        (path.to_string(), content.to_vec(), sudo, append)
+    let (path, content, sudo, append, private) = {
+        let (path, content, sudo, append, private) =
+            vsock_proto::decode_write_file(&msg.payload).unwrap();
+        (path.to_string(), content.to_vec(), sudo, append, private)
     };
     WriteFileFrame {
         msg,
@@ -200,6 +210,7 @@ pub(super) async fn expect_write_file(guest: &mut UnixStream) -> WriteFileFrame 
         content,
         sudo,
         append,
+        private,
     }
 }
 

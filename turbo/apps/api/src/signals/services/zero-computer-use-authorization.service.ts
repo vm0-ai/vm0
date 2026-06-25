@@ -22,7 +22,10 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { slackOrgCallbackPayloadSchema } from "./slack-org-callback-payload";
-import { listComputerUseHosts$ } from "./zero-computer-use.service";
+import {
+  computerUseHostIsOnline,
+  listComputerUseHosts$,
+} from "./zero-computer-use.service";
 
 const COMPUTER_USE_AUTHORIZATION_REQUEST_TTL_MS = 60 * 60 * 1000;
 const COMPUTER_USE_AUTHORIZATION_URL_PREFIX =
@@ -204,14 +207,19 @@ async function loadRequestByToken(args: {
   return { status: "found", request };
 }
 
-async function hostExists(args: {
+async function onlineHostExists(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly hostId: string;
+  readonly now: Date;
 }): Promise<boolean> {
   const [host] = await args.db
-    .select({ id: computerUseHosts.id })
+    .select({
+      lastSeenAt: computerUseHosts.lastSeenAt,
+      revokedAt: computerUseHosts.revokedAt,
+      status: computerUseHosts.status,
+    })
     .from(computerUseHosts)
     .where(
       and(
@@ -222,7 +230,7 @@ async function hostExists(args: {
       ),
     )
     .limit(1);
-  return host !== undefined;
+  return host !== undefined && computerUseHostIsOnline(host, args.now);
 }
 
 async function slackScopeExists(args: {
@@ -341,7 +349,9 @@ export const readComputerUseAuthorizationRequest$ = command(
       source: loaded.request.source as ComputerUseAuthorizationSource,
       expiresAt: loaded.request.expiresAt.toISOString(),
       completedAt: loaded.request.completedAt?.toISOString() ?? null,
-      hosts: hosts.hosts,
+      hosts: hosts.hosts.filter((host) => {
+        return host.status === "online";
+      }),
     };
   },
 );
@@ -373,11 +383,12 @@ export const applyComputerUseAuthorizationRequest$ = command(
     }
 
     if (
-      !(await hostExists({
+      !(await onlineHostExists({
         db,
         orgId: args.orgId,
         userId: args.userId,
         hostId: args.computerUseHostId,
+        now,
       }))
     ) {
       return { status: "host_not_found" };

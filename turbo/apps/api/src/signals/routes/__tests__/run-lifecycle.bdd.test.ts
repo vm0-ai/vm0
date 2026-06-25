@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  getProviderRuntimeModel,
   getModelProviderFirewall,
+  getVm0ConcreteProviderType,
+  getVm0Vendor,
+  MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -10,14 +14,18 @@ import {
   type ExecutionFirewallEntry,
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";
+import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import {
   createBddApi,
@@ -45,16 +53,31 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  */
 
 const context = testContext();
+const store = createStore();
+const writeDb = store.set(writeDb$);
+const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
-const connectorFirewalls = getAllConnectorFirewalls();
-type ConnectorFirewallType = keyof typeof connectorFirewalls;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
   "api_dispatch_prepare_run_context",
+  "api_dispatch_prepare_context_feature_switches",
+  "api_dispatch_prepare_context_resolve_compose",
+  "api_dispatch_prepare_context_load_persisted_environment",
+  "api_dispatch_prepare_context_build_resolved_body",
+  "api_dispatch_prepare_context_resolve_framework",
+  "api_dispatch_prepare_context_resolve_model_provider",
+  "api_dispatch_prepare_context_load_connector_contexts",
+  "api_dispatch_prepare_context_load_stored_connectors",
+  "api_dispatch_prepare_context_load_custom_connectors",
+  "api_dispatch_prepare_context_build_permission_manifest",
+  "api_dispatch_prepare_context_validate_environment",
+  "api_dispatch_prepare_context_load_user_timezone",
+  "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
   "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
@@ -92,11 +115,9 @@ function modelProviderPlaceholder(
   return placeholder;
 }
 
-function connectorPlaceholder(
-  type: ConnectorFirewallType,
-  secretName: string,
-): string {
-  const placeholder = connectorFirewalls[type].placeholders?.[secretName];
+function connectorPlaceholder(type: string, secretName: string): string {
+  const placeholder =
+    getFirewallExecutionMetadata(type)?.placeholderValues[secretName];
   if (!placeholder) {
     throw new Error(`Missing connector placeholder for ${secretName}`);
   }
@@ -114,6 +135,28 @@ function findFirewallEntry(
   return entries?.find((entry) => {
     return firewallEntryName(entry) === name;
   });
+}
+
+async function seedVm0ManagedDefaultModelKey(): Promise<string> {
+  const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  if (!selectedModel) {
+    throw new Error("Expected vm0 to define a default model");
+  }
+  await writeDb
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MANAGED_API_KEY));
+  onTestFinished(async () => {
+    await writeDb
+      .delete(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MANAGED_API_KEY));
+  });
+  await writeDb.insert(vm0ApiKeys).values({
+    vendor: getVm0Vendor(selectedModel),
+    model: getProviderRuntimeModel("vm0", selectedModel),
+    apiKey: TEST_VM0_MANAGED_API_KEY,
+    label: "run-lifecycle-bdd",
+  });
+  return selectedModel;
 }
 
 function inlineFirewallApis(
@@ -305,6 +348,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     for (const actionType of API_DISPATCH_TIMING_ACTION_TYPES) {
       expect(observedActionTypes).toContain(actionType);
     }
+    const preCreateEvents = timingEvents.filter((event) => {
+      return event.op_type === "api_dispatch_pre_create_agent_run";
+    });
+    expect(preCreateEvents).toHaveLength(1);
+    expect(preCreateEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: "top_level",
+      }),
+    );
     expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
 
@@ -761,6 +813,37 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("claims vm0 runs with billable model firewall and usage provider", async () => {
+    const api = createRunsAutomationsApi(context);
+    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const concreteProvider = getVm0ConcreteProviderType(selectedModel);
+    const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
+    if (!expectedFirewall) {
+      throw new Error(
+        `Missing model-provider firewall for ${concreteProvider}`,
+      );
+    }
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "vm0 built-in model provider",
+      modelProvider: "vm0",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain(expectedFirewall);
+    expect(claim.billableFirewalls).toContain(expectedFirewall);
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {

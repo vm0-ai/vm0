@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.129.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.16...runner-rs-v0.129.17) (2026-06-25)
+
+
+### Bug Fixes
+
+* reject invalid aws sigv4 header text ([#18866](https://github.com/vm0-ai/vm0/issues/18866)) ([5a14b21](https://github.com/vm0-ai/vm0/commit/5a14b215b29a71f3a30afec9f0a86c47fd8b1159))
+
+## [0.129.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.15...runner-rs-v0.129.16) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
+## [0.129.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.14...runner-rs-v0.129.15) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+* require model usage provider for model observations ([#18800](https://github.com/vm0-ai/vm0/issues/18800)) ([92609b6](https://github.com/vm0-ai/vm0/commit/92609b62d6073d8c9c93167dac68c02f508df150))
+* stabilize multi-architecture runner image builds ([#18843](https://github.com/vm0-ai/vm0/issues/18843)) ([7717811](https://github.com/vm0-ai/vm0/commit/77178117b8b53498c567a26853ced5a22eae15f1))
+
+
+### Refactoring
+
+* move builtin firewall generation ownership ([#18840](https://github.com/vm0-ai/vm0/issues/18840)) ([dc84829](https://github.com/vm0-ai/vm0/commit/dc84829ebe26c2716b6f2c935366dcb888f326b2))
+
+
+### Performance Improvements
+
+* **runner:** fold timezone sync into guest restore ([#18815](https://github.com/vm0-ai/vm0/issues/18815)) ([b1267e2](https://github.com/vm0-ai/vm0/commit/b1267e27df9d4a961cecf9780cf5498a71f97604))
+
+## [0.129.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.13...runner-rs-v0.129.14) (2026-06-24)
+
+
+### Refactoring
+
+* compose builtin firewall catalog in generator ([#18821](https://github.com/vm0-ai/vm0/issues/18821)) ([a5a32b5](https://github.com/vm0-ai/vm0/commit/a5a32b59fe54f5182360c2ec45934be4f48ffe85))
+
 ## [0.129.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.12...runner-rs-v0.129.13) (2026-06-24)
 
 

@@ -283,6 +283,89 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(completed.completedAt).not.toBeNull();
   });
 
+  it("only exposes online hosts for delegated authorization requests", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const actor = bdd.user({ orgId });
+    await enableComputerUseDelegatedAuthorization(actor);
+    const run = await seedZeroRun({ actor, triggerSource: "web" });
+    if (!run.threadId) {
+      throw new Error("Expected web run fixture to create a chat thread");
+    }
+
+    const base = now();
+    mockNow(base);
+    const staleHost = await api.startComputerUseHost(actor, {
+      hostName: "Stale Mac",
+    });
+    const stoppedHost = await api.startComputerUseHost(actor, {
+      installationId: randomUUID(),
+      hostName: "Closed Mac",
+    });
+    await api.stopComputerUseHost(stoppedHost.hostToken);
+
+    mockNow(base + 120_000);
+    const onlineHost = await api.startComputerUseHost(actor, {
+      hostName: "Studio Mac",
+    });
+    mockClerkMembership(context, actor, "org:admin");
+    const token = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId,
+      runId: run.runId,
+      capabilities: ["connector:read"],
+    }).token;
+
+    const created = await api.createComputerUseAuthorizationRequest({
+      bearer: token,
+    });
+    const requestToken = requestTokenFromUrl(created.authorizationUrl);
+    const readable = await api.readComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+    );
+    expect(
+      readable.hosts.map((host) => {
+        return host.id;
+      }),
+    ).toStrictEqual([onlineHost.hostId]);
+
+    const staleApply = await api.requestApplyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      staleHost.hostId,
+      [404],
+    );
+    expectApiError(staleApply.body);
+    expect(staleApply.body.error.message).toBe("Computer-use host not found");
+
+    const stoppedApply = await api.requestApplyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      stoppedHost.hostId,
+      [404],
+    );
+    expectApiError(stoppedApply.body);
+    expect(stoppedApply.body.error.message).toBe("Computer-use host not found");
+
+    const applied = await api.applyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      onlineHost.hostId,
+    );
+    expect(applied).toStrictEqual({
+      ok: true,
+      source: "chat",
+      computerUseHostId: onlineHost.hostId,
+    });
+
+    const writeDb = store.set(writeDb$);
+    const [thread] = await writeDb
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, run.threadId));
+    expect(thread).toStrictEqual({ computerUseHostId: onlineHost.hostId });
+  });
+
   it("creates a delegated authorization link and applies the selected host to the Slack thread", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });

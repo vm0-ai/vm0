@@ -1,12 +1,13 @@
 [package]
 name = "vsock-guest"
-version = "0.19.5"
+version = "0.19.7"
 edition.workspace = true
 
 [dependencies]
 guest-contracts.workspace = true
 process-control-ipc.workspace = true
 libc.workspace = true
+shell-quote.workspace = true
 vsock-proto.workspace = true
 
 [features]

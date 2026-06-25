@@ -1,15 +1,48 @@
 import { describe, it, expect } from "vitest";
 import { UNKNOWN_PERMISSION_GRANT } from "../firewall-types";
 import {
-  getConnectorFirewall,
-  getDefaultFirewallPolicies,
+  expandFirewallMetadataDefaultPolicy,
+  loadFirewallPermissionMetadata,
   permissionGrantsToFirewallPolicies,
-  resolveFirewallPolicies,
-} from "../firewalls/index";
+  resolveFirewallMetadataPolicies,
+  type FirewallPermissionDetailMetadata,
+} from "../firewall-metadata";
+
+async function loadRequiredFirewallPermissionMetadata(
+  type: string,
+): Promise<FirewallPermissionDetailMetadata> {
+  const metadata = await loadFirewallPermissionMetadata(type);
+  if (!metadata) {
+    throw new Error(`Missing firewall permission metadata: ${type}`);
+  }
+  return metadata;
+}
+
+async function defaultFirewallPolicies(type: string) {
+  return expandFirewallMetadataDefaultPolicy(
+    await loadRequiredFirewallPermissionMetadata(type),
+  );
+}
+
+async function resolveMetadataPolicies(
+  stored: Parameters<typeof resolveFirewallMetadataPolicies>[0],
+  connectors: readonly string[],
+) {
+  const metadata = (
+    await Promise.all(
+      connectors.map((connector) => {
+        return loadFirewallPermissionMetadata(connector);
+      }),
+    )
+  ).filter((detail): detail is FirewallPermissionDetailMetadata => {
+    return detail !== null;
+  });
+  return resolveFirewallMetadataPolicies(stored, metadata);
+}
 
 describe("getDefaultFirewallPolicies", () => {
-  it("should return allow/deny map for connectors with defaults", () => {
-    const policy = getDefaultFirewallPolicies("slack");
+  it("should return allow/deny map for connectors with defaults", async () => {
+    const policy = await defaultFirewallPolicies("slack");
 
     // Slack has defaults — every permission should be either "allow" or "deny"
     const values = Object.values(policy.policies);
@@ -20,18 +53,18 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("allow");
   });
 
-  it("should mark default-allowed permissions as allow", () => {
-    const policy = getDefaultFirewallPolicies("slack");
+  it("should mark default-allowed permissions as allow", async () => {
+    const policy = await defaultFirewallPolicies("slack");
     expect(policy.policies["conversations:read"]).toBe("allow");
   });
 
-  it("should mark non-default permissions as deny", () => {
-    const policy = getDefaultFirewallPolicies("slack");
+  it("should mark non-default permissions as deny", async () => {
+    const policy = await defaultFirewallPolicies("slack");
     expect(policy.policies["admin"]).toBe("deny");
   });
 
-  it("should default Gmail read and draft permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("gmail");
+  it("should default Gmail read and draft permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("gmail");
 
     expect(policy.policies["messages.read"]).toBe("allow");
     expect(policy.policies["threads.read"]).toBe("allow");
@@ -46,16 +79,12 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should cover every permission from the firewall config", () => {
-    const policy = getDefaultFirewallPolicies("slack");
-    const config = getConnectorFirewall("slack");
+  it("should cover every permission from the firewall metadata", async () => {
+    const policy = await defaultFirewallPolicies("slack");
+    const metadata = await loadRequiredFirewallPermissionMetadata("slack");
     const allPermissions = new Set(
-      config.apis.flatMap((api) => {
-        return (
-          api.permissions?.map((p) => {
-            return p.name;
-          }) ?? []
-        );
+      metadata.permissions.map((permission) => {
+        return permission.name;
       }),
     );
 
@@ -65,14 +94,14 @@ describe("getDefaultFirewallPolicies", () => {
     expect(Object.keys(policy.policies)).toHaveLength(allPermissions.size);
   });
 
-  it("should return empty permissions for connectors with no static permissions", () => {
-    const policy = getDefaultFirewallPolicies("github");
+  it("should return empty permissions for connectors with no static permissions", async () => {
+    const policy = await defaultFirewallPolicies("github");
     expect(Object.keys(policy.policies)).toHaveLength(0);
     expect(policy.unknownPolicy).toBe("allow");
   });
 
-  it("should default Cloudflare read-only permissions to allow, write permissions to deny, and unknown endpoints to deny", () => {
-    const policy = getDefaultFirewallPolicies("cloudflare");
+  it("should default Cloudflare read-only permissions to allow, write permissions to deny, and unknown endpoints to deny", async () => {
+    const policy = await defaultFirewallPolicies("cloudflare");
 
     expect(policy.policies["dns-firewall.read"]).toBe("allow");
     expect(policy.policies["dns-firewall.write"]).toBe("deny");
@@ -81,16 +110,16 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Cloud unknown endpoints to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-cloud");
+  it("should default Google Cloud unknown endpoints to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-cloud");
 
     expect(policy.policies["compute.instances.get"]).toBe("allow");
     expect(policy.policies["compute.instances.create"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Drive read permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-drive");
+  it("should default Google Drive read permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-drive");
 
     expect(policy.policies["apps.read"]).toBe("allow");
     expect(policy.policies["files.read"]).toBe("allow");
@@ -101,8 +130,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Analytics report and read permissions to allow and sensitive mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-analytics");
+  it("should default Google Analytics report and read permissions to allow and sensitive mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-analytics");
 
     expect(policy.policies["reports.run"]).toBe("allow");
     expect(policy.policies["audience-exports.run"]).toBe("allow");
@@ -116,8 +145,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Calendar read permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-calendar");
+  it("should default Google Calendar read permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-calendar");
 
     expect(policy.policies["calendars.read"]).toBe("allow");
     expect(policy.policies["events.read"]).toBe("allow");
@@ -132,8 +161,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Docs read permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-docs");
+  it("should default Google Docs read permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-docs");
 
     expect(policy.policies["documents.read"]).toBe("allow");
     expect(policy.policies["documents.create"]).toBe("deny");
@@ -141,8 +170,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Meet read permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-meet");
+  it("should default Google Meet read permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-meet");
 
     expect(policy.policies["spaces.read"]).toBe("allow");
     expect(policy.policies["conference-records.read"]).toBe("allow");
@@ -158,8 +187,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Sheets read and search permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-sheets");
+  it("should default Google Sheets read and search permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-sheets");
 
     expect(policy.policies["spreadsheets.read"]).toBe("allow");
     expect(policy.policies["spreadsheets.read-by-data-filter"]).toBe("allow");
@@ -175,8 +204,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default Google Search Console read and diagnostic permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("google-search-console");
+  it("should default Google Search Console read and diagnostic permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("google-search-console");
 
     expect(policy.policies["url-inspection.inspect"]).toBe("allow");
     expect(policy.policies["mobile-friendly-tests.run"]).toBe("allow");
@@ -190,8 +219,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default YouTube read permissions to allow and mutations to deny", () => {
-    const policy = getDefaultFirewallPolicies("youtube");
+  it("should default YouTube read permissions to allow and mutations to deny", async () => {
+    const policy = await defaultFirewallPolicies("youtube");
 
     expect(policy.policies["videos.read"]).toBe("allow");
     expect(policy.policies["videos.rating.read"]).toBe("allow");
@@ -208,8 +237,8 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("deny");
   });
 
-  it("should default maskdb read-only permissions to allow and everything else to deny", () => {
-    const policy = getDefaultFirewallPolicies("maskdb");
+  it("should default maskdb read-only permissions to allow and everything else to deny", async () => {
+    const policy = await defaultFirewallPolicies("maskdb");
 
     expect(policy.policies["db:metadata"]).toBe("allow");
     expect(policy.policies["db:query"]).toBe("allow");
@@ -224,8 +253,8 @@ describe("getDefaultFirewallPolicies", () => {
 });
 
 describe("resolveFirewallPolicies", () => {
-  it("should fill in defaults for connectors missing from stored policies", () => {
-    const resolved = resolveFirewallPolicies(null, ["slack"]);
+  it("should fill in defaults for connectors missing from stored policies", async () => {
+    const resolved = await resolveMetadataPolicies(null, ["slack"]);
     expect(resolved).not.toBeNull();
     const slack = resolved!["slack"]!;
     expect(slack).toBeDefined();
@@ -233,22 +262,22 @@ describe("resolveFirewallPolicies", () => {
     expect(slack.policies["admin"]).toBe("deny");
   });
 
-  it("should merge defaults with stored policies (stored overrides)", () => {
+  it("should merge defaults with stored policies (stored overrides)", async () => {
     const stored = {
       slack: { policies: { "conversations:read": "deny" as const } },
     };
-    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const resolved = await resolveMetadataPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
     expect(slack.policies["conversations:read"]).toBe("deny");
     expect(slack.policies["admin"]).toBe("deny");
     expect(slack.policies["users:read"]).toBe("allow");
   });
 
-  it("should merge stored partial policy with defaults", () => {
+  it("should merge stored partial policy with defaults", async () => {
     const stored = {
       slack: { policies: { "files:read": "allow" as const } },
     };
-    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const resolved = await resolveMetadataPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
     expect(slack.policies["files:read"]).toBe("allow");
     expect(slack.policies["conversations:read"]).toBe("allow");
@@ -257,25 +286,25 @@ describe("resolveFirewallPolicies", () => {
     expect(slack.policies["admin"]).toBe("deny");
   });
 
-  it("should preserve stored unknownPolicy override", () => {
+  it("should preserve stored unknownPolicy override", async () => {
     const stored = {
       slack: { policies: {}, unknownPolicy: "deny" as const },
     };
-    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const resolved = await resolveMetadataPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
     expect(slack.unknownPolicy).toBe("deny");
   });
 
-  it("should default unknownPolicy to allow when not stored", () => {
+  it("should default unknownPolicy to allow when not stored", async () => {
     const stored = {
       slack: { policies: { "conversations:read": "allow" as const } },
     };
-    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const resolved = await resolveMetadataPolicies(stored, ["slack"]);
     expect(resolved!["slack"]!.unknownPolicy).toBe("allow");
   });
 
-  it("should use connector-specific unknownPolicy defaults when not stored", () => {
-    const resolved = resolveFirewallPolicies(null, [
+  it("should use connector-specific unknownPolicy defaults when not stored", async () => {
+    const resolved = await resolveMetadataPolicies(null, [
       "cloudflare",
       "google-analytics",
       "google-calendar",
@@ -297,32 +326,32 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved!["gmail"]!.unknownPolicy).toBe("deny");
   });
 
-  it("should preserve stored unknownPolicy override over connector-specific defaults", () => {
+  it("should preserve stored unknownPolicy override over connector-specific defaults", async () => {
     const stored = {
       cloudflare: { policies: {}, unknownPolicy: "allow" as const },
     };
-    const resolved = resolveFirewallPolicies(stored, ["cloudflare"]);
+    const resolved = await resolveMetadataPolicies(stored, ["cloudflare"]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("allow");
   });
 
-  it("should preserve stored overrides for connectors without default-allowed list", () => {
+  it("should preserve stored overrides for connectors without default-allowed list", async () => {
     const stored = {
       github: { policies: { "repo-read": "deny" as const } },
     };
-    const resolved = resolveFirewallPolicies(stored, ["github"]);
+    const resolved = await resolveMetadataPolicies(stored, ["github"]);
     expect(resolved!["github"]!.policies["repo-read"]).toBe("deny");
   });
 
-  it("should skip non-firewall connector types", () => {
-    const resolved = resolveFirewallPolicies(null, ["cloudinary"]);
+  it("should skip non-firewall connector types", async () => {
+    const resolved = await resolveMetadataPolicies(null, ["cloudinary"]);
     expect(resolved).toBeNull();
   });
 
-  it("should handle mixed connectors", () => {
+  it("should handle mixed connectors", async () => {
     const stored = {
       github: { policies: { "repo-read": "allow" as const } },
     };
-    const resolved = resolveFirewallPolicies(stored, [
+    const resolved = await resolveMetadataPolicies(stored, [
       "github",
       "slack",
       "cloudinary",
@@ -333,8 +362,8 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved).not.toHaveProperty("cloudinary");
   });
 
-  it("should produce entry for connectors with no stored policies", () => {
-    const resolved = resolveFirewallPolicies(null, ["github"]);
+  it("should produce entry for connectors with no stored policies", async () => {
+    const resolved = await resolveMetadataPolicies(null, ["github"]);
     expect(resolved).not.toBeNull();
     expect(resolved!["github"]!.policies).toEqual({});
     expect(resolved!["github"]!.unknownPolicy).toBe("allow");
@@ -368,8 +397,8 @@ describe("permissionGrantsToFirewallPolicies", () => {
     });
   });
 
-  it("should leave connector defaults to resolveFirewallPolicies", () => {
-    const resolved = resolveFirewallPolicies(
+  it("should leave connector defaults to resolveFirewallPolicies", async () => {
+    const resolved = await resolveMetadataPolicies(
       permissionGrantsToFirewallPolicies([
         {
           connectorRef: "slack",

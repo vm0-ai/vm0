@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.440.3](https://github.com/vm0-ai/vm0/compare/web-v12.440.2...web-v12.440.3) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+
+## [12.440.2](https://github.com/vm0-ai/vm0/compare/web-v12.440.1...web-v12.440.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.2
+    * @vm0/core bumped to 8.368.2
+
+## [12.440.1](https://github.com/vm0-ai/vm0/compare/web-v12.440.0...web-v12.440.1) (2026-06-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+
+## [12.440.0](https://github.com/vm0-ai/vm0/compare/web-v12.439.6...web-v12.440.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+* **triggers:** add session-gated route to set unattended permission policy ([#18819](https://github.com/vm0-ai/vm0/issues/18819)) ([26cd67e](https://github.com/vm0-ai/vm0/commit/26cd67ef4a04577178f51653167320caa673a0dc))
+* **web:** add video gallery page ([#18828](https://github.com/vm0-ai/vm0/issues/18828)) ([4a9bb02](https://github.com/vm0-ai/vm0/commit/4a9bb02fd3d9e4db74fd0262d98f28d60a641905))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/core bumped to 8.368.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.107.0
+
 ## [12.439.6](https://github.com/vm0-ai/vm0/compare/web-v12.439.5...web-v12.439.6) (2026-06-24)
 
 

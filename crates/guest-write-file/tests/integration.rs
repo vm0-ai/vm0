@@ -7,6 +7,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path>";
 
 fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
     run_helper_with_current_dir(args, stdin, None)
@@ -16,21 +17,47 @@ fn run_helper_in_dir(args: &[&str], stdin: &[u8], current_dir: &Path) -> std::pr
     run_helper_with_current_dir(args, stdin, Some(current_dir))
 }
 
-fn run_helper_with_current_dir(
-    args: &[&str],
-    stdin: &[u8],
-    current_dir: Option<&Path>,
-) -> std::process::Output {
+fn helper_command(args: &[&str]) -> Command {
     let mut command = Command::new(BIN);
     command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    command
+}
+
+fn run_helper_with_current_dir(
+    args: &[&str],
+    stdin: &[u8],
+    current_dir: Option<&Path>,
+) -> std::process::Output {
+    let mut command = helper_command(args);
     if let Some(current_dir) = current_dir {
         command.current_dir(current_dir);
     }
 
+    run_helper_command(command, stdin)
+}
+
+#[cfg(unix)]
+fn run_helper_with_umask(args: &[&str], stdin: &[u8], umask: libc::mode_t) -> std::process::Output {
+    use std::os::unix::process::CommandExt;
+
+    let mut command = helper_command(args);
+    // SAFETY: `pre_exec` runs in the child process after fork and before exec.
+    // It only changes that child's umask, leaving the test process unaffected.
+    unsafe {
+        command.pre_exec(move || {
+            libc::umask(umask);
+            Ok(())
+        });
+    }
+
+    run_helper_command(command, stdin)
+}
+
+fn run_helper_command(mut command: Command, stdin: &[u8]) -> std::process::Output {
     let mut child = command.spawn().expect("spawn guest-write-file");
     child
         .stdin
@@ -164,7 +191,22 @@ fn append_mode_rejects_create_parents() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("cannot be used together"));
-    assert!(stderr.contains("usage: guest-write-file [--append | --create-parents] [--] <path>"));
+    assert!(stderr.contains(USAGE));
+    assert!(!path.exists());
+}
+
+#[test]
+fn private_mode_rejects_create_parents() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing/out.txt");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", "--create-parents", path_str], b"hello");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used together"));
+    assert!(stderr.contains(USAGE));
     assert!(!path.exists());
 }
 
@@ -224,6 +266,178 @@ fn create_mode_rejects_directory_target() {
 
     assert!(!output.status.success());
     assert!(path.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_creates_private_parent_dirs_and_writes_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/user-env/env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/user-env")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_chmods_existing_parent_and_writes_content() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("run");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let path = parent.join("env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&parent), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_forces_parent_modes_with_restrictive_umask() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper_with_umask(&["--private", path_str], b"hello", 0o777);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/logs")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_append_mode_appends_with_private_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let first = run_helper(&["--private", path_str], b"first");
+    assert!(first.status.success(), "stderr={:?}", first.stderr);
+    let second = run_helper(&["--private", "--append", path_str], b"second");
+
+    assert!(second.status.success(), "stderr={:?}", second.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"firstsecond");
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_append_mode_creates_missing_private_parent_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/logs/system.log");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", "--append", path_str], b"hello");
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/logs")), 0o700);
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_symlink_parent_without_touching_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    let link = dir.path().join("link");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let path = link.join("env.json");
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(!target.join("env.json").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_directory_target() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let path = dir.path().join("target");
+    std::fs::create_dir(&path).unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(path.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_trailing_separator_without_creating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/session-id");
+    let path_with_trailing_separator = format!("{}/", path.display());
+
+    let output = run_helper(&["--private", &path_with_trailing_separator], b"hello");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("directory separator"));
+    assert!(!dir.path().join("run").exists());
+    assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_trailing_current_dir_without_creating_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("run/session-id");
+    let path_with_trailing_current_dir = path.join(".");
+    let path_str = path_with_trailing_current_dir.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"hello");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no file name"));
+    assert!(!dir.path().join("run").exists());
+    assert!(!path.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_mode_rejects_fifo_with_reader() {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let path = dir.path().join("fifo");
+    mkfifo(&path);
+    let _reader = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&path)
+        .unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let output = run_helper(&["--private", path_str], b"");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not a regular"), "stderr={stderr}");
 }
 
 #[cfg(unix)]
@@ -315,4 +529,11 @@ fn mkfifo(path: &std::path::Path) {
         "mkfifo failed: {}",
         std::io::Error::last_os_error()
     );
+}
+
+#[cfg(unix)]
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }

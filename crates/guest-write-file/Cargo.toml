@@ -1,10 +1,11 @@
 [package]
 name = "guest-write-file"
-version = "0.1.3"
+version = "0.1.4"
 edition.workspace = true
 description = "Write guest files from stdin without shell startup overhead"
 
 [dependencies]
+guest-contracts.workspace = true
 libc.workspace = true
 
 [dev-dependencies]

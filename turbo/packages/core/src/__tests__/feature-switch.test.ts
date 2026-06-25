@@ -9,6 +9,15 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatTemplatePicker, {})).toBe(
+      true,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.VideoTemplatePicker, {})).toBe(
+      true,
+    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.PresentationHtmlPptxDownload, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -45,11 +54,6 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatTemplatePicker, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
@@ -65,11 +69,6 @@ describe("isFeatureEnabled", () => {
     ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatTemplatePicker, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -123,6 +122,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.VideoTemplatePicker]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
 
@@ -132,7 +135,11 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.VideoTemplatePicker]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
+      true,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
   });

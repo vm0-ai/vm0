@@ -1,5 +1,57 @@
 # Changelog
 
+## [9.208.2](https://github.com/vm0-ai/vm0/compare/cli-v9.208.1...cli-v9.208.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+    * @vm0/core bumped to 8.369.0
+
+## [9.208.1](https://github.com/vm0-ai/vm0/compare/cli-v9.208.0...cli-v9.208.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.113.2
+    * @vm0/core bumped to 8.368.2
+
+## [9.208.0](https://github.com/vm0-ai/vm0/compare/cli-v9.207.0...cli-v9.208.0) (2026-06-24)
+
+
+### Features
+
+* **triggers:** trigger-aware permission-change link + blocked-run feedback ([#18839](https://github.com/vm0-ai/vm0/issues/18839)) ([0c523b2](https://github.com/vm0-ai/vm0/commit/0c523b20a11c5d3a8866cd4df3989c323336cea0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.113.1
+    * @vm0/core bumped to 8.368.1
+
+## [9.207.0](https://github.com/vm0-ai/vm0/compare/cli-v9.206.3...cli-v9.207.0) (2026-06-24)
+
+
+### Features
+
+* add delegated computer use authorization ([#18824](https://github.com/vm0-ai/vm0/issues/18824)) ([33b0547](https://github.com/vm0-ai/vm0/commit/33b05471b244b51f94dee5b9404eebc8707211d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.113.0
+    * @vm0/connectors bumped to 1.107.0
+    * @vm0/core bumped to 8.368.0
+
 ## [9.206.3](https://github.com/vm0-ai/vm0/compare/cli-v9.206.2...cli-v9.206.3) (2026-06-24)
 
 

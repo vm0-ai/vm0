@@ -115,7 +115,7 @@ validate_hosts_csv() {
 host_uname_m() {
   local host=$1
   local remote_arch
-  remote_arch=$(ssh "${METAL_USER}@${host}" uname -m)
+  remote_arch=$(ssh -n "${METAL_USER}@${host}" uname -m)
   printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r'
 }
 
@@ -152,7 +152,7 @@ emit_groups() {
   done < <(printf '%s\n' "$hosts" | tr ',' '\n')
 
   groups=$(jq -n -c '[]')
-  groups=$(append_group "$groups" "arm64" "ARM64" "$arm64_hosts" "aarch64-unknown-linux-musl")
+  groups=$(append_group "$groups" "arm64" "arm64" "$arm64_hosts" "aarch64-unknown-linux-musl")
   groups=$(append_group "$groups" "x86_64" "x86_64" "$x86_64_hosts" "x86_64-unknown-linux-musl")
   printf '%s\n' "$groups"
 }

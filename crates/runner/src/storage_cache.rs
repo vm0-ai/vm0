@@ -1146,6 +1146,10 @@ mod tests {
             result
         }
 
+        async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            self.inner.write_private_file(path, content).await
+        }
+
         async fn start_process(
             &self,
             request: &sandbox::StartProcessRequest<'_>,

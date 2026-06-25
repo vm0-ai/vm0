@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.41.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.4...guest-agent-v0.41.5) (2026-06-25)
+
+
+### Documentation
+
+* document guest-agent process control handle ([#18853](https://github.com/vm0-ai/vm0/issues/18853)) ([548841b](https://github.com/vm0-ai/vm0/commit/548841be1c92ddba8dc6ad107e3e86b50f72338f))
+
+## [0.41.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.3...guest-agent-v0.41.4) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
+## [0.41.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.2...guest-agent-v0.41.3) (2026-06-25)
+
+
+### Performance Improvements
+
+* cache guest artifact content hash sort keys ([#18834](https://github.com/vm0-ai/vm0/issues/18834)) ([cef34c2](https://github.com/vm0-ai/vm0/commit/cef34c287824c193afcdf1457ecf05e7c68de5ed))
+
+## [0.41.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.1...guest-agent-v0.41.2) (2026-06-24)
+
 ## [0.41.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.0...guest-agent-v0.41.1) (2026-06-24)
 
 

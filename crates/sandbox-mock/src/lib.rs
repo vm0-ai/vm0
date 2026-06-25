@@ -2,6 +2,7 @@
 //!
 //! All mocks succeed by default with ordinary exit code 0 and empty output.
 //! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
+//! [`MockSandbox::push_private_write_file_result`],
 //! [`MockSandboxControl::push_exec_remote_result`], or
 //! [`MockSandboxControl::push_kill_remote_result`] to queue custom responses
 //! consumed in FIFO order.
@@ -471,6 +472,8 @@ pub struct MockSandboxOverrides {
     exec_calls: Mutex<Vec<ExecCall>>,
     /// Recorded write_file calls across all sandboxes built from this override set.
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    /// Recorded write_private_file calls across all sandboxes built from this override set.
+    private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
@@ -565,6 +568,7 @@ impl MockSandboxOverrides {
             exec_matchers: Mutex::new(Vec::new()),
             exec_calls: Mutex::new(Vec::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            private_write_file_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
@@ -698,6 +702,12 @@ impl MockSandboxOverrides {
     /// result queue.
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return recorded private write-file calls across all sandboxes built
+    /// from this override set.
+    pub fn private_write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.private_write_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a read_file result applied to the next read made through any
@@ -1028,6 +1038,8 @@ pub struct MockSandbox {
     copy_file_calls: Mutex<Vec<CopyFileCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    private_write_file_results: Mutex<VecDeque<Result<()>>>,
+    private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     write_file_gate: Mutex<Option<MockLifecycleGate>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
@@ -1061,6 +1073,8 @@ impl MockSandbox {
             copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            private_write_file_results: Mutex::new(VecDeque::new()),
+            private_write_file_calls: Mutex::new(Vec::new()),
             write_file_gate: Mutex::new(None),
             overrides,
             stdout_tx: Mutex::new(None),
@@ -1141,6 +1155,23 @@ impl MockSandbox {
     /// recorded in [`MockSandboxOverrides::write_file_calls`].
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a write_private_file result. Results are consumed in FIFO order.
+    /// When the queue is empty, write_private_file returns `Ok(())`.
+    pub fn push_private_write_file_result(&self, result: Result<()>) {
+        self.private_write_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return this sandbox's recorded private write-file calls.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. When this
+    /// sandbox was built with shared overrides, private write-file calls are
+    /// also recorded in [`MockSandboxOverrides::private_write_file_calls`].
+    pub fn private_write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.private_write_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Block every write_file call with a durable lifecycle gate.
@@ -1431,6 +1462,26 @@ impl Sandbox for MockSandbox {
             gate.enter_and_wait().await;
         }
         self.write_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        let call = WriteFileCall {
+            path: path.to_string(),
+            content: content.to_vec(),
+        };
+        self.private_write_file_calls
+            .lock_ignoring_poison()
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .private_write_file_calls
+                .lock_ignoring_poison()
+                .push(call);
+        }
+        self.private_write_file_results
             .lock_ignoring_poison()
             .pop_front()
             .unwrap_or(Ok(()))
@@ -3832,6 +3883,31 @@ mod tests {
 
         // Falls back to default Ok.
         sandbox.write_file("/tmp/test.txt", b"data").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_write_private_file_queued_error_and_records_calls() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_private_write_file_result(Err(SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: "permission denied".into(),
+        }));
+
+        let result = sandbox
+            .write_private_file("/tmp/private.env", b"secret")
+            .await;
+        assert!(result.is_err());
+        sandbox
+            .write_private_file("/tmp/private.env", b"secret")
+            .await
+            .unwrap();
+
+        assert!(sandbox.write_file_calls().is_empty());
+        let calls = sandbox.private_write_file_calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].path, "/tmp/private.env");
+        assert_eq!(calls[0].content, b"secret");
     }
 
     #[tokio::test]

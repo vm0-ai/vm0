@@ -178,8 +178,22 @@ const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
 type ApiDispatchTimingActionType =
+  | "api_dispatch_pre_create_agent_run"
   | "api_dispatch_check_org_tier"
   | "api_dispatch_prepare_run_context"
+  | "api_dispatch_prepare_context_feature_switches"
+  | "api_dispatch_prepare_context_resolve_compose"
+  | "api_dispatch_prepare_context_load_persisted_environment"
+  | "api_dispatch_prepare_context_build_resolved_body"
+  | "api_dispatch_prepare_context_resolve_framework"
+  | "api_dispatch_prepare_context_resolve_model_provider"
+  | "api_dispatch_prepare_context_load_connector_contexts"
+  | "api_dispatch_prepare_context_load_stored_connectors"
+  | "api_dispatch_prepare_context_load_custom_connectors"
+  | "api_dispatch_prepare_context_build_permission_manifest"
+  | "api_dispatch_prepare_context_validate_environment"
+  | "api_dispatch_prepare_context_load_user_timezone"
+  | "api_dispatch_prepare_context_prepare_output_metadata"
   | "api_dispatch_check_vm0_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_mark_pending_heartbeat"
@@ -201,6 +215,20 @@ interface ApiDispatchTimingRecord {
 class ApiDispatchTimingCollector {
   private readonly records: ApiDispatchTimingRecord[] = [];
 
+  recordElapsed(
+    actionType: ApiDispatchTimingActionType,
+    spanKind: ApiDispatchTimingSpanKind,
+    startedAt: number,
+    finishedAt: number = now(),
+  ): void {
+    this.records.push({
+      actionType,
+      spanKind,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      timestamp: new Date(finishedAt).toISOString(),
+    });
+  }
+
   measure<T>(
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
@@ -208,13 +236,7 @@ class ApiDispatchTimingCollector {
   ): Promise<T> {
     const startedAt = now();
     return operation().finally(() => {
-      const finishedAt = now();
-      this.records.push({
-        actionType,
-        spanKind,
-        durationMs: Math.max(0, finishedAt - startedAt),
-        timestamp: new Date(finishedAt).toISOString(),
-      });
+      this.recordElapsed(actionType, spanKind, startedAt);
     });
   }
 
@@ -428,6 +450,11 @@ interface PermissionManifest {
     | Readonly<Record<string, string>>
     | undefined;
   readonly billableFirewalls: readonly string[];
+}
+
+interface ModelUsageContext {
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
 }
 
 interface StoredExecutionSecrets {
@@ -3305,6 +3332,21 @@ function validateCompose(
   return { framework };
 }
 
+function validateRunFramework(
+  content: AgentComposeContent,
+  body: CreateRunBody,
+): { readonly framework: SupportedFramework } | CreateRunErrorResult {
+  return validateCompose(content, body.vars, body.secrets, {
+    validateEnvironmentReferences: false,
+  });
+}
+
+function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
+  return args.includeZeroTokenSecret
+    ? withPendingZeroTokenSecret(args.body)
+    : args.body;
+}
+
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): Pick<
@@ -3550,6 +3592,8 @@ async function buildStoredExecutionContext(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
   readonly apiStartTime: number;
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
@@ -3613,11 +3657,8 @@ async function buildStoredExecutionContext(args: {
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
-      billableFirewalls: billableFirewallsForPermissions({
-        modelProvider: args.modelProvider,
-        permissions,
-      }),
-      modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
+      billableFirewalls: [...args.billableFirewalls],
+      modelUsageProvider: args.modelUsageProvider,
     },
     secretNames,
     secretValues,
@@ -3777,13 +3818,52 @@ function billableFirewallsForPermissions(args: {
   });
   const modelFirewalls =
     args.modelProvider?.type === "vm0"
-      ? firewallNames.filter((name) => {
-          return name.startsWith("model-provider:");
-        })
+      ? firewallNames.filter(isModelProviderFirewallName)
       : [];
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
+}
+
+function isModelProviderFirewallName(name: string): boolean {
+  return name.startsWith("model-provider:");
+}
+
+function validateModelUsageProviderInvariant(args: {
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
+}): CreateRunErrorResult | null {
+  if (args.modelProvider?.type !== "vm0") {
+    return null;
+  }
+  if (!args.billableFirewalls.some(isModelProviderFirewallName)) {
+    return null;
+  }
+  if (args.modelUsageProvider) {
+    return null;
+  }
+  return providerUnavailable(
+    "Built-in model provider did not resolve a supported model for usage reporting",
+  );
+}
+
+function prepareModelUsageContext(args: {
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly permissionManifest: PermissionManifest | undefined;
+}): ModelUsageContext | CreateRunErrorResult {
+  const billableFirewalls = billableFirewallsForPermissions({
+    modelProvider: args.modelProvider,
+    permissions: args.permissionManifest,
+  });
+  const modelUsageProvider = modelUsageProviderForContext(args.modelProvider);
+  const validation = validateModelUsageProviderInvariant({
+    modelProvider: args.modelProvider,
+    billableFirewalls,
+    modelUsageProvider,
+  });
+
+  return validation ?? { billableFirewalls, modelUsageProvider };
 }
 
 function modelUsageProviderForContext(
@@ -3853,6 +3933,8 @@ function buildRunnerJobPayload(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -3988,6 +4070,8 @@ function dispatchRun(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -4097,6 +4181,8 @@ function enqueueRunForConcurrency(
     readonly connectorContext: ConnectorRuntimeContext;
     readonly customConnectorContext: CustomConnectorRuntimeContext;
     readonly permissionManifest: PermissionManifest | undefined;
+    readonly billableFirewalls: readonly string[];
+    readonly modelUsageProvider: string | undefined;
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
@@ -4203,6 +4289,8 @@ interface PreparedRunContext {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
@@ -4305,23 +4393,38 @@ async function loadRunConnectorContexts(
     readonly allowedCustomConnectorIds?: readonly string[];
   },
   featureSwitchContext: FeatureSwitchContext,
+  timing?: ApiDispatchTimingCollector,
 ): Promise<{
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
 }> {
   const [storedConnectorContext, customConnectorContext] = await Promise.all([
-    loadStoredConnectorContext(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      allowedConnectorTypes: args.allowedConnectorTypes,
-      featureSwitchContext,
-    }),
-    loadCustomConnectorContext(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-      featureSwitchContext,
-    }),
+    measureApiDispatchTiming(
+      timing,
+      "api_dispatch_prepare_context_load_stored_connectors",
+      "nested",
+      async () => {
+        return await loadStoredConnectorContext(db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          allowedConnectorTypes: args.allowedConnectorTypes,
+          featureSwitchContext,
+        });
+      },
+    ),
+    measureApiDispatchTiming(
+      timing,
+      "api_dispatch_prepare_context_load_custom_connectors",
+      "nested",
+      async () => {
+        return await loadCustomConnectorContext(db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+          featureSwitchContext,
+        });
+      },
+    ),
   ]);
   return {
     connectorContext: storedConnectorContext,
@@ -4434,17 +4537,224 @@ function preparedRunAdditionalVolumes(args: {
   });
 }
 
+type PrepareRunContextGet = <T>(value: Computed<T>) => T;
+
+interface PreparedRunBodyContext {
+  readonly body: CreateRunBody;
+  readonly resolved: ResolvedCompose;
+  readonly requestedFramework: SupportedFramework;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}
+
+interface PreparedRuntimeContext {
+  readonly framework: SupportedFramework;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
+  readonly billableFirewalls: readonly string[];
+  readonly modelUsageProvider: string | undefined;
+}
+
+async function prepareRunBodyContext(args: {
+  readonly get: PrepareRunContextGet;
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+  readonly initialBody: CreateRunBody;
+}): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
+  const featureSwitchContext = await args.timing.measure(
+    "api_dispatch_prepare_context_feature_switches",
+    "nested",
+    async () => {
+      return await args.get(
+        loadRunFeatureSwitchContext(args.createArgs, args.signal),
+      );
+    },
+  );
+  const resolved = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_compose",
+    "nested",
+    async () => {
+      return await args.get(
+        resolveCompose(
+          args.db,
+          args.initialBody,
+          args.createArgs.userId,
+          args.createArgs.orgId,
+        ),
+      );
+    },
+  );
+  args.signal.throwIfAborted();
+  if (isRouteError(resolved)) {
+    return resolved;
+  }
+  if (resolved.orgId !== args.createArgs.orgId) {
+    return notFound("Resource not found");
+  }
+
+  const persistedEnvironment = await args.timing.measure(
+    "api_dispatch_prepare_context_load_persisted_environment",
+    "nested",
+    async () => {
+      return await loadPersistedRunEnvironmentSnapshot(args.db, {
+        orgId: args.createArgs.orgId,
+        userId: args.createArgs.userId,
+        content: resolved.content,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  const body = await args.timing.measure(
+    "api_dispatch_prepare_context_build_resolved_body",
+    "nested",
+    async () => {
+      return await buildResolvedRunBody({
+        initialBody: args.initialBody,
+        resolved,
+        persistedEnvironment,
+        featureSwitchContext,
+        signal: args.signal,
+      });
+    },
+  );
+  const requestedFrameworkResult = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_framework",
+    "nested",
+    async () => {
+      const frameworkValidation = validateRunFramework(resolved.content, body);
+      if (isRouteError(frameworkValidation)) {
+        return frameworkValidation;
+      }
+      return await resolveRequestedRunFramework(
+        args.db,
+        args.createArgs,
+        frameworkValidation.framework,
+      );
+    },
+  );
+  args.signal.throwIfAborted();
+  if (isRouteError(requestedFrameworkResult)) {
+    return requestedFrameworkResult;
+  }
+  return {
+    body,
+    resolved,
+    requestedFramework: requestedFrameworkResult,
+    featureSwitchContext,
+  };
+}
+
+async function prepareRunRuntimeContext(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+  readonly bodyContext: PreparedRunBodyContext;
+}): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
+  const { body, resolved, requestedFramework, featureSwitchContext } =
+    args.bodyContext;
+  const modelProvider = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_model_provider",
+    "nested",
+    async () => {
+      return await resolveRunModelProvider(args.db, args.createArgs, {
+        content: resolved.content,
+        framework: requestedFramework,
+        featureSwitchContext,
+        signal: args.signal,
+      });
+    },
+  );
+  if (isRouteError(modelProvider)) {
+    return modelProvider;
+  }
+  const framework = modelProvider
+    ? modelProviderFramework(modelProvider)
+    : requestedFramework;
+  const { connectorContext, customConnectorContext } =
+    await args.timing.measure(
+      "api_dispatch_prepare_context_load_connector_contexts",
+      "nested",
+      async () => {
+        return await loadRunConnectorContexts(
+          args.db,
+          args.createArgs,
+          featureSwitchContext,
+          args.timing,
+        );
+      },
+    );
+  args.signal.throwIfAborted();
+
+  const permissionManifest = await args.timing.measure(
+    "api_dispatch_prepare_context_build_permission_manifest",
+    "nested",
+    async () => {
+      return await buildPreparedPermissionManifest({
+        body,
+        modelProvider,
+        connectorContext,
+        customConnectorContext,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  const modelUsageContext = prepareModelUsageContext({
+    modelProvider,
+    permissionManifest,
+  });
+  if (isRouteError(modelUsageContext)) {
+    return modelUsageContext;
+  }
+
+  return {
+    framework,
+    modelProvider,
+    connectorContext,
+    customConnectorContext,
+    permissionManifest,
+    billableFirewalls: modelUsageContext.billableFirewalls,
+    modelUsageProvider: modelUsageContext.modelUsageProvider,
+  };
+}
+
+function prepareRunOutputMetadata(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly framework: SupportedFramework;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly body: CreateRunBody;
+  readonly resolved: ResolvedCompose;
+}): {
+  readonly artifacts: readonly ContextArtifact[];
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+} {
+  const additionalVolumes = preparedRunAdditionalVolumes({
+    createArgs: args.createArgs,
+    framework: args.framework,
+    featureSwitchContext: args.featureSwitchContext,
+    body: args.body,
+    resolved: args.resolved,
+  });
+  const artifacts = artifactsForRun({
+    resolved: args.resolved,
+    framework: args.framework,
+    bodyArtifacts: args.body.artifacts,
+  }).artifacts;
+  return { additionalVolumes, artifacts };
+}
+
 function prepareRunContext(
   db: Db,
   args: CreateAgentRunArgs,
+  timing: ApiDispatchTimingCollector,
   signal: AbortSignal,
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
-      const initialBody = args.includeZeroTokenSecret
-        ? withPendingZeroTokenSecret(args.body)
-        : args.body;
-
+      const initialBody = initialRunBody(args);
       const captureGate = await enforceCaptureNetworkBodiesGate(
         db,
         args.userId,
@@ -4455,123 +4765,89 @@ function prepareRunContext(
         return captureGate;
       }
 
-      const featureSwitchContext = await get(
-        loadRunFeatureSwitchContext(args, signal),
-      );
-
-      const resolved = await get(
-        resolveCompose(db, initialBody, args.userId, args.orgId),
-      );
-      signal.throwIfAborted();
-      if (isRouteError(resolved)) {
-        return resolved;
-      }
-
-      if (resolved.orgId !== args.orgId) {
-        return notFound("Resource not found");
-      }
-
-      const persistedEnvironment = await loadPersistedRunEnvironmentSnapshot(
+      const bodyContext = await prepareRunBodyContext({
+        get,
         db,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          content: resolved.content,
+        createArgs: args,
+        timing,
+        signal,
+        initialBody,
+      });
+      if (isRouteError(bodyContext)) {
+        return bodyContext;
+      }
+
+      const runtimeContext = await prepareRunRuntimeContext({
+        db,
+        createArgs: args,
+        timing,
+        signal,
+        bodyContext,
+      });
+      if (isRouteError(runtimeContext)) {
+        return runtimeContext;
+      }
+
+      const validation = await timing.measure(
+        "api_dispatch_prepare_context_validate_environment",
+        "nested",
+        async () => {
+          return await Promise.resolve(
+            validateRunEnvironmentReferences({
+              resolved: bodyContext.resolved,
+              body: bodyContext.body,
+              modelProvider: runtimeContext.modelProvider,
+              connectorContext: runtimeContext.connectorContext,
+              customConnectorContext: runtimeContext.customConnectorContext,
+              permissionManifest: runtimeContext.permissionManifest,
+              validateEnvironmentReferences: args.validateEnvironmentReferences,
+            }),
+          );
         },
       );
-      signal.throwIfAborted();
-
-      const body = await buildResolvedRunBody({
-        initialBody,
-        resolved,
-        persistedEnvironment,
-        featureSwitchContext,
-        signal,
-      });
-
-      const frameworkValidation = validateCompose(
-        resolved.content,
-        body.vars,
-        body.secrets,
-        { validateEnvironmentReferences: false },
-      );
-      if (isRouteError(frameworkValidation)) {
-        return frameworkValidation;
-      }
-
-      const requestedFramework = await resolveRequestedRunFramework(
-        db,
-        args,
-        frameworkValidation.framework,
-      );
-      signal.throwIfAborted();
-
-      const modelProvider = await resolveRunModelProvider(db, args, {
-        content: resolved.content,
-        framework: requestedFramework,
-        featureSwitchContext,
-        signal,
-      });
-      if (isRouteError(modelProvider)) {
-        return modelProvider;
-      }
-      const framework = modelProvider
-        ? modelProviderFramework(modelProvider)
-        : requestedFramework;
-
-      const { connectorContext, customConnectorContext } =
-        await loadRunConnectorContexts(db, args, featureSwitchContext);
-      signal.throwIfAborted();
-
-      const permissionManifest = await buildPreparedPermissionManifest({
-        body,
-        modelProvider,
-        connectorContext,
-        customConnectorContext,
-      });
-      signal.throwIfAborted();
-
-      const validation = validateRunEnvironmentReferences({
-        resolved,
-        body,
-        modelProvider,
-        connectorContext,
-        customConnectorContext,
-        permissionManifest,
-        validateEnvironmentReferences: args.validateEnvironmentReferences,
-      });
       if (validation) {
         return validation;
       }
 
-      const userTimezone = await loadUserTimezone(db, args);
+      const userTimezone = await timing.measure(
+        "api_dispatch_prepare_context_load_user_timezone",
+        "nested",
+        async () => {
+          return await loadUserTimezone(db, args);
+        },
+      );
       signal.throwIfAborted();
 
-      const runArtifacts = artifactsForRun({
-        resolved,
-        framework,
-        bodyArtifacts: body.artifacts,
-      });
-      const additionalVolumes = preparedRunAdditionalVolumes({
-        createArgs: args,
-        framework,
-        featureSwitchContext,
-        body,
-        resolved,
-      });
+      const outputMetadata = await timing.measure(
+        "api_dispatch_prepare_context_prepare_output_metadata",
+        "nested",
+        async () => {
+          return await Promise.resolve(
+            prepareRunOutputMetadata({
+              createArgs: args,
+              framework: runtimeContext.framework,
+              featureSwitchContext: bodyContext.featureSwitchContext,
+              body: bodyContext.body,
+              resolved: bodyContext.resolved,
+            }),
+          );
+        },
+      );
 
       return {
-        body,
-        resolved,
-        framework,
-        modelProvider,
-        connectorContext,
-        customConnectorContext,
-        permissionManifest,
-        artifacts: runArtifacts.artifacts,
-        additionalVolumes,
+        body: bodyContext.body,
+        resolved: bodyContext.resolved,
+        framework: runtimeContext.framework,
+        modelProvider: runtimeContext.modelProvider,
+        connectorContext: runtimeContext.connectorContext,
+        customConnectorContext: runtimeContext.customConnectorContext,
+        permissionManifest: runtimeContext.permissionManifest,
+        billableFirewalls: runtimeContext.billableFirewalls,
+        modelUsageProvider: runtimeContext.modelUsageProvider,
+        artifacts: outputMetadata.artifacts,
+        additionalVolumes: outputMetadata.additionalVolumes,
         userTimezone,
-        featureSwitchContext,
+        featureSwitchContext: bodyContext.featureSwitchContext,
       };
     },
   );
@@ -4665,6 +4941,8 @@ function completeQueuedRun(input: {
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
             permissionManifest: input.context.permissionManifest,
+            billableFirewalls: input.context.billableFirewalls,
+            modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
@@ -4719,6 +4997,8 @@ function completePendingRun(input: {
             connectorContext: input.context.connectorContext,
             customConnectorContext: input.context.customConnectorContext,
             permissionManifest: input.context.permissionManifest,
+            billableFirewalls: input.context.billableFirewalls,
+            modelUsageProvider: input.context.modelUsageProvider,
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
@@ -4766,6 +5046,11 @@ export const createAgentRun$ = command(
   ): Promise<CreateRunRouteResult> => {
     const db = set(writeDb$);
     const timing = new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_agent_run",
+      "top_level",
+      args.apiStartTime,
+    );
     const tierGate = await timing.measure(
       "api_dispatch_check_org_tier",
       "top_level",
@@ -4782,7 +5067,7 @@ export const createAgentRun$ = command(
       "api_dispatch_prepare_run_context",
       "top_level",
       async () => {
-        return await get(prepareRunContext(db, args, signal));
+        return await get(prepareRunContext(db, args, timing, signal));
       },
     );
     signal.throwIfAborted();

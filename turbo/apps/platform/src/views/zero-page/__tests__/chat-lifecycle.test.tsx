@@ -9,10 +9,7 @@ import {
   chatThreadMessagesContract,
   chatThreadRenameContract,
   chatThreadsContract,
-  type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
-  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -47,9 +44,11 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
+  expectQueuedMessages,
   mockChatLifecycle,
   mockSubagentThread,
   PLACEHOLDER,
+  sendQueuedMessage,
   sendMessageInUI,
   splitChatThreadListResponse,
 } from "./chat-test-helpers.ts";
@@ -57,36 +56,11 @@ import {
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const THREAD_ID = "thread-test-1";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
-const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
-const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
-
-interface QueuedMessageCapture {
-  content?: string;
-  hasTextContent?: boolean;
-  attachments?: PersistedAttachment[];
-  clientMessageId: string;
-}
-
-interface RunCreateCapture {
-  prompt?: string;
-  attachFiles?: {
-    id: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[];
-  hasTextContent?: boolean;
-  generationTemplate?: GenerationTemplateRequest;
-  modelSelection?: ModelSelectionRequest | null;
-  computerUseHostId?: string | null;
-  clientMessageId?: string;
-}
 
 interface PushBrowserMock {
   readonly register: ReturnType<typeof vi.fn>;
@@ -215,46 +189,40 @@ function mockPushBrowserSupport(): PushBrowserMock {
   return { register };
 }
 
-function activeRunTextarea(): Promise<HTMLTextAreaElement> {
-  return waitFor(() => {
-    return screen.getByPlaceholderText(
-      /Type your next message/,
-    ) as HTMLTextAreaElement;
-  });
-}
-
-async function startActiveRun(
-  user: ReturnType<typeof userEvent.setup>,
-): Promise<HTMLTextAreaElement> {
-  const textarea = await waitFor(() => {
-    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-  });
-  await sendMessageInUI(user, textarea, "Start the active run");
-
-  await waitFor(() => {
-    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-  });
-
-  return activeRunTextarea();
-}
-
-async function sendQueuedMessage(
-  user: ReturnType<typeof userEvent.setup>,
-  text: string,
-): Promise<void> {
-  const textarea = await activeRunTextarea();
-  await fill(textarea, text);
-  await user.keyboard("{Enter}");
-}
-
-async function expectQueuedMessages(contents: string[]): Promise<void> {
-  await waitFor(() => {
-    const queuedMessages = screen.getAllByLabelText("Queued message");
-    expect(queuedMessages).toHaveLength(contents.length);
-    for (const [index, content] of contents.entries()) {
-      expect(queuedMessages[index]).toHaveTextContent(content);
-    }
-  });
+function makeRunGroupMessages(params: {
+  readonly label: string;
+  readonly count: number;
+  readonly runGroupId: string;
+  readonly startMinute: number;
+}): PagedChatMessage[] {
+  return Array.from({ length: params.count }, (_, index) => {
+    const itemNumber = index + 1;
+    const runId = `${params.runGroupId}-run-${itemNumber}`;
+    const createdAt = new Date(
+      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 0),
+    ).toISOString();
+    const assistantCreatedAt = new Date(
+      Date.UTC(2026, 5, 9, 10, params.startMinute + index, 30),
+    ).toISOString();
+    return [
+      {
+        id: `msg-${params.label.toLowerCase()}-${itemNumber}-user`,
+        role: "user" as const,
+        content: params.label,
+        runId,
+        runGroupId: params.runGroupId,
+        createdAt,
+      },
+      {
+        id: `msg-${params.label.toLowerCase()}-${itemNumber}-assistant`,
+        role: "assistant" as const,
+        content: `${params.label} reply ${itemNumber}`,
+        runId,
+        runGroupId: params.runGroupId,
+        createdAt: assistantCreatedAt,
+      },
+    ];
+  }).flat();
 }
 
 function expectTextBefore(
@@ -362,29 +330,6 @@ function mockKeyboardNavigationThreads(): void {
   );
   context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
     return respond(204);
-  });
-}
-
-function mockActiveRunThread(threadId: string): void {
-  mockChatLifecycle(context, {
-    threadId,
-    chatMessages: [
-      {
-        id: `${threadId}-active-user`,
-        role: "user",
-        content: "Start the active run",
-        runId: "run-active",
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-      {
-        id: `${threadId}-active-assistant`,
-        role: "assistant",
-        content: null,
-        runId: "run-active",
-        createdAt: "2026-06-09T10:00:01Z",
-      },
-    ],
-    activeRunIds: ["run-active"],
   });
 }
 
@@ -752,25 +697,6 @@ function setupGithubPrTrackingPage(): void {
   });
 }
 
-function selectTextForInlineFeedback(element: HTMLElement): void {
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  Object.defineProperty(range, "getBoundingClientRect", {
-    configurable: true,
-    value: () => {
-      return new DOMRect(24, 32, 180, 20);
-    },
-  });
-
-  const selection = window.getSelection();
-  if (!selection) {
-    throw new Error("Selection API is not available");
-  }
-  selection.removeAllRanges();
-  selection.addRange(range);
-  document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-}
-
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -939,23 +865,6 @@ function mockFailedAssistantThread({
 }
 
 describe("chat lifecycle", () => {
-  it("shows a sent message and stop control while a new chat run is active", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context);
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "Summarize the launch plan");
-
-    await waitFor(() => {
-      expect(screen.getByText("Summarize the launch plan")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-  });
-
   it("subscribes the browser for push notifications after a visible chat send", async () => {
     const user = userEvent.setup({ delay: null });
     const pushBrowser = mockPushBrowserSupport();
@@ -1090,263 +999,6 @@ describe("chat lifecycle", () => {
     });
 
     expect(userBubble.querySelector("span")).toBeNull();
-  });
-
-  it("recalls a queued follow-up while an optimistic new thread settles", async () => {
-    const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    mockChatLifecycle(context, { sendGate: sendGate.promise });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "First new-thread message");
-
-    await waitFor(() => {
-      expect(screen.getByText("First new-thread message")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "First queued follow-up");
-    await expectQueuedMessages(["First queued follow-up"]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "First queued follow-up",
-      );
-    });
-
-    sendGate.resolve();
-
-    await waitFor(() => {
-      expect(screen.getByText("First new-thread message")).toBeInTheDocument();
-    });
-  });
-
-  it("keeps optimistic new-thread follow-ups queued after the first send resolves", async () => {
-    const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    const queuedBodies: QueuedMessageCapture[] = [];
-    mockChatLifecycle(context, {
-      sendGate: sendGate.promise,
-      onQueuedMessageAppend: (body) => {
-        queuedBodies.push(body);
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-optimistic-notes",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "Start the optimistic thread");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "Add the launch checklist");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["launch notes"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Send"));
-
-    await expectQueuedMessages([
-      "Add the launch checklist",
-      "(see attached files)",
-    ]);
-
-    sendGate.resolve();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(queuedBodies).toHaveLength(2);
-      expect(queuedBodies[1]).toMatchObject({
-        content: "(see attached files)",
-        hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-optimistic-notes",
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-          },
-        ],
-      });
-    });
-    await expectQueuedMessages([
-      "Add the launch checklist",
-      "(see attached files)",
-    ]);
-  });
-
-  it("replays recalled queued content during an active run", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockActiveRunThread(THREAD_ID);
-
-    detachedSetupPage({ context, path: CHAT_PATH });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "First queued follow-up");
-    await sendQueuedMessage(user, "Second queued follow-up");
-    await expectQueuedMessages([
-      "First queued follow-up",
-      "Second queued follow-up",
-    ]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "First queued follow-up",
-      );
-    });
-
-    await fill(
-      screen.getByPlaceholderText(/Type your next message/),
-      "Replayed follow-up",
-    );
-    await user.keyboard("{Enter}");
-
-    await expectQueuedMessages([
-      "Second queued follow-up",
-      "Replayed follow-up",
-    ]);
-  });
-
-  it("queues an attachment-only follow-up during an active run", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "thread-attachment-only-active";
-    let queuedBody: QueuedMessageCapture | null = null;
-
-    mockChatLifecycle(context, {
-      threadId,
-      chatMessages: [
-        {
-          id: "msg-active-attachment-user",
-          role: "user",
-          content: "Start the active run",
-          runId: "run-active",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-active-attachment-assistant",
-          role: "assistant",
-          content: null,
-          runId: "run-active",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-      ],
-      activeRunIds: ["run-active"],
-      onQueuedMessageAppend: (body) => {
-        queuedBody = body;
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-notes",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["release note"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "(see attached files)",
-      );
-      expect(queuedBody).toMatchObject({
-        content: "(see attached files)",
-        hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-notes",
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
-          },
-        ],
-      });
-    });
-  });
-
-  it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({ context, path: CHAT_PATH });
-
-    await startActiveRun(user);
-    await sendQueuedMessage(user, "First queued");
-    await sendQueuedMessage(user, "Second queued");
-    await expectQueuedMessages(["First queued", "Second queued"]);
-
-    click(screen.getByLabelText("Stop"));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByText("Paused mid-thought — pick it back up whenever."),
-      ).toBeInTheDocument();
-    });
   });
 
   it("ignores usage-only pages for rendering and thinking state", async () => {
@@ -2927,6 +2579,129 @@ describe("chat lifecycle", () => {
     expect(screen.getByText("Render window reply 3")).toBeInTheDocument();
   });
 
+  it("counts a folded tail run group as one item in the initial chat window", async () => {
+    const threadId = "render-window-tail-run-group";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Tail run group window",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 11,
+          runGroupId: "tail-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 1,
+          runGroupId: "tail-group-b",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Tail run group window")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "10 runs",
+      );
+      expect(screen.getByText("A reply 11")).toBeInTheDocument();
+      expect(screen.getByText("B reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("A reply 10")).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses physical groups for the initial window when run group folding is disabled", async () => {
+    const threadId = "render-window-run-group-folding-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run group render window without folding",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 11,
+          runGroupId: "disabled-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 1,
+          runGroupId: "disabled-group-b",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run group render window without folding"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Expand grouped run history"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("A reply 8")).toBeInTheDocument();
+      expect(screen.getByText("B reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("A reply 7")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the item before a folded middle run group in the initial chat window", async () => {
+    const threadId = "render-window-middle-run-group";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Middle run group window",
+      chatMessages: [
+        ...makeRunGroupMessages({
+          label: "A",
+          count: 1,
+          runGroupId: "middle-group-a",
+          startMinute: 0,
+        }),
+        ...makeRunGroupMessages({
+          label: "B",
+          count: 10,
+          runGroupId: "middle-group-b",
+          startMinute: 10,
+        }),
+        ...makeRunGroupMessages({
+          label: "C",
+          count: 1,
+          runGroupId: "middle-group-c",
+          startMinute: 30,
+        }),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Middle run group window")).toBeInTheDocument();
+      expect(screen.getByText("A reply 1")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        "9 runs",
+      );
+      expect(screen.getByText("B reply 10")).toBeInTheDocument();
+      expect(screen.getByText("C reply 1")).toBeInTheDocument();
+      expect(screen.queryByText("B reply 9")).not.toBeInTheDocument();
+    });
+  });
+
   it("moves between chat threads with keyboard shortcuts", async () => {
     const resizeObserver = mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3566,9 +3341,13 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Run group folding")).toBeInTheDocument();
       expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
+      const foldButton = buttonByLabel("Expand grouped run history");
       expect(
-        screen.getByText('Folded 2 "Daily check" runs'),
+        within(foldButton).getByText("2 runs for Daily check"),
       ).toBeInTheDocument();
+      expect(
+        within(foldButton).getByText("2 runs for Daily check"),
+      ).toHaveClass("truncate", "whitespace-nowrap");
       expect(
         screen.queryByText("First daily check result"),
       ).not.toBeInTheDocument();
@@ -3654,7 +3433,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Goal prompt")).toBeInTheDocument();
       expect(screen.getByText(goalPrompt)).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
-        "Archived goal for 3m",
+        "3 mins for Keep the release moving",
       );
       expect(screen.queryByText("Worked for 30s")).not.toBeInTheDocument();
       expect(screen.queryByText("First goal result")).not.toBeInTheDocument();
@@ -3665,12 +3444,18 @@ describe("chat lifecycle", () => {
       .closest('[data-role="assistant"]') as HTMLElement | null;
     expect(latestAssistantGroup).not.toBeNull();
     expect(
-      within(latestAssistantGroup!).getByText("Archived goal for 3m"),
+      within(latestAssistantGroup!).getByText(
+        "3 mins for Keep the release moving",
+      ),
     ).toBeInTheDocument();
-    expectTextBefore(document.body, goalPrompt, "Archived goal for 3m");
+    expectTextBefore(
+      document.body,
+      goalPrompt,
+      "3 mins for Keep the release moving",
+    );
     expectTextBefore(
       latestAssistantGroup!,
-      "Archived goal for 3m",
+      "3 mins for Keep the release moving",
       "Latest goal result",
     );
 
@@ -3686,6 +3471,11 @@ describe("chat lifecycle", () => {
     const threadId = "thread-workflow-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
     const workflowPrompt = "/daily-workflow";
+    const workflowSnapshot = {
+      name: "daily-workflow",
+      displayName: "Daily workflow",
+      description: "Daily workflow summary",
+    };
 
     mockChatLifecycle(context, {
       threadId,
@@ -3697,6 +3487,8 @@ describe("chat lifecycle", () => {
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -3705,6 +3497,8 @@ describe("chat lifecycle", () => {
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -3713,6 +3507,8 @@ describe("chat lifecycle", () => {
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -3721,6 +3517,8 @@ describe("chat lifecycle", () => {
           content: "Latest workflow result",
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
+          triggerSource: "workflow-event",
+          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -3737,7 +3535,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Latest workflow result")).toBeInTheDocument();
       expect(screen.queryByLabelText("Goal prompt")).not.toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
-        'Folded 1 "/daily-workflow" run',
+        "1 run for Daily workflow summary",
       );
       expect(
         screen.queryByText("First workflow result"),
@@ -4228,431 +4026,6 @@ describe("chat lifecycle", () => {
         screen.getByText("fix pr 123 conflict & push"),
       ).toBeInTheDocument();
     });
-  });
-
-  it("turns selected assistant text into an inline feedback follow-up", async () => {
-    const user = userEvent.setup();
-    const assistantReply = "The rollout dates are unclear in this summary.";
-    context.mocks.browser.clipboardWriteText();
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatMessages: [
-        {
-          id: "msg-feedback-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    selectTextForInlineFeedback(assistantReplyElement);
-
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-
-    await user.click(buttonByText("Copy"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Copied")).toBeInTheDocument();
-    });
-
-    selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(buttonByText("Provide feedback"));
-
-    const feedbackComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(feedbackComment, "Mention the dates before the risk summary.");
-    expect(feedbackComment).toHaveValue(
-      "Mention the dates before the risk summary.",
-    );
-
-    await user.click(screen.getByLabelText("Send feedback"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByPlaceholderText("What should change about this?"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
-    const assistantReply = "The rollout dates are unclear in this summary.";
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatMessages: [
-        {
-          id: "msg-feedback-dismiss-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-dismiss",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-dismiss-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-dismiss",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-
-    // Click inside the selection: in a real browser mouseup fires first and the
-    // selection collapses right after. Mirror that order so the deferred read
-    // sees the cleared selection and dismisses the toolbar.
-    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    window.getSelection()?.removeAllRanges();
-
-    await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
-    });
-  });
-
-  it("sends inline feedback with selected template and draft attachments", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const templateChipLabel = template.title;
-    const assistantReply = "The launch summary needs more source context.";
-    const sentBodies: RunCreateCapture[] = [];
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
-        {
-          id: "msg-feedback-attachment-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-attachment",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-attachment-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-attachment",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentBodies.push(body);
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-feedback-brief",
-      filename: "feedback-brief.txt",
-      contentType: "text/plain",
-      size: 14,
-      url: "https://cdn.vm7.io/artifacts/test/upload-feedback-brief/feedback-brief.txt",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(
-      await screen.findByLabelText(
-        `Preview ${template.title} at current slide`,
-      ),
-    );
-    await user.click(await screen.findByLabelText("Select style Gold Luxe"));
-    await user.click(
-      await screen.findByLabelText(`Select template ${template.title}`),
-    );
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${templateChipLabel}`),
-      ).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["feedback notes"], "feedback-brief.txt", {
-        type: "text/plain",
-      }),
-    );
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Remove feedback-brief.txt"),
-      ).toBeInTheDocument();
-    });
-
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
-
-    await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
-      "Use the attached brief as supporting context.",
-    );
-    expect(
-      screen.getByLabelText(`Remove template ${templateChipLabel}`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Remove feedback-brief.txt"),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Send feedback"));
-
-    await waitFor(() => {
-      expect(sentBodies[0]).toMatchObject({
-        attachFiles: [
-          {
-            id: "upload-feedback-brief",
-            filename: "feedback-brief.txt",
-            contentType: "text/plain",
-            size: 14,
-          },
-        ],
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            colorSystemId: "color-system:gold-luxe",
-            designSystemId: template.designSystemId,
-            templateId: template.templateId,
-            previewUrl: template.embedUrl,
-          },
-        },
-        modelSelection: {
-          modelProviderId: "00000000-0000-4000-8000-000000000000",
-          selectedModel: "claude-sonnet-4-6",
-        },
-      });
-    });
-    const sentBody = sentBodies[0];
-    if (!sentBody) {
-      throw new Error("feedback send body not captured");
-    }
-    expect(sentBody?.prompt).toContain(
-      "Use the attached brief as supporting context.",
-    );
-  });
-
-  it("keeps committed inline feedback while drafting another selected comment", async () => {
-    const user = userEvent.setup();
-    const assistantReply = "The launch summary needs clearer risk ownership.";
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatMessages: [
-        {
-          id: "msg-feedback-summary-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-summary",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-summary-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-summary",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-    // Clicking into a note collapses the text selection in a real browser;
-    // mirror that so later clicks do not re-open the selection toolbar.
-    window.getSelection()?.removeAllRanges();
-
-    const firstComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(firstComment, "Assign each risk to an owner.");
-
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
-
-    const comments = screen.getAllByPlaceholderText(
-      "What should change about this?",
-    );
-    expect(comments).toHaveLength(2);
-    // The first note persists on top; the newest fragment sits below it with
-    // an empty note, taking the composer position nearest Send.
-    expect(comments[0]).toHaveValue("Assign each risk to an owner.");
-    expect(comments[1]).toHaveValue("");
-
-    // Removing the empty draft row leaves the noted fragment intact.
-    await user.click(screen.getAllByLabelText("Remove feedback")[1]);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByPlaceholderText("What should change about this?"),
-      ).toHaveLength(1);
-    });
-    expect(
-      screen.getByPlaceholderText("What should change about this?"),
-    ).toHaveValue("Assign each risk to an owner.");
-  });
-
-  it("edits and sends multiple inline feedback comments", async () => {
-    const user = userEvent.setup();
-    const assistantReply = "The launch summary needs clearer risk ownership.";
-    const sentPrompts: string[] = [];
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatMessages: [
-        {
-          id: "msg-feedback-edit-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-edit",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-edit-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-edit",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        if (body.prompt !== undefined) {
-          sentPrompts.push(body.prompt);
-        }
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
-    });
-
-    const assistantReplyElement = await screen.findByText(assistantReply);
-
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-    // Clicking into a note collapses the text selection in a real browser;
-    // mirror that so later clicks do not re-open the selection toolbar.
-    window.getSelection()?.removeAllRanges();
-
-    await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
-      "Assign each risk to an owner.",
-    );
-
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
-
-    await fill(
-      screen.getAllByPlaceholderText("What should change about this?")[1],
-      "Mention launch dates before the risk summary.",
-    );
-
-    // Edit the first fragment's note in place — the oldest sits on top.
-    const editingComment = screen.getAllByPlaceholderText(
-      "What should change about this?",
-    )[0];
-    expect(editingComment).toHaveValue("Assign each risk to an owner.");
-    await user.click(editingComment);
-    await user.keyboard("{Control>}a{/Control}");
-    await user.keyboard("Assign named owners to each launch risk.");
-    expect(editingComment).toHaveFocus();
-    expect(editingComment).toHaveValue(
-      "Assign named owners to each launch risk.",
-    );
-    expect(
-      screen.getAllByPlaceholderText("What should change about this?")[1],
-    ).toHaveValue("Mention launch dates before the risk summary.");
-
-    await user.click(screen.getByLabelText("Send feedback"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    expect(sentPrompts).toHaveLength(1);
-    expect(sentPrompts[0]).toContain("Feedback on 2 parts of your reply:");
-    expect(sentPrompts[0]).toContain(
-      "> The launch summary needs clearer risk ownership.",
-    );
-    expect(sentPrompts[0]).toContain(
-      "Assign named owners to each launch risk.",
-    );
-    expect(sentPrompts[0]).toContain(
-      "Mention launch dates before the risk summary.",
-    );
   });
 
   it("sends a recommended follow-up from the latest assistant reply", async () => {

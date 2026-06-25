@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.112](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.111...vsock-test-v0.9.112) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
+## [0.9.111](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.110...vsock-test-v0.9.111) (2026-06-25)
+
+## [0.9.110](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.109...vsock-test-v0.9.110) (2026-06-24)
+
 ## [0.9.109](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.108...vsock-test-v0.9.109) (2026-06-24)
 
 ## [0.9.108](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.107...vsock-test-v0.9.108) (2026-06-23)

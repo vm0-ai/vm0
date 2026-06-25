@@ -240,12 +240,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
+    //    When this exec already runs, fold best-effort timezone sync into it
+    //    to avoid another pre-spawn guest round trip.
     if start.restore_guest_state {
-        restore_guest_state(sandbox).await?;
+        restore_guest_state(sandbox, context).await?;
+    } else {
+        // 2. Set guest timezone from user preference (best-effort, never fails).
+        sync_guest_timezone(sandbox, context).await;
     }
-
-    // 2. Set guest timezone from user preference (best-effort, never fails).
-    sync_guest_timezone(sandbox, context).await;
 
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {

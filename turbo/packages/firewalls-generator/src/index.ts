@@ -273,6 +273,7 @@ import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
+import { generatePythonBuiltinFirewallCatalogPackage } from "./python-builtin-firewall-catalog-package";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
@@ -573,6 +574,7 @@ async function main(): Promise<void> {
     // Metadata summarizes the complete generated registry, so only rebuild it
     // after every registered firewall has been regenerated.
     await generateFirewallMetadata();
+    await generatePythonBuiltinFirewallCatalogPackage();
   }
 
   console.error("\nDone.");

@@ -19,6 +19,7 @@ import {
   IconLoader2,
   IconMail,
   IconPlus,
+  IconShieldLock,
   IconTrash,
   IconUpload,
 } from "@tabler/icons-react";
@@ -779,6 +780,7 @@ function TriggersSection({
               return (
                 <TriggerRow
                   key={trigger.id}
+                  workflowId={detail.id}
                   trigger={trigger}
                   canManage={trigger.ownerUserId === currentUserId}
                 />
@@ -972,9 +974,11 @@ function CreateGmailNewMessageTriggerForm({
 }
 
 function TriggerRow({
+  workflowId,
   trigger,
   canManage,
 }: {
+  readonly workflowId: string;
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
 }) {
@@ -1028,7 +1032,11 @@ function TriggerRow({
           </Link>
         ) : null}
         {canManage ? (
-          <TriggerControls trigger={trigger} editingMatch={editingMatch} />
+          <TriggerControls
+            workflowId={workflowId}
+            trigger={trigger}
+            editingMatch={editingMatch}
+          />
         ) : null}
         {canManage && trigger.kind === "event" && editingMatch ? (
           <UpdateGmailNewMessageTriggerForm
@@ -1044,12 +1052,15 @@ function TriggerRow({
 }
 
 function TriggerControls({
+  workflowId,
   trigger,
   editingMatch,
 }: {
+  readonly workflowId: string;
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly editingMatch: boolean;
 }) {
+  const agentId = useGet(currentAgentId$);
   const pageSignal = useGet(pageSignal$);
   const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
@@ -1076,6 +1087,22 @@ function TriggerControls({
       >
         Test run
       </button>
+      {agentId ? (
+        <Link
+          pathname={ROUTES.agentWorkflowTriggerPermissions}
+          options={{
+            pathParams: {
+              agentId,
+              workflowId,
+              triggerId: trigger.id,
+            },
+          }}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <IconShieldLock size={13} stroke={1.5} />
+          <span>Permissions</span>
+        </Link>
+      ) : null}
       {trigger.kind === "event" && !editingMatch ? (
         <button
           type="button"
