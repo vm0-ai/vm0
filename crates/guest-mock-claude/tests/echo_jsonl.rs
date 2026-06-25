@@ -315,7 +315,7 @@ fn wait_child(
         Ok(stderr)
     });
 
-    let status = wait_child_status(child);
+    let status = wait_child_status(child)?;
 
     stdout_thread
         .join()
@@ -323,7 +323,6 @@ fn wait_child(
     let stderr = stderr_thread
         .join()
         .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
-    let status = status?;
     Ok((status, stderr))
 }
 
@@ -371,14 +370,13 @@ fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Err
         Ok(stderr)
     });
 
-    let status = wait_child_status(child);
+    let status = wait_child_status(child)?;
     let stdout = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
     let stderr = stderr_thread
         .join()
         .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
-    let status = status?;
 
     Ok(Output {
         status,
