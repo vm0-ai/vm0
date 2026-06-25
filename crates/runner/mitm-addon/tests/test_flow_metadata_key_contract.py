@@ -528,8 +528,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self, body: list[ast.stmt], aliases: set[str]
     ) -> tuple[set[str], bool]:
         violation_count = len(self.violations)
+        checked_node_ids = set(self._metadata_key_checked_node_ids)
         result = self._visit_branch_body(body, aliases)
         del self.violations[violation_count:]
+        self._metadata_key_checked_node_ids = checked_node_ids
         return result
 
     def _visit_except_handler_branch(
@@ -798,9 +800,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._visit_sequence_expression(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:
-        if not self._is_metadata_merge_value(node):
-            for key, value in zip(node.keys, node.values, strict=True):
-                self._record_metadata_merge_key_violations(key)
+        node_is_metadata_merge = self._is_metadata_merge_value(node)
+        for key, value in zip(node.keys, node.values, strict=True):
+            self._record_metadata_merge_key_violations(key)
+            if key is not None or not node_is_metadata_merge:
                 self._record_metadata_merge_key_violations(value)
         self.generic_visit(node)
 
@@ -849,8 +852,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         node_is_metadata_merge = self._is_metadata_merge_value(node)
         self._record_metadata_merge_key_violations(node)
         self._record_metadata_merge_key_violations(node.func)
-        for argument in node.args:
-            if not node_is_metadata_merge:
+        for index, argument in enumerate(node.args):
+            if not node_is_metadata_merge or index > 0:
                 self._record_metadata_merge_key_violations(argument)
         for keyword in node.keywords:
             if not (node_is_metadata_merge and keyword.arg is None):
@@ -1343,6 +1346,7 @@ merged_meta = dict(merged_meta, firewall_action="ALLOW")
 kwargs_merged_meta = dict(**flow.metadata, vm_run_id="run-1")
 dict_inner_union_meta = dict(flow.metadata | {"vm_run_id": "run-1"})
 dict_unpack_union_meta = dict(**(flow.metadata | {"firewall_name": "github"}))
+dict_second_positional_meta = dict(flow.metadata, flow.metadata | {"firewall_action": "ALLOW"})
 kwargs_alias_meta = dict(**flow.metadata)
 kwargs_alias_meta["vm_run_id"] = "run-1"
 conditional_expr_meta = flow.metadata if condition else {}
@@ -1439,6 +1443,7 @@ value = (flow.metadata | {"firewall_api_id": "run-1:0"}).items
 values = [*(flow.metadata | {"suppress_request_body_capture": True})]
 value = rows[:(flow.metadata | {"capture_body": True})]
 values = [{**(flow.metadata | {"connector_diagnostic_base": "https://api.example.com"})}]
+values = {**flow.metadata, "payload": flow.metadata | {"vm_run_id": "run-1"}}
 values = [flow.metadata | {"firewall_permission": "read"} for item in rows]
 for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
     pass
@@ -1535,7 +1540,7 @@ match match_payload:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 136
+    assert len(violations) == 138
     assert all("use metadata_keys." in violation for violation in violations)
 
 
