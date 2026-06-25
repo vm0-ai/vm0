@@ -315,15 +315,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Default the chat composer to a single-line resting height on mobile (below the md breakpoint) instead of the three-line desktop height.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.CustomConnectorProposals]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable custom connector proposal cards, multi-field custom connector definitions, and agent-driven custom connector setup.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
     maintainer: "lancy@vm0.ai",
