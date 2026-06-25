@@ -1483,6 +1483,8 @@ jobs:
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-balloon"
           SVC="${JOB_REF}-balloon"
           GROUP="vm0/balloon-${JOB_REF}"
+          SUBMIT_PID=""
+          ALLOC_PID=""
 
           fail() {
             echo "FAIL: $1"
@@ -1497,6 +1499,14 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
+            if [ -n "$ALLOC_PID" ]; then
+              kill "$ALLOC_PID" 2>/dev/null || true
+              wait "$ALLOC_PID" 2>/dev/null || true
+            fi
+            if [ -n "$SUBMIT_PID" ]; then
+              kill "$SUBMIT_PID" 2>/dev/null || true
+              wait "$SUBMIT_PID" 2>/dev/null || true
+            fi
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
@@ -1653,8 +1663,9 @@ jobs:
           # allocator. The host kill does NOT propagate to the guest process
           # because vsock-guest spawns it independently.
           echo "--- Test 3: balloon re-inflate after pressure release ---"
-          kill $ALLOC_PID 2>/dev/null || true
-          wait $ALLOC_PID 2>/dev/null || true
+          kill "$ALLOC_PID" 2>/dev/null || true
+          wait "$ALLOC_PID" 2>/dev/null || true
+          ALLOC_PID=""
 
           # Verify VM survived the memory pressure test
           vm_alive || fail "VM crashed during memory pressure test"
