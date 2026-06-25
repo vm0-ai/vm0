@@ -143,6 +143,123 @@ function inspectFile(): File {
   );
 }
 
+function codexInspectFile(): File {
+  const meta: Partial<LogDetail> = {
+    id: "b0000000-0000-4000-a000-000000000778",
+    sessionId: "codex-inspect-session",
+    agentId: "c0000000-0000-4000-a000-000000000002",
+    displayName: "Imported Codex Adapter Log",
+    framework: "codex",
+    modelProvider: null,
+    selectedModel: null,
+    triggerSource: "cli",
+    triggerAgentName: null,
+    automationId: null,
+    status: "failed",
+    prompt: "Inspect Codex adapter events",
+    appendSystemPrompt: "Prefer normalized Codex rows",
+    error: "Inspect adapter failed",
+    createdAt: "2026-03-10T16:56:00Z",
+    startedAt: "2026-03-10T16:56:01Z",
+    completedAt: "2026-03-10T16:56:06Z",
+  };
+  const events: AgentEvent[] = [
+    {
+      sequenceNumber: 0,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "inspect-turn-1",
+        item: {
+          id: "inspect-message",
+          type: "agent_message",
+          status: "completed",
+          text: "Codex inspect assistant output remains visible.",
+        },
+      },
+      createdAt: "2026-03-10T16:56:02Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "warning",
+      eventData: {
+        type: "warning",
+        thread_id: "codex-inspect-session",
+        message: "Inspect adapter warning",
+      },
+      createdAt: "2026-03-10T16:56:03Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "turn.plan.updated",
+      eventData: {
+        type: "turn.plan.updated",
+        turn_id: "inspect-turn-1",
+        explanation: "Inspect normalized plan",
+        plan: [{ step: "Review imported Codex event", status: "completed" }],
+      },
+      createdAt: "2026-03-10T16:56:04Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        turn_id: "inspect-turn-1",
+        message: "Inspect transport failed",
+        error: {
+          message: "Inspect transport failed",
+          additional_details: "inspect socket closed",
+        },
+      },
+      createdAt: "2026-03-10T16:56:05Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        turn: {
+          id: "inspect-turn-1",
+          status: "failed",
+          error: {
+            message: "Inspect turn failed",
+            codex_error_info: "inspect model stopped",
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:56:06Z",
+    },
+  ];
+  const runContext: RunContextResponse = {
+    prompt: "Inspect Codex adapter events",
+    appendSystemPrompt: "Prefer normalized Codex rows",
+    runId: "b0000000-0000-4000-a000-000000000778",
+    sessionId: "codex-inspect-session",
+    secretNames: [],
+    vars: {},
+    environment: {},
+    firewalls: [],
+    networkPolicies: null,
+    volumes: [],
+    artifact: null,
+    featureFlags: { zeroDebug: true },
+  };
+
+  return new File(
+    [
+      JSON.stringify({
+        meta,
+        events,
+        context: runContext,
+        networkLogs: [],
+      }),
+    ],
+    "codex-activity-log.json",
+    { type: "application/json" },
+  );
+}
+
 function getFileInput(): HTMLInputElement {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) {
@@ -225,5 +342,70 @@ describe("activity inspect page", () => {
     expect(within(networkTable).getByText("200")).toBeInTheDocument();
     expect(within(networkTable).getByText("123ms")).toBeInTheDocument();
     expect(within(networkTable).getByText("github")).toBeInTheDocument();
+  });
+
+  it("normalizes imported codex adapter events", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(getFileInput(), codexInspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Codex Adapter Log" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Codex inspect assistant output remains visible."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("[warning] Inspect adapter warning"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "P" &&
+          element.textContent?.includes("Inspect normalized plan") === true
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        /Inspect transport failed \(inspect socket closed\)/u,
+      ),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(/Inspect turn failed \(inspect model stopped\)/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText("Search steps"),
+      "Inspect adapter warning",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("(1/4 matched)")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("[warning] Inspect adapter warning"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText((_, element) => {
+        return (
+          element?.tagName === "P" &&
+          element.textContent?.includes("Inspect normalized plan") === true
+        );
+      }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -1020,6 +1020,236 @@ function codexFallbackActivityEvents(): AgentEvent[] {
   ];
 }
 
+function codexAdapterActivityEvents(): AgentEvent[] {
+  return [
+    {
+      sequenceNumber: 0,
+      eventType: "thread.started",
+      eventData: {
+        type: "thread.started",
+        thread_id: "codex-thread-adapter",
+      },
+      createdAt: "2026-03-10T16:00:01Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "warning",
+      eventData: {
+        type: "warning",
+        thread_id: "codex-thread-adapter",
+        message: "Retryable adapter warning",
+      },
+      createdAt: "2026-03-10T16:00:02Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "turn.plan.updated",
+      eventData: {
+        type: "turn.plan.updated",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-plan",
+        explanation: "Refresh adapter event plan",
+        plan: [
+          { step: "Collect app-server events", status: "completed" },
+          { step: "Normalize Platform rows", status: "in_progress" },
+        ],
+      },
+      createdAt: "2026-03-10T16:00:03Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-plan",
+        item: {
+          id: "plan-item",
+          type: "plan",
+          status: "completed",
+          text: "Ship Platform normalizer coverage.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:04Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "msg-before-result",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text before failed summary.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:05Z",
+    },
+    {
+      sequenceNumber: 5,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-failed",
+          type: "command_execution",
+          status: "in_progress",
+          command: "pnpm test adapter",
+        },
+      },
+      createdAt: "2026-03-10T16:00:06Z",
+    },
+    {
+      sequenceNumber: 6,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-failed",
+          type: "command_execution",
+          status: "failed",
+          command: "pnpm test adapter",
+          error: {
+            message: "Command refused by policy",
+            additional_details: "no shell grant",
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "read-declined",
+          type: "file_read",
+          status: "in_progress",
+          path: "src/secret.ts",
+        },
+      },
+      createdAt: "2026-03-10T16:00:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "read-declined",
+          type: "file_read",
+          status: "declined",
+          error: { message: "Read declined by sandbox" },
+        },
+      },
+      createdAt: "2026-03-10T16:00:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "files-failed",
+          type: "file_change",
+          status: "failed",
+          error: { message: "Patch failed before write" },
+          changes: [{ kind: "modify", path: "src/adapter.ts" }],
+        },
+      },
+      createdAt: "2026-03-10T16:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "unknown-object",
+          type: "serverOperation",
+          status: "completed",
+          server: "codex-app-server",
+          details: { nested: "bounded detail" },
+        },
+      },
+      createdAt: "2026-03-10T16:00:11Z",
+    },
+    {
+      sequenceNumber: 11,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-1",
+        message: "Adapter transport failed",
+        error: {
+          message: "Adapter transport failed",
+          additional_details: "socket closed",
+        },
+      },
+      createdAt: "2026-03-10T16:00:12Z",
+    },
+    {
+      sequenceNumber: 12,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-1",
+          status: "failed",
+          duration_ms: 2345,
+          error: {
+            message: "Turn failed",
+            additional_details: "model stopped",
+          },
+        },
+        usage: {
+          input_tokens: 123,
+          output_tokens: 45,
+        },
+      },
+      createdAt: "2026-03-10T16:00:13Z",
+    },
+    {
+      sequenceNumber: 13,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-2",
+        message: "Different turn top-level failure",
+      },
+      createdAt: "2026-03-10T16:00:14Z",
+    },
+    {
+      sequenceNumber: 14,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-3",
+          status: "interrupted",
+          error: {
+            message: "Different turn interrupted",
+            codex_error_info: "user interrupt",
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:15Z",
+    },
+  ];
+}
+
 function codexRunContext(runId: string): RunContextResponse {
   return {
     prompt: "Repair the billing worker retry path",
@@ -2147,6 +2377,121 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Codex stream disconnected.")).not.toHaveLength(
       0,
     );
+  });
+
+  it("normalizes codex app-server adapter events in activity details", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000301";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Codex Adapter Events",
+          framework: "codex",
+          status: "failed",
+          prompt: "Exercise Codex adapter events",
+          error: "Adapter transport failed",
+          startedAt: "2026-03-10T16:00:01Z",
+          completedAt: "2026-03-10T16:00:15Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: codexAdapterActivityEvents(),
+          hasMore: false,
+          framework: "codex",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Codex Adapter Events" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("[warning] Retryable adapter warning"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "P" &&
+          element?.textContent?.includes("Refresh adapter event plan") === true
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Ship Platform normalizer coverage\./u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text before failed summary."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Bash")).not.toHaveLength(0);
+    expect(screen.getAllByText("pnpm test adapter")).not.toHaveLength(0);
+    expect(
+      screen.getAllByText("Command refused by policy (no shell grant)"),
+    ).not.toHaveLength(0);
+    expect(screen.getAllByText("Read")).not.toHaveLength(0);
+    expect(screen.getByText("src/secret.ts")).toBeInTheDocument();
+    expect(screen.getAllByText("Read declined by sandbox")).not.toHaveLength(0);
+    expect(
+      screen.getAllByText((_, element) => {
+        return (
+          element?.tagName === "DIV" &&
+          typeof element.className === "string" &&
+          element.className.includes("wmde-markdown") &&
+          element?.textContent?.includes("[files] Files changed:") === true &&
+          element.textContent.includes("Status: failed") &&
+          element.textContent.includes("Patch failed before write") &&
+          element.textContent.includes("modify src/adapter.ts")
+        );
+      }),
+    ).toHaveLength(1);
+    expect(screen.getByText(/Codex serverOperation/u)).toBeInTheDocument();
+    expect(
+      screen.getByText(/details: \{nested=bounded detail\}/u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Adapter transport failed \(socket closed\)/u),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(/Turn failed \(model stopped\)/u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Different turn top-level failure"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Different turn interrupted \(user interrupt\)/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+    await fill(
+      screen.getByPlaceholderText("Search steps"),
+      "Adapter transport",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Adapter transport failed \(socket closed\)/u),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Different turn top-level failure"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {

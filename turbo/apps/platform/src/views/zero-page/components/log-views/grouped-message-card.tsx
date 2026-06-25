@@ -362,6 +362,7 @@ function ResultMessageCard({
   showConnector?: boolean;
 }) {
   const timestamp = formatEventTime(message.createdAt);
+  const isError = eventData.is_error === true;
   return (
     <div className="relative">
       {showConnector && (
@@ -373,7 +374,7 @@ function ResultMessageCard({
       <details className="group relative" open>
         <summary className="cursor-pointer list-none relative py-2">
           <div className="flex gap-2 items-center">
-            <StatusDot variant="primary" />
+            <StatusDot variant={isError ? "error" : "primary"} />
             <span className="font-semibold text-sm text-foreground">
               Summary
             </span>
