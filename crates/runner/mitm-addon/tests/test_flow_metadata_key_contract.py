@@ -98,6 +98,11 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
         return []
     if isinstance(node, ast.List | ast.Tuple):
         return _metadata_pair_sequence_violations(path, node)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return [
+            *_metadata_dict_key_violations(path, node.left),
+            *_metadata_dict_key_violations(path, node.right),
+        ]
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
         dict_call_violations: list[str] = []
         update_arg = None if not node.args else node.args[0]
@@ -107,8 +112,9 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
     if not isinstance(node, ast.Dict):
         return []
     violations: list[str] = []
-    for key in node.keys:
+    for key, value in zip(node.keys, node.values, strict=True):
         if key is None:
+            violations.extend(_metadata_dict_key_violations(path, value))
             continue
         key_name = _registered_key_name(key)
         if key_name is not None:
@@ -159,12 +165,14 @@ flow.metadata.update(firewall_permission="read")
 flow.metadata |= {"vm_network_log_path": "network.jsonl"}
 flow.metadata = dict(vm_proxy_log_path="proxy.jsonl")
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
+flow.metadata.update({**{"capture_body": True}})
+flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 8
+    assert len(violations) == 11
     assert all("use metadata_keys." in violation for violation in violations)
 
 
