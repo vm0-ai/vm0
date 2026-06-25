@@ -1070,6 +1070,14 @@ const ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/onboarding/setup/extra",
   "/api/zero/onboarding",
 ] as const;
+const ONBOARDING_COMPLETE_LIMITED_FREE_REWRITE_SOURCE =
+  "/api/zero/onboarding/complete-limited-free";
+const ONBOARDING_COMPLETE_LIMITED_FREE_PATH =
+  "/api/zero/onboarding/complete-limited-free";
+const ONBOARDING_COMPLETE_LIMITED_FREE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/onboarding/complete-limited-free/extra",
+  "/api/zero/onboarding",
+] as const;
 const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
 const ZERO_MODEL_PROVIDER_TYPE_PATH =
@@ -2479,6 +2487,11 @@ describe("API backend rewrites", () => {
         {
           source: ONBOARDING_STATUS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/onboarding/status",
+        },
+        {
+          source: ONBOARDING_COMPLETE_LIMITED_FREE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/onboarding/complete-limited-free",
         },
         {
           source: "/api/zero/usage/insight",
@@ -7533,6 +7546,41 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact onboarding setup path", () => {
     expect(matchesApiBackendRewritePath(ONBOARDING_SETUP_PATH)).toBe(true);
     for (const pathname of ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact onboarding complete-limited-free rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ONBOARDING_COMPLETE_LIMITED_FREE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ONBOARDING_COMPLETE_LIMITED_FREE_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/onboarding/complete-limited-free",
+    });
+
+    const matcher = getPathMatch(
+      ONBOARDING_COMPLETE_LIMITED_FREE_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+    expect(matcher(ONBOARDING_COMPLETE_LIMITED_FREE_PATH)).toStrictEqual({});
+    for (const pathname of ONBOARDING_COMPLETE_LIMITED_FREE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact onboarding complete-limited-free path", () => {
+    expect(
+      matchesApiBackendRewritePath(ONBOARDING_COMPLETE_LIMITED_FREE_PATH),
+    ).toBe(true);
+    for (const pathname of ONBOARDING_COMPLETE_LIMITED_FREE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

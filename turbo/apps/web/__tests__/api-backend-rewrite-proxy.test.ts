@@ -3170,6 +3170,20 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
   });
 
+  it("matches the zero onboarding complete-limited-free rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/onboarding/complete-limited-free",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/onboarding/complete-limited-free/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
+  });
+
   it("matches the zero org membership requests rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/org/membership-requests"),

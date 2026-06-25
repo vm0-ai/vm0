@@ -1196,6 +1196,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/maps/:path*", "/api/zero/maps/:path*"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
+  [
+    "/api/zero/onboarding/complete-limited-free",
+    "/api/zero/onboarding/complete-limited-free",
+  ],
   ["/api/zero/usage/insight", "/api/zero/usage/insight"],
   ["/api/zero/usage/members", "/api/zero/usage/members"],
   ["/api/zero/usage/record", "/api/zero/usage/record"],
