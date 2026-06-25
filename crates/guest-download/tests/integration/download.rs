@@ -34,10 +34,9 @@ fn mock_status<'server>(server: &'server MockServer, path: &str, status: u16) ->
     })
 }
 
-fn mock_status_then_gzip_archive<'server>(
+fn mock_500_then_gzip_archive<'server>(
     server: &'server MockServer,
     path: &str,
-    status: u16,
     body: &[u8],
 ) -> Mock<'server> {
     let calls = AtomicUsize::new(0);
@@ -47,7 +46,7 @@ fn mock_status_then_gzip_archive<'server>(
         when.method(GET).path(path);
         then.respond_with(move |_req: &HttpMockRequest| {
             if calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                HttpMockResponse::builder().status(status).build()
+                HttpMockResponse::builder().status(500).build()
             } else {
                 HttpMockResponse::builder()
                     .status(200)
@@ -511,7 +510,7 @@ fn artifact_500_fatal() {
 fn retry_then_succeed() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
-    let mock = mock_status_then_gzip_archive(&server, STORAGE_ARCHIVE_PATH, 500, &tar_gz);
+    let mock = mock_500_then_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
