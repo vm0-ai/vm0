@@ -1100,12 +1100,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._visit_try_statement(node)
 
     def visit_Match(self, node: ast.Match) -> None:
+        subject_is_metadata = self._is_metadata_alias_value(node.subject)
         self._record_metadata_merge_key_violations(node.subject)
         self.visit(node.subject)
         continuing_aliases = set(self._metadata_aliases)
         exit_aliases: set[str] = set()
         has_unmatched_path = True
         for case in node.cases:
+            if subject_is_metadata:
+                self._record_metadata_match_pattern_key_violations(case.pattern)
             names = _pattern_names(case.pattern)
             pattern_is_exhaustive = _pattern_is_exhaustive(case.pattern)
             aliases = set(continuing_aliases)
@@ -1130,6 +1133,20 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if has_unmatched_path:
             exit_aliases.update(continuing_aliases)
         self._replace_current_aliases(exit_aliases)
+
+    def _record_metadata_match_pattern_key_violations(self, pattern: ast.pattern) -> None:
+        if isinstance(pattern, ast.MatchMapping):
+            for key in pattern.keys:
+                key_name = _registered_key_name(key)
+                if key_name is not None:
+                    self._add_violation(_violation(self.path, key, key_name))
+            return
+        if isinstance(pattern, ast.MatchAs) and pattern.pattern is not None:
+            self._record_metadata_match_pattern_key_violations(pattern.pattern)
+            return
+        if isinstance(pattern, ast.MatchOr):
+            for child_pattern in pattern.patterns:
+                self._record_metadata_match_pattern_key_violations(child_pattern)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self._visit_comprehension(node.generators, [node.elt])
@@ -1571,12 +1588,19 @@ match match_payload:
         pass
     case _:
         guard_case_meta["vm_run_id"] = "run-1"
+match flow.metadata:
+    case {"vm_run_id": run_id}:
+        pass
+meta = flow.metadata
+match meta:
+    case {"firewall_name": firewall_name}:
+        pass
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 143
+    assert len(violations) == 145
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1823,6 +1847,12 @@ match payload:
     case meta:
         value = meta["vm_run_id"]
 value = match_meta["vm_run_id"]
+match payload:
+    case {"vm_run_id": external_run_id}:
+        pass
+match flow.metadata:
+    case {"payload": {"vm_run_id": external_run_id}}:
+        pass
 try:
     pass
 except Exception as meta:
