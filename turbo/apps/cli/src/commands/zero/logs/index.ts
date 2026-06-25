@@ -19,12 +19,17 @@ const PAGE_LIMIT = 100;
 interface AgentEventWithFramework {
   readonly event: RunEvent;
   readonly framework?: string;
+  readonly useDefaultFramework: boolean;
 }
 
 function supportedLogFramework(
   framework: string | undefined,
 ): string | undefined {
   return isSupportedFramework(framework) ? framework : undefined;
+}
+
+function hasLogFramework(framework: string | null | undefined): boolean {
+  return framework !== undefined && framework !== null;
 }
 
 function renderAgentEvent(
@@ -54,10 +59,17 @@ async function showAgentEvents(
   const events = await collectLogItems<AgentEventWithFramework>({
     fetchPage: async (request) => {
       const response = await getZeroRunAgentEvents(runId, request);
+      const responseFramework: string | null | undefined = response.framework;
       return {
         items: response.events.map((event) => {
-          const framework = supportedLogFramework(response.framework);
-          return framework ? { event, framework } : { event };
+          const framework = supportedLogFramework(
+            responseFramework ?? undefined,
+          );
+          return {
+            event,
+            ...(framework ? { framework } : {}),
+            useDefaultFramework: !hasLogFramework(responseFramework),
+          };
         }),
         hasMore: response.hasMore,
         nextCursor: response.nextCursor,
@@ -88,7 +100,7 @@ async function showAgentEvents(
       item.event,
       renderer,
       normalizer,
-      item.framework ?? framework,
+      item.framework ?? (item.useDefaultFramework ? framework : undefined),
     );
   }
   for (const parsed of normalizer.flush()) {
