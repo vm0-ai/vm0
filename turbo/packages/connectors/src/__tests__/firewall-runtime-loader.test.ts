@@ -232,8 +232,32 @@ function expectNoGeneratedRuntimeImports(source: string): void {
   }
 }
 
-function isEagerRegistryIndexSpecifier(specifier: string): boolean {
-  return /^\.\/index(?:\.[cm]?[jt]sx?)?$/.test(specifier);
+function isEagerRegistryIndexSpecifier(
+  sourceFilePath: string,
+  specifier: string,
+): boolean {
+  if (
+    /^@vm0\/connectors\/firewalls(?:\/(?:index(?:\.(?:d\.)?[cm]?[jt]sx?)?)?)?$/.test(
+      specifier,
+    )
+  ) {
+    return true;
+  }
+
+  if (!specifier.startsWith(".")) {
+    return false;
+  }
+
+  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
+  const resolvedSpecifier = path.resolve(
+    path.dirname(sourceFilePath),
+    specifier,
+  );
+  const relativeSpecifier = path.relative(firewallsDir, resolvedSpecifier);
+  return (
+    relativeSpecifier === "" ||
+    /^index(?:\.(?:d\.)?[cm]?[jt]sx?)?$/.test(relativeSpecifier)
+  );
 }
 
 function generatedFirewallSourceFiles(): string[] {
@@ -405,7 +429,9 @@ describe("firewall runtime loader", () => {
     for (const filePath of generatedFiles) {
       const source = fs.readFileSync(filePath, "utf-8");
       const eagerIndexSpecifiers = moduleSpecifiers(source).filter(
-        isEagerRegistryIndexSpecifier,
+        (specifier) => {
+          return isEagerRegistryIndexSpecifier(filePath, specifier);
+        },
       );
       if (eagerIndexSpecifiers.length > 0) {
         offenders.push(
