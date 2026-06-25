@@ -954,7 +954,7 @@ export const logsSearchContract = c.router({
     query: z.object({
       keyword: z.string().min(1),
       agentId: z.string().uuid().optional(),
-      runId: z.string().optional(),
+      runId: z.string().uuid().optional(),
       since: timestampQueryNumberSchema.optional(),
       limit: z.coerce.number().int().min(1).max(50).default(20),
       before: z.coerce.number().int().min(0).max(10).default(0),

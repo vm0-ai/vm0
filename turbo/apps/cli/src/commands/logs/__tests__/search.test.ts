@@ -293,6 +293,7 @@ describe("logs search command", () => {
   it("should pass --agent as agentId and --run filters to API", async () => {
     let capturedUrl: URL | undefined;
     const agentId = "550e8400-e29b-41d4-a716-446655440001";
+    const runId = "550e8400-e29b-41d4-a716-446655440002";
     server.use(
       http.get("http://localhost:3000/api/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
@@ -307,11 +308,11 @@ describe("logs search command", () => {
       "--agent",
       agentId,
       "--run",
-      "run-123",
+      runId,
     ]);
 
     expect(capturedUrl?.searchParams.get("agentId")).toBe(agentId);
-    expect(capturedUrl?.searchParams.get("runId")).toBe("run-123");
+    expect(capturedUrl?.searchParams.get("runId")).toBe(runId);
   });
 
   it("should parse --since and send as timestamp", async () => {

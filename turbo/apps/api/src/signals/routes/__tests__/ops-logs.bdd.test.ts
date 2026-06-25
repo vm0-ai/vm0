@@ -416,6 +416,13 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     );
     expectApiError(invalidAfter.body);
 
+    const invalidRunId = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", runId: "not-a-uuid" },
+      [400],
+    );
+    expectApiError(invalidRunId.body);
+
     const axiomCallsBeforeMalformed =
       context.mocks.axiom.query.mock.calls.length;
     context.mocks.axiom.query.mockResolvedValueOnce([
