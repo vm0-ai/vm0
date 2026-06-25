@@ -309,6 +309,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     else:
         request_stream_body = request_streaming.captured_request_stream_body(flow)
         if request_stream_body is not None:
+            request_stream_incomplete = (
+                bool(request_stream_body.buffer)
+                and flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True
+            )
             req_ct = flow.request.headers.get("content-type", "")
             request_body = body_decoding.decode_body_bounded(
                 bytes(request_stream_body.buffer),
@@ -317,7 +321,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 fail_on_unsupported_encoding=True,
             )
             if request_body.failed:
-                if request_stream_body.truncated:
+                if request_stream_body.truncated or request_stream_incomplete:
                     log_entry["request_body_truncated"] = True
                 log_entry["request_body_encoding"] = "binary"
             else:
@@ -326,7 +330,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                     "request",
                     request_body.body,
                     req_ct,
-                    already_truncated=request_stream_body.truncated,
+                    already_truncated=request_stream_body.truncated or request_stream_incomplete,
                 )
         elif flow.request.raw_content:
             req_ct = flow.request.headers.get("content-type", "")

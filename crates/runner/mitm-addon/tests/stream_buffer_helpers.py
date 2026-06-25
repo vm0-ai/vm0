@@ -28,6 +28,7 @@ def set_request_stream_buffer(
     flow: http.HTTPFlow,
     body: bytes,
     *,
+    complete: bool = True,
     truncated: bool = False,
 ) -> None:
     """Seed request stream metadata with the hook-owned key/state shape."""
@@ -36,3 +37,7 @@ def set_request_stream_buffer(
         "truncated": truncated,
         "total_bytes": len(body) + 1 if truncated else len(body),
     }
+    if complete:
+        flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+    else:
+        flow.metadata.pop(metadata_keys.REQUEST_STREAM_COMPLETE, None)

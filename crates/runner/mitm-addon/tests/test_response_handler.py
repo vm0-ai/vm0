@@ -1078,6 +1078,62 @@ class TestResponseHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert flow.request.stream is False
 
+    async def test_firewalled_partial_streamed_request_marks_capture_truncated(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                network_policy={
+                    "allow": ["full-access"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+                vm_fields={"captureNetworkBodies": True},
+            ),
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            method="POST",
+            path="/repos/octocat/hello",
+            request_headers=headers(
+                ("Host", "api.github.com"),
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+            ),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
+        ):
+            requestheaders_result = mitm_addon.requestheaders(flow)
+            assert requestheaders_result is not None
+            await requestheaders_result
+            stream = flow.request.stream
+            assert callable(stream)
+            assert stream(b'{"partial":true') == b'{"partial":true'
+            flow.response = tutils.tresp(
+                status_code=200,
+                headers=header_map({"content-length": "0", "content-type": "application/json"}),
+            )
+            mitm_addon.response(flow)
+
+        entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+        assert entry["request_size"] == len(b'{"partial":true')
+        assert entry["request_body"] == '{"partial":true'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
     async def test_unknown_length_get_without_body_logs_zero_request_size(
         self, tmp_path, real_flow, mitm_ctx
     ):
