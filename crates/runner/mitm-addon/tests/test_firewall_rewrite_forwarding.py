@@ -846,7 +846,7 @@ class TestAuthBaseUrlRewriteForwarding:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         mock_forward = AsyncMock(side_effect=forwarder.AuthBaseForwardingSaturatedError())
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -863,10 +863,12 @@ class TestAuthBaseUrlRewriteForwarding:
         assert body["message"] == "auth.base forwarding is temporarily saturated"
         assert body["permission"] == allow.name
         assert body["base"] == allow.api_entry["base"]
-        assert "auth_url_rewrite" not in flow.metadata
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
-        assert flow.metadata["suppress_request_body_capture"] is True
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert (
+            flow.metadata[metadata_keys.FIREWALL_ERROR] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+        )
+        assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
 
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "auth.base forwarding admission saturated" in log_text
