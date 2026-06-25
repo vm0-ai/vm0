@@ -12,6 +12,10 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { logsCommand } from "../index";
 
+const RUN_ID = "abc12345-1234-1234-1234-123456789abc";
+const MISSING_RUN_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const INVALID_RUN_ID = "run-123";
+
 function countOccurrences(text: string, pattern: string): number {
   return text.split(pattern).length - 1;
 }
@@ -87,7 +91,7 @@ describe("logs command", () => {
   describe("agent events (default)", () => {
     it("should reject non-UUID run IDs", async () => {
       await expect(
-        logsCommand.parseAsync(["node", "cli", "run-123"]),
+        logsCommand.parseAsync(["node", "cli", INVALID_RUN_ID]),
       ).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
@@ -121,11 +125,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Hello, world!");
@@ -157,11 +157,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("[invalid-date]");
@@ -182,11 +178,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No agent events found");
@@ -242,12 +234,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Page 1");
@@ -304,12 +291,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Started");
@@ -373,12 +355,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Future framework legacy output");
@@ -429,13 +406,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "2",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "2"]);
 
       // Should only make 1 request since we got enough events
       expect(requestCount).toBe(1);
@@ -519,13 +490,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "3",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "3"]);
 
       // Should make 2 requests to collect 3 events
       expect(requestCount).toBe(2);
@@ -586,12 +551,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       expect(capturedCursorValues).toHaveLength(2);
       expect(capturedCursorValues[0]).toBeNull();
@@ -632,13 +592,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "101",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "101"]);
 
       expect(capturedCursors).toStrictEqual([null, "sequence:desc:101"]);
       expect(capturedLimits).toStrictEqual(["100", "1"]);
@@ -690,12 +644,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       // Should stop after 2 requests (not infinite loop)
       expect(requestCount).toBe(2);
@@ -739,12 +688,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       expect(requestCount).toBe(2);
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -791,12 +735,7 @@ describe("logs command", () => {
       );
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-          "--all",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
       }).rejects.toThrow("process.exit called");
 
       expect(requestCount).toBe(2);
@@ -858,11 +797,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Read");
@@ -944,13 +879,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("printf false");
@@ -1021,13 +950,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("echo no-id");
@@ -1103,13 +1026,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("first command");
@@ -1188,13 +1105,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("first result");
@@ -1260,13 +1171,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("TodoWrite");
@@ -1325,13 +1230,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("TodoWrite");
@@ -1392,13 +1291,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("task-0");
@@ -1432,11 +1325,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       // Result events are handled without error
       expect(mockExit).not.toHaveBeenCalled();
@@ -1466,11 +1355,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       // Should not crash on unknown event types
       expect(mockExit).not.toHaveBeenCalled();
@@ -1500,11 +1385,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       // Should handle empty content gracefully
       expect(mockExit).not.toHaveBeenCalled();
@@ -1531,11 +1412,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       // Should handle malformed data gracefully
       expect(mockExit).not.toHaveBeenCalled();
@@ -1596,13 +1473,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Started");
@@ -1656,13 +1527,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Bash");
@@ -1744,13 +1609,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Bash");
@@ -1811,13 +1670,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("ls /nonexistent");
@@ -1921,13 +1774,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Edit");
@@ -1970,13 +1817,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("[thinking] Considering the trade-offs");
@@ -2014,13 +1855,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("[files]");
@@ -2062,13 +1897,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2119,13 +1948,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2161,13 +1984,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "1",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "1"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2207,13 +2024,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2254,13 +2065,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2312,13 +2117,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -2366,11 +2165,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -2419,13 +2214,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2472,13 +2261,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2523,13 +2306,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2573,13 +2350,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2626,13 +2397,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2677,13 +2442,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Completed");
@@ -2728,13 +2487,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Completed");
@@ -2784,13 +2537,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Completed");
@@ -2838,13 +2585,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Failed");
@@ -2889,13 +2630,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Codex Completed");
@@ -2952,13 +2687,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -3019,13 +2748,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -3082,13 +2805,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -3139,13 +2856,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
@@ -3202,13 +2913,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
@@ -3265,13 +2970,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
@@ -3345,13 +3044,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("[warning] configuration warning");
@@ -3409,13 +3102,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("pending: step-0");
@@ -3509,13 +3196,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("deploy");
@@ -3594,13 +3275,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("permission denied");
@@ -3667,13 +3342,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       const commandIndex = logCalls.indexOf("printf delayed");
@@ -3745,13 +3414,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(mockExit).not.toHaveBeenCalled();
@@ -3796,13 +3459,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(mockExit).not.toHaveBeenCalled();
@@ -3840,13 +3497,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "100",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(mockExit).not.toHaveBeenCalled();
@@ -3870,12 +3521,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--system",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--system"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("System started");
@@ -3895,12 +3541,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--system",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--system"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No system log found");
@@ -3935,7 +3576,7 @@ describe("logs command", () => {
       await logsCommand.parseAsync([
         "node",
         "cli",
-        "abc12345-1234-1234-1234-123456789abc",
+        RUN_ID,
         "--system",
         "--all",
       ]);
@@ -3975,7 +3616,7 @@ describe("logs command", () => {
       await logsCommand.parseAsync([
         "node",
         "cli",
-        "abc12345-1234-1234-1234-123456789abc",
+        RUN_ID,
         "--system",
         "--all",
       ]);
@@ -4012,12 +3653,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--system",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--system"]);
 
       expect(capturedCursors).toStrictEqual([null, "time:desc:1"]);
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -4049,12 +3685,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--metrics",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--metrics"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("CPU:");
@@ -4076,12 +3707,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--metrics",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--metrics"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No metrics found");
@@ -4114,12 +3740,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("GET");
@@ -4149,12 +3770,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("DENY");
@@ -4191,12 +3807,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("BLOCK");
@@ -4231,12 +3842,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("BLOCK");
@@ -4272,12 +3878,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("502");
@@ -4316,12 +3917,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("connector diagnostic");
@@ -4354,12 +3950,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("TCP");
@@ -4391,12 +3982,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("TCP");
@@ -4427,12 +4013,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("DNS");
@@ -4453,12 +4034,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No network logs found");
@@ -4471,7 +4047,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--system",
           "--metrics",
         ]);
@@ -4501,7 +4077,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--tail",
           "10",
           "--head",
@@ -4520,7 +4096,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--tail",
           "10",
           "--all",
@@ -4538,7 +4114,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--head",
           "10",
           "--all",
@@ -4553,13 +4129,7 @@ describe("logs command", () => {
 
     it("should exit with error when --tail is not a positive integer", async () => {
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-          "--tail",
-          "abc",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "abc"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4571,13 +4141,7 @@ describe("logs command", () => {
       mockConsoleError.mockClear();
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-          "--tail",
-          "000",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "000"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4589,13 +4153,7 @@ describe("logs command", () => {
       mockConsoleError.mockClear();
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-          "--tail",
-          "1e2",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "1e2"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4606,13 +4164,7 @@ describe("logs command", () => {
 
     it("should exit with error when --head is not a positive integer", async () => {
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-          "--head",
-          "0",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "0"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4637,11 +4189,7 @@ describe("logs command", () => {
       );
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4664,11 +4212,7 @@ describe("logs command", () => {
       );
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "ffffffff-ffff-4fff-8fff-ffffffffffff",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", MISSING_RUN_ID]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4695,7 +4239,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--since",
           "invalid-time",
         ]);
@@ -4712,7 +4256,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--since",
           "2024-02-30T00:00:00Z",
         ]);
@@ -4729,7 +4273,7 @@ describe("logs command", () => {
         await logsCommand.parseAsync([
           "node",
           "cli",
-          "abc12345-1234-1234-1234-123456789abc",
+          RUN_ID,
           "--since",
           "8640000000000001",
         ]);
@@ -4755,11 +4299,7 @@ describe("logs command", () => {
       );
 
       await expect(async () => {
-        await logsCommand.parseAsync([
-          "node",
-          "cli",
-          "abc12345-1234-1234-1234-123456789abc",
-        ]);
+        await logsCommand.parseAsync(["node", "cli", RUN_ID]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -4796,17 +4336,11 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("View on platform:");
-      expect(logCalls).toContain(
-        "http://localhost:3001/logs/abc12345-1234-1234-1234-123456789abc",
-      );
+      expect(logCalls).toContain(`http://localhost:3001/logs/${RUN_ID}`);
     });
 
     it("should NOT display platform URL for system logs", async () => {
@@ -4822,12 +4356,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--system",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--system"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("View on platform:");
@@ -4855,12 +4384,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--metrics",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--metrics"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("View on platform:");
@@ -4888,12 +4412,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--network",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("View on platform:");
@@ -4925,16 +4444,10 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/logs/abc12345-1234-1234-1234-123456789abc",
-      );
+      expect(logCalls).toContain(`https://app.vm0.ai/logs/${RUN_ID}`);
     });
 
     it("should not double-prefix when input URL already has app subdomain", async () => {
@@ -4963,16 +4476,10 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/logs/abc12345-1234-1234-1234-123456789abc",
-      );
+      expect(logCalls).toContain(`https://app.vm0.ai/logs/${RUN_ID}`);
       expect(logCalls).not.toContain("app.app.");
     });
 
@@ -5002,16 +4509,10 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/logs/abc12345-1234-1234-1234-123456789abc",
-      );
+      expect(logCalls).toContain(`https://app.vm0.ai/logs/${RUN_ID}`);
       expect(logCalls).not.toContain("app.platform.");
     });
 
@@ -5041,16 +4542,10 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm7.ai:8443/logs/abc12345-1234-1234-1234-123456789abc",
-      );
+      expect(logCalls).toContain(`https://app.vm7.ai:8443/logs/${RUN_ID}`);
     });
   });
 
@@ -5072,13 +4567,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--since",
-        "5m",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--since", "5m"]);
 
       expect(capturedQuery?.sinceTime).toBeDefined();
       expect(capturedQuery?.since).toBeUndefined();
@@ -5101,13 +4590,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "020",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "020"]);
 
       // Small finite requests only fetch the remaining target count.
       expect(capturedQuery?.limit).toBe("20");
@@ -5131,13 +4614,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--head",
-        "010",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "010"]);
 
       // Small finite requests only fetch the remaining target count.
       expect(capturedQuery?.limit).toBe("10");
@@ -5161,13 +4638,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--tail",
-        "500",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--tail", "500"]);
 
       // Per-page limit is capped at 100
       expect(capturedQuery?.limit).toBe("100");
@@ -5190,12 +4661,7 @@ describe("logs command", () => {
         ),
       );
 
-      await logsCommand.parseAsync([
-        "node",
-        "cli",
-        "abc12345-1234-1234-1234-123456789abc",
-        "--all",
-      ]);
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--all"]);
 
       // --all uses page limit of 100 and fetches all pages
       expect(capturedQuery?.limit).toBe("100");
@@ -5222,7 +4688,7 @@ describe("logs command", () => {
       await logsCommand.parseAsync([
         "node",
         "cli",
-        "abc12345-1234-1234-1234-123456789abc",
+        RUN_ID,
         "--all",
         "--since",
         "5m",
