@@ -1,5 +1,4 @@
 use super::create::create_slot;
-use super::slot::destroy_slot_async;
 use super::state::CowPool;
 use super::*;
 use std::collections::VecDeque;

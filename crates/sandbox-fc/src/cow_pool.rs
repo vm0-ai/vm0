@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 pub(crate) use actor::CowPoolHandle;
-pub(crate) use slot::{PrewarmedSlot, destroy_slot_sync};
+pub(crate) use slot::{PrewarmedSlot, destroy_slot_async, destroy_slot_sync};
 
 /// Number of ready COW slots to keep warm in steady state.
 const BUFFER_SIZE: usize = 4;

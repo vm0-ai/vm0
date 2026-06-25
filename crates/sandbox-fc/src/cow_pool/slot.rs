@@ -64,7 +64,7 @@ pub(crate) struct PrewarmedSlot {
     workspace: PathBuf,
     cleanup: Option<SlotWorkspaceCleanup>,
     #[cfg(test)]
-    pub(crate) drop_notify: Option<oneshot::Sender<PathBuf>>,
+    pub(super) drop_notify: Option<oneshot::Sender<PathBuf>>,
 }
 
 impl PrewarmedSlot {

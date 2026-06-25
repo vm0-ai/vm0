@@ -10,10 +10,9 @@ use tracing::{error, info, warn};
 #[cfg(test)]
 use super::CowPoolSnapshot;
 use super::create::default_slot_spawner;
-use super::slot::destroy_slot_async;
 use super::{
     AcquireResult, BUFFER_SIZE, CowPoolConfig, CowPoolError, MAX_CONCURRENT_SLOT_CREATIONS,
-    MAX_SLOTS, PrewarmedSlot, SlotSpawner, WARM_RETRY_BACKOFF,
+    MAX_SLOTS, PrewarmedSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_slot_async,
 };
 
 #[derive(Clone, Copy, Debug)]
