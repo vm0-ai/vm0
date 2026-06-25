@@ -1553,10 +1553,12 @@ async def request(flow: http.HTTPFlow) -> None:
     3. Firewall match (inject auth headers for allowed requests)
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
+        _release_auth_base_forward_admission(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
     if flow.response is not None or flow.error is not None:
+        _release_auth_base_forward_admission(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 

@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import auth
@@ -1157,6 +1158,39 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
 
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_requestheaders_admission_released_when_request_already_has_response(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"ok",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        flow.response = http.Response.make(204)
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 204
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
