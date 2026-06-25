@@ -28,12 +28,13 @@ from .response_parser import ConnectorResponseParser
 _ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
 _ResponseParserFactory = Callable[[http.HTTPFlow, str], ConnectorResponseParser | None]
 
-# Map firewall_name → per-connector report_usage handler.  A handler is only
+# Map firewall_name → per-connector report_usage handler. A handler is only
 # invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, so the
-# BILLABLE_CONNECTORS whitelist in ``@vm0/core`` and this table must stay
-# in sync.  (The web layer controls who shows up as ``billable``; this
-# table controls who we know how to parse.  Desync manifests as a
-# dropped billing record plus a missing handler in test coverage.)
+# TypeScript firewall execution metadata's billable flags and this table must
+# stay in sync. (The web layer controls which firewalls show up in the runner
+# claim's ``billableFirewalls`` list; this table controls which billable flows
+# we know how to parse. Desync manifests as a dropped billing record plus a
+# missing handler in test coverage.)
 _HANDLERS: dict[str, _ConnectorUsageHandler] = {
     "x": x.report_usage,
 }
@@ -48,9 +49,9 @@ _RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
 
 # One-shot guard: first time we see a billable firewall_name with no
 # registered handler, warn once per name per addon process.  Catches the
-# deployment-desync case where ``@vm0/core``'s ``BILLABLE_CONNECTORS`` has
-# grown but the runner is on an older addon image — without this, billing
-# records silently drop with no local signal.
+# deployment-desync case where the TypeScript firewall execution metadata's
+# billable flags have grown but the runner is on an older addon image — without
+# this, billing records silently drop with no local signal.
 _unregistered_handler_warned: set[str] = set()
 
 
@@ -73,8 +74,8 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     - ``flow.metadata[metadata_keys.FIREWALL_NAME]`` has no registered handler (covers
       both the model-provider path — routed through
       :func:`report_model_provider_usage` instead — and any firewall that
-      ``@vm0/core``'s ``BILLABLE_CONNECTORS`` flags as billable but which
-      this addon version does not yet know how to parse).
+      TypeScript marked billable but which this addon version does not yet know
+      how to parse).
     """
     if not run_id:
         return
@@ -91,7 +92,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
-                "BILLABLE_CONNECTORS in @vm0/core and _HANDLERS here are in sync.",
+                "TypeScript firewall billable metadata and _HANDLERS here are in sync.",
                 "unregistered_billable_handler",
                 "confirmed",
                 firewall_name=firewall_name,

@@ -7,7 +7,11 @@ import type {
   FirewallConfig,
   FirewallPolicyValue,
 } from "../../connectors/src/firewall-types";
-import type { FirewallConnectorType } from "../../connectors/src/firewalls";
+import {
+  BILLABLE_FIREWALL_CONNECTOR_TYPES,
+  FIREWALL_CONNECTOR_TYPES,
+  type FirewallConnectorType,
+} from "./connector-firewall-manifest";
 
 const GENERATED_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -37,25 +41,14 @@ export interface ConnectorFirewallSource {
   readonly defaultUnknownPolicy: FirewallPolicyValue;
 }
 
-interface RegisteredFirewallSource {
-  readonly type: FirewallConnectorType;
-  readonly firewallExportName: string;
-}
-
 export interface ConnectorFirewallSourceSetOptions {
   readonly firewallsDir: string;
   readonly connectorsDir: string;
-  readonly firewallsIndexFile: string;
 }
 
 interface ConnectorFirewallSourceSet {
   readonly sources: readonly ConnectorFirewallSource[];
   readonly registryOrderedSources: readonly ConnectorFirewallSource[];
-  readonly billableTypes: ReadonlySet<FirewallConnectorType>;
-}
-
-interface FirewallsIndexSource {
-  readonly registeredSources: readonly RegisteredFirewallSource[];
   readonly billableTypes: ReadonlySet<FirewallConnectorType>;
 }
 
@@ -167,22 +160,6 @@ function unwrapObjectLiteral(
     ts.isParenthesizedExpression(expression)
   ) {
     return unwrapObjectLiteral(expression.expression);
-  }
-  return null;
-}
-
-function unwrapArrayLiteral(
-  expression: ts.Expression,
-): ts.ArrayLiteralExpression | null {
-  if (ts.isArrayLiteralExpression(expression)) {
-    return expression;
-  }
-  if (
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression) ||
-    ts.isParenthesizedExpression(expression)
-  ) {
-    return unwrapArrayLiteral(expression.expression);
   }
   return null;
 }
@@ -347,12 +324,26 @@ export function generatedFirewallFileName(type: FirewallConnectorType): string {
   return `${type}.generated.ts`;
 }
 
+export function generatedFirewallExportName(
+  type: FirewallConnectorType,
+): string {
+  return `${type
+    .split("-")
+    .map((segment, index) => {
+      if (index === 0) {
+        return segment;
+      }
+      return `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`;
+    })
+    .join("")}Firewall`;
+}
+
 async function loadGeneratedFirewallSource(
   firewallsDir: string,
   connectorsDir: string,
-  registration: RegisteredFirewallSource,
+  type: FirewallConnectorType,
 ): Promise<ConnectorFirewallSource> {
-  const { type, firewallExportName } = registration;
+  const firewallExportName = generatedFirewallExportName(type);
   const connectorMetadata = loadConnectorMetadata(connectorsDir, type);
   const moduleExports = await importModule(
     path.join(firewallsDir, generatedFirewallFileName(type)),
@@ -405,127 +396,6 @@ async function loadGeneratedFirewallSource(
   };
 }
 
-function findConnectorFirewallsRegistry(
-  sourceFile: ts.SourceFile,
-): ts.ObjectLiteralExpression | null {
-  let registry: ts.ObjectLiteralExpression | null = null;
-
-  function visit(node: ts.Node): void {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "CONNECTOR_FIREWALLS" &&
-      node.initializer &&
-      ts.isCallExpression(node.initializer)
-    ) {
-      const [firstArgument] = node.initializer.arguments;
-      if (firstArgument) {
-        registry = unwrapObjectLiteral(firstArgument);
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return registry;
-}
-
-function findVariableInitializer(
-  sourceFile: ts.SourceFile,
-  variableName: string,
-): ts.Expression | null {
-  let initializer: ts.Expression | null = null;
-
-  function visit(node: ts.Node): void {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === variableName &&
-      node.initializer
-    ) {
-      if (initializer) {
-        throw new Error(`Duplicate variable declaration: ${variableName}`);
-      }
-      initializer = node.initializer;
-      return;
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return initializer;
-}
-
-function extractRegisteredFirewallSources(
-  sourceFile: ts.SourceFile,
-): RegisteredFirewallSource[] {
-  const registry = findConnectorFirewallsRegistry(sourceFile);
-
-  if (!registry) {
-    throw new Error("Unable to find CONNECTOR_FIREWALLS registry");
-  }
-
-  return registry.properties.map((property) => {
-    if (!ts.isPropertyAssignment(property)) {
-      throw new Error("CONNECTOR_FIREWALLS must only contain property entries");
-    }
-    const name = propertyNameText(property.name);
-    if (!name) {
-      throw new Error("CONNECTOR_FIREWALLS contains an unsupported key");
-    }
-    if (!ts.isIdentifier(property.initializer)) {
-      throw new Error(
-        `CONNECTOR_FIREWALLS contains an unsupported value for: ${name}`,
-      );
-    }
-    return {
-      type: name as FirewallConnectorType,
-      firewallExportName: property.initializer.text,
-    };
-  });
-}
-
-function extractBillableConnectorTypes(
-  sourceFile: ts.SourceFile,
-): ReadonlySet<FirewallConnectorType> {
-  const initializer = findVariableInitializer(
-    sourceFile,
-    "BILLABLE_CONNECTORS",
-  );
-  const entries = initializer ? unwrapArrayLiteral(initializer) : null;
-  if (!entries) {
-    throw new Error("Unable to find BILLABLE_CONNECTORS registry");
-  }
-
-  const billable = new Set<FirewallConnectorType>();
-  for (const element of entries.elements) {
-    const type = stringLiteralText(element);
-    if (type === null) {
-      throw new Error("BILLABLE_CONNECTORS must only contain string entries");
-    }
-    billable.add(type as FirewallConnectorType);
-  }
-  return billable;
-}
-
-function loadFirewallsIndexSource(
-  firewallsIndexFile: string,
-): FirewallsIndexSource {
-  const source = fs.readFileSync(firewallsIndexFile, "utf-8");
-  const sourceFile = ts.createSourceFile(
-    firewallsIndexFile,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-
-  return {
-    registeredSources: extractRegisteredFirewallSources(sourceFile),
-    billableTypes: extractBillableConnectorTypes(sourceFile),
-  };
-}
-
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -533,29 +403,18 @@ function compareStrings(a: string, b: string): number {
 export async function loadConnectorFirewallSourceSet({
   firewallsDir,
   connectorsDir,
-  firewallsIndexFile,
 }: ConnectorFirewallSourceSetOptions): Promise<ConnectorFirewallSourceSet> {
-  const { registeredSources, billableTypes } =
-    loadFirewallsIndexSource(firewallsIndexFile);
   const sources = await Promise.all(
-    [...registeredSources]
-      .sort((a, b) => {
-        return compareStrings(a.type, b.type);
-      })
-      .map((registration) => {
-        return loadGeneratedFirewallSource(
-          firewallsDir,
-          connectorsDir,
-          registration,
-        );
-      }),
+    [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings).map((type) => {
+      return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
+    }),
   );
   const sourceByType = new Map<FirewallConnectorType, ConnectorFirewallSource>(
     sources.map((source) => {
       return [source.type, source];
     }),
   );
-  const registryOrderedSources = registeredSources.map(({ type }) => {
+  const registryOrderedSources = FIREWALL_CONNECTOR_TYPES.map((type) => {
     const source = sourceByType.get(type);
     if (!source) {
       throw new Error(`Missing firewall metadata source: ${type}`);
@@ -566,6 +425,6 @@ export async function loadConnectorFirewallSourceSet({
   return {
     sources,
     registryOrderedSources,
-    billableTypes,
+    billableTypes: new Set(BILLABLE_FIREWALL_CONNECTOR_TYPES),
   };
 }

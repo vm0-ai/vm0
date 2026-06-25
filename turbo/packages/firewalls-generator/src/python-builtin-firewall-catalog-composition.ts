@@ -46,17 +46,15 @@ interface RenderComposedPythonBuiltinFirewallCatalogOptions extends ComposePytho
 }
 
 function defaultConnectorSourceSetOptions(): ConnectorFirewallSourceSetOptions {
-  const firewallsDir = path.resolve(
-    import.meta.dirname,
-    "../../connectors/src/firewalls",
-  );
   return {
-    firewallsDir,
+    firewallsDir: path.resolve(
+      import.meta.dirname,
+      "../../connectors/src/firewalls",
+    ),
     connectorsDir: path.resolve(
       import.meta.dirname,
       "../../connectors/src/connectors",
     ),
-    firewallsIndexFile: path.join(firewallsDir, "index.ts"),
   };
 }
 

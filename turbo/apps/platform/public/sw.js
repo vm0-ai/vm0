@@ -11,7 +11,8 @@ function isStaticAsset(url) {
 function isRevalidatedStaticAsset(url) {
   return (
     url.origin === self.location.origin &&
-    url.pathname.startsWith("/firewall-metadata/")
+    (url.pathname.startsWith("/firewall-metadata/") ||
+      url.pathname.startsWith("/firewall-runtime/"))
   );
 }
 
@@ -84,7 +85,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   if (isRevalidatedStaticAsset(url)) {
-    // Stable generated metadata URLs must revalidate instead of being served
+    // Stable generated firewall URLs must revalidate instead of being served
     // cache-first like content-hashed Vite assets.
     event.respondWith(fetchRevalidatedStaticAsset(event.request));
     return;

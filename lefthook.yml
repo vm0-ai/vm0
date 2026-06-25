@@ -67,8 +67,8 @@ pre-commit:
       fail_text: |
         File size check failed. Some staged files exceed the 1MB limit.
         Run 'git diff --cached --name-only' to see staged files.
-    - name: ensure-connector-firewalls-index-only
-      run: ./scripts/ensure-connector-firewalls-index-only.sh
+    - name: ensure-generated-connector-firewalls-untracked
+      run: ./scripts/ensure-generated-connector-firewalls-untracked.sh
       fail_text: |
         Generated connector firewall files and metadata must not be committed.
         Run 'git rm --cached -- <file>' for each listed file.
