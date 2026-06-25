@@ -15,6 +15,7 @@ import {
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -121,6 +122,21 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_insert_run_record",
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_build_stored_execution_context",
+] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_by_compose_id",
+  "api_dispatch_resolve_compose_by_version_id",
+  "api_dispatch_resolve_compose_by_session_id",
+  "api_dispatch_resolve_compose_by_checkpoint_id",
+] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_lookup_compose",
+  "api_dispatch_resolve_compose_lookup_version",
+  "api_dispatch_resolve_compose_lookup_session",
+  "api_dispatch_resolve_compose_lookup_checkpoint",
+  "api_dispatch_resolve_compose_load_resume_session",
+  "api_dispatch_resolve_compose_resolve_session_history",
+  "api_dispatch_resolve_compose_lookup_session_vars",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -313,6 +329,53 @@ function apiDispatchTimingEventsForRun(
   });
 }
 
+function apiDispatchActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
+function expectApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of expectedActionTypes) {
+    expect(observedActionTypes).toContain(actionType);
+  }
+}
+
+function expectNoApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of unexpectedActionTypes) {
+    expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function mockSessionHistoryBlob(hash: string, history: string): void {
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: string } })
+      .input;
+    if (input?.Key === `blobs/${hash}.blob`) {
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from(history, "utf8");
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
+  });
+}
+
 /**
  * Wire-shape `~/.codex/auth.json` paste payload for the personal
  * codex-oauth-token provider upsert (the server parses and never stores it).
@@ -419,14 +482,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
-    const observedActionTypes = new Set(
-      timingEvents.map((event) => {
-        return event.op_type;
+    expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_compose_id",
+      "api_dispatch_resolve_compose_lookup_compose",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_compose_id";
       }),
     );
-    for (const actionType of API_DISPATCH_TIMING_ACTION_TYPES) {
-      expect(observedActionTypes).toContain(actionType);
-    }
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_compose";
+      }),
+    );
+    const observedActionTypes = apiDispatchActionTypes(timingEvents);
     const preCreateEvents = timingEvents.filter((event) => {
       return event.op_type === "api_dispatch_pre_create_agent_run";
     });
@@ -473,6 +546,164 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(prompt);
       expect(serialized).not.toContain(agentId);
     }
+  });
+
+  it("emits compose resolution timing for direct compose version runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "version timing should not leak prompt";
+    const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const [composeRow] = await writeDb
+      .select({ headVersionId: agentComposes.headVersionId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, compose.composeId))
+      .limit(1);
+    const headVersionId = composeRow?.headVersionId;
+    if (!headVersionId) {
+      throw new Error("Expected created compose to have a head version id");
+    }
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_version_id",
+      "api_dispatch_resolve_compose_lookup_version",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_version_id";
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_version";
+      }),
+    );
+    for (const event of timingEvents) {
+      expect(JSON.stringify(event)).not.toContain(prompt);
+      expect(JSON.stringify(event)).not.toContain(headVersionId);
+    }
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits compose resolution timing for session and checkpoint resume runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(first.runId);
+    const history = `bdd timing session history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-timing-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    const checkpointId = completed.result?.checkpointId;
+    if (!checkpointId) {
+      throw new Error("Expected checkpointed timing run to expose checkpoint");
+    }
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
+    expectApiDispatchActions(sessionTimingEvents, [
+      "api_dispatch_resolve_compose_by_session_id",
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    expectNoApiDispatchActions(
+      sessionTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_session_id";
+      }),
+    );
+    for (const event of sessionTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(first.sessionId);
+    }
+
+    const checkpointZeroToken = "bdd-checkpoint-zero-token";
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume checkpoint with timing",
+      secrets: { ZERO_TOKEN: checkpointZeroToken },
+    });
+    const checkpointTimingEvents = apiDispatchTimingEventsForRun(
+      checkpointRun.runId,
+    );
+    expectApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_by_checkpoint_id",
+      "api_dispatch_resolve_compose_lookup_checkpoint",
+      "api_dispatch_resolve_compose_lookup_version",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+    ]);
+    expectNoApiDispatchActions(
+      checkpointTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_checkpoint_id";
+      }),
+    );
+    expectNoApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    for (const event of checkpointTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(checkpointId);
+      expect(serialized).not.toContain(checkpointZeroToken);
+    }
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
   it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {

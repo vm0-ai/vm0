@@ -194,6 +194,17 @@ type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_validate_environment"
   | "api_dispatch_prepare_context_load_user_timezone"
   | "api_dispatch_prepare_context_prepare_output_metadata"
+  | "api_dispatch_resolve_compose_by_compose_id"
+  | "api_dispatch_resolve_compose_by_version_id"
+  | "api_dispatch_resolve_compose_by_session_id"
+  | "api_dispatch_resolve_compose_by_checkpoint_id"
+  | "api_dispatch_resolve_compose_lookup_compose"
+  | "api_dispatch_resolve_compose_lookup_version"
+  | "api_dispatch_resolve_compose_lookup_session"
+  | "api_dispatch_resolve_compose_lookup_checkpoint"
+  | "api_dispatch_resolve_compose_load_resume_session"
+  | "api_dispatch_resolve_compose_resolve_session_history"
+  | "api_dispatch_resolve_compose_lookup_session_vars"
   | "api_dispatch_check_vm0_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_mark_pending_heartbeat"
@@ -2898,22 +2909,30 @@ async function checkOrgRunTier(
 async function lookupComposeByVersion(
   db: Db,
   versionId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await db
-    .select({
-      versionContent: agentComposeVersions.content,
-      composeName: agentComposes.name,
-      composeOrgId: agentComposes.orgId,
-      composeId: agentComposes.id,
-      composeUserId: agentComposes.userId,
-    })
-    .from(agentComposeVersions)
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .where(eq(agentComposeVersions.id, versionId))
-    .limit(1);
+  const [row] = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_resolve_compose_lookup_version",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          versionContent: agentComposeVersions.content,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeId: agentComposes.id,
+          composeUserId: agentComposes.userId,
+        })
+        .from(agentComposeVersions)
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
+        .where(eq(agentComposeVersions.id, versionId))
+        .limit(1);
+    },
+  );
 
   if (!row?.composeId || !row.composeOrgId || !row.composeUserId) {
     return notFound("Agent compose version not found");
@@ -2933,24 +2952,32 @@ async function lookupComposeByVersion(
 async function resolveByComposeId(
   db: Db,
   composeId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await db
-    .select({
-      composeId: agentComposes.id,
-      composeName: agentComposes.name,
-      composeOrgId: agentComposes.orgId,
-      composeUserId: agentComposes.userId,
-      headVersionId: agentComposes.headVersionId,
-      versionId: agentComposeVersions.id,
-      versionContent: agentComposeVersions.content,
-    })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentComposes.headVersionId),
-    )
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
+  const [row] = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_resolve_compose_lookup_compose",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          composeId: agentComposes.id,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeUserId: agentComposes.userId,
+          headVersionId: agentComposes.headVersionId,
+          versionId: agentComposeVersions.id,
+          versionContent: agentComposeVersions.content,
+        })
+        .from(agentComposes)
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentComposeVersions.id, agentComposes.headVersionId),
+        )
+        .where(eq(agentComposes.id, composeId))
+        .limit(1);
+    },
+  );
 
   if (!row) {
     return notFound("Agent compose not found");
@@ -2977,50 +3004,78 @@ function resolveBySessionId(
   agentSessionId: string,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [session] = await db
-        .select({
-          id: agentSessions.id,
-          agentComposeId: agentSessions.agentComposeId,
-          conversationId: agentSessions.conversationId,
-          artifacts: agentSessions.artifacts,
-          conversationRunId: conversations.runId,
-        })
-        .from(agentSessions)
-        .leftJoin(
-          conversations,
-          eq(agentSessions.conversationId, conversations.id),
-        )
-        .where(
-          and(
-            eq(agentSessions.id, agentSessionId),
-            eq(agentSessions.userId, userId),
-            eq(agentSessions.orgId, orgId),
-          ),
-        )
-        .limit(1);
+      const [session] = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_lookup_session",
+        "nested",
+        async () => {
+          return await db
+            .select({
+              id: agentSessions.id,
+              agentComposeId: agentSessions.agentComposeId,
+              conversationId: agentSessions.conversationId,
+              artifacts: agentSessions.artifacts,
+              conversationRunId: conversations.runId,
+            })
+            .from(agentSessions)
+            .leftJoin(
+              conversations,
+              eq(agentSessions.conversationId, conversations.id),
+            )
+            .where(
+              and(
+                eq(agentSessions.id, agentSessionId),
+                eq(agentSessions.userId, userId),
+                eq(agentSessions.orgId, orgId),
+              ),
+            )
+            .limit(1);
+        },
+      );
 
       if (!session) {
         return notFound("Agent session not found");
       }
 
-      const resolved = await resolveByComposeId(db, session.agentComposeId);
+      const resolved = await resolveByComposeId(
+        db,
+        session.agentComposeId,
+        timing,
+      );
       if (isRouteError(resolved)) {
         return resolved;
       }
 
+      const conversationId = session.conversationId;
       const resumeSession =
-        session.conversationId === null
+        conversationId === null
           ? undefined
-          : await get(loadResumeSession(db, session.conversationId));
-      const [lastRun] = session.conversationRunId
-        ? await db
-            .select({ vars: agentRuns.vars })
-            .from(agentRuns)
-            .where(eq(agentRuns.id, session.conversationRunId))
-            .limit(1)
+          : await measureApiDispatchTiming(
+              timing,
+              "api_dispatch_resolve_compose_load_resume_session",
+              "nested",
+              async () => {
+                return await get(loadResumeSession(db, conversationId, timing));
+              },
+            );
+      const conversationRunId = session.conversationRunId;
+      const [lastRun] = conversationRunId
+        ? await measureApiDispatchTiming(
+            timing,
+            "api_dispatch_resolve_compose_lookup_session_vars",
+            "nested",
+            async () => {
+              return await db
+                .select({ vars: agentRuns.vars })
+                .from(agentRuns)
+                .where(eq(agentRuns.id, conversationRunId))
+                .limit(1);
+            },
+          )
         : [];
 
       return {
@@ -3040,22 +3095,30 @@ function resolveByCheckpointId(
   checkpointId: string,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [row] = await db
-        .select({
-          snapshot: checkpoints.agentComposeSnapshot,
-          artifacts: checkpoints.artifactSnapshots,
-          volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
-          conversationId: checkpoints.conversationId,
-          runUserId: agentRuns.userId,
-          runOrgId: agentRuns.orgId,
-        })
-        .from(checkpoints)
-        .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-        .where(eq(checkpoints.id, checkpointId))
-        .limit(1);
+      const [row] = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_lookup_checkpoint",
+        "nested",
+        async () => {
+          return await db
+            .select({
+              snapshot: checkpoints.agentComposeSnapshot,
+              artifacts: checkpoints.artifactSnapshots,
+              volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+              conversationId: checkpoints.conversationId,
+              runUserId: agentRuns.userId,
+              runOrgId: agentRuns.orgId,
+            })
+            .from(checkpoints)
+            .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+            .where(eq(checkpoints.id, checkpointId))
+            .limit(1);
+        },
+      );
 
       if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
         return notFound("Checkpoint not found");
@@ -3074,6 +3137,7 @@ function resolveByCheckpointId(
       const resolved = await lookupComposeByVersion(
         db,
         snapshot.agentComposeVersionId,
+        timing,
       );
       if (isRouteError(resolved)) {
         return resolved;
@@ -3088,7 +3152,14 @@ function resolveByCheckpointId(
           row.volumeVersionsSnapshot,
         ),
         resumedFromCheckpointId: checkpointId,
-        resumeSession: await get(loadResumeSession(db, row.conversationId)),
+        resumeSession: await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_load_resume_session",
+          "nested",
+          async () => {
+            return await get(loadResumeSession(db, row.conversationId, timing));
+          },
+        ),
       };
     },
   );
@@ -3097,6 +3168,7 @@ function resolveByCheckpointId(
 function loadResumeSession(
   db: Db,
   conversationId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
   return computed(
     async (
@@ -3116,11 +3188,18 @@ function loadResumeSession(
         return undefined;
       }
 
-      const sessionHistory = await get(
-        resolveConversationSessionHistory({
-          hash: conversation.cliAgentSessionHistoryHash,
-          legacyText: conversation.cliAgentSessionHistory,
-        }),
+      const sessionHistory = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_resolve_session_history",
+        "nested",
+        async () => {
+          return await get(
+            resolveConversationSessionHistory({
+              hash: conversation.cliAgentSessionHistoryHash,
+              legacyText: conversation.cliAgentSessionHistory,
+            }),
+          );
+        },
       );
 
       if (sessionHistory === null) {
@@ -3171,6 +3250,7 @@ function resolveCompose(
   body: CreateRunBody,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
@@ -3181,22 +3261,60 @@ function resolveCompose(
       }
 
       if (body.checkpointId) {
-        return await get(
-          resolveByCheckpointId(db, body.checkpointId, userId, orgId),
+        const checkpointId = body.checkpointId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_checkpoint_id",
+          "nested",
+          async () => {
+            return await get(
+              resolveByCheckpointId(db, checkpointId, userId, orgId, timing),
+            );
+          },
         );
       }
       if (body.sessionId) {
-        return await get(resolveBySessionId(db, body.sessionId, userId, orgId));
+        const sessionId = body.sessionId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_session_id",
+          "nested",
+          async () => {
+            return await get(
+              resolveBySessionId(db, sessionId, userId, orgId, timing),
+            );
+          },
+        );
       }
       if (body.agentComposeVersionId) {
-        return await lookupComposeByVersion(db, body.agentComposeVersionId);
+        const agentComposeVersionId = body.agentComposeVersionId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_version_id",
+          "nested",
+          async () => {
+            return await lookupComposeByVersion(
+              db,
+              agentComposeVersionId,
+              timing,
+            );
+          },
+        );
       }
       if (!body.agentComposeId) {
         return badRequestMessage(
           "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
         );
       }
-      return await resolveByComposeId(db, body.agentComposeId);
+      const agentComposeId = body.agentComposeId;
+      return await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_by_compose_id",
+        "nested",
+        async () => {
+          return await resolveByComposeId(db, agentComposeId, timing);
+        },
+      );
     },
   );
 }
@@ -4529,6 +4647,7 @@ async function prepareRunBodyContext(args: {
           args.initialBody,
           args.createArgs.userId,
           args.createArgs.orgId,
+          args.timing,
         ),
       );
     },
