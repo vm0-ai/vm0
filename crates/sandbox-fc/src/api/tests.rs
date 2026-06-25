@@ -107,6 +107,26 @@ async fn mock_firecracker_api_reads_split_request_body() {
     assert_eq!(request.body, r#"{"split":true}"#);
 }
 
+#[tokio::test]
+async fn mock_firecracker_api_drains_captured_requests_without_waiting() {
+    let mut api = MockFirecrackerApi::with_responses([
+        MockResponse::no_content(),
+        MockResponse::no_content(),
+    ]);
+    assert!(api.drain_requests().is_empty());
+
+    let sock_path = api.socket_path().to_path_buf();
+    let client = ApiClient::new(&sock_path);
+    client.patch_balloon(123).await.unwrap();
+    client.patch_balloon(456).await.unwrap();
+
+    let requests = api.drain_requests();
+    assert_eq!(requests.len(), 2);
+    assert_request(&requests[0], "PATCH", "/balloon");
+    assert_request(&requests[1], "PATCH", "/balloon");
+    assert!(api.drain_requests().is_empty());
+}
+
 #[test]
 fn api_error_is_retryable_connection_refused() {
     let err = ApiError::Connect(std::io::Error::new(

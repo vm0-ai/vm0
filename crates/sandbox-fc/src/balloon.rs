@@ -243,8 +243,8 @@ fn parse_meminfo(content: &str) -> Option<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{UnixListener, UnixStream};
+
+    use crate::api::test_support::{MockFirecrackerApi, MockRequest, MockResponse};
 
     const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -293,43 +293,9 @@ mod tests {
         run_tick_with_mock_at(stats_json, max_inflate, 0).await
     }
 
-    async fn read_mock_request_body(stream: &mut UnixStream) -> String {
-        let mut buf = Vec::with_capacity(4096);
-
-        let header_end = loop {
-            let n = stream.read_buf(&mut buf).await.expect("read mock request");
-            assert!(n != 0, "mock request closed before headers completed");
-            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                break pos;
-            }
-        };
-
-        let headers = String::from_utf8_lossy(&buf[..header_end]);
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(':')?;
-                if key.trim().eq_ignore_ascii_case("content-length") {
-                    value.trim().parse::<usize>().ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0);
-
-        let body_start = header_end + 4;
-        let already_read = buf.len().saturating_sub(body_start);
-        if already_read < content_length {
-            let mut tail = vec![0u8; content_length - already_read];
-            stream
-                .read_exact(&mut tail)
-                .await
-                .expect("read mock request body");
-            buf.extend_from_slice(&tail);
-        }
-
-        let body_end = body_start + content_length;
-        String::from_utf8_lossy(&buf[body_start..body_end]).to_string()
+    fn assert_firecracker_request(request: &MockRequest, method: &str, path: &str) {
+        assert_eq!(request.method, method, "raw request: {}", request.raw);
+        assert_eq!(request.path, path, "raw request: {}", request.raw);
     }
 
     async fn run_tick_with_mock_at(
@@ -337,45 +303,25 @@ mod tests {
         max_inflate: u32,
         tick_count: u64,
     ) -> Option<String> {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("balloon-test.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
-
-        let stats_body = stats_json.to_owned();
-        let server = tokio::spawn(async move {
-            let mut patch_body = None;
-
-            // First request: GET /balloon/statistics
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let _ = read_mock_request_body(&mut stream).await;
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{stats_body}",
-                stats_body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-            drop(stream);
-
-            // Second request (optional): PATCH /balloon
-            if let Ok(result) =
-                tokio::time::timeout(Duration::from_millis(100), listener.accept()).await
-            {
-                let (mut stream, _) = result.unwrap();
-                patch_body = Some(read_mock_request_body(&mut stream).await);
-
-                let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-                let _ = stream.write_all(response.as_bytes()).await;
-            }
-
-            patch_body
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::ok_body(stats_json),
+            MockResponse::no_content(),
+        ]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         tick(&client, max_inflate, tick_count).await;
 
-        server.await.unwrap()
+        let requests = api.drain_requests();
+        assert!(
+            (1..=2).contains(&requests.len()),
+            "expected GET stats and optional PATCH, got {requests:#?}"
+        );
+        assert_firecracker_request(&requests[0], "GET", "/balloon/statistics");
+
+        requests.get(1).map(|request| {
+            assert_firecracker_request(request, "PATCH", "/balloon");
+            request.body.clone()
+        })
     }
 
     fn patch_amount_mib(body: &str) -> u64 {
@@ -626,28 +572,22 @@ mod tests {
 
     #[tokio::test]
     async fn tick_handles_api_error() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("balloon-err.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
-
-        tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-            let body = r#"{"fault_message":"stats not enabled"}"#;
-            let response = format!(
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::bad_request_fault("stats not enabled"),
+            MockResponse::no_content(),
+        ]);
+        let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         // Should not panic — just logs warning and returns.
         tick(&client, 1536, 0).await;
+
+        let requests = api.drain_requests();
+        assert_eq!(
+            requests.len(),
+            1,
+            "expected only GET stats after API error, got {requests:#?}"
+        );
+        assert_firecracker_request(&requests[0], "GET", "/balloon/statistics");
     }
 
     #[tokio::test]

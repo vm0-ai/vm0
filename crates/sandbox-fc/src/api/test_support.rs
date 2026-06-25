@@ -174,6 +174,14 @@ impl MockFirecrackerApi {
             .expect("timed out waiting for Firecracker API request")
             .expect("mock Firecracker API server stopped before capturing request")
     }
+
+    pub(crate) fn drain_requests(&mut self) -> Vec<MockRequest> {
+        let mut requests = Vec::new();
+        while let Ok(request) = self.requests.try_recv() {
+            requests.push(request);
+        }
+        requests
+    }
 }
 
 impl Drop for MockFirecrackerApi {
