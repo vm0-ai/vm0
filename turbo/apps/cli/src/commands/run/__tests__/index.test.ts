@@ -1937,6 +1937,51 @@ describe("run command", () => {
       );
     });
 
+    it("should not fail when an events response has an unsupported framework", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done despite unknown framework",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "future-framework",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Agent Completed");
+      expect(logCalls).toContain("Run completed successfully");
+    });
+
     it("should handle polling errors gracefully", async () => {
       let pollCount = 0;
       server.use(

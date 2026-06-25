@@ -6,6 +6,7 @@ import type { GetEventsResponse } from "../../lib/api/core/types";
 import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 import {
   firewallPoliciesSchema,
   type FirewallPolicies,
@@ -323,6 +324,12 @@ const TERMINAL_DRAIN_POLL_INTERVAL_MS = 500;
 const TERMINAL_DRAIN_IDLE_MS = 1000;
 const TERMINAL_DRAIN_MAX_MS = 3000;
 
+function supportedEventFramework(
+  framework: string | undefined,
+): string | undefined {
+  return isSupportedFramework(framework) ? framework : undefined;
+}
+
 /**
  * Options for polling/streaming events
  */
@@ -515,7 +522,7 @@ export async function pollEvents(
       for (const event of response.events) {
         const parsedEvents = normalizer.process(
           event.eventData,
-          response.framework,
+          supportedEventFramework(response.framework),
         );
         for (const parsed of parsedEvents) {
           renderer.render(parsed);
