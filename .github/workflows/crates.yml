@@ -1559,8 +1559,10 @@ jobs:
             local output
             local val
             output=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null) || return 1
-            val=$(printf '%s\n' "$output" | tr -s ' ' | cut -d' ' -f2)
-            [ -n "$val" ] || return 1
+            val=$(printf '%s\n' "$output" | awk '/^MemAvailable:/ { print $2; exit }')
+            case "$val" in
+              ''|*[!0-9]*) return 1 ;;
+            esac
             echo "$val"
           }
 
