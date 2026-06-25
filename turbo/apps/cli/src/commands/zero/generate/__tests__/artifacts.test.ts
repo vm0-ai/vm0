@@ -88,6 +88,13 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
       );
+      expect(stdout).toContain("## Stage 4: QA After Generation");
+      expect(stdout).toContain(
+        "Run this QA immediately after writing or updating the generated artifact",
+      );
+      expect(stdout).toContain(
+        "After Stage 4 QA is complete, publish it with:",
+      );
       expect(stdout).toContain(
         "Check that shapes, charts, images, or decorative graphics do not cover readable text",
       );

@@ -79,6 +79,10 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("establish the deck's arc");
     expect(stdout).toContain("Vary slide forms across the deck");
     expect(stdout).toContain("Each slide carries one idea");
+    expect(stdout).toContain("## Stage 4: QA After Generation");
+    expect(stdout).toContain(
+      "Run this QA immediately after writing or updating the generated artifact",
+    );
     expect(stdout).toContain(
       "Check that shapes, charts, images, or decorative graphics do not cover readable text",
     );
