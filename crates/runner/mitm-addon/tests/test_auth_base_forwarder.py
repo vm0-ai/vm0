@@ -31,13 +31,6 @@ class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
         with self._submit_condition:
             return self._submit_count
 
-    def wait_for_submit_count(self, count: int, timeout: float) -> bool:
-        with self._submit_condition:
-            return self._submit_condition.wait_for(
-                lambda: self._submit_count >= count,
-                timeout=timeout,
-            )
-
 
 async def _run_ready_tasks() -> None:
     ready = asyncio.Event()
