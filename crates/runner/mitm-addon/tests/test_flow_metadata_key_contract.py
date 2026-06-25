@@ -25,6 +25,7 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
     "setdefault",
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
+_PAIR_SEQUENCE_WRAPPER_CALLS = {"iter", "list", "tuple"}
 
 
 def _python_files() -> list[Path]:
@@ -1272,19 +1273,39 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
         for value in node.values:
             boolop_violations.extend(_metadata_dict_key_violations(path, value))
         return boolop_violations
-    if isinstance(node, ast.List | ast.Tuple):
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
         return _metadata_pair_sequence_violations(path, node)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return [
             *_metadata_dict_key_violations(path, node.left),
             *_metadata_dict_key_violations(path, node.right),
         ]
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
-        dict_call_violations: list[str] = []
-        update_arg = None if not node.args else node.args[0]
-        dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
-        dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
-        return dict_call_violations
+    if isinstance(node, ast.Call):
+        if (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "dict"
+            and node.func.attr == "fromkeys"
+        ):
+            keys_arg = None if not node.args else node.args[0]
+            return _metadata_key_sequence_violations(path, keys_arg)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "items"
+            and not node.args
+            and not node.keywords
+        ):
+            return _metadata_dict_key_violations(path, node.func.value)
+        if isinstance(node.func, ast.Name):
+            if node.func.id == "dict":
+                dict_call_violations: list[str] = []
+                update_arg = None if not node.args else node.args[0]
+                dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
+                dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
+                return dict_call_violations
+            if node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS:
+                update_arg = None if not node.args else node.args[0]
+                return _metadata_dict_key_violations(path, update_arg)
     if not isinstance(node, ast.Dict):
         return []
     violations: list[str] = []
@@ -1298,7 +1319,9 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
     return violations
 
 
-def _metadata_pair_sequence_violations(path: Path, node: ast.List | ast.Tuple) -> list[str]:
+def _metadata_pair_sequence_violations(
+    path: Path, node: ast.List | ast.Tuple | ast.Set
+) -> list[str]:
     violations: list[str] = []
     for item in node.elts:
         if not isinstance(item, ast.List | ast.Tuple) or len(item.elts) != 2:
@@ -1306,6 +1329,56 @@ def _metadata_pair_sequence_violations(path: Path, node: ast.List | ast.Tuple) -
         key_name = _registered_key_name(item.elts[0])
         if key_name is not None:
             violations.append(_violation(path, item.elts[0], key_name))
+    return violations
+
+
+def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[str]:
+    if node is None:
+        return []
+    if isinstance(node, ast.NamedExpr):
+        return _metadata_key_sequence_violations(path, node.value)
+    if isinstance(node, ast.IfExp):
+        return [
+            *_metadata_key_sequence_violations(path, node.body),
+            *_metadata_key_sequence_violations(path, node.orelse),
+        ]
+    if isinstance(node, ast.BoolOp):
+        sequence_violations: list[str] = []
+        for value in node.values:
+            sequence_violations.extend(_metadata_key_sequence_violations(path, value))
+        return sequence_violations
+    if isinstance(node, ast.Dict):
+        dict_key_violations: list[str] = []
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is None:
+                dict_key_violations.extend(_metadata_key_sequence_violations(path, value))
+                continue
+            key_name = _registered_key_name(key)
+            if key_name is not None:
+                dict_key_violations.append(_violation(path, key, key_name))
+        return dict_key_violations
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "keys"
+        and not node.args
+        and not node.keywords
+    ):
+        return _metadata_key_sequence_violations(path, node.func.value)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS
+    ):
+        keys_arg = None if not node.args else node.args[0]
+        return _metadata_key_sequence_violations(path, keys_arg)
+    if not isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return []
+    violations: list[str] = []
+    for element in node.elts:
+        key_name = _registered_key_name(element)
+        if key_name is not None:
+            violations.append(_violation(path, element, key_name))
     return violations
 
 
@@ -1347,7 +1420,15 @@ flow.metadata.update(fallback_update or {"vm_run_id": "run-1"})
 flow.metadata.update([("vm_run_id", "run-1")] if condition else [])
 flow.metadata.update((named_update := {"vm_run_id": "run-1"}))
 flow.metadata.update(flow.metadata | {"auth_cache_hit": False})
+flow.metadata.update({"firewall_params": {}}.items())
+flow.metadata.update({("firewall_billable", True)})
+flow.metadata.update(tuple([("trusted_authority_host", "api.example.com")]))
 flow.metadata = {**({"vm_run_id": "run-1"} if condition else {})}
+flow.metadata = dict({"auth_url_rewrite": True}.items())
+flow.metadata = dict.fromkeys(["auth_refreshed_connectors"], [])
+flow.metadata.update(dict.fromkeys(("auth_refreshed_secrets",), []))
+flow.metadata.update(dict.fromkeys({"auth_resolved_secrets": []}, []))
+flow.metadata.update(dict.fromkeys({"model_usage_provider": "gpt-5.5"}.keys(), "gpt-5.5"))
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
@@ -1647,7 +1728,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 151
+    assert len(violations) == 159
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1684,6 +1765,11 @@ external_positional_dict_meta = dict({"metadata": flow.metadata, "vm_run_id": "e
 value = external_positional_dict_meta["vm_run_id"]
 external_unpack_dict_meta = dict(**{"metadata": flow.metadata, "vm_run_id": "external"})
 value = external_unpack_dict_meta["vm_run_id"]
+external_items_meta = dict({"metadata": flow.metadata, "vm_run_id": "external"}.items())
+value = external_items_meta["vm_run_id"]
+flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.items())
+flow.metadata.update(dict.fromkeys([metadata_keys.VM_RUN_ID], "run-1"))
+flow.metadata.update(dict.fromkeys({metadata_keys.VM_RUN_ID: "run-1"}, "run-1"))
 external_conditional_meta = {"vm_run_id": "external"} if condition else {}
 value = external_conditional_meta["vm_run_id"]
 external_bool_meta = fallback_meta or {"vm_run_id": "external"}
