@@ -113,6 +113,46 @@ fn decode_msg_rejects_field_type_mismatches() -> TestResult {
 }
 
 #[test]
+fn decode_msg_rejects_nested_field_type_mismatches() -> TestResult {
+    let message_name_as_array = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![field(
+                "name",
+                rmpv::Value::Array(Vec::new()),
+            )])]),
+        ),
+    ]);
+    let encoded = encode_value(message_name_as_array)?;
+    expect_bad_request(&encoded)?;
+
+    Ok(())
+}
+
+#[test]
+fn decode_msg_type_errors_do_not_include_field_values() -> TestResult {
+    let secret = "secret-access-token";
+    let auth_as_string = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::AUTH)),
+        field("auth", str_value(secret)),
+    ]);
+    let encoded = encode_value(auth_as_string)?;
+
+    match decode_msg(&encoded) {
+        Err(AblyError::Protocol { message, .. }) => {
+            assert!(message.contains("field auth expected map, got string"));
+            assert!(!message.contains(secret));
+            Ok(())
+        }
+        Err(err) => {
+            Err(io::Error::other(format!("expected BAD_REQUEST protocol error, got {err}")).into())
+        }
+        Ok(_) => Err(io::Error::other("expected BAD_REQUEST protocol error").into()),
+    }
+}
+
+#[test]
 fn decode_msg_rejects_trailing_bytes() -> TestResult {
     let payload = rmpv::Value::Map(vec![field("action", rmpv::Value::from(action::HEARTBEAT))]);
     let mut encoded = encode_value(payload)?;
@@ -131,6 +171,42 @@ fn decode_msg_accepts_unknown_numeric_action() -> TestResult {
 
     assert_eq!(decoded.action, 123_456);
 
+    Ok(())
+}
+
+#[test]
+fn decode_msg_accepts_duplicate_scalar_keys_from_msgpack() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::ATTACHED)),
+        field("channel", str_value("first")),
+        field("channel", str_value("second")),
+        field("flags", rmpv::Value::from(1)),
+        field("flags", rmpv::Value::from(2)),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert_eq!(decoded.action, action::ATTACHED);
+    assert_eq!(decoded.channel.as_deref(), Some("second"));
+    assert_eq!(decoded.flags, Some(2));
+    Ok(())
+}
+
+#[test]
+fn decode_msg_accepts_duplicate_field_when_later_value_is_valid() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", str_value("not-a-number")),
+        field("action", rmpv::Value::from(action::ATTACHED)),
+        field("channel", rmpv::Value::Array(Vec::new())),
+        field("channel", str_value("channel")),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert_eq!(decoded.action, action::ATTACHED);
+    assert_eq!(decoded.channel.as_deref(), Some("channel"));
     Ok(())
 }
 
@@ -163,6 +239,93 @@ fn decode_msg_accepts_duplicate_messages_key_from_msgpack() -> TestResult {
 }
 
 #[test]
+fn decode_msg_accepts_duplicate_message_fields_from_msgpack() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![
+                field("name", str_value("first")),
+                field("name", str_value("second")),
+                field("timestamp", rmpv::Value::from(1)),
+                field("timestamp", rmpv::Value::from(2)),
+            ])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(message.name.as_deref(), Some("second"));
+    assert_eq!(message.timestamp, Some(2));
+    Ok(())
+}
+
+#[test]
+fn decode_msg_ignores_unknown_fields() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field("unknownTopLevel", str_value("ignored")),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![
+                field("name", str_value("job")),
+                field("unknownMessageField", rmpv::Value::Boolean(true)),
+            ])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    assert_eq!(decoded.action, action::MESSAGE);
+    let message = single_message(&decoded)?;
+    assert_eq!(message.name.as_deref(), Some("job"));
+    Ok(())
+}
+
+#[test]
+fn decode_msg_preserves_nested_data_maps_and_arrays() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![field(
+                "data",
+                rmpv::Value::Map(vec![
+                    field(
+                        "items",
+                        rmpv::Value::Array(vec![
+                            rmpv::Value::from(1),
+                            rmpv::Value::Boolean(true),
+                            str_value("three"),
+                        ]),
+                    ),
+                    field(
+                        "nested",
+                        rmpv::Value::Map(vec![field("ok", str_value("yes"))]),
+                    ),
+                ]),
+            )])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(
+        message.data.as_ref(),
+        Some(&serde_json::json!({
+            "items": [1, true, "three"],
+            "nested": {"ok": "yes"}
+        }))
+    );
+    Ok(())
+}
+
+#[test]
 fn decode_msg_converts_msgpack_binary_data_to_base64_string() -> TestResult {
     let payload = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::MESSAGE)),
@@ -184,5 +347,60 @@ fn decode_msg_converts_msgpack_binary_data_to_base64_string() -> TestResult {
         message.data.as_ref().and_then(|data| data.as_str()),
         Some("AAH+/w==")
     );
+    Ok(())
+}
+
+#[test]
+fn decode_msg_converts_msgpack_ext_data_to_base64_string() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![field(
+                "data",
+                rmpv::Value::Ext(1, vec![0xde, 0xad]),
+            )])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(
+        message.data.as_ref().and_then(|data| data.as_str()),
+        Some("3q0=")
+    );
+    Ok(())
+}
+
+#[test]
+fn decode_msg_replaces_invalid_utf8_string_with_empty_string() -> TestResult {
+    let data = [
+        0x82,
+        b'\xa6',
+        b'a',
+        b'c',
+        b't',
+        b'i',
+        b'o',
+        b'n',
+        action::MESSAGE as u8,
+        b'\xa7',
+        b'c',
+        b'h',
+        b'a',
+        b'n',
+        b'n',
+        b'e',
+        b'l',
+        b'\xa1',
+        b'\xff',
+    ];
+
+    let decoded = decode_msg(&data)?;
+
+    assert_eq!(decoded.action, action::MESSAGE);
+    assert_eq!(decoded.channel.as_deref(), Some(""));
     Ok(())
 }
