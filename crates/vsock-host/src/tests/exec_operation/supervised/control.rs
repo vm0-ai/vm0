@@ -2,7 +2,11 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use vsock_proto::{ExecControlPolicy, ExecControlStatus, ExecTermination, MSG_EXEC_CONTROL};
+use tokio::io::AsyncWriteExt;
+use vsock_proto::{
+    ExecControlPolicy, ExecControlStatus, ExecTermination, MSG_ERROR, MSG_EXEC_CONTROL,
+    MSG_EXEC_CONTROL_RESULT,
+};
 
 use super::super::super::support::{
     normal_operation_readiness, operation_count, read_guest_message, send_exec_control_result,
@@ -417,6 +421,96 @@ async fn supervised_exec_control_timeout_ignores_late_result() {
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn supervised_exec_control_malformed_result_poisons_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-malformed-result")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("malformed-result", b"payload", Duration::from_secs(5))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    assert_eq!(control.msg_type, MSG_EXEC_CONTROL);
+    let frame = vsock_proto::encode(MSG_EXEC_CONTROL_RESULT, control.seq, &[0]).unwrap();
+    guest.write_all(&frame).await.unwrap();
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn supervised_exec_control_malformed_error_poisons_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-malformed-error")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("malformed-error", b"payload", Duration::from_secs(5))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    assert_eq!(control.msg_type, MSG_EXEC_CONTROL);
+    let frame = vsock_proto::encode(MSG_ERROR, control.seq, &[0]).unwrap();
+    guest.write_all(&frame).await.unwrap();
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
