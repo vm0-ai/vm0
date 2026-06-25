@@ -947,6 +947,69 @@ describe("logs command", () => {
       expect(logCalls).toContain("Done");
     });
 
+    it("should bound large TodoWrite todo lists", async () => {
+      const todos = Array.from({ length: 25 }, (_, index) => {
+        return { content: `task-${index}`, status: "pending" };
+      });
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_use",
+                          name: "TodoWrite",
+                          id: "todo-large",
+                          input: { todos },
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "todo-large",
+                          content: "ok",
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("task-0");
+      expect(logCalls).toContain("task-19");
+      expect(logCalls).toContain("… +5 tasks");
+      expect(logCalls).not.toContain("task-20");
+    });
+
     it("should handle tool_result events", async () => {
       server.use(
         http.get(

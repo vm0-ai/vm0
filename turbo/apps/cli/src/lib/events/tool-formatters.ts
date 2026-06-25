@@ -5,6 +5,8 @@
 
 import chalk from "chalk";
 
+const MAX_FORMATTED_TODOS = 20;
+
 export interface ToolUseData {
   tool: string;
   input: Record<string, unknown>;
@@ -369,14 +371,22 @@ function formatTodoList(input: Record<string, unknown>): string[] {
     return lines;
   }
 
-  for (let i = 0; i < todos.length; i++) {
-    const todo = recordValue(todos[i]);
+  const displayedTodos = todos.slice(0, MAX_FORMATTED_TODOS);
+  for (let i = 0; i < displayedTodos.length; i++) {
+    const todo = recordValue(displayedTodos[i]);
     const content = nonEmptyDisplayValue(todo?.content) ?? "Unknown task";
     const status = nonEmptyDisplayValue(todo?.status) ?? "pending";
     const icon = getTodoStatusIcon(status);
     const styledContent = formatTodoContent(content, status);
     const prefix = i === 0 ? "└ " : "  ";
     lines.push(`${prefix}${icon} ${styledContent}`);
+  }
+
+  const remaining = todos.length - MAX_FORMATTED_TODOS;
+  if (remaining > 0) {
+    lines.push(
+      `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "task", "tasks")} (vm0 logs <runId> to see all)`)}`,
+    );
   }
 
   return lines;
