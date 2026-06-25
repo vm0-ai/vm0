@@ -1,5 +1,10 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
@@ -166,6 +171,42 @@ function mockAdminOrg(): void {
   });
 }
 
+function billingStatus(tier: string): BillingStatusResponse {
+  return {
+    tier,
+    credits: 20_000,
+    onboardingPaymentPending: false,
+    subscriptionStatus: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: false,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: {
+      expiringNextCycle: 0,
+      nextExpiryDate: null,
+    },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 0,
+    concurrencySubscriptions: [],
+  };
+}
+
+function mockBillingTier(tier: string): void {
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus(tier));
+  });
+}
+
+function mockProCheckout(): void {
+  context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+    return respond(200, {
+      url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
+    });
+  });
+}
+
 async function openProvidersTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
@@ -173,6 +214,16 @@ async function openProvidersTab(): Promise<void> {
     expect(
       screen.getByRole("heading", { name: "Models Configuration" }),
     ).toBeInTheDocument();
+  });
+}
+
+async function openModelSettings(): Promise<void> {
+  detachedSetupPage({ context, path: "/?settings=model" });
+  await waitFor(() => {
+    expect(
+      screen.getByRole("dialog", { name: "Settings" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
   });
 }
 
@@ -356,6 +407,71 @@ describe("organization model providers settings", () => {
     expect(
       within(screen.getByTestId("default-model-row")).getByRole("combobox"),
     ).toHaveTextContent("GPT-5.5");
+  });
+
+  it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
+    mockAdminOrg();
+    mockBillingTier("limited-free-1");
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000221",
+        "claude-opus-4-8",
+        "Claude Opus 4.8",
+        false,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openProvidersTab();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    click(within(defaultRow).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: /Claude Opus 4\.8 Pro/u }));
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
+    mockAdminOrg();
+    mockBillingTier("limited-free-1");
+    mockProCheckout();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+
+    const gptOption = await screen.findByRole("option", {
+      name: /GPT-5\.5\s+Pro/u,
+    });
+    expect(gptOption).toBeInTheDocument();
+    click(gptOption);
+
+    expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
+    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
+    click(buttonByText("Upgrade to Pro", dialog));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test-upgrade?tier=pro",
+      );
+    });
   });
 
   it("reassigns the workspace default model when deleting the default route", async () => {

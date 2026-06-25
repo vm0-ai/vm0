@@ -215,9 +215,10 @@ function buildCreditBreakdown(args: {
 
   const untracked = Math.max(displayedCredits - trackedTotal, 0);
   if (untracked > 0) {
+    const isFreeTier = tier === "free" || tier === "limited-free-1";
     addSegment({
-      category: tier === "free" ? "free" : "payAsYouGo",
-      label: tier === "free" ? "Free plan" : "Pay as you go",
+      category: isFreeTier ? "free" : "payAsYouGo",
+      label: isFreeTier ? "Free plan" : "Pay as you go",
       credits: untracked,
     });
   }

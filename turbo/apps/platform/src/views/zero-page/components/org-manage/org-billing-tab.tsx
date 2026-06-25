@@ -147,7 +147,7 @@ const proPlanPrice = getPlanPrice("pro");
 const freePlanPrice = getPlanPrice("free");
 
 function tierRank(t: BillingTier): number {
-  if (t === "free" || t === "pro-suspend") {
+  if (t === "free" || t === "limited-free-1" || t === "pro-suspend") {
     return 0;
   }
   if (t === "pro") {
@@ -158,6 +158,10 @@ function tierRank(t: BillingTier): number {
 
 function isPaidTier(tier: BillingTier): boolean {
   return tier === "pro" || tier === "team";
+}
+
+function isNoActivePlanTier(tier: BillingTier): boolean {
+  return tier === "limited-free-1" || tier === "pro-suspend";
 }
 
 function formatBillingDate(value: string): string {
@@ -205,7 +209,10 @@ function planButtonLabel(plan: BillingPlan, currentTier: BillingTier): string {
   if (plan.tier === currentTier) {
     return "Current plan";
   }
-  if (plan.tier === "free" && currentTier === "pro-suspend") {
+  if (
+    plan.tier === "free" &&
+    (currentTier === "limited-free-1" || currentTier === "pro-suspend")
+  ) {
     return "Unavailable";
   }
   if (plan.tier === "free") {
@@ -507,7 +514,10 @@ function PricingPage({
     if (planTier === currentTier) {
       return;
     }
-    if (planTier === "free" && currentTier === "pro-suspend") {
+    if (
+      planTier === "free" &&
+      (currentTier === "limited-free-1" || currentTier === "pro-suspend")
+    ) {
       return;
     }
     if (
@@ -589,6 +599,9 @@ function PricingPage({
 }
 
 function formatTierLabel(tier: BillingTier): string {
+  if (tier === "limited-free-1") {
+    return "Limited free";
+  }
   if (tier === "pro-suspend") {
     return "No plan";
   }
@@ -861,7 +874,11 @@ function shouldShowBuyCreditsSection(
   hasBillingStatus: boolean,
   currentTier: BillingTier,
 ): boolean {
-  return hasBillingStatus && currentTier !== "pro-suspend";
+  return (
+    hasBillingStatus &&
+    currentTier !== "limited-free-1" &&
+    currentTier !== "pro-suspend"
+  );
 }
 
 function billingPeriodLabel(args: {
@@ -1251,10 +1268,9 @@ export function OrgBillingTab() {
   const handleRestore = () => {
     openRestore();
   };
-  const currentPlanLabel =
-    currentTier === "pro-suspend"
-      ? "No active plan"
-      : `${formatTierLabel(currentTier)} plan`;
+  const currentPlanLabel = isNoActivePlanTier(currentTier)
+    ? "No active plan"
+    : `${formatTierLabel(currentTier)} plan`;
   const showBuyCredits = shouldShowBuyCreditsSection(
     status !== null,
     currentTier,

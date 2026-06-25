@@ -717,7 +717,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       modelSelection: ModelSelectionRequest | null,
-      statuses: readonly (204 | 400 | 401 | 404)[],
+      statuses: readonly (204 | 400 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadModelSelectionClient().update({

@@ -40,6 +40,7 @@ import { now, nowDate } from "../external/time";
 import {
   badRequestMessage,
   conflict,
+  insufficientCredits,
   notFound,
   providerDeleted,
 } from "../../lib/error";
@@ -197,6 +198,7 @@ type NormalSendFailure =
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
   | ReturnType<typeof conflict>
+  | ReturnType<typeof insufficientCredits>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatMessageResponse {
@@ -1070,6 +1072,7 @@ async function resolveStoredModelFirstPin(params: {
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
 > {
   if (!params.pin.selectedModel) {
     return params.pin;
@@ -1154,6 +1157,7 @@ async function resolveRunModelPin(params: {
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
 > {
   const existing =
     params.modelSelection === undefined
@@ -1193,7 +1197,11 @@ async function validateModelSelection(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: IncomingModelSelection;
-}): Promise<ReturnType<typeof badRequestMessage> | undefined> {
+}): Promise<
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+  | undefined
+> {
   if (params.modelSelection) {
     const pin = await resolveModelSelectionPin({
       db: params.db,

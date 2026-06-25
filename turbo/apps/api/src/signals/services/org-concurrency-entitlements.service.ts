@@ -56,6 +56,9 @@ function tierBaseConcurrencyLimit(tier: string | null | undefined): number {
     case "free": {
       return 1;
     }
+    case "limited-free-1": {
+      return 1;
+    }
     case "pro": {
       return 2;
     }

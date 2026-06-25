@@ -1,14 +1,16 @@
 import {
   SUPPORTED_RUN_MODELS,
+  isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   type ModelProviderCredentialScope,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, eq, inArray, or } from "drizzle-orm";
 
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./zero-model-policy.service";
 import { checkOrgCreditsForRunAdmission } from "./zero-run-admission.service";
@@ -31,6 +33,27 @@ interface ModelSelectionRequest {
 
 interface AvailableModelProviderPin {
   readonly type: string;
+}
+
+async function orgHasLimitedFree1Restrictions(
+  db: Db,
+  orgId: string,
+): Promise<boolean> {
+  const [org] = await db
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return org?.tier === "limited-free-1";
+}
+
+function modelAllowedForOrgTier(args: {
+  readonly limitedFree1: boolean;
+  readonly selectedModel: string | null | undefined;
+}): boolean {
+  return (
+    !args.limitedFree1 || !isLimitedFree1RestrictedRunModel(args.selectedModel)
+  );
 }
 
 function parseModelProviderCredentialScope(
@@ -58,6 +81,7 @@ export async function resolveDefaultModelFirstPin(
   orgId: string,
   userId: string,
 ): Promise<ModelFirstPin> {
+  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
   const [preference] = await db
     .select({ selectedModel: orgMembersMetadata.selectedModel })
     .from(orgMembersMetadata)
@@ -69,9 +93,14 @@ export async function resolveDefaultModelFirstPin(
     )
     .limit(1);
 
-  const preferredModel = isSupportedRunModel(preference?.selectedModel)
-    ? preference.selectedModel
-    : null;
+  const preferredModel =
+    isSupportedRunModel(preference?.selectedModel) &&
+    modelAllowedForOrgTier({
+      limitedFree1,
+      selectedModel: preference.selectedModel,
+    })
+      ? preference.selectedModel
+      : null;
   const [policy] = await db
     .select({
       model: orgModelPolicies.model,
@@ -89,7 +118,6 @@ export async function resolveDefaultModelFirstPin(
         : and(
             eq(orgModelPolicies.orgId, orgId),
             eq(orgModelPolicies.isDefault, true),
-            inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
           ),
     )
     .limit(1);
@@ -98,7 +126,52 @@ export async function resolveDefaultModelFirstPin(
     return resolveDefaultModelFirstPin(db, orgId, "__no_preference__");
   }
 
-  if (!policy) {
+  if (
+    !policy ||
+    !isSupportedRunModel(policy.model) ||
+    !modelAllowedForOrgTier({ limitedFree1, selectedModel: policy.model })
+  ) {
+    const fallbackPolicies = await db
+      .select({
+        model: orgModelPolicies.model,
+        defaultProviderType: orgModelPolicies.defaultProviderType,
+        credentialScope: orgModelPolicies.credentialScope,
+        modelProviderId: orgModelPolicies.modelProviderId,
+      })
+      .from(orgModelPolicies)
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, orgId),
+          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+        ),
+      )
+      .limit(SUPPORTED_RUN_MODELS.length);
+    const fallbackPolicy = fallbackPolicies.find((candidate) => {
+      return (
+        isSupportedRunModel(candidate.model) &&
+        modelAllowedForOrgTier({
+          limitedFree1,
+          selectedModel: candidate.model,
+        })
+      );
+    });
+    if (
+      fallbackPolicy &&
+      isSupportedRunModel(fallbackPolicy.model) &&
+      modelAllowedForOrgTier({
+        limitedFree1,
+        selectedModel: fallbackPolicy.model,
+      })
+    ) {
+      return {
+        modelProviderId: fallbackPolicy.modelProviderId ?? null,
+        modelProviderType: fallbackPolicy.defaultProviderType,
+        modelProviderCredentialScope: parseModelProviderCredentialScope(
+          fallbackPolicy.credentialScope,
+        ),
+        selectedModel: fallbackPolicy.model,
+      };
+    }
     return {
       modelProviderId: null,
       modelProviderType: null,
@@ -154,8 +227,21 @@ export async function resolveModelSelectionPin(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: ModelSelectionRequest;
-}): Promise<ModelFirstPin | ReturnType<typeof badRequestMessage>> {
+}): Promise<
+  | ModelFirstPin
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+> {
   const { db, orgId, userId, modelSelection } = params;
+  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
+  if (
+    !modelAllowedForOrgTier({
+      limitedFree1,
+      selectedModel: modelSelection.selectedModel,
+    })
+  ) {
+    return insufficientCredits();
+  }
   if (modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
     const provider = await loadAvailableModelProviderPin({
       db,
@@ -266,6 +352,7 @@ export async function resolveModelFirstProviderAdmission(params: {
     db: params.db,
     orgId: params.orgId,
     modelProviderType: effectiveModelProvider,
+    selectedModel: params.modelPin.selectedModel,
   });
   return { effectiveModelProvider, error };
 }

@@ -11,7 +11,7 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { isOrgAdmin$ } from "../../signals/org.ts";
 
 function nextTierInfo(tier: string): { label: string; img: string } | null {
-  if (tier === "free" || tier === "pro-suspend") {
+  if (tier === "free" || tier === "limited-free-1" || tier === "pro-suspend") {
     return { label: "Pro", img: planProImg };
   }
   if (tier === "pro") {
