@@ -20,6 +20,7 @@ const RENDER_CATEGORY = "osm.render.png";
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const ATTRIBUTION = "© OpenStreetMap contributors";
 const MAX_BBOX_AREA_SQUARE_METERS = 50_000_000;
+const MAX_MERCATOR_LATITUDE = 85.051_129;
 const MAX_FEATURES = 2500;
 
 interface AuthedMapsArgs<TBody> {
@@ -155,6 +156,16 @@ function bboxAreaSquareMeters(bbox: BoundingBox): number {
 function validateBbox(bbox: BoundingBox): MapsErrorResponse | null {
   if (bbox.east <= bbox.west || bbox.north <= bbox.south) {
     return badRequest("bbox east/north must be greater than west/south");
+  }
+  if (
+    bbox.west < -180 ||
+    bbox.east > 180 ||
+    bbox.south < -MAX_MERCATOR_LATITUDE ||
+    bbox.north > MAX_MERCATOR_LATITUDE
+  ) {
+    return badRequest(
+      "OSM bbox must stay within WGS84 longitude and Web Mercator latitude bounds",
+    );
   }
   if (bboxAreaSquareMeters(bbox) > MAX_BBOX_AREA_SQUARE_METERS) {
     return badRequest("OSM bbox is too large; use a smaller area");
