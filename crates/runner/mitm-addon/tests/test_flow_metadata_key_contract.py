@@ -27,11 +27,22 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
 _SEQUENCE_WRAPPER_CALLS = {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
+_SUPPORTS_EXCEPT_STAR_SYNTAX = sys.version_info >= (3, 11)
 _SUPPORTS_PEP695_SYNTAX = sys.version_info >= (3, 12)
 
 
-def _write_python_source(path: Path, source: str, *, pep695_source: str = "") -> None:
-    path.write_text(source + (pep695_source if _SUPPORTS_PEP695_SYNTAX else ""))
+def _write_python_source(
+    path: Path,
+    source: str,
+    *,
+    python311_source: str = "",
+    python312_source: str = "",
+) -> None:
+    path.write_text(
+        source
+        + (python311_source if _SUPPORTS_EXCEPT_STAR_SYNTAX else "")
+        + (python312_source if _SUPPORTS_PEP695_SYNTAX else "")
+    )
 
 
 def _python_files() -> list[Path]:
@@ -1873,12 +1884,6 @@ try:
 except Exception as except_meta:
     pass
 except_meta["suppress_request_body_capture"] = True
-except_star_meta = flow.metadata
-try:
-    pass
-except* Exception as except_star_meta:
-    pass
-except_star_meta["firewall_error"] = "auth_failed"
 break_exit_meta = {}
 for item in rows:
     break_exit_meta = flow.metadata
@@ -1950,7 +1955,15 @@ match flow.metadata:
     case guarded_match_meta if guarded_match_meta["vm_run_id"]:
         pass
 """,
-        pep695_source="""
+        python311_source="""
+except_star_meta = flow.metadata
+try:
+    pass
+except* Exception as except_star_meta:
+    pass
+except_star_meta["firewall_error"] = "auth_failed"
+""",
+        python312_source="""
 def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
     pass
 def function_type_param_merge_meta[T: flow.metadata | {"vm_run_id": "run-1"}]():
@@ -1985,7 +1998,11 @@ def function_type_param_global_reads_module[function_type_param_global_meta]():
 
     violations = _metadata_key_violations(source_path)
 
-    expected_violation_count = 223 if _SUPPORTS_PEP695_SYNTAX else 210
+    expected_violation_count = 209
+    if _SUPPORTS_EXCEPT_STAR_SYNTAX:
+        expected_violation_count += 1
+    if _SUPPORTS_PEP695_SYNTAX:
+        expected_violation_count += 13
     assert len(violations) == expected_violation_count
     assert all("use metadata_keys." in violation for violation in violations)
 
@@ -2293,7 +2310,7 @@ try:
 except Exception as meta:
     value = meta["vm_run_id"]
 """,
-        pep695_source="""
+        python312_source="""
 type_alias_shadow_meta = flow.metadata
 type type_alias_shadow_meta = int
 value = type_alias_shadow_meta["vm_run_id"]
