@@ -199,6 +199,9 @@ type ApiDispatchTimingActionType =
   | "api_dispatch_mark_pending_heartbeat"
   | "api_dispatch_build_runner_job_payload"
   | "api_dispatch_persist_runner_job_queue"
+  | "api_dispatch_lock_run_for_queue_persistence"
+  | "api_dispatch_insert_runner_job_queue"
+  | "api_dispatch_update_run_runner_group"
   | "api_dispatch_admission_lock_wait"
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_insert_run_record"
@@ -4113,9 +4116,13 @@ function dispatchRun(
       "top_level",
       async () => {
         return await db.transaction(async (tx) => {
-          const currentRun = await lockRunForDerivedPersistence(
-            tx,
-            args.run.id,
+          const currentRun = await measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_lock_run_for_queue_persistence",
+            "nested",
+            async () => {
+              return await lockRunForDerivedPersistence(tx, args.run.id);
+            },
           );
           if (!currentRun) {
             throw new Error("Run disappeared before runner job persistence");
@@ -4124,24 +4131,38 @@ function dispatchRun(
             return currentRun;
           }
 
-          await tx.insert(runnerJobQueue).values({
-            runId: args.run.id,
-            runnerGroup: payload.runnerGroup,
-            profile: payload.profile,
-            cliAgentSessionId: payload.cliAgentSessionId,
-            executionContext: payload.executionContext,
-            expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
-          });
+          await measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_insert_runner_job_queue",
+            "nested",
+            async () => {
+              await tx.insert(runnerJobQueue).values({
+                runId: args.run.id,
+                runnerGroup: payload.runnerGroup,
+                profile: payload.profile,
+                cliAgentSessionId: payload.cliAgentSessionId,
+                executionContext: payload.executionContext,
+                expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+              });
+            },
+          );
 
-          await tx
-            .update(agentRuns)
-            .set({ runnerGroup: payload.runnerGroup })
-            .where(
-              and(
-                eq(agentRuns.id, args.run.id),
-                eq(agentRuns.status, "pending"),
-              ),
-            );
+          await measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_update_run_runner_group",
+            "nested",
+            async () => {
+              await tx
+                .update(agentRuns)
+                .set({ runnerGroup: payload.runnerGroup })
+                .where(
+                  and(
+                    eq(agentRuns.id, args.run.id),
+                    eq(agentRuns.status, "pending"),
+                  ),
+                );
+            },
+          );
 
           return { status: "pending" as const };
         });

@@ -61,6 +61,11 @@ const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_lock_run_for_queue_persistence",
+  "api_dispatch_insert_runner_job_queue",
+  "api_dispatch_update_run_runner_group",
+] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
@@ -82,6 +87,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
   "api_dispatch_persist_runner_job_queue",
+  ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
   "api_dispatch_admission_lock_wait",
   "api_dispatch_check_concurrency_limit",
   "api_dispatch_insert_run_record",
@@ -359,6 +365,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
+
+    for (const actionType of API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "nested",
+        }),
+      );
+    }
 
     for (const event of timingEvents) {
       expect(event).toStrictEqual(
