@@ -25,7 +25,7 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
     "setdefault",
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
-_PAIR_SEQUENCE_WRAPPER_CALLS = {"iter", "list", "tuple"}
+_SEQUENCE_WRAPPER_CALLS = {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
 
 
 def _python_files() -> list[Path]:
@@ -1296,6 +1296,13 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
             and not node.keywords
         ):
             return _metadata_dict_key_violations(path, node.func.value)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "copy"
+            and not node.args
+            and not node.keywords
+        ):
+            return _metadata_dict_key_violations(path, node.func.value)
         if isinstance(node.func, ast.Name):
             if node.func.id == "dict":
                 dict_call_violations: list[str] = []
@@ -1303,7 +1310,7 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
                 dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
                 dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
                 return dict_call_violations
-            if node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS:
+            if node.func.id in _SEQUENCE_WRAPPER_CALLS:
                 update_arg = None if not node.args else node.args[0]
                 return _metadata_dict_key_violations(path, update_arg)
     if not isinstance(node, ast.Dict):
@@ -1347,6 +1354,11 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
         for value in node.values:
             sequence_violations.extend(_metadata_key_sequence_violations(path, value))
         return sequence_violations
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return [
+            *_metadata_key_sequence_violations(path, node.left),
+            *_metadata_key_sequence_violations(path, node.right),
+        ]
     if isinstance(node, ast.Dict):
         dict_key_violations: list[str] = []
         for key, value in zip(node.keys, node.values, strict=True):
@@ -1365,10 +1377,18 @@ def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[
         and not node.keywords
     ):
         return _metadata_key_sequence_violations(path, node.func.value)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "copy"
+        and not node.args
+        and not node.keywords
+    ):
+        return _metadata_key_sequence_violations(path, node.func.value)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         if node.func.id == "dict":
             return _metadata_dict_key_violations(path, node)
-        if node.func.id in _PAIR_SEQUENCE_WRAPPER_CALLS:
+        if node.func.id in _SEQUENCE_WRAPPER_CALLS:
             keys_arg = None if not node.args else node.args[0]
             return _metadata_key_sequence_violations(path, keys_arg)
     if not isinstance(node, ast.List | ast.Tuple | ast.Set):
@@ -1422,8 +1442,14 @@ flow.metadata.update(flow.metadata | {"auth_cache_hit": False})
 flow.metadata.update({"firewall_params": {}}.items())
 flow.metadata.update({("firewall_billable", True)})
 flow.metadata.update(tuple([("trusted_authority_host", "api.example.com")]))
+flow.metadata.update(set([("firewall_permission", "read")]))
+flow.metadata.update(frozenset([("connector_diagnostic_type", "github")]))
+flow.metadata.update(sorted([("connector_diagnostic_reason", "missing")]))
+flow.metadata.update(reversed([("connector_diagnostic_base", "https://api.example.com")]))
 flow.metadata = {**({"vm_run_id": "run-1"} if condition else {})}
 flow.metadata = dict({"auth_url_rewrite": True}.items())
+flow.metadata = {"vm_run_id": "run-1"}.copy()
+flow.metadata.update([("firewall_name", "github")].copy())
 flow.metadata = dict.fromkeys(["auth_refreshed_connectors"], [])
 flow.metadata.update(dict.fromkeys(("auth_refreshed_secrets",), []))
 flow.metadata.update(dict.fromkeys({"auth_resolved_secrets": []}, []))
@@ -1431,6 +1457,13 @@ flow.metadata.update(dict.fromkeys({"model_usage_provider": "gpt-5.5"}.keys(), "
 flow.metadata.update(dict.fromkeys(dict(vm_run_id="run-1"), "run-1"))
 flow.metadata.update(dict.fromkeys(dict([("firewall_action", "ALLOW")]).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys(tuple(dict(firewall_billable=True)), False))
+flow.metadata.update(dict.fromkeys(set(["auth_cache_hit"]), False))
+flow.metadata.update(dict.fromkeys(frozenset(["connector_diagnostic_env_names"]), []))
+flow.metadata.update(dict.fromkeys(sorted(["auth_refreshed_connectors"]), []))
+flow.metadata.update(dict.fromkeys(reversed(["auth_refreshed_secrets"]), []))
+flow.metadata.update(dict.fromkeys({"firewall_base": "https://api.example.com"} | {}, "base"))
+flow.metadata.update(dict.fromkeys(({"firewall_action": "ALLOW"} | {}).keys(), "ALLOW"))
+flow.metadata.update(dict.fromkeys({"firewall_error": "auth_failed"}.copy(), "auth_failed"))
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
@@ -1730,7 +1763,7 @@ match flow.metadata:
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 162
+    assert len(violations) == 175
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -1775,6 +1808,23 @@ flow.metadata.update(dict.fromkeys({metadata_keys.VM_RUN_ID: "run-1"}, "run-1"))
 flow.metadata.update(dict.fromkeys(dict({metadata_keys.VM_RUN_ID: "run-1"}), "run-1"))
 flow.metadata.update(dict.fromkeys(dict({metadata_keys.FIREWALL_ACTION: "ALLOW"}).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys(tuple(dict({metadata_keys.FIREWALL_BILLABLE: True})), False))
+flow.metadata.update(set([(metadata_keys.FIREWALL_PERMISSION, "read")]))
+flow.metadata.update(frozenset([(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE, "github")]))
+flow.metadata.update(sorted([(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON, "missing")]))
+flow.metadata.update(reversed([(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE, "https://api.example.com")]))
+flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.copy())
+flow.metadata.update([(metadata_keys.FIREWALL_NAME, "github")].copy())
+flow.metadata.update(dict.fromkeys(set([metadata_keys.AUTH_CACHE_HIT]), False))
+flow.metadata.update(dict.fromkeys(frozenset([metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES]), []))
+flow.metadata.update(dict.fromkeys(sorted([metadata_keys.AUTH_REFRESHED_CONNECTORS]), []))
+flow.metadata.update(dict.fromkeys(reversed([metadata_keys.AUTH_REFRESHED_SECRETS]), []))
+flow.metadata.update(
+    dict.fromkeys({metadata_keys.FIREWALL_BASE: "https://api.example.com"} | {}, "base")
+)
+flow.metadata.update(dict.fromkeys(({metadata_keys.FIREWALL_ACTION: "ALLOW"} | {}).keys(), "ALLOW"))
+flow.metadata.update(
+    dict.fromkeys({metadata_keys.FIREWALL_ERROR: "auth_failed"}.copy(), "auth_failed")
+)
 external_conditional_meta = {"vm_run_id": "external"} if condition else {}
 value = external_conditional_meta["vm_run_id"]
 external_bool_meta = fallback_meta or {"vm_run_id": "external"}
