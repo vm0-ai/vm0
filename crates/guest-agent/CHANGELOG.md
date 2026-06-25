@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.6...guest-agent-v0.41.7) (2026-06-25)
+
+
+### Bug Fixes
+
+* classify claude stream idle timeout failures ([#18941](https://github.com/vm0-ai/vm0/issues/18941)) ([2f30e00](https://github.com/vm0-ai/vm0/commit/2f30e005ce1d4d85d55674c7f384d51c701fb0bf))
+
 ## [0.41.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.5...guest-agent-v0.41.6) (2026-06-25)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.209.2](https://github.com/vm0-ai/vm0/compare/cli-v9.209.1...cli-v9.209.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* constrain presentation template imagery ([#18938](https://github.com/vm0-ai/vm0/issues/18938)) ([75c9003](https://github.com/vm0-ai/vm0/commit/75c9003900b875b9f3f467e37840cd6a179044d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+
 ## [9.209.1](https://github.com/vm0-ai/vm0/compare/cli-v9.209.0...cli-v9.209.1) (2026-06-25)
 
 

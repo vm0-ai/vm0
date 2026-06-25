@@ -13,9 +13,9 @@ import type {
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowLeft,
   IconAlertTriangle,
   IconClock,
+  IconFileText,
   IconLoader2,
   IconMail,
   IconPlus,
@@ -119,28 +119,14 @@ function WorkflowDetailContent({
 }: {
   readonly workflowId: string;
 }) {
-  const agentId = useGet(currentAgentId$);
   const detailLoadable = useLoadable(workflowDetail(workflowId));
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 px-4 pb-3 pt-3 sm:px-6 md:pt-8">
-        <div className="mx-auto w-full max-w-[900px]">
-          {agentId ? (
-            <Link
-              pathname={ROUTES.agentWorkflows}
-              options={{ pathParams: { agentId } }}
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <IconArrowLeft size={14} stroke={1.5} />
-              <span>Back to workflows</span>
-            </Link>
-          ) : null}
-        </div>
-      </header>
-      <main className="flex-1 overflow-auto px-4 pb-10 sm:px-6">
+      <WorkflowBreadcrumb detail={detail} />
+      <main className="flex-1 overflow-auto px-4 pb-10 pt-4 sm:px-6">
         <div className="mx-auto w-full max-w-[900px]">
           {detail ? (
             <WorkflowDetailBody detail={detail} />
@@ -152,6 +138,31 @@ function WorkflowDetailContent({
         </div>
       </main>
     </div>
+  );
+}
+
+function WorkflowBreadcrumb({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse | null;
+}) {
+  return (
+    <nav
+      aria-label="Breadcrumb"
+      className="hidden shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground sm:flex"
+    >
+      <Link
+        pathname={ROUTES.workflows}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <IconFileText size={14} stroke={1.5} className="shrink-0" />
+        Workflows
+      </Link>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
+        {detail ? workflowTitle(detail) : "Workflow"}
+      </span>
+    </nav>
   );
 }
 
@@ -1520,9 +1531,7 @@ function DangerZone({
               detach(
                 (async () => {
                   await deleteWorkflow(detail.id, pageSignal);
-                  navigate(ROUTES.agentWorkflows, {
-                    pathParams: { agentId: detail.agentId },
-                  });
+                  navigate(ROUTES.workflows);
                 })(),
                 Reason.DomCallback,
               );
