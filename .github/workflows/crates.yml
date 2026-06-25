@@ -1571,6 +1571,7 @@ jobs:
           ensure_submit_running() {
             if ! kill -0 "$SUBMIT_PID" 2>/dev/null; then
               wait "$SUBMIT_PID" 2>/dev/null || true
+              SUBMIT_PID=""
               fail "keepalive submit exited before balloon test completed"
             fi
           }
