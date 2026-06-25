@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.3...guest-agent-v0.41.4) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
 ## [0.41.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.2...guest-agent-v0.41.3) (2026-06-25)
 
 
