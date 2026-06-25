@@ -91,6 +91,10 @@ Firewall and auth context
 - ``AUTH_URL_REWRITE``: ``bool`` written only after inline auth.base forwarding
   succeeds and sets the provider response on the flow. Read by network-log
   firewall metadata.
+- ``AUTH_BASE_FORWARD_ADMISSION``: opaque auth.base forwarding admission
+  reservation written by header-phase auth.base admission and consumed by the
+  request auth.base forwarder path. Released by request/terminal cleanup if it
+  is not transferred to the forwarder.
 - ``TRUSTED_AUTHORITY_HOST``: ``str`` host from authority validation. Read by
   auth-base URL rewrite logic when reconstructing trusted request authority.
 
@@ -183,6 +187,7 @@ AUTH_REFRESHED_CONNECTORS: Final = "auth_refreshed_connectors"
 AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"
 AUTH_CACHE_HIT: Final = "auth_cache_hit"
 AUTH_URL_REWRITE: Final = "auth_url_rewrite"
+AUTH_BASE_FORWARD_ADMISSION: Final = "auth_base_forward_admission"
 TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 
 # Usage and streaming metadata

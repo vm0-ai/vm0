@@ -828,3 +828,49 @@ class TestAuthBaseUrlRewriteForwarding:
         assert "URL rewrite forward failed" in log_text
         assert "Firewall URL rewrite:" not in log_text
         assert f"Firewall {allow.api_entry['base']}:" not in log_text
+
+    async def test_forward_saturation_returns_dedicated_local_error(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook",
+            request_headers=headers(("Host", "firewall-placeholder.vm3.ai")),
+            token_overrides={
+                "headers": {},
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        mock_forward = AsyncMock(side_effect=forwarder.AuthBaseForwardingSaturatedError())
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 503
+        body = json.loads(flow.response.content)
+        assert body["error"] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+        assert body["message"] == "auth.base forwarding is temporarily saturated"
+        assert body["permission"] == allow.name
+        assert body["base"] == allow.api_entry["base"]
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert (
+            flow.metadata[metadata_keys.FIREWALL_ERROR] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+        )
+        assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "auth.base forwarding admission saturated" in log_text
+        assert "URL rewrite forward failed" not in log_text
+        assert "Firewall URL rewrite:" not in log_text

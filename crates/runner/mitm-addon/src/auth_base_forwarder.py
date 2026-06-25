@@ -91,6 +91,8 @@ DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
+MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
+MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
 NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
 _forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
@@ -98,6 +100,9 @@ _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
 ) = None
 _forward_request_accepting = True
+_forward_request_budget_lock = threading.Lock()
+_forward_request_admitted_count = 0
+_forward_request_admitted_body_bytes = 0
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
 
@@ -105,9 +110,14 @@ _https_context_lock = threading.Lock()
 def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
     global _forward_request_accepting
+    global _forward_request_admitted_body_bytes
+    global _forward_request_admitted_count
     global _https_context
 
     shutdown_forward_request_executor(wait=True)
+    with _forward_request_budget_lock:
+        _forward_request_admitted_count = 0
+        _forward_request_admitted_body_bytes = 0
     with _https_context_lock:
         _https_context = None
     _forward_request_accepting = True
@@ -135,12 +145,26 @@ class ForwardedRequestTooLargeError(Exception):
     """Raised when an auth.base forwarded request body exceeds the local cap."""
 
 
+class AuthBaseForwardingSaturatedError(Exception):
+    """Raised when auth.base forwarding admission is saturated."""
+
+
 class UnsafeAuthBaseDestinationError(Exception):
     """Raised when an auth.base upstream destination is not public internet."""
 
 
 class InvalidResolvedAuthHeaderError(Exception):
     """Raised when resolved auth data contains an invalid HTTP header."""
+
+
+class AuthBaseForwardingAdmission:
+    """Opaque reservation for one admitted auth.base forward."""
+
+    __slots__ = ("_body_bytes", "_released")
+
+    def __init__(self, body_bytes: int) -> None:
+        self._body_bytes = body_bytes
+        self._released = False
 
 
 class _ValidatedAddress(NamedTuple):
@@ -437,6 +461,74 @@ def _validate_request_body_size(body: bytes | None) -> None:
         raise ForwardedRequestTooLargeError("Forwarded auth.base request body too large")
 
 
+def _request_body_size(body: bytes | None) -> int:
+    return len(body) if body is not None else 0
+
+
+def reserve_forward_request_admission(body_bytes: int) -> AuthBaseForwardingAdmission:
+    """Reserve aggregate auth.base forwarding capacity before body buffering."""
+    global _forward_request_admitted_body_bytes
+    global _forward_request_admitted_count
+
+    if body_bytes < 0:
+        raise ValueError("auth.base forwarding body size cannot be negative")
+    if not _forward_request_accepting:
+        raise RuntimeError("auth.base forwarding executor is shut down")
+
+    with _forward_request_budget_lock:
+        if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
+            raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
+        if (
+            _forward_request_admitted_body_bytes + body_bytes
+            > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
+        ):
+            raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+
+        _forward_request_admitted_count += 1
+        _forward_request_admitted_body_bytes += body_bytes
+        return AuthBaseForwardingAdmission(body_bytes)
+
+
+def adjust_forward_request_admission(
+    admission: AuthBaseForwardingAdmission, body_bytes: int
+) -> None:
+    """Resize an existing reservation when actual body size differs."""
+    global _forward_request_admitted_body_bytes
+
+    if body_bytes < 0:
+        raise ValueError("auth.base forwarding body size cannot be negative")
+
+    with _forward_request_budget_lock:
+        if admission._released:
+            raise RuntimeError("auth.base forwarding admission is already released")
+        delta = body_bytes - admission._body_bytes
+        if delta > 0 and (
+            _forward_request_admitted_body_bytes + delta > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
+        ):
+            raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+        _forward_request_admitted_body_bytes += delta
+        admission._body_bytes = body_bytes
+
+
+def release_forward_request_admission(admission: AuthBaseForwardingAdmission) -> None:
+    """Release aggregate auth.base forwarding capacity exactly once."""
+    global _forward_request_admitted_body_bytes
+    global _forward_request_admitted_count
+
+    with _forward_request_budget_lock:
+        if admission._released:
+            return
+        admission._released = True
+        _forward_request_admitted_count -= 1
+        _forward_request_admitted_body_bytes -= admission._body_bytes
+
+
+def forward_request_admission_state_for_tests() -> tuple[int, int]:
+    """Return current admitted count and body bytes for tests."""
+    with _forward_request_budget_lock:
+        return _forward_request_admitted_count, _forward_request_admitted_body_bytes
+
+
 def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(address, ipaddress.IPv6Address) and (
         address.ipv4_mapped is not None
@@ -563,11 +655,13 @@ def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
     )
 
 
-def _release_forward_request_slot(
+def _release_forward_request_resources(
     loop: asyncio.AbstractEventLoop,
     semaphore: asyncio.Semaphore,
+    admission: AuthBaseForwardingAdmission,
     _future: Future[tuple[int, bytes, http.Headers]],
 ) -> None:
+    release_forward_request_admission(admission)
     with suppress(RuntimeError):
         loop.call_soon_threadsafe(semaphore.release)
 
@@ -587,37 +681,61 @@ async def forward_request(
     method: str,
     headers: list[tuple[str, str]],
     body: bytes | None,
+    *,
+    admission: AuthBaseForwardingAdmission | None = None,
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
-    _validate_request_body_size(body)
-    loop = asyncio.get_running_loop()
-    semaphore = _get_forward_request_admission_semaphore()
-    context = contextvars.copy_context()
-    await semaphore.acquire()
-    if not _can_submit_forward_request(semaphore):
-        semaphore.release()
-        raise RuntimeError("auth.base forwarding executor is shut down")
+    body_bytes = _request_body_size(body)
     try:
-        future = _get_forward_request_executor().submit(
-            _forward_request_sync_in_context,
-            context,
-            url,
-            method,
-            headers,
-            body,
-        )
-    except Exception:
-        semaphore.release()
+        _validate_request_body_size(body)
+    except BaseException:
+        if admission is not None:
+            release_forward_request_admission(admission)
         raise
-    future.add_done_callback(
-        lambda completed_future: _release_forward_request_slot(
-            loop,
-            semaphore,
-            completed_future,
-        )
-    )
+    if admission is None:
+        admission = reserve_forward_request_admission(body_bytes)
+    else:
+        try:
+            adjust_forward_request_admission(admission, body_bytes)
+        except BaseException:
+            release_forward_request_admission(admission)
+            raise
+
+    submitted = False
     try:
-        return await asyncio.wrap_future(future, loop=loop)
-    except asyncio.CancelledError:
-        future.cancel()
-        raise
+        loop = asyncio.get_running_loop()
+        semaphore = _get_forward_request_admission_semaphore()
+        context = contextvars.copy_context()
+        await semaphore.acquire()
+        if not _can_submit_forward_request(semaphore):
+            semaphore.release()
+            raise RuntimeError("auth.base forwarding executor is shut down")
+        try:
+            future = _get_forward_request_executor().submit(
+                _forward_request_sync_in_context,
+                context,
+                url,
+                method,
+                headers,
+                body,
+            )
+        except BaseException:
+            semaphore.release()
+            raise
+        future.add_done_callback(
+            lambda completed_future: _release_forward_request_resources(
+                loop,
+                semaphore,
+                admission,
+                completed_future,
+            )
+        )
+        submitted = True
+        try:
+            return await asyncio.wrap_future(future, loop=loop)
+        except asyncio.CancelledError:
+            future.cancel()
+            raise
+    finally:
+        if not submitted:
+            release_forward_request_admission(admission)

@@ -8,6 +8,7 @@ from pathlib import Path
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
+import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
@@ -17,11 +18,61 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _vm_without_firewalls,
+    _write_registry,
+)
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
 class TestErrorHandler:
+    def test_error_releases_header_phase_auth_base_admission(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                firewall_name="webhook",
+                api_entry={
+                    "base": "https://placeholder.example.com",
+                    "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+                    "permissions": [{"name": "send", "rules": ["POST /"]}],
+                },
+                network_policy={
+                    "allow": ["send"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+            ),
+        )
+        declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="placeholder.example.com",
+            method="POST",
+            path="/",
+            request_headers=headers(
+                ("Host", "placeholder.example.com"),
+                ("Content-Length", str(declared_size)),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            mitm_addon.requestheaders(flow)
+            assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+                1,
+                declared_size,
+            )
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+        assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+
     async def test_connector_candidate_error_gets_local_diagnostic_response(
         self, tmp_path, real_flow, mitm_ctx
     ):
