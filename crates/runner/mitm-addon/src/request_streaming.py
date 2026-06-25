@@ -85,16 +85,6 @@ def captured_request_stream_body(flow: http.HTTPFlow) -> CapturedRequestStreamBo
     return CapturedRequestStreamBody(stream_buf, stream_truncated)
 
 
-def complete_captured_request_stream_body(flow: http.HTTPFlow) -> bytes | None:
-    """Return complete captured request stream bytes, or None if truncated/missing."""
-    if flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True:
-        return None
-    captured = captured_request_stream_body(flow)
-    if captured is None or captured.truncated:
-        return None
-    return bytes(captured.buffer)
-
-
 def release_request_stream_state(flow: http.HTTPFlow) -> None:
     """Release request stream callback and buffered capture metadata."""
     stream_callback = flow.metadata.pop(_REQUEST_STREAM_CALLBACK, None)
