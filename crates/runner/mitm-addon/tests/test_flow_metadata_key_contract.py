@@ -36,7 +36,8 @@ def _registered_key_name(node: ast.AST) -> str | None:
 
 def _violation(path: Path, node: ast.AST, key_name: str) -> str:
     location = path.relative_to(_ADDON_ROOT) if path.is_relative_to(_ADDON_ROOT) else path
-    return f"{location}:{node.lineno}: use metadata_keys.{key_name} for flow.metadata access"
+    line_number = getattr(node, "lineno", 0)
+    return f"{location}:{line_number}: use metadata_keys.{key_name} for flow.metadata access"
 
 
 def _metadata_key_violations(path: Path) -> list[str]:
@@ -98,11 +99,11 @@ def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]
     if isinstance(node, ast.List | ast.Tuple):
         return _metadata_pair_sequence_violations(path, node)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
-        violations: list[str] = []
+        dict_call_violations: list[str] = []
         update_arg = None if not node.args else node.args[0]
-        violations.extend(_metadata_dict_key_violations(path, update_arg))
-        violations.extend(_metadata_keyword_violations(path, node.keywords))
-        return violations
+        dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
+        dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
+        return dict_call_violations
     if not isinstance(node, ast.Dict):
         return []
     violations: list[str] = []
