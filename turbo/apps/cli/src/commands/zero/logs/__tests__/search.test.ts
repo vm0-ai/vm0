@@ -409,6 +409,22 @@ describe("zero logs search command", () => {
     expect(errorCalls).toContain("zero logs list");
   });
 
+  it("should reject malformed UUID-like --run value", async () => {
+    await expect(
+      searchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--run",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
   it("should handle authentication error", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", () => {

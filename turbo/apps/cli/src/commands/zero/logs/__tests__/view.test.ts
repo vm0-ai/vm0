@@ -281,6 +281,20 @@ describe("zero logs view command", () => {
     expect(errorCalls).toContain("zero logs list");
   });
 
+  it("should reject malformed UUID-like run ID", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync([
+        "node",
+        "cli",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
   it("should render codex framework events", async () => {
     server.use(
       http.get(
