@@ -20,11 +20,7 @@ const CONNECTORS_DIR = path.resolve(
   import.meta.dirname,
   "../../../connectors/src/connectors",
 );
-const UNREGISTERED_GENERATED_FIREWALL_TYPES = [
-  "daytona",
-  "lovable",
-  "modal",
-] as const;
+const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
   "../connector-firewall-manifest.ts",
