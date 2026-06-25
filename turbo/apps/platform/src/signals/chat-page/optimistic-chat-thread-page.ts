@@ -22,6 +22,10 @@ import {
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
+  clearArtifactSidebarParams,
+  clearChatAutomationSidebarParams,
+} from "../zero-page/right-sidebar-search-params.ts";
+import {
   talkDraft$,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
@@ -258,6 +262,8 @@ const routeMainOptimisticChatThread$ = command(
     if (next.get(SIDEBAR_PARAM) === pending.threadId) {
       next.delete(SIDEBAR_PARAM);
     }
+    clearArtifactSidebarParams(next);
+    clearChatAutomationSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: pending.threadId },
       searchParams: next,
