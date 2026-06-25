@@ -472,6 +472,25 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(broadApl).toContain('search "*OOM*"');
     expect(broadApl).toContain(`runId == "${runId}"`);
 
+    context.mocks.axiom.query.mockResolvedValueOnce([]);
+    const escapedKeywordSearch = await api.requestSearchLogs(
+      actor,
+      { keyword: 'quote" slash\\ tab\t newline\n carriage\r' },
+      [200],
+    );
+    expect(escapedKeywordSearch.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    const escapedSearchLine = lastAxiomApl()
+      .split("\n")
+      .find((line) => {
+        return line.includes("| search");
+      });
+    expect(escapedSearchLine).toBe(
+      String.raw`| search "*quote\" slash\\ tab\t newline\n carriage\n*"`,
+    );
+
     context.mocks.axiom.query
       .mockResolvedValueOnce([
         axiomEvent(runId, 5, "Error: OOM killed", "2026-01-15T10:30:05Z"),
