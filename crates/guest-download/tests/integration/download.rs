@@ -2,11 +2,12 @@ use crate::support::{
     TarEntry, create_tar_gz, create_tar_gz_entries, manifest_json, run_guest_download,
     run_guest_download_manifest_json, write_manifest,
 };
-use httpmock::Mock;
 use httpmock::prelude::*;
+use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 const STORAGE_ARCHIVE_PATH: &str = "/storage.tar.gz";
@@ -30,6 +31,30 @@ fn mock_status<'server>(server: &'server MockServer, path: &str, status: u16) ->
     server.mock(|when, then| {
         when.method(GET).path(path);
         then.status(status);
+    })
+}
+
+fn mock_500_then_gzip_archive<'server>(
+    server: &'server MockServer,
+    path: &str,
+    body: &[u8],
+) -> Mock<'server> {
+    let calls = AtomicUsize::new(0);
+    let body = body.to_vec();
+
+    server.mock(move |when, then| {
+        when.method(GET).path(path);
+        then.respond_with(move |_req: &HttpMockRequest| {
+            if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                HttpMockResponse::builder().status(500).build()
+            } else {
+                HttpMockResponse::builder()
+                    .status(200)
+                    .header("content-type", "application/gzip")
+                    .body(body.clone())
+                    .build()
+            }
+        });
     })
 }
 
@@ -485,34 +510,15 @@ fn artifact_500_fatal() {
 fn retry_then_succeed() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
-
-    // Start with a 500 mock
-    let mut fail_mock = mock_status(&server, STORAGE_ARCHIVE_PATH, 500);
+    let mock = mock_500_then_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url(STORAGE_ARCHIVE_PATH);
-    let manifest = write_storage_manifest(&dir, &mount, Some(&url)).unwrap();
-    let manifest_str = manifest.to_str().unwrap().to_string();
+    let result = run_storage_download(&dir, &mount, Some(&url)).unwrap();
 
-    // Run in background thread so we can swap the mock during RETRY_DELAY
-    let handle = std::thread::spawn(move || run_guest_download(&manifest_str));
-
-    // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s).
-    // Timeout after 5s to avoid infinite loop if the spawned thread panics before making a request.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while fail_mock.calls() < 1 {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "timed out waiting for first mock hit"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    fail_mock.delete();
-    mock_gzip_archive(&server, STORAGE_ARCHIVE_PATH, &tar_gz);
-
-    let result = handle.join().unwrap();
     assert!(result);
+    mock.assert_calls(2);
     assert_eq!(
         std::fs::read_to_string(mount.join("recovered.txt")).unwrap(),
         "recovered"
