@@ -493,8 +493,12 @@ exit 1
     #[test]
     fn build_script_publishes_debootstrap_cache_atomically() {
         assert!(
-            TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar}.tmp.$$""#),
+            TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar""#),
             "build-template.sh should stage debootstrap cache writes in a process-scoped temp file"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("debootstrap validates the tarball suffix"),
+            "build-template.sh should document why temp debootstrap tarballs keep a .tar suffix"
         );
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$CACHE_TMP_TAR""#),

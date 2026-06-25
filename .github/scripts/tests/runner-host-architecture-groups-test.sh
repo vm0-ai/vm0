@@ -18,6 +18,12 @@ cat > "${FAKE_BIN}/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${1:-}" = "-n" ]; then
+  shift
+else
+  cat >/dev/null
+fi
+
 remote=$1
 shift
 host=${remote#*@}
@@ -104,28 +110,28 @@ HOST_ARCHES='arm-1=aarch64 arm-2=aarch64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS")
 assert_compact_json "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
 assert_target_matrix_contract "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" has-groups)
-[ "$out" = "true" ] || fail "expected ARM64 has-groups=true, got: ${out}"
+[ "$out" = "true" ] || fail "expected arm64 has-groups=true, got: ${out}"
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" hosts arm64)
-[ "$out" = "arm-1,arm-2" ] || fail "expected ARM64 hosts, got: ${out}"
+[ "$out" = "arm-1,arm-2" ] || fail "expected arm64 hosts, got: ${out}"
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" select-host arm64 pr-123-test)
 case "$out" in
   arm-1|arm-2) ;;
-  *) fail "expected selected ARM64 host to be one host from the group, got: ${out}" ;;
+  *) fail "expected selected arm64 host to be one host from the group, got: ${out}" ;;
 esac
 
 HOST_ARCHES='x86-1=x86_64'
@@ -154,17 +160,17 @@ HOST_ARCHES='arm-1=aarch64 x86-1=x86_64 x86-2=x86_64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS")
 assert_compact_json "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","hosts":"x86-1,x86-2","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","hosts":"arm-1","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","hosts":"x86-1,x86-2","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
 assert_target_matrix_contract "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" hosts x86_64)
 [ "$out" = "x86-1,x86-2" ] || fail "expected mixed x86_64 hosts, got: ${out}"
@@ -186,13 +192,13 @@ HOST_ARCHES='arm-1=aarch64 arm-2=aarch64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' arm-1 , , arm-2 ' "$HOST_GROUPS")
 assert_compact_json "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","hosts":"arm-1,arm-2","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
 HOST_ARCHES='runner-1.vm3.ai=aarch64 runner_2=aarch64'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='runner-1.vm3.ai,runner_2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
-assert_json_eq "$out" '[{"id":"arm64","label":"ARM64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS=' , ' "$HOST_GROUPS" has-groups)
 [ "$out" = "false" ] || fail "expected whitespace-only host groups to be false, got: ${out}"
