@@ -19,8 +19,6 @@
 load '../../helpers/setup'
 load '../../helpers/codex-oauth-setup'
 
-export BATS_TEST_TIMEOUT=180
-
 setup_file() {
     if [ -z "$VM0_API_URL" ]; then
         echo "VM0_API_URL not set" >&2

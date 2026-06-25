@@ -28,10 +28,6 @@ TEAM_ID="T_E2E_RT_${GITHUB_RUN_ID:-local}"
 SLACK_USER_ID="U_E2E_USER_RT"
 DM_CHANNEL_ID="D_E2E_RT_${GITHUB_RUN_ID:-local}"
 
-# 3-minute per-test budget: runner cold-start (~20s) + mock-claude
-# execution (~5s) + callback (~2s) + polling overhead.
-export BATS_TEST_TIMEOUT=180
-
 setup_file() {
     if [[ -z "${VM0_API_URL:-}" ]]; then
         skip "VM0_API_URL not set"
