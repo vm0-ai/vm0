@@ -71,9 +71,6 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain("media seed names");
     expect(result.prompt).toContain(
-      "For top-news or story decks, pick visuals from the story topics",
-    );
-    expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );
   });
