@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.491.2](https://github.com/vm0-ai/vm0/compare/app-v0.491.1...app-v0.491.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* simplify workflow detail navigation ([#18942](https://github.com/vm0-ai/vm0/issues/18942)) ([e1175ca](https://github.com/vm0-ai/vm0/commit/e1175ca8bc19e8f59c68fca48d41b08cf352460d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+
 ## [0.491.1](https://github.com/vm0-ai/vm0/compare/app-v0.491.0...app-v0.491.1) (2026-06-25)
 
 
