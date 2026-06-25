@@ -1161,6 +1161,37 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 });
 
 describe("RUN-02: stored connector injection into claimed runs", () => {
+  it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-unallowed-access",
+      refreshToken: "x-bdd-unallowed-refresh",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without enabled stored connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1171,6 +1202,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       authMethod: "oauth",
       accessToken: "x-bdd-access",
       refreshToken: "x-bdd-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-unenabled-access",
     });
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
@@ -1203,6 +1239,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
 
     // The stored access token is only readable through the firewall-auth
     // webhook with the claimed run's sandbox token.
@@ -1224,6 +1265,57 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer x-bdd-access",
     });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("keeps direct runs without connector allowlists loading stored connectors", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-direct-access",
+      refreshToken: "x-bdd-direct-refresh",
+    });
+    const composeName = `bdd-direct-x-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run should load connected stored connectors",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
