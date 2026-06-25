@@ -1199,6 +1199,21 @@ function codexAdapterActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 12,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "msg-after-error",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text after top-level error.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:13Z",
+    },
+    {
+      sequenceNumber: 13,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1217,10 +1232,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           output_tokens: 45,
         },
       },
-      createdAt: "2026-03-10T16:00:13Z",
+      createdAt: "2026-03-10T16:00:14Z",
     },
     {
-      sequenceNumber: 13,
+      sequenceNumber: 14,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1228,10 +1243,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         turn_id: "turn-2",
         message: "Different turn top-level failure",
       },
-      createdAt: "2026-03-10T16:00:14Z",
+      createdAt: "2026-03-10T16:00:15Z",
     },
     {
-      sequenceNumber: 14,
+      sequenceNumber: 15,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1245,7 +1260,7 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           },
         },
       },
-      createdAt: "2026-03-10T16:00:15Z",
+      createdAt: "2026-03-10T16:00:16Z",
     },
   ];
 }
@@ -2647,7 +2662,7 @@ describe("activity detail polling", () => {
           prompt: "Exercise Codex adapter events",
           error: "Adapter transport failed",
           startedAt: "2026-03-10T16:00:01Z",
-          completedAt: "2026-03-10T16:00:15Z",
+          completedAt: "2026-03-10T16:00:16Z",
         }),
       );
     });
@@ -2690,6 +2705,9 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Visible Codex assistant text before failed summary."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text after top-level error."),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Bash")).not.toHaveLength(0);
     expect(screen.getAllByText("pnpm test adapter")).not.toHaveLength(0);
     expect(
@@ -2720,6 +2738,19 @@ describe("activity detail polling", () => {
     ).toHaveLength(1);
     expect(
       screen.getByText(/Turn failed \(model stopped\)/u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "DIV" &&
+          typeof element.className === "string" &&
+          element.className.includes("wmde-markdown") &&
+          element.textContent?.includes(
+            "Adapter transport failed (socket closed)",
+          ) === true &&
+          element.textContent.includes("Turn failed (model stopped)")
+        );
+      }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Different turn top-level failure"),

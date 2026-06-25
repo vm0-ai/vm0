@@ -464,7 +464,7 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
     type: "system",
     sequenceNumber: event.sequenceNumber,
     createdAt: event.createdAt,
-    eventData: event.eventData,
+    eventData: taskData,
   });
 }
 
@@ -772,11 +772,13 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
     }
     // Include task description/summary for search
     if (isTaskEventData(message.eventData)) {
-      if (message.eventData.description) {
-        parts.push(message.eventData.description);
+      const description = stringValue(message.eventData.description);
+      const taskSummary = stringValue(message.eventData.task_summary);
+      if (description) {
+        parts.push(description);
       }
-      if (message.eventData.task_summary) {
-        parts.push(message.eventData.task_summary);
+      if (taskSummary) {
+        parts.push(taskSummary);
       }
     }
     parts.push(...toStringList(eventData.tools));

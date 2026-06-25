@@ -1191,6 +1191,17 @@ function shouldCollapseFailure(
   return pendingTurnId === undefined && terminalTurnId === undefined;
 }
 
+function shouldKeepPendingErrorForEvent(
+  pendingTurnId: string | undefined,
+  eventTurnId: string | undefined,
+): boolean {
+  return (
+    pendingTurnId !== undefined &&
+    eventTurnId !== undefined &&
+    pendingTurnId === eventTurnId
+  );
+}
+
 export function normalizeCodexEventsForGrouping(
   events: AgentEvent[],
   options: NormalizeCodexEventsOptions = {},
@@ -1246,7 +1257,15 @@ export function normalizeCodexEventsForGrouping(
     }
 
     if (normalized.event) {
-      flushPendingCodexError();
+      if (
+        !pendingCodexError ||
+        !shouldKeepPendingErrorForEvent(
+          pendingCodexError.turnId,
+          normalized.turnId,
+        )
+      ) {
+        flushPendingCodexError();
+      }
       normalizedEvents.push(normalized.event);
     }
   }
