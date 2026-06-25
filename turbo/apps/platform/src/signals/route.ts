@@ -227,12 +227,23 @@ export const detachedNavigateTo$ = command(
   },
 );
 
-type ExtractParams<T extends string> =
-  T extends `${string}/:${infer Param}/${infer Rest}`
-    ? Record<Param, string> & ExtractParams<`/${Rest}`>
-    : T extends `${string}/:${infer Param}`
-      ? Record<Param, string>
-      : undefined;
+type ExtractParamSegment<T extends string> = T extends `:${infer Param}`
+  ? Record<Param, string>
+  : Record<never, never>;
+
+type ExtractParamSegments<T extends string> =
+  T extends `${infer Segment}/${infer Rest}`
+    ? ExtractParamSegment<Segment> & ExtractParamSegments<Rest>
+    : ExtractParamSegment<T>;
+
+type ExtractParams<T extends string> = T extends string
+  ? keyof ExtractParamSegments<T> extends never
+    ? undefined
+    : ExtractParamSegments<T>
+  : never;
+
+export type RouterPathParams<T extends RoutePath = RoutePath> =
+  ExtractParams<T>;
 
 export const generateRouterPath = <T extends RoutePath>(
   path: T,
