@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.370.0](https://github.com/vm0-ai/vm0/compare/core-v8.369.1...core-v8.370.0) (2026-06-25)
+
+
+### Features
+
+* add html artifact edit feature switch ([#18894](https://github.com/vm0-ai/vm0/issues/18894)) ([6797974](https://github.com/vm0-ai/vm0/commit/6797974850c27f69612175bd33a0d5dbd2137a5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.1
+    * @vm0/connectors bumped to 1.108.0
+
 ## [8.369.1](https://github.com/vm0-ai/vm0/compare/core-v8.369.0...core-v8.369.1) (2026-06-25)
 
 

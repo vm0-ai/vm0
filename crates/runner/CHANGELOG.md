@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.129.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.19...runner-rs-v0.129.20) (2026-06-25)
+
+
+### Refactoring
+
+* **runner:** centralize idle pool test builders ([#18916](https://github.com/vm0-ai/vm0/issues/18916)) ([c04c100](https://github.com/vm0-ai/vm0/commit/c04c100614f9d05347f184ada2726dc8835ff136))
+* **runner:** deduplicate idle-pool expiration eviction ([#18912](https://github.com/vm0-ai/vm0/issues/18912)) ([d5bcd1c](https://github.com/vm0-ai/vm0/commit/d5bcd1c19e8d7131ee7802190bd69e8079e72bbf))
+
 ## [0.129.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.18...runner-rs-v0.129.19) (2026-06-25)
 
 

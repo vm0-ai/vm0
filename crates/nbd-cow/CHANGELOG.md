@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.46](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.45...nbd-cow-v0.4.46) (2026-06-25)
+
+
+### Refactoring
+
+* **nbd-cow:** clarify create cleanup policy ([#18902](https://github.com/vm0-ai/vm0/issues/18902)) ([b88a1ac](https://github.com/vm0-ai/vm0/commit/b88a1acc99033cd9154f36ce60975699ae045e2c))
+
 ## [0.4.45](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.44...nbd-cow-v0.4.45) (2026-06-23)
 
 
