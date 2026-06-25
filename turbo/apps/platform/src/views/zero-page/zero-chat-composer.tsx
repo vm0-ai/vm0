@@ -5404,7 +5404,7 @@ function ConnectorsPopoverButton({
                 })}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-col overflow-y-auto">
+              <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
                   return (
                     <label
