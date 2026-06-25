@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.17](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.16...vsock-proto-v0.18.17) (2026-06-25)
+
+
+### Bug Fixes
+
+* harden guest runtime private file writes ([#18797](https://github.com/vm0-ai/vm0/issues/18797)) ([f334139](https://github.com/vm0-ai/vm0/commit/f334139eec67ff4bb64d2a47c3028505bd068cdd))
+
 ## [0.18.16](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.15...vsock-proto-v0.18.16) (2026-06-20)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.177.1](https://github.com/vm0-ai/vm0/compare/api-v1.177.0...api-v1.177.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* require model usage provider for model observations ([#18800](https://github.com/vm0-ai/vm0/issues/18800)) ([92609b6](https://github.com/vm0-ai/vm0/commit/92609b62d6073d8c9c93167dac68c02f508df150))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.2
+    * @vm0/core bumped to 8.368.2
+    * @vm0/db bumped to 1.70.2
+
 ## [1.177.0](https://github.com/vm0-ai/vm0/compare/api-v1.176.0...api-v1.177.0) (2026-06-24)
 
 
