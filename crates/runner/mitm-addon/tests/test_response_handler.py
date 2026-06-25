@@ -30,6 +30,7 @@ from tests.request_handler_helpers import (
     _vm_without_firewalls,
     _write_registry,
 )
+from tests.requestheaders_helpers import await_requestheaders_result
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -1056,8 +1057,7 @@ class TestResponseHandler:
             fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
         ):
             requestheaders_result = mitm_addon.requestheaders(flow)
-            assert requestheaders_result is not None
-            await requestheaders_result
+            await await_requestheaders_result(requestheaders_result)
             stream = flow.request.stream
             assert callable(stream)
             assert stream(body[:123]) == body[:123]
@@ -1117,8 +1117,7 @@ class TestResponseHandler:
             fake_firewall_headers(headers={"Authorization": "Bearer resolved"}),
         ):
             requestheaders_result = mitm_addon.requestheaders(flow)
-            assert requestheaders_result is not None
-            await requestheaders_result
+            await await_requestheaders_result(requestheaders_result)
             stream = flow.request.stream
             assert callable(stream)
             assert stream(b'{"partial":true') == b'{"partial":true'

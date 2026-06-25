@@ -9,13 +9,13 @@ import auth
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from auth import MAX_AUTH_BASE_REQUEST_BODY_BYTES
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _vm_without_firewalls,
     _write_registry,
 )
+from tests.requestheaders_helpers import await_requestheaders_result
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -375,8 +375,7 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        assert requestheaders_result is not None
-        await requestheaders_result
+        await await_requestheaders_result(requestheaders_result)
 
         assert callable(flow.request.stream)
         assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
@@ -473,8 +472,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        assert requestheaders_result is not None
-        await requestheaders_result
+        await await_requestheaders_result(requestheaders_result)
 
         _assert_no_request_stream(flow)
         assert flow.response is None
@@ -528,9 +526,8 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        assert requestheaders_result is not None
         with pytest.raises(asyncio.CancelledError):
-            await requestheaders_result
+            await await_requestheaders_result(requestheaders_result)
 
     get_headers.assert_awaited_once()
     _assert_no_request_stream(flow)
@@ -595,8 +592,7 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        assert requestheaders_result is not None
-        await requestheaders_result
+        await await_requestheaders_result(requestheaders_result)
 
     get_headers.assert_not_called()
     _assert_no_request_stream(flow)
@@ -670,7 +666,7 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
         path="/",
         request_headers=headers(
             ("Host", "placeholder.example.com"),
-            ("Content-Length", str(MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1)),
+            ("Content-Length", str(auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1)),
         ),
     )
 

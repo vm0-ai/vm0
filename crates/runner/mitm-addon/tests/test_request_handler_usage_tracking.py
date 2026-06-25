@@ -20,6 +20,7 @@ from tests.auth_base_forwarder_helpers import (
 )
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.requestheaders_helpers import await_requestheaders_result
 
 _X_FIREWALL_NAME = "x"
 _X_TRACKING_PATH = "/2/users/by"
@@ -334,8 +335,7 @@ async def test_header_phase_streamed_billable_flow_error_releases_tracking(
         fake_firewall_headers(),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        assert requestheaders_result is not None
-        await requestheaders_result
+        await await_requestheaders_result(requestheaders_result)
 
         usage.write_pending_snapshot(flush_request_id="request-headers")
         assert_pending(
