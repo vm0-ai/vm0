@@ -80,8 +80,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         return self._metadata_alias_scopes[-1]
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
-        return _is_metadata_attribute(node) or (
-            isinstance(node, ast.Name) and node.id in self._metadata_aliases
+        return (
+            _is_metadata_attribute(node)
+            or (isinstance(node, ast.Name) and node.id in self._metadata_aliases)
+            or (isinstance(node, ast.NamedExpr) and self._is_metadata_reference(node.value))
         )
 
     def _visit_scoped_body(self, body: list[ast.stmt], shadowed: set[str] | None = None) -> None:
@@ -91,6 +93,16 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(aliases)
         for statement in body:
             self.visit(statement)
+        self._metadata_alias_scopes.pop()
+
+    def _visit_scoped_expression(
+        self, expression: ast.AST, shadowed: set[str] | None = None
+    ) -> None:
+        aliases = set(self._metadata_aliases)
+        if shadowed is not None:
+            aliases.difference_update(shadowed)
+        self._metadata_alias_scopes.append(aliases)
+        self.visit(expression)
         self._metadata_alias_scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -110,6 +122,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self.visit(default)
         self._visit_scoped_body(node.body, _argument_names(node.args) | {node.name})
         self._metadata_aliases.discard(node.name)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        self._visit_scoped_expression(node.body, _argument_names(node.args))
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for decorator in node.decorator_list:
@@ -141,6 +159,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if self._is_metadata_reference(node.target):
             self.violations.extend(_metadata_dict_key_violations(self.path, node.value))
         self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if isinstance(node.target, ast.Name):
+            if self._is_metadata_reference(node.value):
+                self._metadata_aliases.add(node.target.id)
+            else:
+                self._metadata_aliases.discard(node.target.id)
+        self.visit(node.value)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if self._is_metadata_reference(node.value):
@@ -206,6 +232,28 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
 
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.type is not None:
+            self.visit(node.type)
+        if node.name is not None:
+            self._metadata_aliases.discard(node.name)
+        for statement in node.body:
+            self.visit(statement)
+        if node.name is not None:
+            self._metadata_aliases.discard(node.name)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node.generators, [node.elt])
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension(node.generators, [node.elt])
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node.generators, [node.elt])
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node.generators, [node.key, node.value])
+
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self._metadata_aliases.discard(alias.asname or alias.name.split(".", maxsplit=1)[0])
@@ -229,6 +277,30 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def _discard_alias_target(self, target: ast.AST | None) -> None:
         for name in _target_names(target):
             self._metadata_aliases.discard(name)
+
+    def _visit_comprehension(
+        self, generators: list[ast.comprehension], body_expressions: list[ast.AST]
+    ) -> None:
+        if not generators:
+            for expression in body_expressions:
+                self.visit(expression)
+            return
+
+        first_generator, *remaining_generators = generators
+        self.visit(first_generator.iter)
+
+        self._metadata_alias_scopes.append(set(self._metadata_aliases))
+        self._discard_alias_target(first_generator.target)
+        for condition in first_generator.ifs:
+            self.visit(condition)
+        for generator in remaining_generators:
+            self.visit(generator.iter)
+            self._discard_alias_target(generator.target)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for expression in body_expressions:
+            self.visit(expression)
+        self._metadata_alias_scopes.pop()
 
 
 def _metadata_key_violations(path: Path) -> list[str]:
@@ -341,12 +413,18 @@ def nested_alias():
 annotated_meta = flow.metadata
 annotated_meta: dict[str, object]
 annotated_meta["auth_url_rewrite"] = True
+(inline_meta := flow.metadata)["connector_diagnostic_type"] = "github"
+(call_meta := flow.metadata).get("connector_diagnostic_reason")
+if conditional_meta := flow.metadata:
+    conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
+outer_meta = flow.metadata
+values = [outer_meta["auth_refreshed_connectors"] for item in rows]
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 26
+    assert len(violations) == 30
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -380,6 +458,15 @@ from json import dumps as meta
 value = meta["vm_run_id"]
 meta, other = flow.metadata
 value = meta["vm_run_id"]
+fn = lambda meta: meta["vm_run_id"]
+values = [meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]]
+values = {meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]}
+values = {meta["vm_run_id"]: 1 for meta in [{"vm_run_id": "external"}]}
+values = tuple(meta["vm_run_id"] for meta in [{"vm_run_id": "external"}])
+try:
+    pass
+except Exception as meta:
+    value = meta["vm_run_id"]
 """
     )
 
