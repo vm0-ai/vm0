@@ -746,41 +746,44 @@ describe("GET /api/zero/billing/status", () => {
     ]);
   });
 
-  it("maps starter_grant records to Free plan segment", async () => {
-    const fixture = await track(
-      store.set(
-        seedBillingStatusOrg$,
-        {
-          credits: 10_000,
-          expiresRecords: [
-            {
-              source: "starter_grant",
-              amount: 10_000,
-              expiresAt: new Date("2099-12-31T00:00:00Z"),
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+  it.each(["starter_grant", "onboarding"])(
+    "maps %s records to Free plan segment",
+    async (source) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            credits: 10_000,
+            expiresRecords: [
+              {
+                source,
+                amount: 10_000,
+                expiresAt: new Date("2099-12-31T00:00:00Z"),
+              },
+            ],
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+      const client = setupApp({ context })(zeroBillingStatusContract);
 
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
+      const response = await accept(
+        client.get({ headers: { authorization: "Bearer clerk-session" } }),
+        [200],
+      );
 
-    const free = response.body.creditBreakdown.find((segment) => {
-      return segment.category === "free";
-    });
-    expect(free).toStrictEqual({
-      category: "free",
-      label: "Free plan",
-      credits: 10_000,
-    });
-  });
+      const free = response.body.creditBreakdown.find((segment) => {
+        return segment.category === "free";
+      });
+      expect(free).toStrictEqual({
+        category: "free",
+        label: "Free plan",
+        credits: 10_000,
+      });
+    },
+  );
 
   it("maps one_time_purchase records to Promotional segment", async () => {
     const fixture = await track(

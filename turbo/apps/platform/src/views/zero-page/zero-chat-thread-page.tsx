@@ -5559,9 +5559,9 @@ function InsufficientCreditsCard() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const requiresPro = tier === "pro-suspend";
+  const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
   const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === null;
+  const isFree = tier === "free" || tier === "limited-free-1" || tier === null;
   const shouldStartProCheckout = requiresPro || isFree;
   const redirecting =
     checkoutLoadable.state === "loading" ||

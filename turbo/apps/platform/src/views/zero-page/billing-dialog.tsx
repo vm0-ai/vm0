@@ -58,7 +58,11 @@ export function AutoRechargeSection({
   const [saveLoadable, doSave] = useLoadableSet(saveAutoRecharge$);
   const saving = saveLoadable.state === "loading";
 
-  if (currentTier === "free" || currentTier === "pro-suspend") {
+  if (
+    currentTier === "free" ||
+    currentTier === "limited-free-1" ||
+    currentTier === "pro-suspend"
+  ) {
     return null;
   }
 

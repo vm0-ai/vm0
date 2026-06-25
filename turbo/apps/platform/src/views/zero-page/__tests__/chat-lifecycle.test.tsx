@@ -4718,6 +4718,64 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows Pro upgrade guidance for limited-free-1 even with credits", async () => {
+    const threadId = "failed-guidance-limited-free";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "limited-free-1",
+        credits: 1500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: false,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 1,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+      expect(screen.queryByText("Credits available")).toBeNull();
+    });
+
+    click(buttonByText("Upgrade to Pro"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/recover?tier=pro",
+      );
+    });
+  });
+
   it("shows admin-only billing guidance when a member runs out of credits", async () => {
     const threadId = "failed-guidance-member-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });

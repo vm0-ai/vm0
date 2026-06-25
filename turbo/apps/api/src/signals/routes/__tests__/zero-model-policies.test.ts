@@ -11,6 +11,7 @@ import {
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
@@ -82,6 +83,10 @@ const deleteModelPolicyFixture$ = command(
     await writeDb
       .delete(modelProviders)
       .where(eq(modelProviders.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb
       .delete(orgMembersCache)
@@ -273,6 +278,33 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
   });
 
+  it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
+    const fixture = await seedFixture({});
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 20_000,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.policies.map((policy) => {
+        return policy.model;
+      }),
+    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+  });
+
   it("allows members to read policy controls", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -440,10 +472,43 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toStrictEqual([
       "claude-opus-4-8",
       "claude-opus-4-6",
-      "claude-sonnet-4-6",
-      "kimi-k2.7-code",
-      "gpt-5.5",
+      ...DEFAULT_ORG_MODEL_POLICY_MODELS.slice(1),
     ]);
+  });
+
+  it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
+    const fixture = await seedFixture({});
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 20_000,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await apiClient().update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        policies: [
+          makeVm0Policy("kimi-k2.7-code", true),
+          makeVm0Policy("gpt-5.5"),
+        ],
+      },
+    });
+    const rows = await writeDb
+      .select({ model: orgModelPolicies.model })
+      .from(orgModelPolicies)
+      .where(eq(orgModelPolicies.orgId, fixture.orgId));
+
+    expect(response.status).toBe(402);
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Insufficient credits. Add credits or configure your own API key to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      },
+    });
+    expect(rows).toStrictEqual([]);
   });
 
   it("allows compatible GLM 5.2 org provider routes", async () => {
@@ -464,16 +529,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
-        defaultProviderType: "openrouter-api-key",
-        credentialScope: "org",
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openrouter-api-key" as const,
+        credentialScope: "org" as const,
         modelProviderId: openRouterProviderId,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const openRouterResponse = await accept(
       client.update({
@@ -610,16 +676,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
         defaultProviderType: "anthropic-api-key" as const,
         credentialScope: "org" as const,
         modelProviderId: providerId,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const response = await client.update({
       headers: { authorization: "Bearer clerk-session" },
@@ -640,16 +707,17 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      {
-        model: "glm-5.2",
-        isDefault: false,
-        defaultProviderType: "openrouter-api-key",
-        credentialScope: "org",
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "glm-5.2") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openrouter-api-key" as const,
+        credentialScope: "org" as const,
         modelProviderId: null,
-      } satisfies UpdateOrgModelPolicy,
-    ];
+      };
+    });
 
     const response = await client.update({
       headers: { authorization: "Bearer clerk-session" },

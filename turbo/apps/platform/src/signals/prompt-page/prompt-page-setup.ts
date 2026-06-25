@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -16,7 +17,10 @@ import {
   redirectToConfiguredOnboarding$,
 } from "../zero-page/onboard-guard.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  resolveModelFirstUserDefaultSelection,
+} from "../zero-page/model-default-selection.ts";
 
 /**
  * Lightweight prompt deep-link endpoint.
@@ -32,6 +36,7 @@ export const setupPromptPage$ = command(
 
     const params = get(searchParams$);
     const prompt = params.get("prompt")?.trim();
+    const requestedModel = params.get("model")?.trim();
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
@@ -52,15 +57,21 @@ export const setupPromptPage$ = command(
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
-    const modelSelection = resolveModelFirstUserDefaultSelection({
-      userPreference,
-      policies,
-    });
+    const modelSelection = isSupportedRunModel(requestedModel)
+      ? {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: requestedModel,
+        }
+      : resolveModelFirstUserDefaultSelection({
+          userPreference,
+          policies,
+        });
 
     set(get(talkDraft$).clear$);
 
     const cleaned = new URLSearchParams(params);
     cleaned.delete("prompt");
+    cleaned.delete("model");
     cleaned.delete("connector");
     set(updateSearchParams$, cleaned);
 

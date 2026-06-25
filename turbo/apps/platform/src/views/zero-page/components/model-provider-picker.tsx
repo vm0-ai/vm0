@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useLastResolved, useLoadable } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -19,6 +19,7 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
@@ -26,6 +27,11 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
+import { billingStatusAsync$ } from "../../../signals/zero-page/billing";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog";
+import { openBillingPlans$ } from "../../../signals/zero-page/settings/org-manage-tabs-state";
+import { pageSignal$ } from "../../../signals/page-signal";
+import { detach, Reason } from "../../../signals/utils";
 import {
   getModelBrandIconType,
   getVm0ModelMultiplier,
@@ -115,6 +121,14 @@ function ByokBadge() {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ProBadge() {
+  return (
+    <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
+      Pro
+    </span>
   );
 }
 
@@ -212,6 +226,36 @@ function resolveModelFirstDefault(
   );
 }
 
+function modelSelectionAllowedForTier(
+  limitedFree1: boolean,
+  selectedModel: string | null | undefined,
+): boolean {
+  return (
+    !limitedFree1 || !isLimitedFree1RestrictedRunModel(selectedModel ?? null)
+  );
+}
+
+function selectablePoliciesForTier(
+  policies: OrgModelPolicy[],
+  limitedFree1: boolean,
+): OrgModelPolicy[] {
+  if (!limitedFree1) {
+    return policies;
+  }
+  return policies.filter((policy) => {
+    return !isLimitedFree1RestrictedRunModel(policy.model);
+  });
+}
+
+function selectionAllowedValue(
+  value: ModelProviderSelection | null,
+  limitedFree1: boolean,
+): ModelProviderSelection | null {
+  return modelSelectionAllowedForTier(limitedFree1, value?.selectedModel)
+    ? value
+    : null;
+}
+
 function ModelFirstTriggerLabel({
   selectedModel,
   placeholder,
@@ -300,21 +344,28 @@ function modelFirstSelectionFromRaw(
   };
 }
 
-function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
+function ModelFirstPolicyRow({
+  policy,
+  limitedFree1,
+}: {
+  policy: OrgModelPolicy;
+  limitedFree1: boolean;
+}) {
   const iconType = getModelFirstIconType(policy.model);
   const builtInMultiplier =
     policy.defaultProviderType === "vm0"
       ? getVm0ModelMultiplier(policy.model)
       : undefined;
+  const restricted = !modelSelectionAllowedForTier(limitedFree1, policy.model);
   return (
     <SelectItem
       key={policy.id}
       value={policy.model}
       disabled={policy.routeStatus !== "valid"}
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span className="flex w-full min-w-0 items-center gap-2">
         {iconType && <ProviderIcon type={iconType} size={16} />}
-        <span className="truncate">
+        <span className="min-w-0 flex-1 truncate">
           {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
         </span>
         {builtInMultiplier !== undefined ? (
@@ -322,6 +373,7 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
         ) : (
           <ByokBadge />
         )}
+        {restricted && <ProBadge />}
       </span>
     </SelectItem>
   );
@@ -330,10 +382,12 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
 function ModelFirstPolicyItems({
   policies,
   explicitSelectedModel,
+  limitedFree1,
   showSeparator = true,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
+  limitedFree1: boolean;
   showSeparator?: boolean;
 }) {
   const hasExplicitSelectedPolicy =
@@ -366,7 +420,13 @@ function ModelFirstPolicyItems({
             Models
           </SelectLabel>
           {policies.map((policy) => {
-            return <ModelFirstPolicyRow key={policy.id} policy={policy} />;
+            return (
+              <ModelFirstPolicyRow
+                key={policy.id}
+                policy={policy}
+                limitedFree1={limitedFree1}
+              />
+            );
           })}
         </SelectGroup>
       )}
@@ -390,15 +450,29 @@ function ModelFirstModelPicker({
   mobileIconTrigger: boolean;
 }) {
   const policiesLoadable = useLoadable(orgModelPolicies$);
+  const billingLoadable = useLoadable(billingStatusAsync$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const userPreference = useLastResolved(userModelPreference$);
+  const openBillingPlans = useSet(openBillingPlans$);
+  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
   const policyResponse =
     policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
+  const limitedFree1 =
+    billingLoadable.state === "hasData" &&
+    billingLoadable.data.tier === "limited-free-1";
   const policies = policyResponse?.policies ?? [];
-  const resolved = resolveModelFirstDefault(value, userPreference, policies);
+  const selectablePolicies = selectablePoliciesForTier(policies, limitedFree1);
+  const selectableValue = selectionAllowedValue(value, limitedFree1);
+  const resolved = resolveModelFirstDefault(
+    selectableValue,
+    userPreference,
+    selectablePolicies,
+  );
   const selectedModel = resolved?.selectedModel ?? null;
-  const explicitSelectedModel = value?.selectedModel ?? null;
-  const selectValue = value?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
+  const explicitSelectedModel = selectableValue?.selectedModel ?? null;
+  const selectValue =
+    selectableValue?.selectedModel ?? selectedModel ?? INHERIT_SENTINEL;
   const triggerAriaLabel = selectedModel
     ? getCanonicalModelDisplayName(selectedModel)
     : placeholder;
@@ -406,21 +480,34 @@ function ModelFirstModelPicker({
   if (disabled) {
     return (
       <ModelFirstDisabledPickerLabel
-        value={value}
+        value={selectableValue}
         placeholder={placeholder}
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
         triggerClassName={triggerClassName}
         userPreference={userPreference}
-        policies={policies}
+        policies={selectablePolicies}
       />
     );
   }
+
+  const openComparePlans = () => {
+    openBillingPlans();
+    detach(openOrgManage(true, pageSignal), Reason.DomCallback);
+  };
 
   return (
     <Select
       value={selectValue}
       onValueChange={(raw) => {
+        if (
+          raw !== INHERIT_SENTINEL &&
+          limitedFree1 &&
+          isLimitedFree1RestrictedRunModel(raw)
+        ) {
+          openComparePlans();
+          return;
+        }
         onChange(modelFirstSelectionFromRaw(raw));
       }}
       open={open}
@@ -452,6 +539,7 @@ function ModelFirstModelPicker({
         <ModelFirstPolicyItems
           policies={policies}
           explicitSelectedModel={explicitSelectedModel}
+          limitedFree1={limitedFree1}
           showSeparator={false}
         />
       </SelectContent>

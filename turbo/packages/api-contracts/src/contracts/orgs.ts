@@ -8,8 +8,20 @@ const c = initContract();
 /**
  * Org tier values
  */
-export const orgTierSchema = z.enum(["free", "pro-suspend", "pro", "team"]);
+export const orgTierSchema = z.enum([
+  "free",
+  "limited-free-1",
+  "pro-suspend",
+  "pro",
+  "team",
+]);
 export type OrgTier = z.infer<typeof orgTierSchema>;
+
+const ORG_TIER_SET: ReadonlySet<string> = new Set(orgTierSchema.options);
+
+export function isOrgTier(value: string | null | undefined): value is OrgTier {
+  return typeof value === "string" && ORG_TIER_SET.has(value);
+}
 
 /**
  * Org slug validation
