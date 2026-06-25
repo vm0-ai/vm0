@@ -1,10 +1,6 @@
-import type {
-  MouseEvent as ReactMouseEvent,
-  ReactNode,
-  Ref,
-  SyntheticEvent,
-} from "react";
+import type { ReactNode, Ref, SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { cn } from "@vm0/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
@@ -13,7 +9,6 @@ import {
   setZoomableImageCanvasFitWidth$,
   setZoomableImageCanvasZoom$,
   zoomableImageCanvasFitWidthByKey$,
-  zoomableImageCanvasWheelRef$,
   zoomableImageCanvasZoomByKey$,
 } from "../../signals/view-component-state.ts";
 
@@ -33,13 +28,6 @@ export function zoomableArtifactImageKey(
 }
 
 type SetZoomHandler = (key: string, zoom: number) => void;
-type ResetZoomHandler = (key: string) => void;
-type DragStartState = {
-  clientX: number;
-  clientY: number;
-  scrollLeft: number;
-  scrollTop: number;
-};
 
 export type ZoomableImageControls = {
   canZoomIn: boolean;
@@ -65,15 +53,19 @@ type ZoomableArtifactImageCanvasProps = {
   zoomKey?: string;
 };
 
-function controlsFromZoomState({
+function controlsFromTransformState({
   displayZoom,
-  resetDisplayZoom,
   setDisplayZoom,
+  resetTransform,
+  zoomIn,
+  zoomOut,
   zoomKey,
 }: {
   displayZoom: number;
-  resetDisplayZoom: ResetZoomHandler;
   setDisplayZoom: SetZoomHandler;
+  resetTransform: (animationTime?: number) => void;
+  zoomIn: (step?: number, animationTime?: number) => void;
+  zoomOut: (step?: number, animationTime?: number) => void;
   zoomKey: string;
 }): ZoomableImageControls {
   const zoom = displayZoom;
@@ -82,30 +74,24 @@ function controlsFromZoomState({
     canZoomIn: zoom < IMAGE_LIGHTBOX_MAX_ZOOM - 0.001,
     canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM + 0.001,
     resetZoom: () => {
-      resetDisplayZoom(zoomKey);
+      resetTransform(0);
+      setDisplayZoom(zoomKey, 1);
     },
     zoom,
     zoomIn: () => {
-      setDisplayZoom(zoomKey, zoom + IMAGE_ZOOM_STEP);
+      zoomIn(IMAGE_ZOOM_STEP, 0);
     },
     zoomOut: () => {
-      setDisplayZoom(zoomKey, zoom - IMAGE_ZOOM_STEP);
+      zoomOut(IMAGE_ZOOM_STEP, 0);
     },
   };
 }
 
-function shouldIgnoreDragStart(target: EventTarget | null) {
-  if (!(target instanceof Element)) {
-    return true;
-  }
-  return Boolean(
-    target.closest("button, a, input, textarea, select, [role='button']"),
-  );
-}
-
 function calculateImageFitWidth(image: HTMLImageElement) {
   const content = image.parentElement;
-  const scrollContainer = content?.parentElement;
+  const scrollContainer = image.closest<HTMLElement>(
+    "[data-zoomable-image-canvas='true']",
+  );
   if (!content || !scrollContainer) {
     return image.naturalWidth || null;
   }
@@ -149,50 +135,10 @@ export function ZoomableArtifactImageCanvas({
   const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
   const setFitWidth = useSet(setZoomableImageCanvasFitWidth$);
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
-  const setZoomableImageCanvasWheelRef = useSet(zoomableImageCanvasWheelRef$);
   const displayZoom = zoomByKey[zoomKey] ?? 1;
   const fitWidth = fitWidthByKey[zoomKey];
   const imageWidth =
-    fitWidth !== undefined
-      ? `${Math.round(fitWidth * displayZoom)}px`
-      : `${displayZoom * 100}%`;
-  const controls = controlsFromZoomState({
-    displayZoom,
-    resetDisplayZoom,
-    setDisplayZoom,
-    zoomKey,
-  });
-
-  const handleMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || shouldIgnoreDragStart(event.target)) {
-      return;
-    }
-
-    const scrollContainer = event.currentTarget;
-    event.preventDefault();
-    const dragStart: DragStartState = {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      scrollLeft: scrollContainer.scrollLeft,
-      scrollTop: scrollContainer.scrollTop,
-    };
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      scrollContainer.scrollLeft =
-        dragStart.scrollLeft - (moveEvent.clientX - dragStart.clientX);
-      scrollContainer.scrollTop =
-        dragStart.scrollTop - (moveEvent.clientY - dragStart.clientY);
-    };
-
-    const handleMouseUp = () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
-
+    fitWidth !== undefined ? `${Math.round(fitWidth)}px` : "100%";
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const fitWidthValue = calculateImageFitWidth(event.currentTarget);
     if (fitWidthValue !== null) {
@@ -203,51 +149,88 @@ export function ZoomableArtifactImageCanvas({
   };
 
   return (
-    <div
-      className={cn(
-        "relative h-full min-h-0 w-full flex-1 overflow-hidden bg-muted/30",
-        className,
-      )}
+    <TransformWrapper
+      key={zoomKey}
+      centerZoomedOut
+      doubleClick={{ disabled: true }}
+      initialScale={1}
+      maxScale={IMAGE_LIGHTBOX_MAX_ZOOM}
+      minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
+      onInit={(transformRef) => {
+        setDisplayZoom(zoomKey, transformRef.state.scale);
+      }}
+      onTransform={(_transformRef, transformState) => {
+        setDisplayZoom(zoomKey, transformState.scale);
+      }}
+      panning={{ velocityDisabled: true }}
+      smooth={false}
+      wheel={{ activationKeys: ["Control"] }}
     >
-      {children?.(controls)}
-      <div
-        ref={setZoomableImageCanvasWheelRef}
-        className={cn(
-          "h-full min-h-0 w-full overflow-auto overscroll-contain",
-          "cursor-grab active:cursor-grabbing",
-        )}
-        data-testid={canvasTestId}
-        data-zoom-key={zoomKey}
-        onMouseDown={handleMouseDown}
-      >
-        <div
-          className={cn(
-            "flex min-h-full min-w-full items-start justify-center",
-            contentClassName,
-          )}
-          data-testid={`${canvasTestId}-content`}
-        >
-          <img
-            ref={imageRef}
-            src={src}
-            alt={alt}
-            data-testid={imageTestId}
-            onLoad={handleImageLoad}
-            onError={onError}
-            draggable={false}
-            style={{
-              WebkitTouchCallout: "default",
-              pointerEvents: "auto",
-              userSelect: "none",
-              width: imageWidth,
-            }}
+      {({ resetTransform, zoomIn, zoomOut }) => {
+        const controls = controlsFromTransformState({
+          displayZoom,
+          resetTransform,
+          setDisplayZoom,
+          zoomIn,
+          zoomKey,
+          zoomOut,
+        });
+
+        return (
+          <div
             className={cn(
-              "block h-auto max-w-none shrink-0 select-none object-contain",
-              imageClassName,
+              "relative h-full min-h-0 w-full flex-1 overflow-hidden bg-muted/30",
+              className,
             )}
-          />
-        </div>
-      </div>
-    </div>
+          >
+            {children?.(controls)}
+            <div
+              className="h-full min-h-0 w-full cursor-grab overscroll-contain active:cursor-grabbing"
+              data-testid={canvasTestId}
+              data-zoomable-image-canvas="true"
+              style={{ touchAction: "none" }}
+            >
+              <TransformComponent
+                contentClass="min-h-full min-w-full"
+                wrapperClass="h-full min-h-0 w-full"
+                wrapperStyle={{
+                  height: "100%",
+                  touchAction: "none",
+                  width: "100%",
+                }}
+              >
+                <div
+                  className={cn(
+                    "flex min-h-full min-w-full items-start justify-center",
+                    contentClassName,
+                  )}
+                  data-testid={`${canvasTestId}-content`}
+                >
+                  <img
+                    ref={imageRef}
+                    src={src}
+                    alt={alt}
+                    data-testid={imageTestId}
+                    onLoad={handleImageLoad}
+                    onError={onError}
+                    draggable={false}
+                    style={{
+                      WebkitTouchCallout: "default",
+                      pointerEvents: "auto",
+                      userSelect: "none",
+                      width: imageWidth,
+                    }}
+                    className={cn(
+                      "block h-auto max-w-none shrink-0 select-none object-contain",
+                      imageClassName,
+                    )}
+                  />
+                </div>
+              </TransformComponent>
+            </div>
+          </div>
+        );
+      }}
+    </TransformWrapper>
   );
 }

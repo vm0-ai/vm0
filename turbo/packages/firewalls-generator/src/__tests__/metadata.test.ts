@@ -23,6 +23,7 @@ const CONNECTORS_DIR = path.resolve(
 const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../metadata.ts",
+  "../lazy-loader-renderer.ts",
   "../connector-firewall-manifest.ts",
   "../connector-firewall-sources.ts",
   "../python-builtin-firewall-catalog-composition.ts",
@@ -92,7 +93,7 @@ function runtimeLoaderExportNames(source: string): Map<string, string> {
   return new Map(
     [
       ...source.matchAll(
-        /^\s*"([^"]+)": async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\.([a-zA-Z_$][\w$]*);\n\s+\},$/gm,
+        /^\s+\["([^"]+)"\]: async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\["([^"]+)"\];\n\s+\},$/gm,
       ),
     ].map((match) => {
       return [match[1]!, match[2]!] as const;
@@ -250,6 +251,36 @@ describe("firewall metadata generator", () => {
     expect(source).not.toContain('"rules"');
   });
 
+  it("keeps the generated metadata loader literal and nullable", () => {
+    const loaderSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../connectors/src/firewall-metadata/loader.generated.ts",
+      ),
+      "utf-8",
+    );
+    const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
+
+    expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
+    expect(dynamicSpecifiers).toContain("./details/slack.generated");
+    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(loaderSource).toContain("/firewall-metadata/v1/");
+    expect(loaderSource).toContain(
+      "const FIREWALL_PERMISSION_METADATA_LOADERS",
+    );
+    expect(loaderSource).toContain("Object.create(null)");
+    expect(loaderSource).toContain(
+      "export async function loadGeneratedFirewallPermissionMetadata",
+    );
+    expect(loaderSource).toContain("return null;");
+    expect(loaderSource).toContain("return await load();");
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+    expect(dynamicSpecifiers.length).toBe(FIREWALL_CONNECTOR_TYPES.length);
+    for (const specifier of dynamicSpecifiers) {
+      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+    }
+  });
+
   it("keeps the generated runtime loader literal and registry-shaped", () => {
     const loaderSource = fs.readFileSync(
       path.resolve(
@@ -270,6 +301,16 @@ describe("firewall metadata generator", () => {
     expect(dynamicSpecifiers).toContain("./slack.generated");
     expect(dynamicSpecifiers).toContain("./github.generated");
     expect(loaderSource).toContain("/firewall-runtime/v1/");
+    expect(loaderSource).toContain(
+      "export const RUNTIME_FIREWALL_CONNECTOR_TYPES",
+    );
+    expect(loaderSource).toContain(
+      "export function hasGeneratedRuntimeFirewall",
+    );
+    expect(loaderSource).toContain(
+      "export async function loadGeneratedRuntimeFirewall",
+    );
+    expect(loaderSource).toContain("Object.create(null)");
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     expect(dynamicSpecifiers.length).toBe(
       runtimeLoaderConnectorTypes(loaderSource).length,
@@ -277,7 +318,7 @@ describe("firewall metadata generator", () => {
     for (const specifier of dynamicSpecifiers) {
       expect(specifier).toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);
     }
-    expect(loaderSource).toContain('"slack": async () =>');
-    expect(loaderSource).toContain(")).slackFirewall");
+    expect(loaderSource).toContain('["slack"]: async () =>');
+    expect(loaderSource).toContain('))["slackFirewall"]');
   });
 });

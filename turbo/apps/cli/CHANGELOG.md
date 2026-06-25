@@ -1,5 +1,37 @@
 # Changelog
 
+## [9.210.1](https://github.com/vm0-ai/vm0/compare/cli-v9.210.0...cli-v9.210.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+
+## [9.210.0](https://github.com/vm0-ai/vm0/compare/cli-v9.209.3...cli-v9.210.0) (2026-06-25)
+
+
+### Features
+
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Bug Fixes
+
+* normalize codex cli log rendering ([#18773](https://github.com/vm0-ai/vm0/issues/18773)) ([731975b](https://github.com/vm0-ai/vm0/commit/731975b8fa1376fbec62c86527ae87935d9a4d07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+
 ## [9.209.3](https://github.com/vm0-ai/vm0/compare/cli-v9.209.2...cli-v9.209.3) (2026-06-25)
 
 

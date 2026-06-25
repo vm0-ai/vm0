@@ -586,18 +586,30 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
         ),
     )
     get_headers = AsyncMock()
+    used_auth_base_header_admission = False
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        await await_requestheaders_result(requestheaders_result)
+        if "base" in auth_config:
+            used_auth_base_header_admission = True
+            assert requestheaders_result is None
+            assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION in flow.metadata
+            mitm_addon.error(flow)
+        else:
+            await await_requestheaders_result(requestheaders_result)
 
     get_headers.assert_not_called()
     _assert_no_request_stream(flow)
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
-    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    if used_auth_base_header_admission:
+        assert metadata_keys.VM_RUN_ID in flow.metadata
+        assert metadata_keys.ORIGINAL_URL in flow.metadata
+    else:
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
 def test_capture_enabled_firewall_block_does_not_install_request_stream(

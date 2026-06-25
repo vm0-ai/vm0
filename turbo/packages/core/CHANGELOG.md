@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.370.4](https://github.com/vm0-ai/vm0/compare/core-v8.370.3...core-v8.370.4) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+
+## [8.370.3](https://github.com/vm0-ai/vm0/compare/core-v8.370.2...core-v8.370.3) (2026-06-25)
+
+
+### Refactoring
+
+* remove unused firewall selection surface ([#18971](https://github.com/vm0-ai/vm0/issues/18971)) ([59d4358](https://github.com/vm0-ai/vm0/commit/59d4358c3d8e10cdb7237db7c8f3b44ef5a580b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+
 ## [8.370.2](https://github.com/vm0-ai/vm0/compare/core-v8.370.1...core-v8.370.2) (2026-06-25)
 
 

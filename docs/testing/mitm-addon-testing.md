@@ -78,7 +78,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_firewall_rewrite_forwarding.py` | Firewall auth URL rewrite forwarding behavior |
 | `test_firewall_rewrite_safety.py` | Firewall auth URL rewrite fail-closed and safety behavior |
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
-| `test_url_utils.py` | URL reconstruction and rewrite utility cases |
+| `test_url_utils.py` | Rewrite URL, path, query, and auth-base URL utility cases |
+| `test_url_utils_trusted_authority.py` | Trusted request authority success and URL reconstruction |
+| `test_url_utils_trusted_authority_rejection.py` | Trusted request authority rejection matrices |
 | `test_auth_cache.py` | Firewall auth cache behavior |
 | `test_body_capture_decompression.py` | Capture-level body decompression integration |
 | `test_body_capture_encoding.py` | Body capture text detection, encoding, and UTF-8 truncation helpers |
@@ -91,7 +93,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
-| `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
+| `test_model_provider_json_fallback.py` | Model provider buffered JSON fallback usage pipeline |
+| `test_model_provider_json_streaming.py` | Model provider streaming JSON response usage pipeline |
 | `test_model_provider_sse_usage.py` | Model provider SSE usage pipeline |
 | `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
 | `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |
@@ -102,7 +105,6 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
 | `test_webhook.py` | Usage webhook delivery |
 | `test_counters.py` | Usage pending counters |
-| `test_utils.py` | Utility functions |
 
 ## Patterns
 

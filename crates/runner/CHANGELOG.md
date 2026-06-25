@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.129.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.23...runner-rs-v0.129.24) (2026-06-25)
+
+
+### Performance Improvements
+
+* bound auth base forwarding admission ([#18954](https://github.com/vm0-ai/vm0/issues/18954)) ([e4a7a0e](https://github.com/vm0-ai/vm0/commit/e4a7a0eabb581a16d92b6080d369a4f8d3980b76))
+
+## [0.129.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.22...runner-rs-v0.129.23) (2026-06-25)
+
+
+### Bug Fixes
+
+* use figma api token header in builtin firewall ([#18953](https://github.com/vm0-ai/vm0/issues/18953)) ([81dad4e](https://github.com/vm0-ai/vm0/commit/81dad4e7685ae21c7f6a3df863934adb6d44207c))
+
+
+### Documentation
+
+* **mitm-addon:** update billable connector guidance ([#18948](https://github.com/vm0-ai/vm0/issues/18948)) ([b8d6f52](https://github.com/vm0-ai/vm0/commit/b8d6f52331901865812f7cf24d3a7d6325bfffd1))
+
+
+### Performance Improvements
+
+* bound firewalled request body capture ([#18939](https://github.com/vm0-ai/vm0/issues/18939)) ([1381816](https://github.com/vm0-ai/vm0/commit/1381816cefb707179d1a2fef0ed7024b5db4942b))
+* **runner:** batch local cancel job lookup ([#18949](https://github.com/vm0-ai/vm0/issues/18949)) ([9575105](https://github.com/vm0-ai/vm0/commit/9575105c0cdb84681efa4630a30445051389e623))
+
 ## [0.129.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.21...runner-rs-v0.129.22) (2026-06-25)
 
 

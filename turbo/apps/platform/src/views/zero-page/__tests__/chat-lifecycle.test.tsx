@@ -3294,6 +3294,25 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
+          id: "msg-run-group-usage-1",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000724",
+          usage: {
+            version: 1,
+            totalCredits: 10,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 10,
+                providers: [{ provider: "github", credits: 10 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
           id: "msg-run-group-user-2",
           role: "user",
           content: "Run the daily check",
@@ -3312,6 +3331,25 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:01:01Z",
         },
         {
+          id: "msg-run-group-usage-2",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000725",
+          usage: {
+            version: 1,
+            totalCredits: 20,
+            settledAt: "2026-06-09T10:01:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 20,
+                providers: [{ provider: "github", credits: 20 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+        {
           id: "msg-run-group-user-3",
           role: "user",
           content: "Run the daily check",
@@ -3328,6 +3366,25 @@ describe("chat lifecycle", () => {
           runId: "f0000001-0000-4000-a000-000000000726",
           runGroupId,
           createdAt: "2026-06-09T10:02:01Z",
+        },
+        {
+          id: "msg-run-group-usage-3",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000726",
+          usage: {
+            version: 1,
+            totalCredits: 30,
+            settledAt: "2026-06-09T10:02:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 30,
+                providers: [{ provider: "github", credits: 30 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:02:02Z",
         },
       ],
     });
@@ -3354,6 +3411,16 @@ describe("chat lifecycle", () => {
       expect(
         screen.queryByText("Second daily check result"),
       ).not.toBeInTheDocument();
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 60");
+    expect(screen.queryByLabelText("Credit usage 30")).not.toBeInTheDocument();
+
+    click(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Github").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("60").length).toBeGreaterThanOrEqual(1);
     });
 
     fireEvent.click(buttonByLabel("Expand grouped run history"));
