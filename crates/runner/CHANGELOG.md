@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.15...runner-rs-v0.129.16) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
 ## [0.129.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.14...runner-rs-v0.129.15) (2026-06-25)
 
 

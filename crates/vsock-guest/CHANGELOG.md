@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.7](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.6...vsock-guest-v0.19.7) (2026-06-25)
+
+
+### Refactoring
+
+* centralize rust shell quoting ([#18833](https://github.com/vm0-ai/vm0/issues/18833)) ([d4f8878](https://github.com/vm0-ai/vm0/commit/d4f88785000474267e3462a44afea99759768e77))
+
 ## [0.19.6](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.5...vsock-guest-v0.19.6) (2026-06-25)
 
 
