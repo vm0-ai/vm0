@@ -335,7 +335,20 @@ fn wait_child(
     Ok((status, stderr))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+))]
 fn wait_child_status_and_cleanup_group(
     mut child: Child,
 ) -> Result<ExitStatus, Box<dyn std::error::Error>> {
@@ -370,14 +383,40 @@ fn wait_child_status_and_cleanup_group(
     Ok(child.wait()?)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+)))]
 fn wait_child_status_and_cleanup_group(
     child: Child,
 ) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     wait_child_status(child)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+))]
 fn observe_child_exit_without_reaping(pid: u32) -> std::io::Result<()> {
     let pid = i32::try_from(pid).map_err(|_| {
         std::io::Error::new(
@@ -407,7 +446,20 @@ fn observe_child_exit_without_reaping(pid: u32) -> std::io::Result<()> {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+)))]
 fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
@@ -1160,6 +1212,20 @@ fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std:
     Ok(())
 }
 
+#[cfg(any(
+    target_os = "linux",
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "aix",
+    target_os = "haiku",
+    target_os = "hurd",
+    target_os = "nto",
+))]
 #[test]
 fn orphan_pipe_does_not_block_output_wait() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
