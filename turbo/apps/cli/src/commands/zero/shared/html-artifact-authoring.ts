@@ -8,6 +8,12 @@ import {
 
 type HtmlArtifactKind = GenerationTarget;
 
+interface HtmlArtifactVerificationRuleContext {
+  readonly outputDir: string;
+  readonly site: string;
+  readonly hostCommand: string;
+}
+
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
@@ -15,6 +21,9 @@ interface HtmlArtifactAuthoringOptions {
   readonly siteSlug?: string;
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
+  readonly verificationRules?: (
+    context: HtmlArtifactVerificationRuleContext,
+  ) => readonly string[];
 }
 
 interface HtmlArtifactAuthoringPacket {
@@ -156,12 +165,8 @@ export function createHtmlArtifactAuthoringPacket(
     previewKind: "hosted-url",
     outputDir,
   } as const;
-  const presentationVerificationRules =
-    options.kind === "presentation"
-      ? [
-          `- After generating the deck, run \`node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ${outputDir}/index.html\` to QA the final HTML. Fix failures before hosting, or state why the QA script could not run.`,
-        ]
-      : [];
+  const verificationRules =
+    options.verificationRules?.({ outputDir, site, hostCommand }) ?? [];
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
@@ -255,7 +260,7 @@ export function createHtmlArtifactAuthoringPacket(
     "- Check that keyboard/click interactions work when present.",
     "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
     "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
-    ...presentationVerificationRules,
+    ...verificationRules,
     "- Run the final hosting command only after the artifact looks correct.",
     "",
     "## Publish",

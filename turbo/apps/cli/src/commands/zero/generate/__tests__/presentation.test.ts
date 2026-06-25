@@ -83,7 +83,7 @@ describe("zero generate presentation command", () => {
       "Check that shapes, charts, images, or decorative graphics do not cover readable text",
     );
     expect(stdout).toContain(
-      "node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ./generated/mockups/api-migration-plan/index.html",
+      "After generating the deck, run `node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs ./generated/mockups/api-migration-plan/index.html` to QA the final HTML",
     );
   });
 
