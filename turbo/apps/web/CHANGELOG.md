@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.441.1](https://github.com/vm0-ai/vm0/compare/web-v12.441.0...web-v12.441.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* align so action proxy origin ([#18986](https://github.com/vm0-ai/vm0/issues/18986)) ([23faff7](https://github.com/vm0-ai/vm0/commit/23faff7aa72934557daa13fb133b84f08f9faa0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+
 ## [12.441.0](https://github.com/vm0-ai/vm0/compare/web-v12.440.7...web-v12.441.0) (2026-06-25)
 
 
