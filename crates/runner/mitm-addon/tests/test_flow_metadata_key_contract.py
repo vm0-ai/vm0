@@ -14,7 +14,16 @@ _REGISTERED_METADATA_KEYS = {
     for name, value in vars(metadata_keys).items()
     if name.isupper() and isinstance(value, str)
 }
-_METADATA_METHODS_WITH_KEY_ARGUMENTS = {"get", "pop", "setdefault"}
+_METADATA_METHODS_WITH_KEY_ARGUMENTS = {
+    "__contains__",
+    "__delitem__",
+    "__getitem__",
+    "__setitem__",
+    "get",
+    "pop",
+    "setdefault",
+}
+_METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
 
 
 def _python_files() -> list[Path]:
@@ -59,7 +68,7 @@ def _metadata_key_violations(path: Path) -> list[str]:
                 key_name = _registered_key_name(node.args[0])
                 if key_name is not None:
                     violations.append(_violation(path, node, key_name))
-            if node.func.attr == "update":
+            if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
                 violations.extend(_metadata_update_violations(path, node))
 
         if isinstance(node, ast.AugAssign) and _is_metadata_attribute(node.target):
@@ -169,12 +178,17 @@ flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
 flow.metadata.update(**{"trusted_authority_host": "api.example.com"})
 flow.metadata.update([("http_request_start_monotonic", 1.0)])
+flow.metadata.__getitem__("vm_sandbox_token")
+flow.metadata.__setitem__("firewall_api_id", "run-1:0")
+flow.metadata.__delitem__("network_log_target")
+flow.metadata.__contains__("browser_user_agent")
+flow.metadata.__ior__({"suppress_request_body_capture": True})
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 13
+    assert len(violations) == 18
     assert all("use metadata_keys." in violation for violation in violations)
 
 
