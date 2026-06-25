@@ -74,10 +74,17 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.path = path
         self.violations: list[str] = []
         self._metadata_alias_scopes: list[set[str]] = [set()]
+        self._named_expr_target_scope_indexes: list[int] = []
 
     @property
     def _metadata_aliases(self) -> set[str]:
         return self._metadata_alias_scopes[-1]
+
+    @property
+    def _named_expr_target_aliases(self) -> set[str]:
+        if not self._named_expr_target_scope_indexes:
+            return self._metadata_aliases
+        return self._metadata_alias_scopes[self._named_expr_target_scope_indexes[-1]]
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
         return (
@@ -91,8 +98,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if shadowed is not None:
             aliases.difference_update(shadowed)
         self._metadata_alias_scopes.append(aliases)
+        previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
+        self._named_expr_target_scope_indexes = []
         for statement in body:
             self.visit(statement)
+        self._named_expr_target_scope_indexes = previous_named_expr_target_scope_indexes
         self._metadata_alias_scopes.pop()
 
     def _visit_scoped_expression(
@@ -102,7 +112,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if shadowed is not None:
             aliases.difference_update(shadowed)
         self._metadata_alias_scopes.append(aliases)
+        previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
+        self._named_expr_target_scope_indexes = []
         self.visit(expression)
+        self._named_expr_target_scope_indexes = previous_named_expr_target_scope_indexes
         self._metadata_alias_scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -162,9 +175,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         if isinstance(node.target, ast.Name):
+            target_aliases = self._named_expr_target_aliases
             if self._is_metadata_reference(node.value):
+                target_aliases.add(node.target.id)
                 self._metadata_aliases.add(node.target.id)
             else:
+                target_aliases.discard(node.target.id)
                 self._metadata_aliases.discard(node.target.id)
         self.visit(node.value)
 
@@ -289,7 +305,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         first_generator, *remaining_generators = generators
         self.visit(first_generator.iter)
 
+        named_expr_target_scope_index = (
+            self._named_expr_target_scope_indexes[-1]
+            if self._named_expr_target_scope_indexes
+            else len(self._metadata_alias_scopes) - 1
+        )
         self._metadata_alias_scopes.append(set(self._metadata_aliases))
+        self._named_expr_target_scope_indexes.append(named_expr_target_scope_index)
         self._discard_alias_target(first_generator.target)
         for condition in first_generator.ifs:
             self.visit(condition)
@@ -300,6 +322,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self.visit(condition)
         for expression in body_expressions:
             self.visit(expression)
+        self._named_expr_target_scope_indexes.pop()
         self._metadata_alias_scopes.pop()
 
 
@@ -419,12 +442,26 @@ if conditional_meta := flow.metadata:
     conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
 outer_meta = flow.metadata
 values = [outer_meta["auth_refreshed_connectors"] for item in rows]
+values = [(leaked_meta := flow.metadata) for item in rows]
+leaked_meta["auth_refreshed_secrets"] = []
+values = [[(nested_leaked_meta := flow.metadata) for item in row] for row in rows]
+nested_leaked_meta["auth_resolved_secrets"] = []
+values = [
+    conditional_body_meta["model_provider_usage"]
+    for item in rows
+    if (conditional_body_meta := flow.metadata)
+]
+values = [
+    generator_body_meta["model_provider_usage_sources"]
+    for row in rows
+    for item in (generator_body_meta := flow.metadata)
+]
 """
     )
 
     violations = _metadata_key_violations(source_path)
 
-    assert len(violations) == 30
+    assert len(violations) == 34
     assert all("use metadata_keys." in violation for violation in violations)
 
 
@@ -463,6 +500,10 @@ values = [meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]]
 values = {meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]}
 values = {meta["vm_run_id"]: 1 for meta in [{"vm_run_id": "external"}]}
 values = tuple(meta["vm_run_id"] for meta in [{"vm_run_id": "external"}])
+[(lambda: (lambda_local_meta := flow.metadata))() for item in rows]
+value = lambda_local_meta["vm_run_id"]
+values = [(meta := {"vm_run_id": "external"}) for item in rows]
+value = meta["vm_run_id"]
 try:
     pass
 except Exception as meta:
