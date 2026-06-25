@@ -319,7 +319,7 @@ describe("workflow detail page", () => {
     expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
     click(screen.getByRole("button", { name: /trigger/i }));
-    expect(search()).toBe("?triggers=1");
+    expect(search()).toBe("?sidebar=triggers");
     expect(
       screen.getByRole("button", { name: "Close trigger sidebar" }),
     ).toBeInTheDocument();
@@ -355,7 +355,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?triggers=1`,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?sidebar=triggers`,
     });
 
     await waitFor(() => {

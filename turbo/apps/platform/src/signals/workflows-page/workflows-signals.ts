@@ -26,7 +26,8 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 export type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
-const WORKFLOW_TRIGGER_SIDEBAR_PARAM = "triggers";
+const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
+const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 
 export interface WorkflowDetailFileDraft {
   readonly workflowId: string;
@@ -70,23 +71,31 @@ export const setWorkflowSearch$ = command(({ set }, value: string) => {
 });
 
 export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
-  return get(searchParams$).get(WORKFLOW_TRIGGER_SIDEBAR_PARAM) === "1";
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+    WORKFLOW_TRIGGER_SIDEBAR_VALUE
+  );
 });
 
 export const setWorkflowDetailTriggerSidebarOpen$ = command(
   ({ get, set }, open: boolean) => {
     const params = new URLSearchParams(get(searchParams$));
-    const currentlyOpen = params.get(WORKFLOW_TRIGGER_SIDEBAR_PARAM) === "1";
+    const currentlyOpen =
+      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
     if (open === currentlyOpen) {
       return;
     }
     if (open) {
-      params.set(WORKFLOW_TRIGGER_SIDEBAR_PARAM, "1");
+      params.set(
+        WORKFLOW_DETAIL_SIDEBAR_PARAM,
+        WORKFLOW_TRIGGER_SIDEBAR_VALUE,
+      );
       set(updateSearchParams$, params);
       return;
     }
 
-    params.delete(WORKFLOW_TRIGGER_SIDEBAR_PARAM);
+    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
     set(internalEditingGmailTriggerId$, null);
     set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
     set(internalWorkflowTriggerCreateDialog$, null);
