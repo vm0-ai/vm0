@@ -201,6 +201,7 @@ async function proxySoFrontendRequest(
       `${targetUrl.origin}${referer.slice(request.nextUrl.origin.length)}`,
     );
   }
+  requestHeaders.set("accept-encoding", "identity");
 
   const proxyRequestInit: RequestInit & { duplex?: "half" } = {
     method: request.method,
@@ -212,7 +213,16 @@ async function proxySoFrontendRequest(
     proxyRequestInit.duplex = "half";
   }
 
-  return fetch(targetUrl, proxyRequestInit);
+  const upstreamResponse = await fetch(targetUrl, proxyRequestInit);
+  const responseHeaders = new Headers(upstreamResponse.headers);
+  responseHeaders.delete("content-encoding");
+  responseHeaders.delete("content-length");
+
+  return new Response(upstreamResponse.body, {
+    headers: responseHeaders,
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+  });
 }
 
 // ---------------------------------------------------------------------------
