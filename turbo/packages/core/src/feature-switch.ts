@@ -288,6 +288,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show a PPTX download action for presentation HTML artifacts.",
     enabled: true,
   },
+  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
     maintainer: "bingjie@vm0.ai",
     description:
