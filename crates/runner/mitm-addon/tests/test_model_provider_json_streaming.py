@@ -18,12 +18,12 @@ from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_response_helpers import (
     ANTHROPIC_JSON_CASE,
     MODEL_PROVIDER_JSON_CASES,
-    _expected_event_quantities,
-    _expected_usage,
-    _model_provider_json_case_id,
-    _standard_success_payload,
+    expected_event_quantities,
+    expected_model_usage,
     model_provider_flow,
+    model_provider_json_case_id,
     run_response,
+    standard_success_payload,
 )
 
 
@@ -95,7 +95,7 @@ class TestModelProviderJsonStreaming:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_full_pipeline_compressed_model_json_reports_usage(
         self, tmp_path, real_flow, provider_case
@@ -107,7 +107,7 @@ class TestModelProviderJsonStreaming:
             provider_case,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         compressed = gzip.compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
@@ -122,7 +122,7 @@ class TestModelProviderJsonStreaming:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected_usage = _expected_usage(provider_case)
+        expected_usage = expected_model_usage(provider_case)
         assert extracted["message_id"] == expected_usage["message_id"]
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
@@ -131,7 +131,7 @@ class TestModelProviderJsonStreaming:
             assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
 
     def test_full_pipeline_zstd_model_json_scans_past_decode_chunk_limit(
         self,
@@ -171,7 +171,7 @@ class TestModelProviderJsonStreaming:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_full_pipeline_truncated_compressed_model_json_does_not_report_usage(
         self, tmp_path, real_flow, encoding_case, provider_case
@@ -184,7 +184,7 @@ class TestModelProviderJsonStreaming:
             provider_case,
             proxy_log_path=proxy_log_path,
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         if encoding_case == "gzip":
             compressed = gzip.compress(payload)[:-1]
         else:
@@ -224,7 +224,7 @@ class TestModelProviderJsonStreaming:
             provider_case,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         if encoding_case == "gzip":
             compressed = gzip.compress(b"") + gzip.compress(payload)
         else:
@@ -242,18 +242,18 @@ class TestModelProviderJsonStreaming:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected_usage = _expected_usage(provider_case)
+        expected_usage = expected_model_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
 
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_full_pipeline_brotli_model_json_uses_bounded_fallback(
         self, tmp_path, real_flow, provider_case
@@ -265,7 +265,7 @@ class TestModelProviderJsonStreaming:
             provider_case,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         compressed = brotli.compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
@@ -278,7 +278,7 @@ class TestModelProviderJsonStreaming:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected_usage = _expected_usage(provider_case)
+        expected_usage = expected_model_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
@@ -286,7 +286,7 @@ class TestModelProviderJsonStreaming:
             assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
 
     def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
         self, tmp_path, real_flow

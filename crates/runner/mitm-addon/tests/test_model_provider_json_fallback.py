@@ -23,14 +23,14 @@ from tests.model_provider_response_helpers import (
     JSON_COMPRESSION_FAILURE_CASES,
     MODEL_PROVIDER_JSON_CASES,
     OPENAI_RESPONSES_CASE,
-    _expected_event_quantities,
-    _expected_usage,
-    _json_compression_failure_case_id,
-    _model_provider_json_case_id,
-    _standard_success_payload,
+    expected_event_quantities,
+    expected_model_usage,
+    json_compression_failure_case_id,
     model_provider_flow,
+    model_provider_json_case_id,
     run_response,
     set_common_model_metadata,
+    standard_success_payload,
 )
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
@@ -47,7 +47,7 @@ class TestModelProviderJsonFallback:
         provider_case = ANTHROPIC_JSON_CASE
         flow = model_provider_flow(real_flow, tmp_path, provider_case)
         # No model_provider_usage set (no SSE parser) — JSON body in buffer
-        body = _standard_success_payload(provider_case)
+        body = standard_success_payload(provider_case)
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -60,7 +60,7 @@ class TestModelProviderJsonFallback:
 
         # JSON fallback should populate model_provider_usage in metadata
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected = _expected_usage(provider_case)
+        expected = expected_model_usage(provider_case)
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
         assert extracted["tokens.output"] == expected["tokens.output"]
@@ -69,7 +69,7 @@ class TestModelProviderJsonFallback:
         """Legacy JSON fallback should use OpenAI Responses mapping."""
         provider_case = OPENAI_RESPONSES_CASE
         flow = model_provider_flow(real_flow, tmp_path, provider_case)
-        body = _standard_success_payload(provider_case)
+        body = standard_success_payload(provider_case)
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -81,7 +81,7 @@ class TestModelProviderJsonFallback:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected = _expected_usage(provider_case)
+        expected = expected_model_usage(provider_case)
         assert extracted["message_id"] == expected["message_id"]
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
@@ -89,7 +89,7 @@ class TestModelProviderJsonFallback:
         assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
 
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Legacy JSON fallback parse failures should be observable."""
@@ -183,12 +183,12 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize(
         "encoding_case",
         JSON_COMPRESSION_FAILURE_CASES,
-        ids=_json_compression_failure_case_id,
+        ids=json_compression_failure_case_id,
     )
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
         self,
@@ -205,7 +205,7 @@ class TestModelProviderJsonFallback:
             provider_case,
             proxy_log_path=proxy_log_path,
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         body = encoding_case.make_body(payload)
 
         set_response_stream_buffer(flow, body)
@@ -234,7 +234,7 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_json_fallback_concatenated_zlib_member_reports_usage(
         self,
@@ -251,7 +251,7 @@ class TestModelProviderJsonFallback:
             provider_case,
             proxy_log_path=proxy_log_path,
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
         if encoding_case == "gzip":
             body = gzip.compress(b"") + gzip.compress(payload)
         else:
@@ -270,7 +270,7 @@ class TestModelProviderJsonFallback:
         run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected = _expected_usage(provider_case)
+        expected = expected_model_usage(provider_case)
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
         assert extracted["tokens.output"] == expected["tokens.output"]
@@ -287,7 +287,7 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_json_fallback_brotli_and_zstd_report_usage(
         self,
@@ -304,7 +304,7 @@ class TestModelProviderJsonFallback:
             provider_case,
             proxy_log_path=proxy_log_path,
         )
-        payload = _standard_success_payload(provider_case)
+        payload = standard_success_payload(provider_case)
 
         if encoding_case == "br":
             body = brotli.compress(payload)
@@ -325,7 +325,7 @@ class TestModelProviderJsonFallback:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected_usage = _expected_usage(provider_case)
+        expected_usage = expected_model_usage(provider_case)
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
@@ -333,7 +333,7 @@ class TestModelProviderJsonFallback:
             assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
         if jsonl_exists_after_flush(proxy_log_path):
             entries = read_jsonl_entries_after_flush(proxy_log_path)
             assert not any(
@@ -393,7 +393,7 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_json_fallback_empty_body_stays_quiet(
         self,
@@ -469,7 +469,7 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,
-        ids=_model_provider_json_case_id,
+        ids=model_provider_json_case_id,
     )
     def test_json_fallback_zero_token_usage_stays_quiet(self, tmp_path, real_flow, provider_case):
         """Valid zero-token usage is not a parser failure and does not bill."""
@@ -480,13 +480,13 @@ class TestModelProviderJsonFallback:
             provider_case,
             proxy_log_path=proxy_log_path,
         )
-        body = _standard_success_payload(
+        body = standard_success_payload(
             provider_case,
             input_tokens=0,
             output_tokens=0,
             cached_tokens=0,
         )
-        expected_usage = _expected_usage(
+        expected_usage = expected_model_usage(
             provider_case,
             input_tokens=0,
             output_tokens=0,
@@ -510,7 +510,7 @@ class TestModelProviderJsonFallback:
         """Codex OAuth model-provider fallback uses OpenAI Responses mapping."""
         provider_case = CODEX_OAUTH_RESPONSES_CASE
         flow = model_provider_flow(real_flow, tmp_path, provider_case)
-        body = _standard_success_payload(provider_case)
+        body = standard_success_payload(provider_case)
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -522,7 +522,7 @@ class TestModelProviderJsonFallback:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected = _expected_usage(provider_case)
+        expected = expected_model_usage(provider_case)
         assert extracted["message_id"] == expected["message_id"]
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
@@ -530,7 +530,7 @@ class TestModelProviderJsonFallback:
         assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == _expected_event_quantities(provider_case)
+        assert by_category == expected_event_quantities(provider_case)
 
     def test_non_billable_openai_json_reports_observation_without_billing(
         self, tmp_path, real_flow
@@ -541,7 +541,7 @@ class TestModelProviderJsonFallback:
             OPENAI_RESPONSES_CASE,
             billable=False,
         )
-        body = _standard_success_payload(OPENAI_RESPONSES_CASE)
+        body = standard_success_payload(OPENAI_RESPONSES_CASE)
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -553,7 +553,7 @@ class TestModelProviderJsonFallback:
         assert webhook.usage_events() == []
         observations = webhook.model_usage_observation_events()
         by_category = {event["category"]: event["quantity"] for event in observations}
-        assert by_category == _expected_event_quantities(OPENAI_RESPONSES_CASE)
+        assert by_category == expected_event_quantities(OPENAI_RESPONSES_CASE)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
 
     def test_non_observable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
@@ -610,7 +610,7 @@ class TestModelProviderJsonFallback:
         set_common_model_metadata(flow, tmp_path)
         flow.metadata[metadata_keys.ORIGINAL_URL] = ANTHROPIC_JSON_CASE.original_url
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
-        body = _standard_success_payload(ANTHROPIC_JSON_CASE)
+        body = standard_success_payload(ANTHROPIC_JSON_CASE)
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})

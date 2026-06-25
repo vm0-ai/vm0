@@ -76,11 +76,11 @@ CODEX_OAUTH_RESPONSES_CASE = ModelProviderJsonCase(
 MODEL_PROVIDER_JSON_CASES = (ANTHROPIC_JSON_CASE, OPENAI_RESPONSES_CASE)
 
 
-def _model_provider_json_case_id(provider_case: ModelProviderJsonCase) -> str:
+def model_provider_json_case_id(provider_case: ModelProviderJsonCase) -> str:
     return provider_case.id
 
 
-def _json_compression_failure_case_id(encoding_case: JsonCompressionFailureCase) -> str:
+def json_compression_failure_case_id(encoding_case: JsonCompressionFailureCase) -> str:
     return encoding_case.id
 
 
@@ -234,7 +234,7 @@ JSON_COMPRESSION_FAILURE_CASES = (
 )
 
 
-def _standard_success_payload(
+def standard_success_payload(
     provider_case: ModelProviderJsonCase,
     *,
     input_tokens: int | None = None,
@@ -262,7 +262,7 @@ def _standard_success_payload(
     return json.dumps(payload).encode()
 
 
-def _expected_usage(
+def expected_model_usage(
     provider_case: ModelProviderJsonCase,
     *,
     input_tokens: int | None = None,
@@ -285,10 +285,10 @@ def _expected_usage(
     return expected
 
 
-def _expected_event_quantities(provider_case: ModelProviderJsonCase) -> dict[str, int]:
+def expected_event_quantities(provider_case: ModelProviderJsonCase) -> dict[str, int]:
     return {
         category: quantity
-        for category, quantity in _expected_usage(provider_case).items()
+        for category, quantity in expected_model_usage(provider_case).items()
         if category.startswith("tokens.")
         and isinstance(quantity, int)
         and not isinstance(quantity, bool)
