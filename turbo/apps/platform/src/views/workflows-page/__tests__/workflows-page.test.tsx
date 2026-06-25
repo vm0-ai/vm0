@@ -18,6 +18,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -265,6 +266,63 @@ function mockUpdateWorkflowTrigger(
   );
 }
 
+type RoleTextMatch = RegExp | string;
+
+function textFor(element: Element): string {
+  return element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function valueMatchesText(value: string, text: RoleTextMatch): boolean {
+  return typeof text === "string" ? value === text : text.test(value);
+}
+
+function matchesText(element: Element, text: RoleTextMatch): boolean {
+  const label = element.getAttribute("aria-label") ?? "";
+  return [textFor(element), label].some((value) => {
+    return value.length > 0 && valueMatchesText(value, text);
+  });
+}
+
+function matchLabel(text: RoleTextMatch): string {
+  return typeof text === "string" ? text : text.toString();
+}
+
+function buttonByText(
+  text: RoleTextMatch,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const buttons = queryAllByRoleFast("button", container);
+  const button = buttons.find((candidate) => {
+    return matchesText(candidate, text);
+  });
+  if (!button) {
+    throw new Error(`${matchLabel(text)} button not found`);
+  }
+  return button;
+}
+
+function queryButtonByText(
+  text: RoleTextMatch,
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((candidate) => {
+      return matchesText(candidate, text);
+    }) ?? null
+  );
+}
+
+function menuItemByText(text: RoleTextMatch): HTMLElement {
+  const menuItems = queryAllByRoleFast("menuitem");
+  const item = menuItems.find((candidate) => {
+    return matchesText(candidate, text);
+  });
+  if (!item) {
+    throw new Error(`${matchLabel(text)} menu item not found`);
+  }
+  return item;
+}
+
 describe("workflows index page", () => {
   it("shows every visible workflow with its agent and links into the detail page", async () => {
     mockWorkflowApis([salesResearch(), opsPlaybook()]);
@@ -303,28 +361,41 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
     const breadcrumb = screen.getByLabelText("Breadcrumb");
     const workflowsLink = queryAllByRoleFast("link", breadcrumb).find(
       (link) => {
-        return link.textContent?.trim() === "Workflows";
+        return link.textContent?.trim() === "workflows";
       },
     );
     expect(workflowsLink).toHaveAttribute("href", "/workflows");
+    expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
-    expect(screen.getByLabelText("Instruction")).toHaveValue(
-      "Gather CRM context before outreach.",
-    );
-    expect(screen.getByText("Triggers")).toBeInTheDocument();
+    click(buttonByText(/trigger/i));
+    expect(search()).toBe("?sidebar=triggers");
+    expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    const permissionsButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Permissions";
+    click(buttonByText("instructions", breadcrumb));
+    click(menuItemByText(/config\/settings\.json/));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Workflow file content"),
+      ).toBeInTheDocument();
     });
-    expect(permissionsButton).toBeDefined();
-    click(permissionsButton!);
+    expect(screen.getByLabelText("Workflow file content")).toHaveValue(
+      '{ "risk": "low", "tone": "direct" }',
+    );
+
+    await waitFor(() => {
+      expect(buttonByText(/permissions/i)).toBeInTheDocument();
+    });
+    click(buttonByText(/permissions/i));
     await waitFor(() => {
       expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
     });
@@ -332,13 +403,28 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
 
-    click(screen.getByLabelText("Open config/settings.json"));
+  it("derives the trigger sidebar from workflow detail search params", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?sidebar=triggers`,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    click(buttonByText("Close trigger sidebar"));
+
     await waitFor(() => {
       expect(
-        screen.getByText('{ "risk": "low", "tone": "direct" }'),
-      ).toBeInTheDocument();
+        queryButtonByText("Close trigger sidebar"),
+      ).not.toBeInTheDocument();
     });
+    expect(search()).toBe("");
   });
 
   it("renders Gmail new message trigger match summaries", async () => {
@@ -352,6 +438,13 @@ describe("workflow detail page", () => {
       context,
       path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
     });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -377,8 +470,11 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
+    click(buttonByText(/trigger/i));
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
       return button.textContent?.trim() === "Add trigger";
     });
@@ -459,6 +555,13 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+
+    await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
         0,
       );
@@ -533,9 +636,14 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
-    click(screen.getByLabelText("Open config/settings.json"));
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    click(buttonByText("instructions", breadcrumb));
+    click(menuItemByText(/config\/settings\.json/));
+    click(buttonByText(/config\/settings\.json/, breadcrumb));
     click(screen.getByLabelText("Delete config/settings.json"));
 
     await waitFor(() => {
@@ -560,14 +668,14 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
 
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!input) {
-      throw new Error("Expected upload input");
-    }
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    click(buttonByText("instructions", breadcrumb));
+    const input = screen.getByLabelText("Upload workflow files");
     fireEvent.change(input, {
       target: {
         files: [new File(["new notes"], "notes.md", { type: "text/markdown" })],

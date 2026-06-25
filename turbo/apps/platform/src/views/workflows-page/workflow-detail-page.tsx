@@ -1,6 +1,7 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, run-once, copy, and delete.
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -11,17 +12,23 @@ import type {
   ZeroWorkflowSchedule,
   ZeroWorkflowScheduleType,
   ZeroWorkflowTriggerSummary,
+  ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconAlertTriangle,
+  IconChevronDown,
   IconClock,
+  IconCopy,
+  IconDotsVertical,
   IconFileText,
   IconLoader2,
   IconMail,
+  IconPencil,
   IconPlus,
   IconShieldLock,
   IconTrash,
   IconUpload,
+  IconX,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -60,12 +67,18 @@ import {
   setScheduleTriggerType$,
   setEditingGmailTriggerId$,
   setSelectedWorkflowFilePath$,
+  setWorkflowActionDialog$,
+  setWorkflowDetailTriggerSidebarOpen$,
+  setWorkflowFileDraft$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
   setWorkflowTriggerPermissionsDrawerTriggerId$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflow$,
+  workflowActionDialog$,
   workflowTriggerCreateDialog$,
+  workflowDetailTriggerSidebarOpen$,
+  workflowFileDraft$,
   workflowDetail,
   workflowTriggerPermissionsDrawerTriggerId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -73,16 +86,14 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Markdown } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
 import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
+import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
+import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import {
-  buildWorkflowFileTree,
+  agentLabel,
   isMarkdownPath,
-  stripMarkdownFrontmatter,
   triggerKindLabel,
-  VisibilityBadge,
-  WorkflowFileTree,
   workflowTitle,
 } from "./workflow-shared.tsx";
 
@@ -91,6 +102,7 @@ const FIELD_CLASS =
 const TRIGGER_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const TRIGGER_TIMEZONE = "UTC";
+const WORKFLOW_SIDEBAR_WIDTH = "min(520px, 42vw)";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
@@ -125,55 +137,8 @@ function WorkflowDetailContent({
   const detailLoadable = useLoadable(workflowDetail(workflowId));
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <WorkflowBreadcrumb detail={detail} />
-      <main className="flex-1 overflow-auto px-4 pb-10 pt-4 sm:px-6">
-        <div className="mx-auto w-full max-w-[900px]">
-          {detail ? (
-            <WorkflowDetailBody detail={detail} />
-          ) : detailLoadable.state === "hasData" ? (
-            <p className="text-sm text-muted-foreground">Workflow not found.</p>
-          ) : (
-            <DetailSkeleton />
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function WorkflowBreadcrumb({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse | null;
-}) {
-  return (
-    <nav
-      aria-label="Breadcrumb"
-      className="hidden shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground sm:flex"
-    >
-      <Link
-        pathname={ROUTES.workflows}
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <IconFileText size={14} stroke={1.5} className="shrink-0" />
-        Workflows
-      </Link>
-      <span className="select-none text-muted-foreground/40">/</span>
-      <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
-        {detail ? workflowTitle(detail) : "Workflow"}
-      </span>
-    </nav>
-  );
-}
-
-function WorkflowDetailBody({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
+  const triggerSidebarOpen = useGet(workflowDetailTriggerSidebarOpen$);
+  const setTriggerSidebarOpen = useSet(setWorkflowDetailTriggerSidebarOpen$);
   const permissionTriggerId = useGet(
     workflowTriggerPermissionsDrawerTriggerId$,
   );
@@ -181,26 +146,63 @@ function WorkflowDetailBody({
     setWorkflowTriggerPermissionsDrawerTriggerId$,
   );
   const permissionTrigger =
-    detail.triggers.find((trigger) => {
+    detail?.triggers.find((trigger) => {
       return trigger.id === permissionTriggerId;
     }) ?? null;
+  const shellStyle = {
+    "--workflow-trigger-sidebar-width": WORKFLOW_SIDEBAR_WIDTH,
+  } as CSSProperties;
 
   return (
-    <>
-      <div className="flex flex-col gap-4">
-        <DetailHeader detail={detail} />
-        <ShadowWarning detail={detail} />
-        <MetadataEditor detail={detail} />
-        <InstructionEditor detail={detail} />
-        <SupplementaryFiles detail={detail} />
-        <TriggersSection
+    <div className="flex min-h-0 flex-1" style={shellStyle}>
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-col",
+          triggerSidebarOpen ? "hidden flex-1 basis-0 xl:flex" : "flex flex-1",
+        )}
+      >
+        <DetailHeader
           detail={detail}
-          onOpenTriggerPermissions={setPermissionTriggerId}
+          triggerSidebarOpen={triggerSidebarOpen}
+          onTriggerSidebarOpenChange={setTriggerSidebarOpen}
         />
-        <VisibilitySection detail={detail} />
-        <DangerZone detail={detail} />
+        <main className="min-h-0 flex-1 overflow-auto px-4 pb-10 pt-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[900px]">
+            {detail ? (
+              <WorkflowDetailBody detail={detail} />
+            ) : detailLoadable.state === "hasData" ? (
+              <p className="text-sm text-muted-foreground">
+                Workflow not found.
+              </p>
+            ) : (
+              <DetailSkeleton />
+            )}
+          </div>
+        </main>
       </div>
-      {permissionTrigger ? (
+      {triggerSidebarOpen && detail ? (
+        <div className="hidden w-px shrink-0 bg-border/60 xl:block" />
+      ) : null}
+      <div
+        className={cn(
+          "min-h-0 min-w-0 overflow-hidden",
+          triggerSidebarOpen
+            ? "flex flex-1 basis-0 xl:w-[var(--workflow-trigger-sidebar-width)] xl:flex-none xl:basis-[var(--workflow-trigger-sidebar-width)]"
+            : "pointer-events-none hidden w-0 flex-none basis-0",
+        )}
+        aria-hidden={!triggerSidebarOpen}
+      >
+        {triggerSidebarOpen && detail ? (
+          <TriggersSection
+            detail={detail}
+            onClose={() => {
+              setTriggerSidebarOpen(false);
+            }}
+            onOpenTriggerPermissions={setPermissionTriggerId}
+          />
+        ) : null}
+      </div>
+      {permissionTrigger && detail ? (
         <TriggerPermissionsDrawer
           agentId={detail.agentId}
           workflowId={detail.id}
@@ -213,11 +215,206 @@ function WorkflowDetailBody({
           }}
         />
       ) : null}
-    </>
+    </div>
+  );
+}
+
+function WorkflowBreadcrumb({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse | null;
+}) {
+  if (!detail) {
+    return (
+      <div className="h-7 w-56 rounded-md bg-muted/50" aria-hidden="true" />
+    );
+  }
+
+  return (
+    <nav
+      aria-label="Breadcrumb"
+      className="hidden min-w-0 items-center gap-1 text-sm text-muted-foreground sm:flex"
+    >
+      <BreadcrumbLink pathname={ROUTES.agents}>Agents</BreadcrumbLink>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <BreadcrumbLink
+        pathname={ROUTES.agentDetail}
+        options={{ pathParams: { agentId: detail.agentId } }}
+      >
+        {agentLabel(detail)}
+      </BreadcrumbLink>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <BreadcrumbLink pathname={ROUTES.workflows}>workflows</BreadcrumbLink>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
+        {workflowTitle(detail)}
+      </span>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <WorkflowFilePicker detail={detail} />
+    </nav>
+  );
+}
+
+function BreadcrumbLink({
+  pathname,
+  options,
+  children,
+}: {
+  readonly pathname: (typeof ROUTES)[keyof typeof ROUTES];
+  readonly options?: Parameters<typeof Link>[0]["options"];
+  readonly children: ReactNode;
+}) {
+  return (
+    <Link
+      pathname={pathname}
+      options={options}
+      className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <span className="truncate">{children}</span>
+    </Link>
+  );
+}
+
+function WorkflowMobileCascade({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse | null;
+}) {
+  const navigate = useSet(detachedNavigateTo$);
+  const selectedFilePath = useGet(selectedWorkflowFilePath$);
+  const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
+
+  if (!detail) {
+    return (
+      <div
+        className="h-8 w-48 rounded-md bg-muted/50 sm:hidden"
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:hidden"
+        >
+          <IconFileText size={14} stroke={1.5} className="shrink-0" />
+          <span className="min-w-0 truncate">
+            {workflowTitle(detail)} / {selectedFilePath ?? "instructions"}
+          </span>
+          <IconChevronDown
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuItem
+          onSelect={() => {
+            navigate(ROUTES.agents);
+          }}
+        >
+          Agents
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => {
+            navigate(ROUTES.agentDetail, {
+              pathParams: { agentId: detail.agentId },
+            });
+          }}
+        >
+          {agentLabel(detail)}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => {
+            navigate(ROUTES.workflows);
+          }}
+        >
+          workflows
+        </DropdownMenuItem>
+        <div className="my-1 h-px bg-border/60" />
+        <DropdownMenuItem
+          className={cn(!selectedFilePath ? "bg-muted" : "")}
+          onSelect={() => {
+            setSelectedFilePath(null);
+          }}
+        >
+          instructions
+        </DropdownMenuItem>
+        {(detail.files ?? []).map((file) => {
+          return (
+            <DropdownMenuItem
+              key={file.path}
+              className={cn(selectedFilePath === file.path ? "bg-muted" : "")}
+              onSelect={() => {
+                setSelectedFilePath(file.path);
+              }}
+            >
+              {file.path}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function WorkflowDetailBody({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  return (
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
+      <ShadowWarning detail={detail} />
+      <WorkflowFilePreview detail={detail} />
+    </div>
   );
 }
 
 function DetailHeader({
+  detail,
+  triggerSidebarOpen,
+  onTriggerSidebarOpenChange,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse | null;
+  readonly triggerSidebarOpen: boolean;
+  readonly onTriggerSidebarOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-6">
+      <div className="min-w-0 flex-1">
+        <WorkflowBreadcrumb detail={detail} />
+        <WorkflowMobileCascade detail={detail} />
+      </div>
+      {detail ? (
+        <div className="flex shrink-0 items-center gap-2">
+          <WorkflowRunOnceButton detail={detail} />
+          <button
+            type="button"
+            className={cn(
+              "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
+              triggerSidebarOpen ? "bg-muted" : "",
+            )}
+            aria-pressed={triggerSidebarOpen}
+            onClick={() => {
+              onTriggerSidebarOpenChange(!triggerSidebarOpen);
+            }}
+          >
+            <IconClock size={14} stroke={1.5} />
+            <span className="hidden sm:inline">Trigger</span>
+          </button>
+          <WorkflowActionsMenu detail={detail} />
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function WorkflowRunOnceButton({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
@@ -228,48 +425,32 @@ function DetailHeader({
   const running = runLoadable.state === "loading";
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-          {workflowTitle(detail)}
-        </h1>
-        <p className="mt-0.5 truncate text-sm text-muted-foreground">
-          /{detail.name}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <VisibilityBadge
-          visibility={detail.visibility}
-          requestToPublish={detail.requestToPublish}
-        />
-        <button
-          type="button"
-          disabled={running}
-          className={cn(
-            "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
-            running ? "cursor-not-allowed opacity-60" : "",
-          )}
-          onClick={() => {
-            detach(
-              (async () => {
-                const result = await runWorkflow(detail.id, pageSignal);
-                navigate(ROUTES.chat, {
-                  pathParams: { threadId: result.chatThreadId },
-                });
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          {running ? (
-            <IconLoader2 size={14} className="animate-spin" />
-          ) : (
-            <IconClock size={14} stroke={1.5} />
-          )}
-          <span>Run once</span>
-        </button>
-      </div>
-    </div>
+    <button
+      type="button"
+      disabled={running}
+      className={cn(
+        "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
+        running ? "cursor-not-allowed opacity-60" : "",
+      )}
+      onClick={() => {
+        detach(
+          (async () => {
+            const result = await runWorkflow(detail.id, pageSignal);
+            navigate(ROUTES.chat, {
+              pathParams: { threadId: result.chatThreadId },
+            });
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      {running ? (
+        <IconLoader2 size={14} className="animate-spin" />
+      ) : (
+        <IconClock size={14} stroke={1.5} />
+      )}
+      <span className="hidden sm:inline">Run once</span>
+    </button>
   );
 }
 
@@ -283,7 +464,7 @@ function ShadowWarning({
   }
 
   return (
-    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+    <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
       <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
       <p className="min-w-0">
         <span className="font-medium">/{detail.name}</span> currently resolves
@@ -295,205 +476,448 @@ function ShadowWarning({
   );
 }
 
-function MetadataEditor({
+function WorkflowActionsMenu({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  const pageSignal = useGet(pageSignal$);
-  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
-  const saving = saveLoadable.state === "loading";
-  const disabled = !detail.canManage || saving;
+  const actionDialog = useGet(workflowActionDialog$);
+  const setActionDialog = useSet(setWorkflowActionDialog$);
 
   return (
-    <form
-      aria-label="Workflow metadata"
-      className="zero-card flex flex-col gap-3 p-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!detail.canManage) {
-          return;
-        }
-        const form = new FormData(event.currentTarget);
-        const displayName = String(form.get("displayName") ?? "").trim();
-        const description = String(form.get("description") ?? "").trim();
-        detach(
-          updateWorkflow(
-            {
-              workflowId: detail.id,
-              body: {
-                displayName: displayName || null,
-                description: description || null,
-              },
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Display name
-        <input
-          name="displayName"
-          aria-label="Display name"
-          defaultValue={detail.displayName ?? ""}
-          disabled={disabled}
-          className={FIELD_CLASS}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Description
-        <textarea
-          name="description"
-          aria-label="Description"
-          defaultValue={detail.description ?? ""}
-          disabled={disabled}
-          rows={2}
-          className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-sm outline-none focus:border-primary"
-        />
-      </label>
-      {detail.canManage ? (
-        <button
-          type="submit"
-          disabled={saving}
-          className={cn(
-            "zero-btn-morandi inline-flex h-9 w-fit items-center gap-1.5 rounded-md px-3 text-sm",
-            saving ? "cursor-not-allowed opacity-60" : "",
-          )}
-        >
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          <span>Save details</span>
-        </button>
-      ) : null}
-    </form>
-  );
-}
-
-function InstructionEditor({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
-  const saving = saveLoadable.state === "loading";
-  const disabled = !detail.canManage || saving;
-
-  return (
-    <form
-      aria-label="Workflow instruction"
-      className="zero-card flex flex-col gap-3 p-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!detail.canManage) {
-          return;
-        }
-        const form = new FormData(event.currentTarget);
-        const instruction = String(form.get("instruction") ?? "");
-        detach(
-          updateWorkflow(
-            {
-              workflowId: detail.id,
-              body: { instruction: instruction || null },
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">Instruction</span>
-      </div>
-      <textarea
-        name="instruction"
-        aria-label="Instruction"
-        defaultValue={detail.instruction ?? ""}
-        disabled={disabled}
-        rows={10}
-        placeholder="Describe what this workflow does when it runs…"
-        className="w-full rounded-md border border-border/60 bg-background px-3 py-2 font-mono text-sm leading-6 outline-none focus:border-primary"
-      />
-      {detail.canManage ? (
-        <button
-          type="submit"
-          disabled={saving}
-          className={cn(
-            "zero-btn-morandi inline-flex h-9 w-fit items-center gap-1.5 rounded-md px-3 text-sm",
-            saving ? "cursor-not-allowed opacity-60" : "",
-          )}
-        >
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          <span>Save instruction</span>
-        </button>
-      ) : null}
-    </form>
-  );
-}
-
-function SupplementaryFiles({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const explicitSelectedFilePath = useGet(selectedWorkflowFilePath$);
-  const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
-  const files: readonly WorkflowFileMetadata[] = detail.files ?? [];
-  const fileContents: readonly WorkflowFileEntry[] = detail.fileContents ?? [];
-  const preferredFilePath = explicitSelectedFilePath ?? files[0]?.path ?? null;
-  const selectedFile = preferredFilePath
-    ? fileContents.find((file) => {
-        return file.path === preferredFilePath;
-      })
-    : null;
-
-  return (
-    <div className="zero-card overflow-hidden">
-      <SupplementaryFilesHeader
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Workflow actions"
+            className="zero-btn-morandi inline-flex size-9 items-center justify-center rounded-md"
+          >
+            <IconDotsVertical size={16} stroke={1.5} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuItem
+            disabled={!detail.canManage}
+            className="gap-2"
+            onSelect={() => {
+              setActionDialog("edit");
+            }}
+          >
+            <IconPencil size={15} stroke={1.5} />
+            Edit
+          </DropdownMenuItem>
+          <div className="px-2 py-2">
+            <WorkflowPublicToggle detail={detail} />
+          </div>
+          <div className="my-1 h-px bg-border/60" />
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => {
+              setActionDialog("copy");
+            }}
+          >
+            <IconCopy size={15} stroke={1.5} />
+            Copy
+          </DropdownMenuItem>
+          {detail.canManage ? (
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              onSelect={() => {
+                setActionDialog("delete");
+              }}
+            >
+              <IconTrash size={15} stroke={1.5} />
+              Delete
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <WorkflowEditDialog
         detail={detail}
-        fileCount={files.length}
-        fileContents={fileContents}
-        preferredFilePath={preferredFilePath}
+        open={actionDialog === "edit"}
+        onOpenChange={(open) => {
+          setActionDialog(open ? "edit" : null);
+        }}
       />
-      <div className="grid gap-0 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="max-h-[280px] overflow-auto border-b border-border/60 p-2 lg:border-b-0 lg:border-r">
-          {files.length > 0 ? (
-            <WorkflowFileTree
-              nodes={buildWorkflowFileTree(files)}
-              depth={0}
-              selectedPath={preferredFilePath}
-              onSelectFile={setSelectedFilePath}
+      <WorkflowCopyDialog
+        detail={detail}
+        open={actionDialog === "copy"}
+        onOpenChange={(open) => {
+          setActionDialog(open ? "copy" : null);
+        }}
+      />
+      <WorkflowDeleteDialog
+        detail={detail}
+        open={actionDialog === "delete"}
+        onOpenChange={(open) => {
+          setActionDialog(open ? "delete" : null);
+        }}
+      />
+    </>
+  );
+}
+
+function WorkflowEditDialog({
+  detail,
+  open,
+  onOpenChange,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
+  const saving = saveLoadable.state === "loading";
+  const disabled = !detail.canManage || saving;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit workflow</DialogTitle>
+          <DialogDescription>
+            Update the workflow name and description.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Workflow metadata"
+          className="flex flex-col gap-4"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (!detail.canManage) {
+              return;
+            }
+            const form = new FormData(event.currentTarget);
+            const displayName = String(form.get("displayName") ?? "").trim();
+            const description = String(form.get("description") ?? "").trim();
+            detach(
+              (async () => {
+                await updateWorkflow(
+                  {
+                    workflowId: detail.id,
+                    body: {
+                      displayName: displayName || null,
+                      description: description || null,
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Name
+            <input
+              name="displayName"
+              aria-label="Name"
+              defaultValue={detail.displayName ?? ""}
+              disabled={disabled}
+              className={FIELD_CLASS}
             />
-          ) : (
-            <p className="px-2 py-3 text-xs text-muted-foreground">No files.</p>
-          )}
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Description
+            <textarea
+              name="description"
+              aria-label="Description"
+              defaultValue={detail.description ?? ""}
+              disabled={disabled}
+              rows={3}
+              className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={disabled}>
+              {saving ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkflowPublicToggle({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [changeLoadable, changeVisibility] = useLoadableSet(
+    changeWorkflowVisibility$,
+  );
+  const busy = changeLoadable.state === "loading";
+  const requested = detail.visibility === "private" && detail.requestToPublish;
+  const isPublic = detail.visibility === "public";
+  const checked = requested || isPublic;
+  const statusLabel = isPublic
+    ? "Public"
+    : requested
+      ? "Requested to public"
+      : "Private";
+  const toggleAction: Parameters<typeof changeVisibility>[0]["action"] | null =
+    isPublic
+      ? detail.canManage
+        ? "demote"
+        : null
+      : requested
+        ? "cancel-publish-request"
+        : "request-publish";
+  const submitVisibilityAction = (
+    action: Parameters<typeof changeVisibility>[0]["action"],
+  ) => {
+    detach(
+      changeVisibility({ workflowId: detail.id, action }, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Public</p>
+          <p className="text-xs text-muted-foreground">{statusLabel}</p>
         </div>
-        <WorkflowFilePreview
-          preferredFilePath={preferredFilePath}
-          selectedFile={selectedFile}
-        />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          disabled={busy || !toggleAction}
+          className={cn(
+            "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+            isPublic ? "bg-primary/70" : "bg-muted",
+            busy || !toggleAction ? "cursor-not-allowed opacity-60" : "",
+          )}
+          onClick={() => {
+            if (toggleAction) {
+              submitVisibilityAction(toggleAction);
+            }
+          }}
+        >
+          <span
+            className={cn(
+              "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
+              checked ? "translate-x-4" : "translate-x-0",
+            )}
+          />
+        </button>
       </div>
+      {requested ? (
+        <p className="text-xs leading-5 text-muted-foreground">
+          This workflow is waiting for the agent owner to review before it can
+          go public.
+        </p>
+      ) : null}
+      {requested && detail.canManage ? (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            className="zero-btn-morandi inline-flex h-8 items-center rounded-md px-2 text-xs"
+            onClick={() => {
+              submitVisibilityAction("approve-publish");
+            }}
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className="zero-btn-morandi inline-flex h-8 items-center rounded-md px-2 text-xs text-destructive/90"
+            onClick={() => {
+              submitVisibilityAction("reject-publish");
+            }}
+          >
+            Reject
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function SupplementaryFilesHeader({
+function WorkflowCopyDialog({
   detail,
-  fileCount,
-  fileContents,
-  preferredFilePath,
+  open,
+  onOpenChange,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
-  readonly fileCount: number;
-  readonly fileContents: readonly WorkflowFileEntry[];
-  readonly preferredFilePath: string | null;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
 }) {
+  const agentsLoadable = useLoadable(agents$);
+  const agents =
+    agentsLoadable.state === "hasData"
+      ? agentsLoadable.data.filter((agent) => {
+          return agent.id !== detail.agentId;
+        })
+      : [];
+  const pageSignal = useGet(pageSignal$);
+  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
+  const copying = copyLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Copy workflow</DialogTitle>
+          <DialogDescription>
+            Copy to another agent as a new private workflow.
+          </DialogDescription>
+        </DialogHeader>
+        {agents.length > 0 ? (
+          <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
+            {agents.map((agent) => {
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  disabled={copying}
+                  className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
+                  onClick={() => {
+                    detach(
+                      (async () => {
+                        await copyWorkflow(
+                          {
+                            workflowId: detail.id,
+                            toAgentId: agent.id,
+                          },
+                          pageSignal,
+                        );
+                        onOpenChange(false);
+                      })(),
+                      Reason.DomCallback,
+                    );
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {agent.displayName ?? agent.id}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {agent.visibility === "private"
+                        ? "Private agent"
+                        : "Public agent"}
+                    </span>
+                  </span>
+                  {copying ? (
+                    <IconLoader2
+                      size={14}
+                      className="shrink-0 animate-spin text-muted-foreground"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : agentsLoadable.state === "hasData" ? (
+          <p className="text-sm text-muted-foreground">
+            No other agents are available.
+          </p>
+        ) : (
+          <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkflowDeleteDialog({
+  detail,
+  open,
+  onOpenChange,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
+  const deleting = deleteLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete workflow</DialogTitle>
+          <DialogDescription>
+            This is a dangerous operation. Deleting this workflow also deletes
+            every trigger bound to it, including triggers other users created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {workflowTitle(detail)} and all bound triggers will be deleted.
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={deleting}
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => {
+              detach(
+                (async () => {
+                  await deleteWorkflow(detail.id, pageSignal);
+                  onOpenChange(false);
+                  navigate(ROUTES.workflows);
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {deleting ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : null}
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkflowFilePicker({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const selectedFilePath = useGet(selectedWorkflowFilePath$);
   const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
+  const files: readonly WorkflowFileMetadata[] = detail.files ?? [];
+  const fileContents: readonly WorkflowFileEntry[] = detail.fileContents ?? [];
   const pageSignal = useGet(pageSignal$);
   const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
   const saving = saveLoadable.state === "loading";
-  const canManage = detail.canManage && !saving;
+  const selectedLabel = selectedFilePath ?? "instructions";
   const uploadFiles = (selected: FileList) => {
     detach(
       (async () => {
@@ -513,15 +937,19 @@ function SupplementaryFilesHeader({
           },
           pageSignal,
         );
+        setSelectedFilePath(uploaded[0]?.path ?? null);
       })(),
       Reason.DomCallback,
     );
   };
-  const deleteFile = (filePath: string) => {
+  const deleteSelectedFile = () => {
+    if (!selectedFilePath) {
+      return;
+    }
     detach(
       (async () => {
         const nextFiles = fileContents.filter((file) => {
-          return file.path !== filePath;
+          return file.path !== selectedFilePath;
         });
         await updateWorkflow(
           {
@@ -537,133 +965,307 @@ function SupplementaryFilesHeader({
   };
 
   return (
-    <div className="flex h-10 items-center justify-between border-b border-border/60 px-4">
-      <span className="text-sm font-medium text-foreground">Files</span>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">{fileCount}</span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <span className="min-w-0 truncate">{selectedLabel}</span>
+          <IconChevronDown
+            size={14}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-80">
+        <WorkflowFileNavigationItems
+          files={files}
+          selectedFilePath={selectedFilePath}
+          onSelectFile={setSelectedFilePath}
+        />
         {detail.canManage ? (
-          <>
-            <WorkflowFileUploadButton
-              canManage={canManage}
-              onUpload={uploadFiles}
-              saving={saving}
-            />
-            <WorkflowFileDeleteButton
-              canManage={canManage}
-              onDelete={deleteFile}
-              preferredFilePath={preferredFilePath}
-            />
-          </>
+          <WorkflowFileManagementItems
+            saving={saving}
+            selectedFilePath={selectedFilePath}
+            onUpload={uploadFiles}
+            onDeleteSelectedFile={deleteSelectedFile}
+          />
         ) : null}
-      </div>
-    </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function WorkflowFileUploadButton({
-  canManage,
-  onUpload,
-  saving,
+function WorkflowFileNavigationItems({
+  files,
+  selectedFilePath,
+  onSelectFile,
 }: {
-  readonly canManage: boolean;
-  readonly onUpload: (files: FileList) => void;
-  readonly saving: boolean;
+  readonly files: readonly WorkflowFileMetadata[];
+  readonly selectedFilePath: string | null;
+  readonly onSelectFile: (filePath: string | null) => void;
 }) {
   return (
-    <label
-      className={cn(
-        "zero-btn-morandi inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs",
-        saving ? "pointer-events-none opacity-60" : "",
-      )}
-    >
-      {saving ? (
-        <IconLoader2 size={13} className="animate-spin" />
-      ) : (
-        <IconUpload size={13} stroke={1.5} />
-      )}
-      <span>Upload</span>
-      <input
-        type="file"
-        multiple
-        disabled={!canManage}
-        className="sr-only"
-        onChange={(event) => {
-          const selected = event.currentTarget.files;
-          if (!selected || selected.length === 0) {
-            return;
-          }
-          onUpload(selected);
-          event.currentTarget.value = "";
+    <>
+      <DropdownMenuItem
+        className={cn(!selectedFilePath ? "bg-muted" : "")}
+        onSelect={() => {
+          onSelectFile(null);
         }}
-      />
-    </label>
+      >
+        instructions
+      </DropdownMenuItem>
+      {files.map((file) => {
+        return (
+          <DropdownMenuItem
+            key={file.path}
+            className={cn(selectedFilePath === file.path ? "bg-muted" : "")}
+            onSelect={() => {
+              onSelectFile(file.path);
+            }}
+          >
+            <span className="min-w-0 truncate">{file.path}</span>
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+              {file.size} B
+            </span>
+          </DropdownMenuItem>
+        );
+      })}
+    </>
   );
 }
 
-function WorkflowFileDeleteButton({
-  canManage,
-  onDelete,
-  preferredFilePath,
+function WorkflowFileManagementItems({
+  saving,
+  selectedFilePath,
+  onUpload,
+  onDeleteSelectedFile,
 }: {
-  readonly canManage: boolean;
-  readonly onDelete: (filePath: string) => void;
-  readonly preferredFilePath: string | null;
+  readonly saving: boolean;
+  readonly selectedFilePath: string | null;
+  readonly onUpload: (files: FileList) => void;
+  readonly onDeleteSelectedFile: () => void;
 }) {
-  if (!preferredFilePath) {
+  return (
+    <>
+      <div className="my-1 h-px bg-border/60" />
+      <label
+        className={cn(
+          "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+          saving ? "pointer-events-none opacity-60" : "",
+        )}
+      >
+        {saving ? (
+          <IconLoader2 size={15} className="animate-spin" />
+        ) : (
+          <IconUpload size={15} stroke={1.5} />
+        )}
+        <span>Upload text files</span>
+        <input
+          aria-label="Upload workflow files"
+          type="file"
+          multiple
+          disabled={saving}
+          className="sr-only"
+          onChange={(event) => {
+            const selected = event.currentTarget.files;
+            if (!selected || selected.length === 0) {
+              return;
+            }
+            onUpload(selected);
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
+      {selectedFilePath ? (
+        <button
+          type="button"
+          aria-label={`Delete ${selectedFilePath}`}
+          disabled={saving}
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-accent disabled:opacity-60"
+          onClick={onDeleteSelectedFile}
+        >
+          <IconTrash size={15} stroke={1.5} />
+          <span>Delete selected file</span>
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+function workflowDraftUpdateBody(
+  selectedFilePath: string | null,
+  draft: string,
+  fileContents: readonly WorkflowFileEntry[],
+): ZeroWorkflowUpdateRequest {
+  if (!selectedFilePath) {
+    return { instruction: draft || null };
+  }
+
+  return {
+    files: fileContents.map((file) => {
+      return file.path === selectedFilePath
+        ? { path: file.path, content: draft }
+        : file;
+    }),
+  };
+}
+
+function selectedWorkflowFile(
+  fileContents: readonly WorkflowFileEntry[],
+  selectedFilePath: string | null,
+): WorkflowFileEntry | null {
+  if (!selectedFilePath) {
     return null;
   }
 
   return (
-    <button
-      type="button"
-      aria-label={`Delete ${preferredFilePath}`}
-      disabled={!canManage}
-      className={cn(
-        "zero-btn-morandi inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-destructive/90",
-        !canManage ? "cursor-not-allowed opacity-60" : "",
-      )}
-      onClick={() => {
-        onDelete(preferredFilePath);
-      }}
-    >
-      <IconTrash size={13} stroke={1.5} />
-      <span>Delete</span>
-    </button>
+    fileContents.find((file) => {
+      return file.path === selectedFilePath;
+    }) ?? null
   );
 }
 
-function WorkflowFilePreview({
-  preferredFilePath,
-  selectedFile,
-}: {
-  readonly preferredFilePath: string | null;
-  readonly selectedFile: WorkflowFileEntry | null | undefined;
-}) {
-  if (preferredFilePath && selectedFile) {
-    if (isMarkdownPath(preferredFilePath)) {
-      return (
-        <div
-          aria-label="Workflow file content"
-          className="max-h-[420px] overflow-auto px-4 py-3"
-        >
-          <Markdown source={stripMarkdownFrontmatter(selectedFile.content)} />
-        </div>
-      );
-    }
+function workflowSelectedSourceContent(
+  detail: ZeroWorkflowDetailResponse,
+  selectedFilePath: string | null,
+  selectedFile: WorkflowFileEntry | null,
+): string {
+  if (!selectedFilePath) {
+    return detail.instruction ?? "";
+  }
 
+  return selectedFile?.content ?? "";
+}
+
+function WorkflowFilePreview({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const selectedFilePath = useGet(selectedWorkflowFilePath$);
+  const fileContents: readonly WorkflowFileEntry[] = detail.fileContents ?? [];
+  const selectedFile = selectedWorkflowFile(fileContents, selectedFilePath);
+  const sourceContent = workflowSelectedSourceContent(
+    detail,
+    selectedFilePath,
+    selectedFile,
+  );
+
+  if (selectedFilePath && !selectedFile) {
     return (
-      <pre
-        aria-label="Workflow file content"
-        className="max-h-[420px] overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-sm leading-6 text-foreground"
-      >
-        {selectedFile.content}
-      </pre>
+      <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
+        No content available for this file.
+      </div>
     );
   }
 
   return (
-    <div className="flex min-h-[200px] items-center justify-center px-4 text-sm text-muted-foreground">
-      {preferredFilePath ? "No content available for this file." : "No files."}
+    <WorkflowSelectedFileEditor
+      detail={detail}
+      fileContents={fileContents}
+      selectedFilePath={selectedFilePath}
+      sourceContent={sourceContent}
+    />
+  );
+}
+
+function WorkflowSelectedFileEditor({
+  detail,
+  fileContents,
+  selectedFilePath,
+  sourceContent,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly fileContents: readonly WorkflowFileEntry[];
+  readonly selectedFilePath: string | null;
+  readonly sourceContent: string;
+}) {
+  const draftState = useGet(workflowFileDraft$);
+  const setDraftState = useSet(setWorkflowFileDraft$);
+  const pageSignal = useGet(pageSignal$);
+  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
+  const saving = saveLoadable.state === "loading";
+  const draftMatches =
+    draftState?.workflowId === detail.id &&
+    draftState.filePath === selectedFilePath &&
+    draftState.sourceContent === sourceContent;
+  const draft = draftMatches ? draftState.content : null;
+  const content = draft ?? sourceContent;
+  const dirty = draft !== null && draft !== sourceContent;
+  const markdown =
+    selectedFilePath === null || isMarkdownPath(selectedFilePath);
+  const setDraft = (nextContent: string) => {
+    setDraftState({
+      workflowId: detail.id,
+      filePath: selectedFilePath,
+      sourceContent,
+      content: nextContent,
+    });
+  };
+
+  const saveDraft = () => {
+    if (!detail.canManage || draft === null) {
+      return;
+    }
+    const body = workflowDraftUpdateBody(selectedFilePath, draft, fileContents);
+    detach(
+      (async () => {
+        await updateWorkflow(
+          {
+            workflowId: detail.id,
+            body,
+          },
+          pageSignal,
+        );
+        setDraftState(null);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-1 flex-col">
+      {markdown ? (
+        <TiptapInstructionsEditor
+          key={`${detail.id}:${selectedFilePath ?? "instructions"}:${sourceContent}`}
+          initialContent={content}
+          onChange={setDraft}
+          disabled={!detail.canManage || saving}
+          footerHint={null}
+          surface="canvas"
+          ariaLabel={
+            selectedFilePath ? "Workflow file content" : "Workflow instruction"
+          }
+          placeholder={
+            selectedFilePath
+              ? "Edit this markdown file..."
+              : "Write workflow instructions..."
+          }
+        />
+      ) : (
+        <textarea
+          aria-label="Workflow file content"
+          value={content}
+          disabled={!detail.canManage || saving}
+          spellCheck={false}
+          className="min-h-[calc(100vh-10rem)] w-full resize-none bg-transparent px-0 py-3 font-mono text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+          onChange={(event) => {
+            setDraft(event.currentTarget.value);
+          }}
+        />
+      )}
+      {dirty ? (
+        <ZeroUnsavedBar
+          saving={saving}
+          onDiscard={() => {
+            setDraftState(null);
+          }}
+          onSave={saveDraft}
+        />
+      ) : null}
     </div>
   );
 }
@@ -815,9 +1417,11 @@ function gmailMatcherDefaultValue(
 
 function TriggersSection({
   detail,
+  onClose,
   onOpenTriggerPermissions,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
+  readonly onClose: () => void;
   readonly onOpenTriggerPermissions: (triggerId: string) => void;
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
@@ -828,67 +1432,77 @@ function TriggersSection({
   const triggers = detail.triggers;
 
   return (
-    <div className="zero-card overflow-hidden">
-      <div className="flex h-10 items-center justify-between border-b border-border/60 px-4">
+    <aside className="flex min-h-0 w-full flex-col bg-background">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Triggers</span>
+          <span className="text-sm font-medium text-foreground">Trigger</span>
           <span className="text-xs text-muted-foreground">
             {triggers.length}
           </span>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
-            >
-              <IconPlus size={13} stroke={1.5} />
-              <span>Add trigger</span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem
-              className="items-start gap-2 py-2"
-              onSelect={() => {
-                setCreateDialog("schedule");
-              }}
-            >
-              <IconClock
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">Schedule</span>
-                <span className="block text-xs text-muted-foreground">
-                  Run this workflow from a time rule.
+        <div className="flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
+              >
+                <IconPlus size={13} stroke={1.5} />
+                <span>Add trigger</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem
+                className="items-start gap-2 py-2"
+                onSelect={() => {
+                  setCreateDialog("schedule");
+                }}
+              >
+                <IconClock
+                  size={15}
+                  stroke={1.5}
+                  className="mt-0.5 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">Schedule</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Run this workflow from a time rule.
+                  </span>
                 </span>
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="items-start gap-2 py-2"
-              onSelect={() => {
-                setCreateDialog("gmail");
-              }}
-            >
-              <IconMail
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">
-                  Gmail new message
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="items-start gap-2 py-2"
+                onSelect={() => {
+                  setCreateDialog("gmail");
+                }}
+              >
+                <IconMail
+                  size={15}
+                  stroke={1.5}
+                  className="mt-0.5 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">
+                    Gmail new message
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Run this workflow from matching email.
+                  </span>
                 </span>
-                <span className="block text-xs text-muted-foreground">
-                  Run this workflow from matching email.
-                </span>
-              </span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            aria-label="Close trigger sidebar"
+            className="zero-btn-morandi inline-flex size-8 items-center justify-center rounded-md"
+            onClick={onClose}
+          >
+            <IconX size={15} stroke={1.5} />
+          </button>
+        </div>
       </div>
-      <div className="max-h-[320px] overflow-auto p-2">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
         {triggers.length > 0 ? (
           <div className="flex flex-col gap-1">
             {triggers.map((trigger) => {
@@ -922,7 +1536,7 @@ function TriggersSection({
           setCreateDialog(open ? "gmail" : null);
         }}
       />
-    </div>
+    </aside>
   );
 }
 
@@ -1427,152 +2041,6 @@ function UpdateGmailNewMessageTriggerForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function VisibilitySection({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [changeLoadable, changeVisibility] = useLoadableSet(
-    changeWorkflowVisibility$,
-  );
-  const busy = changeLoadable.state === "loading";
-
-  const action = (
-    label: string,
-    value: Parameters<typeof changeVisibility>[0]["action"],
-    destructive = false,
-  ) => {
-    return (
-      <button
-        key={value}
-        type="button"
-        disabled={busy}
-        className={cn(
-          "zero-btn-morandi inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs",
-          busy ? "cursor-not-allowed opacity-60" : "",
-          destructive ? "text-destructive/90" : "",
-        )}
-        onClick={() => {
-          detach(
-            changeVisibility(
-              { workflowId: detail.id, action: value },
-              pageSignal,
-            ),
-            Reason.DomCallback,
-          );
-        }}
-      >
-        {label}
-      </button>
-    );
-  };
-
-  const buttons = [];
-  if (detail.visibility === "private") {
-    if (detail.requestToPublish) {
-      buttons.push(action("Cancel publish request", "cancel-publish-request"));
-      if (detail.canManage) {
-        buttons.push(action("Approve publish", "approve-publish"));
-        buttons.push(action("Reject publish", "reject-publish", true));
-      }
-    } else {
-      buttons.push(action("Request publish", "request-publish"));
-    }
-  } else if (detail.canManage) {
-    buttons.push(action("Demote to private", "demote", true));
-  }
-
-  if (buttons.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="zero-card flex flex-col gap-2 p-4">
-      <span className="text-sm font-medium text-foreground">Visibility</span>
-      <div className="flex flex-wrap items-center gap-2">{buttons}</div>
-    </div>
-  );
-}
-
-function DangerZone({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(detachedNavigateTo$);
-  const agentsLoadable = useLoadable(agents$);
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
-  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
-  const copying = copyLoadable.state === "loading";
-  const deleting = deleteLoadable.state === "loading";
-
-  return (
-    <div className="zero-card flex flex-col gap-3 p-4">
-      <span className="text-sm font-medium text-foreground">
-        Copy &amp; delete
-      </span>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Select
-          value=""
-          disabled={copying || agents.length === 0}
-          onValueChange={(toAgentId) => {
-            detach(
-              copyWorkflow({ workflowId: detail.id, toAgentId }, pageSignal),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <SelectTrigger
-            aria-label="Copy workflow to agent"
-            className="zero-btn-morandi h-9 w-full gap-1.5 rounded-md px-3 text-sm sm:w-64"
-          >
-            {copying ? (
-              <IconLoader2 size={14} className="shrink-0 animate-spin" />
-            ) : null}
-            <SelectValue placeholder="Copy to another agent" />
-          </SelectTrigger>
-          <SelectContent>
-            {agents.map((agent) => {
-              return (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.displayName ?? agent.id}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-        {detail.canManage ? (
-          <button
-            type="button"
-            disabled={deleting}
-            className={cn(
-              "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm text-destructive/90",
-              deleting ? "cursor-not-allowed opacity-60" : "",
-            )}
-            onClick={() => {
-              detach(
-                (async () => {
-                  await deleteWorkflow(detail.id, pageSignal);
-                  navigate(ROUTES.workflows);
-                })(),
-                Reason.DomCallback,
-              );
-            }}
-          >
-            {deleting ? (
-              <IconLoader2 size={14} className="animate-spin" />
-            ) : null}
-            <span>Delete workflow</span>
-          </button>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

@@ -17,8 +17,24 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { pathParams$ } from "../route.ts";
+import {
+  pathParams$,
+  replaceSearchParams$,
+  searchParams$,
+  updateSearchParams$,
+} from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+
+type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
+const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
+
+interface WorkflowDetailFileDraft {
+  readonly workflowId: string;
+  readonly filePath: string | null;
+  readonly sourceContent: string;
+  readonly content: string;
+}
 
 /**
  * The workflow uuid for the active detail route, or null elsewhere.
@@ -34,6 +50,8 @@ export const currentWorkflowId$ = computed((get): string | null => {
 const internalWorkflowReload$ = state(0);
 
 const internalSelectedFilePath$ = state<string | null>(null);
+const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
+const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
@@ -50,6 +68,66 @@ export const workflowSearch$ = computed((get) => {
 
 export const setWorkflowSearch$ = command(({ set }, value: string) => {
   set(internalWorkflowSearch$, value);
+});
+
+export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+    WORKFLOW_TRIGGER_SIDEBAR_VALUE
+  );
+});
+
+export const setWorkflowDetailTriggerSidebarOpen$ = command(
+  ({ get, set }, open: boolean) => {
+    const params = new URLSearchParams(get(searchParams$));
+    const currentlyOpen =
+      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
+    if (open === currentlyOpen) {
+      return;
+    }
+    if (open) {
+      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
+      set(updateSearchParams$, params);
+      return;
+    }
+
+    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
+    set(internalEditingGmailTriggerId$, null);
+    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+    set(internalWorkflowTriggerCreateDialog$, null);
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const workflowActionDialog$ = computed((get) => {
+  return get(internalWorkflowActionDialog$);
+});
+
+export const setWorkflowActionDialog$ = command(
+  ({ set }, dialog: WorkflowDetailActionDialog) => {
+    set(internalWorkflowActionDialog$, dialog);
+  },
+);
+
+export const workflowFileDraft$ = computed((get) => {
+  return get(internalWorkflowFileDraft$);
+});
+
+export const setWorkflowFileDraft$ = command(
+  ({ set }, draft: WorkflowDetailFileDraft | null) => {
+    set(internalWorkflowFileDraft$, draft);
+  },
+);
+
+export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalSelectedFilePath$, null);
+  set(internalWorkflowActionDialog$, null);
+  set(internalWorkflowFileDraft$, null);
+  set(internalEditingGmailTriggerId$, null);
+  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+  set(internalWorkflowTriggerCreateDialog$, null);
+  set(internalScheduleTriggerType$, "cron");
 });
 
 export const editingGmailTriggerId$ = computed((get) => {
