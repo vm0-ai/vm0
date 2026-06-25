@@ -4,10 +4,9 @@ use std::os::unix::fs::MetadataExt as _;
 use std::sync::Arc;
 
 use nbd_cow::BLOCK_SIZE;
-use nbd_cow::protocol::Command;
 use support::dispatch_client::{
-    TestResult, assert_error, assert_error_code, assert_success, create_base_file,
-    create_cow_with_full_device, create_test_cow, request, spawn_dispatch,
+    Command, TestResult, assert_error, assert_error_code, assert_success, create_base_file,
+    create_cow_with_full_device, create_test_cow, request, request_with_type_flags, spawn_dispatch,
     spawn_dispatch_with_shutdown, wait_for_dispatch,
 };
 use tokio::sync::RwLock;
@@ -89,6 +88,37 @@ async fn dispatch_trim_succeeds() -> TestResult<()> {
     assert_success(&reply, 1);
 
     client.disconnect(2).await?;
+    wait_for_dispatch(task).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn dispatch_masks_request_type_flags_from_command() -> TestResult<()> {
+    const REQUEST_TYPE_HIGH_FLAG: u32 = 1 << 16;
+
+    let base_data = vec![0xAA; 2 * BLOCK_SIZE];
+    let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
+    let cow = Arc::new(RwLock::new(cow));
+
+    let (mut client, task, _shutdown) = spawn_dispatch(cow).await?;
+
+    let write_data = vec![0xBC; BLOCK_SIZE];
+    let flagged_write = request_with_type_flags(
+        Command::Write,
+        1,
+        0,
+        write_data.len() as u32,
+        REQUEST_TYPE_HIGH_FLAG,
+    );
+    client.send_request(&flagged_write).await?;
+    client.write_payload(&write_data).await?;
+    let reply = client.read_reply().await?;
+    assert_success(&reply, 1);
+
+    let data = client.read(2, 0, BLOCK_SIZE as u32).await?;
+    assert_eq!(data, write_data);
+
+    client.disconnect(3).await?;
     wait_for_dispatch(task).await?;
     Ok(())
 }

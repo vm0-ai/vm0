@@ -7,10 +7,6 @@ use std::time::Duration;
 
 use nbd_cow::cow::CowLayer;
 use nbd_cow::error::Result as NbdResult;
-use nbd_cow::protocol::{
-    Command, NbdReply, NbdRequest, REPLY_HEADER_SIZE, REPLY_MAGIC, REQUEST_HEADER_SIZE,
-    REQUEST_MAGIC,
-};
 use nbd_cow::server::dispatch;
 use nbd_cow::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD};
 use tempfile::NamedTempFile;
@@ -22,6 +18,37 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 pub type TestResult<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+
+const REQUEST_MAGIC: u32 = 0x2560_9513;
+const REPLY_MAGIC: u32 = 0x6744_6698;
+const REQUEST_HEADER_SIZE: usize = 28;
+const REPLY_HEADER_SIZE: usize = 16;
+const REQUEST_TYPE_COMMAND_MASK: u32 = 0x0000_FFFF;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum Command {
+    Read = 0,
+    Write = 1,
+    Disconnect = 2,
+    Flush = 3,
+    Trim = 4,
+}
+
+#[derive(Debug, Clone)]
+pub struct NbdRequest {
+    request_type_flags: u32,
+    command: Command,
+    handle: u64,
+    offset: u64,
+    length: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NbdReply {
+    error: u32,
+    handle: u64,
+}
 
 pub struct DispatchClient {
     reader: OwnedReadHalf,
@@ -143,8 +170,24 @@ impl DispatchClient {
 }
 
 pub fn request(command: Command, handle: u64, offset: u64, length: u32) -> NbdRequest {
+    request_with_type_flags(command, handle, offset, length, 0)
+}
+
+pub fn request_with_type_flags(
+    command: Command,
+    handle: u64,
+    offset: u64,
+    length: u32,
+    request_type_flags: u32,
+) -> NbdRequest {
+    assert_eq!(
+        request_type_flags & REQUEST_TYPE_COMMAND_MASK,
+        0,
+        "request type flags must not overlap command bits"
+    );
+
     NbdRequest {
-        flags: 0,
+        request_type_flags,
         command,
         handle,
         offset,
@@ -256,8 +299,8 @@ fn socketpair() -> std::io::Result<(OwnedFd, OwnedFd)> {
 
 fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let [magic_0, magic_1, magic_2, magic_3] = REQUEST_MAGIC.to_be_bytes();
-    let [flags_0, flags_1] = request.flags.to_be_bytes();
-    let [command_0, command_1] = (request.command as u16).to_be_bytes();
+    let request_type = request.request_type_flags | request.command as u32;
+    let [type_0, type_1, type_2, type_3] = request_type.to_be_bytes();
     let [
         handle_0,
         handle_1,
@@ -281,9 +324,8 @@ fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let [length_0, length_1, length_2, length_3] = request.length.to_be_bytes();
 
     [
-        magic_0, magic_1, magic_2, magic_3, flags_0, flags_1, command_0, command_1, handle_0,
-        handle_1, handle_2, handle_3, handle_4, handle_5, handle_6, handle_7, offset_0, offset_1,
-        offset_2, offset_3, offset_4, offset_5, offset_6, offset_7, length_0, length_1, length_2,
-        length_3,
+        magic_0, magic_1, magic_2, magic_3, type_0, type_1, type_2, type_3, handle_0, handle_1,
+        handle_2, handle_3, handle_4, handle_5, handle_6, handle_7, offset_0, offset_1, offset_2,
+        offset_3, offset_4, offset_5, offset_6, offset_7, length_0, length_1, length_2, length_3,
     ]
 }
