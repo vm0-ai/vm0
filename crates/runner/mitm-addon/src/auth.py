@@ -904,37 +904,41 @@ async def handle_firewall_request(
     flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
 ) -> FirewallAuthHandlingResult:
     """Handle firewall auth and return who owns the next response lifecycle."""
-    _prepare_firewall_metadata(flow, allow, vm_info)
-    context = _build_firewall_auth_context(flow, allow, vm_info)
-
-    preflight_result = _preflight_firewall_auth(flow, context)
-    if preflight_result is not None:
-        return _finish_firewall_auth_result(flow, preflight_result)
-
     try:
-        token_meta = await get_firewall_headers(
-            context.run_id,
-            context.api_id,
-            context.auth_request,
-        )
-    except Exception as exc:
-        return _finish_firewall_auth_result(
+        _prepare_firewall_metadata(flow, allow, vm_info)
+        context = _build_firewall_auth_context(flow, allow, vm_info)
+
+        preflight_result = _preflight_firewall_auth(flow, context)
+        if preflight_result is not None:
+            return _finish_firewall_auth_result(flow, preflight_result)
+
+        try:
+            token_meta = await get_firewall_headers(
+                context.run_id,
+                context.api_id,
+                context.auth_request,
+            )
+        except Exception as exc:
+            return _finish_firewall_auth_result(
+                flow,
+                _set_firewall_auth_resolution_failure(flow, context, exc),
+            )
+
+        auth_result = await _apply_resolved_firewall_auth(
             flow,
-            _set_firewall_auth_resolution_failure(flow, context, exc),
+            allow=context.allow,
+            token_meta=token_meta,
+            firewall_base=context.firewall_base,
+            proxy_log_path=context.proxy_log_path,
         )
+        if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+            return _finish_firewall_auth_result(flow, auth_result)
 
-    auth_result = await _apply_resolved_firewall_auth(
-        flow,
-        allow=context.allow,
-        token_meta=token_meta,
-        firewall_base=context.firewall_base,
-        proxy_log_path=context.proxy_log_path,
-    )
-    if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-        return _finish_firewall_auth_result(flow, auth_result)
-
-    _finalize_firewall_auth_success(flow, context, token_meta)
-    return auth_result
+        _finalize_firewall_auth_success(flow, context, token_meta)
+        return auth_result
+    except BaseException:
+        _release_auth_base_forward_admission(flow)
+        raise
 
 
 async def try_apply_stream_safe_firewall_auth_for_requestheaders(

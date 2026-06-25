@@ -1471,6 +1471,43 @@ class TestHandleFirewallRequest:
         assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
+    async def test_cancelled_auth_resolution_releases_forward_admission(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        admission = auth_base_forwarder.reserve_forward_request_admission(42)
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        auth_resolution_entered = asyncio.Event()
+        release_auth_resolution = asyncio.Event()
+
+        async def wait_for_auth_resolution(*_args, **_kwargs):
+            auth_resolution_entered.set()
+            await release_auth_resolution.wait()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(side_effect=wait_for_auth_resolution),
+            ),
+        ):
+            task = asyncio.create_task(auth.handle_firewall_request(flow, allow, vm_info))
+            try:
+                await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            finally:
+                release_auth_resolution.set()
+                await cancel_pending_task(task)
+
+        assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
 
 # =========================================================================
 # fetch_firewall_headers
