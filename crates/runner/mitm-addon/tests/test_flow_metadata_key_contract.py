@@ -1246,6 +1246,17 @@ def _metadata_key_violations(path: Path) -> list[str]:
     return visitor.violations
 
 
+def test_registered_flow_metadata_keys_are_unique():
+    names_by_value: dict[str, list[str]] = {}
+    for name, value in vars(metadata_keys).items():
+        if name.isupper() and isinstance(value, str):
+            names_by_value.setdefault(value, []).append(name)
+
+    duplicates = {value: names for value, names in sorted(names_by_value.items()) if len(names) > 1}
+
+    assert duplicates == {}
+
+
 def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]:
     if node is None:
         return []
