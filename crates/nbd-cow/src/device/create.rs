@@ -40,6 +40,8 @@ impl CreateDisconnectStatus {
     fn from_owned_result(result: &Result<OwnedDisconnectState>) -> Self {
         match result {
             Ok(OwnedDisconnectState::Disconnected) => Self::Disconnected,
+            // In create cleanup, a foreign owner means this attempt did not
+            // prove its provisional device was disconnected.
             Ok(OwnedDisconnectState::Foreign(_)) | Err(_) => Self::Uncertain,
         }
     }
