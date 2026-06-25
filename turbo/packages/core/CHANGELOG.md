@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.369.0](https://github.com/vm0-ai/vm0/compare/core-v8.368.2...core-v8.369.0) (2026-06-25)
+
+
+### Features
+
+* enable MobileSingleLineComposer and CustomConnectorProposals for all users ([#18867](https://github.com/vm0-ai/vm0/issues/18867)) ([72b31a4](https://github.com/vm0-ai/vm0/commit/72b31a4ac6029fb2f018d891d1c2cbefe810e895))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+
 ## [8.368.2](https://github.com/vm0-ai/vm0/compare/core-v8.368.1...core-v8.368.2) (2026-06-25)
 
 

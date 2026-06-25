@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.4...guest-agent-v0.41.5) (2026-06-25)
+
+
+### Documentation
+
+* document guest-agent process control handle ([#18853](https://github.com/vm0-ai/vm0/issues/18853)) ([548841b](https://github.com/vm0-ai/vm0/commit/548841be1c92ddba8dc6ad107e3e86b50f72338f))
+
 ## [0.41.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.3...guest-agent-v0.41.4) (2026-06-25)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.177.2](https://github.com/vm0-ai/vm0/compare/api-v1.177.1...api-v1.177.2) (2026-06-25)
+
+
+### Refactoring
+
+* remove eager firewall all-catalog ([#18871](https://github.com/vm0-ai/vm0/issues/18871)) ([76893cf](https://github.com/vm0-ai/vm0/commit/76893cf76433d5e241934faf1c6c7e54987afc10))
+
+
+### Performance Improvements
+
+* add pre-create dispatch timing ([#18883](https://github.com/vm0-ai/vm0/issues/18883)) ([b86c8f6](https://github.com/vm0-ai/vm0/commit/b86c8f68774a2ed1a5a517a1b42bb1daab8baf6f))
+* split prepare run context timing ([#18854](https://github.com/vm0-ai/vm0/issues/18854)) ([e872ad3](https://github.com/vm0-ai/vm0/commit/e872ad37e35e700b3228b2e9173981135bada39e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+    * @vm0/core bumped to 8.369.0
+    * @vm0/db bumped to 1.70.3
+
 ## [1.177.1](https://github.com/vm0-ai/vm0/compare/api-v1.177.0...api-v1.177.1) (2026-06-25)
 
 

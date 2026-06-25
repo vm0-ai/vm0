@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.490.0](https://github.com/vm0-ai/vm0/compare/app-v0.489.1...app-v0.490.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger permission entry ([#18881](https://github.com/vm0-ai/vm0/issues/18881)) ([b745640](https://github.com/vm0-ai/vm0/commit/b745640002460a8adf1efe417e470c803f3256cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.113.3
+    * @vm0/connectors bumped to 1.107.1
+    * @vm0/core bumped to 8.369.0
+
 ## [0.489.1](https://github.com/vm0-ai/vm0/compare/app-v0.489.0...app-v0.489.1) (2026-06-25)
 
 

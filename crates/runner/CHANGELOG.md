@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.16...runner-rs-v0.129.17) (2026-06-25)
+
+
+### Bug Fixes
+
+* reject invalid aws sigv4 header text ([#18866](https://github.com/vm0-ai/vm0/issues/18866)) ([5a14b21](https://github.com/vm0-ai/vm0/commit/5a14b215b29a71f3a30afec9f0a86c47fd8b1159))
+
 ## [0.129.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.15...runner-rs-v0.129.16) (2026-06-25)
 
 
