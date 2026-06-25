@@ -309,7 +309,7 @@ impl ApiClient {
         Self { http, token }
     }
 
-    /// Poll for a pending job. Returns `Ok(None)` when no work is available.
+    /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
         group: &str,
