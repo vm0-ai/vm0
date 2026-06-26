@@ -38,6 +38,8 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeLimitedFreeOnboarding$,
     {
       orgId: auth.orgId,
+      credits: body.data.credits,
+      expiresAt: body.data.expiresAt,
     },
     signal,
   );
