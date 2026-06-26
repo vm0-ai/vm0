@@ -3830,9 +3830,9 @@ mod tests {
         // Two `populate_cache` invocations race for the same (name, version).
         // The per-version flock must serialize them, so exactly one issues a
         // GET to upstream and the second hits the just-warmed disk cache.
-        // `buffer_unordered(CONCURRENCY)` inside `populate_cache` means both
-        // tasks touch the flock acquire from separate spawn_blocking threads,
-        // so the test exercises real cross-thread flock semantics.
+        // `populate_cache` runs cache workers in spawned tasks, so both tasks
+        // touch the flock acquire from separate spawn_blocking threads. This
+        // exercises real cross-thread flock semantics.
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox_a = MockSandbox::new("test-a");
