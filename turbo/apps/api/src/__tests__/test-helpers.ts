@@ -19,6 +19,7 @@ import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 export interface TestContext {
   readonly signal: AbortSignal;
   readonly mocks: ApiTestMocks;
+  readonly sessionHistoryBlobs: Map<string, Uint8Array>;
 }
 
 interface SetupAppOptions {
@@ -124,6 +125,7 @@ export function testContext(): TestContext {
       return controller.signal;
     },
     mocks: getApiTestMocks(),
+    sessionHistoryBlobs: new Map<string, Uint8Array>(),
   };
 
   afterEach(async () => {
@@ -133,6 +135,7 @@ export function testContext(): TestContext {
     controller = new AbortController();
 
     await clearAllDetached();
+    context.sessionHistoryBlobs.clear();
     clearMockedEnv();
     clearMockListStripeInvoices();
   });

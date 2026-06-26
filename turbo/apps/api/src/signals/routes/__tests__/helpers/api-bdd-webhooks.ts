@@ -36,6 +36,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { registerKnownSessionHistoryBlob } from "./api-bdd-session-history";
 
 type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;
 type AgentCompleteBody = z.infer<
@@ -580,6 +581,11 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
+      registerKnownSessionHistoryBlob(
+        context,
+        body.runId,
+        body.cliAgentSessionHistoryHash,
+      );
       return await accept(
         setupApp({ context })(webhookCheckpointsContract).create({
           headers,
