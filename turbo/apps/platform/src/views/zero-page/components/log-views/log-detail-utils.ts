@@ -20,10 +20,100 @@ function normalizeToolResultContent(content: unknown): string {
   if (content === null || content === undefined) {
     return "";
   }
-  if (typeof content === "number" || typeof content === "boolean") {
-    return String(content);
+  return stringifyUnknownValue(content);
+}
+
+function quoteJsonString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function stringifyUnknownJsonValue(
+  value: unknown,
+  seen: WeakSet<object>,
+): string | undefined {
+  if (value === null) {
+    return "null";
   }
-  return JSON.stringify(content) ?? String(content);
+
+  if (typeof value === "string") {
+    return quoteJsonString(value);
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "null";
+  }
+
+  if (typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (typeof value === "bigint") {
+    return quoteJsonString(value.toString());
+  }
+
+  if (typeof value !== "object") {
+    return undefined;
+  }
+
+  if (seen.has(value)) {
+    return quoteJsonString("[Circular]");
+  }
+
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime())
+      ? quoteJsonString(value.toISOString())
+      : "null";
+  }
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const items: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      const item =
+        descriptor && "value" in descriptor
+          ? stringifyUnknownJsonValue(descriptor.value, seen)
+          : undefined;
+      items.push(item ?? "null");
+    }
+    seen.delete(value);
+    return `[${items.join(",")}]`;
+  }
+
+  const entries = Object.keys(value).flatMap((key) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      return [];
+    }
+    const serialized = stringifyUnknownJsonValue(descriptor.value, seen);
+    return serialized === undefined
+      ? []
+      : [`${quoteJsonString(key)}:${serialized}`];
+  });
+  seen.delete(value);
+  return `{${entries.join(",")}}`;
+}
+
+export function stringifyUnknownValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "undefined") {
+    return "undefined";
+  }
+  if (typeof value === "symbol") {
+    return value.description ? `Symbol(${value.description})` : "Symbol()";
+  }
+  if (typeof value === "function") {
+    return "[function]";
+  }
+  return stringifyUnknownJsonValue(value, new WeakSet()) ?? "[unserializable]";
 }
 
 // ============ GROUPED MESSAGE TYPES ============
@@ -200,7 +290,7 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
 }
 
 function eventDedupeKey(event: AgentEvent): string {
-  return JSON.stringify({
+  return stringifyUnknownValue({
     sequenceNumber: event.sequenceNumber,
     eventType: event.eventType,
     createdAt: event.createdAt,
@@ -546,7 +636,9 @@ function processTodoWrite(op: ToolOperation): TodoItem[] | null {
   return todos.map((todo) => {
     const item = isRecord(todo) ? todo : {};
     const content =
-      typeof item.content === "string" ? item.content : String(todo);
+      typeof item.content === "string"
+        ? item.content
+        : stringifyUnknownValue(todo);
     const status = typeof item.status === "string" ? item.status : "pending";
     return { content, status };
   });

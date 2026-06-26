@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { highlightText } from "./utils/highlight-text.tsx";
-import type { ToolOperation } from "./log-detail-utils.ts";
+import {
+  stringifyUnknownValue,
+  type ToolOperation,
+} from "./log-detail-utils.ts";
 import { formatDuration } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
@@ -301,14 +304,14 @@ function ToolInputDetails({
     if (typeof val === "string") {
       return val.length > 50 ? `${val.slice(0, 47)}...` : val;
     }
-    return JSON.stringify(val);
+    return stringifyUnknownValue(val);
   };
 
   const getFullValue = (val: unknown): string => {
     if (typeof val === "string") {
       return val;
     }
-    return JSON.stringify(val);
+    return stringifyUnknownValue(val);
   };
 
   const fullText = entries

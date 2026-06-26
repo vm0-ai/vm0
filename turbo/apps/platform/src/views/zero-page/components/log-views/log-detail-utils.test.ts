@@ -123,6 +123,42 @@ describe("groupEventsIntoMessages Codex plan events", () => {
   });
 });
 
+describe("groupEventsIntoMessages unserializable event data", () => {
+  it("does not throw when same-sequence event data contains cycles", () => {
+    const circularEventData: Record<string, unknown> = {
+      message: {
+        content: [{ type: "text", text: "Circular same-sequence event." }],
+      },
+    };
+    circularEventData.self = circularEventData;
+
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 3,
+        eventType: "assistant",
+        eventData: circularEventData,
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 3,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Second same-sequence event." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.textBefore;
+      }),
+    ).toEqual(["Circular same-sequence event.", "Second same-sequence event."]);
+  });
+});
+
 describe("groupEventsIntoMessages event dedupe", () => {
   it("keeps distinct events that share a sequence number", () => {
     const messages = groupEventsIntoMessages([
@@ -659,6 +695,63 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
 });
 
 describe("groupEventsIntoMessages tool result metadata", () => {
+  it("normalizes tool result content that JSON.stringify cannot handle", () => {
+    const circularContent: Record<string, unknown> = { output: "done" };
+    circularContent.self = circularContent;
+
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "tool-circular-content",
+                name: "Bash",
+                input: { command: "echo circular" },
+              },
+              {
+                type: "tool_use",
+                id: "tool-bigint-content",
+                name: "Bash",
+                input: { command: "echo bigint" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tool-circular-content",
+                content: circularContent,
+              },
+              {
+                type: "tool_result",
+                tool_use_id: "tool-bigint-content",
+                content: BigInt(42),
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages[0]?.toolOperations?.[0]?.result?.content).toBe(
+      '{"output":"done","self":"[Circular]"}',
+    );
+    expect(messages[0]?.toolOperations?.[1]?.result?.content).toBe("42");
+  });
+
   it("ignores negative tool result duration and bytes", () => {
     const messages = groupEventsIntoMessages([
       {
@@ -705,6 +798,39 @@ describe("groupEventsIntoMessages tool result metadata", () => {
       messages[0]?.toolOperations?.[0]?.result?.durationMs,
     ).toBeUndefined();
     expect(messages[0]?.toolOperations?.[0]?.result?.bytes).toBeUndefined();
+  });
+});
+
+describe("groupEventsIntoMessages malformed TodoWrite values", () => {
+  it("uses a safe fallback for malformed todo values", () => {
+    const malformedTodo = Object.create(null) as Record<string, unknown>;
+    malformedTodo.toJSON = () => {
+      throw new Error("cannot serialize todo");
+    };
+
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-malformed-item",
+                name: "TodoWrite",
+                input: { todos: [malformedTodo] },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ]);
+
+    expect(messages[0]?.todoState).toEqual([
+      { content: "{}", status: "pending" },
+    ]);
   });
 });
 
