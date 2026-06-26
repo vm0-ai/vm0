@@ -34,9 +34,9 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
     jsonl_writer.write_jsonl_line(log_path, line, log_name)
 
 
-def flush_log_path(log_path: str) -> None:
+def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
     """Flush accepted JSONL writes for a path."""
-    jsonl_writer.flush_log_path(log_path)
+    return jsonl_writer.flush_log_path(log_path, timeout=timeout)
 
 
 def flush_all_logs() -> None:

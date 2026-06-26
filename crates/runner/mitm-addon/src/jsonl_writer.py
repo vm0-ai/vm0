@@ -3,6 +3,7 @@
 import os
 import queue
 import threading
+import time
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from mitmproxy import ctx
 
 MAX_PENDING_JSONL_WRITES = 4096
 MAX_PENDING_JSONL_BYTES = 32 * 1024 * 1024
+JSONL_CONTROL_QUEUE_SLOTS = 1
+SHUTDOWN_JOIN_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -24,19 +27,23 @@ class _WriteItem:
 _STOP = object()
 _lock = threading.Lock()
 _condition = threading.Condition(_lock)
-_queue: queue.Queue[_WriteItem | object] = queue.Queue(maxsize=MAX_PENDING_JSONL_WRITES)
+_queue: queue.Queue[_WriteItem | object] = queue.Queue(
+    maxsize=MAX_PENDING_JSONL_WRITES + JSONL_CONTROL_QUEUE_SLOTS
+)
 _worker: threading.Thread | None = None
 _shutdown = False
+_stop_enqueued = False
 _accepted_by_path: defaultdict[str, int] = defaultdict(int)
 _completed_by_path: defaultdict[str, int] = defaultdict(int)
 _flush_waiters_by_path: defaultdict[str, int] = defaultdict(int)
 _pending_bytes = 0
+_queued_writes = 0
 _drop_warning_logged = False
 
 
 def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
     """Queue a JSONL line for best-effort append without blocking hook latency."""
-    global _pending_bytes
+    global _pending_bytes, _queued_writes
 
     if not log_path:
         return
@@ -46,7 +53,10 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
         if _shutdown:
             return
         line_size = len(line)
-        if _pending_bytes + line_size > MAX_PENDING_JSONL_BYTES:
+        if (
+            _queued_writes >= MAX_PENDING_JSONL_WRITES
+            or _pending_bytes + line_size > MAX_PENDING_JSONL_BYTES
+        ):
             dropped = True
         elif not _ensure_worker_locked():
             _warn(f"Failed to start JSONL writer for {log_name} log")
@@ -66,22 +76,32 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
             else:
                 _accepted_by_path[log_path] = sequence
                 _pending_bytes += line_size
+                _queued_writes += 1
 
     if dropped:
         _warn_drop_once(log_name)
 
 
-def flush_log_path(log_path: str) -> None:
+def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
     """Wait until all writes accepted so far for ``log_path`` are completed."""
     if not log_path:
-        return
+        return True
 
     with _condition:
         target = _accepted_by_path.get(log_path, 0)
+        deadline = None if timeout is None else time.monotonic() + timeout
         _increment_flush_waiter_locked(log_path)
         try:
             while _completed_by_path.get(log_path, 0) < target:
-                _condition.wait()
+                if deadline is None:
+                    _condition.wait()
+                    continue
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                _condition.wait(remaining)
+            return True
         finally:
             _decrement_flush_waiter_locked(log_path)
             _prune_completed_path_locked(log_path, target)
@@ -103,43 +123,58 @@ def flush_all_logs() -> None:
                 _prune_completed_path_locked(path, target)
 
 
-def shutdown_writer() -> None:
+def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) -> bool:
     """Drain accepted writes and stop the background writer."""
-    global _worker, _shutdown
+    global _worker, _shutdown, _stop_enqueued
 
+    failed_to_signal_stop = False
     with _condition:
         worker = _worker
         if worker is None:
             _shutdown = True
-            return
-        should_signal_stop = not _shutdown
+            return True
         _shutdown = True
+        should_signal_stop = not _stop_enqueued
+        if should_signal_stop:
+            try:
+                _queue.put_nowait(_STOP)
+            except queue.Full:
+                failed_to_signal_stop = True
+            else:
+                _stop_enqueued = True
 
-    if should_signal_stop:
-        _queue.put(_STOP)
+    if failed_to_signal_stop:
+        _warn("Failed to signal JSONL writer shutdown because the control queue is full")
     if worker is not threading.current_thread():
-        worker.join()
+        worker.join(timeout=timeout)
+        if worker.is_alive():
+            _warn("JSONL writer shutdown timed out")
+            return False
 
     with _condition:
         if _worker is worker:
             _worker = None
+            _stop_enqueued = False
         _condition.notify_all()
+    return True
 
 
 def reset_for_tests() -> None:
     """Reset writer state between tests."""
-    global _queue, _worker, _shutdown, _accepted_by_path, _completed_by_path, _flush_waiters_by_path
-    global _pending_bytes, _drop_warning_logged
+    global _queue, _worker, _shutdown, _stop_enqueued, _accepted_by_path, _completed_by_path
+    global _flush_waiters_by_path, _pending_bytes, _queued_writes, _drop_warning_logged
 
-    shutdown_writer()
+    shutdown_writer(timeout=None)
     with _condition:
-        _queue = queue.Queue(maxsize=MAX_PENDING_JSONL_WRITES)
+        _queue = queue.Queue(maxsize=MAX_PENDING_JSONL_WRITES + JSONL_CONTROL_QUEUE_SLOTS)
         _worker = None
         _shutdown = False
+        _stop_enqueued = False
         _accepted_by_path = defaultdict(int)
         _completed_by_path = defaultdict(int)
         _flush_waiters_by_path = defaultdict(int)
         _pending_bytes = 0
+        _queued_writes = 0
         _drop_warning_logged = False
         _condition.notify_all()
 
@@ -223,7 +258,7 @@ def _append_lines(log_path: str, content: bytes) -> None:
 
 
 def _complete_item(item: _WriteItem) -> None:
-    global _pending_bytes
+    global _pending_bytes, _queued_writes
 
     with _condition:
         _completed_by_path[item.log_path] = max(
@@ -231,6 +266,7 @@ def _complete_item(item: _WriteItem) -> None:
             item.sequence,
         )
         _pending_bytes = max(0, _pending_bytes - len(item.line))
+        _queued_writes = max(0, _queued_writes - 1)
         _prune_completed_path_locked(item.log_path, item.sequence)
         _condition.notify_all()
 

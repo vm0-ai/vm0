@@ -231,6 +231,7 @@ _jsonl_flush_state_write_lock = threading.Lock()
 _last_jsonl_flush_request_id: str | None = None
 _JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
 _JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
+RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
 
 # ============================================================================
 # Addon Configuration
@@ -391,14 +392,18 @@ def _flush_jsonl_for_runner_request() -> None:
 
     log_path, flush_request_id = request
     pending = 0
+    timed_out = False
     try:
-        flush_log_path(log_path)
+        if not flush_log_path(log_path, timeout=RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS):
+            pending = 1
+            timed_out = True
+            ctx.log.warn("JSONL flush did not complete before timeout")
     except Exception as exc:
         pending = 1
         ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
     finally:
         state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
-        if pending == 0 and state_written:
+        if state_written and (pending == 0 or timed_out):
             _last_jsonl_flush_request_id = flush_request_id
 
 
