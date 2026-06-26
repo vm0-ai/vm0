@@ -37,6 +37,8 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     visibility: workflow.visibility,
     requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
     canManage: workflow.canManage,
   };
 }
