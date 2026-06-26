@@ -428,7 +428,13 @@ function DetailHeader({
           </button>
           <WorkflowActionsMenu detail={detail} />
         </div>
-      ) : null}
+      ) : (
+        <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
+          <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-24" />
+          <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-20" />
+          <div className="size-9 rounded-md bg-muted/50" />
+        </div>
+      )}
     </header>
   );
 }
@@ -2317,13 +2323,34 @@ function UpdateGmailLabelAppliedTriggerForm({
 
 function DetailSkeleton() {
   return (
-    <div className="flex flex-col gap-4" data-testid="workflow-detail-loading">
-      <div className="h-7 w-52 rounded bg-muted/50" />
-      <div className="zero-card h-32 p-4">
-        <div className="h-4 w-40 rounded bg-muted/40" />
-      </div>
-      <div className="zero-card h-64 p-4">
-        <div className="h-4 w-40 rounded bg-muted/40" />
+    <div
+      className="flex min-h-[calc(100vh-8rem)] flex-col"
+      data-testid="workflow-detail-loading"
+    >
+      <div className="flex flex-1 flex-col animate-pulse px-0 py-3">
+        <div className="mb-7 flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="size-4 shrink-0 rounded bg-muted/40" />
+            <div className="h-4 w-28 rounded bg-muted/40" />
+          </div>
+          <div className="h-6 w-16 shrink-0 rounded-full bg-muted/40" />
+        </div>
+        <div className="space-y-3">
+          <div className="h-5 w-1/2 rounded bg-muted/50" />
+          <div className="h-4 w-11/12 rounded bg-muted/40" />
+          <div className="h-4 w-3/4 rounded bg-muted/40" />
+          <div className="h-4 w-5/6 rounded bg-muted/40" />
+          <div className="h-4 w-2/5 rounded bg-muted/40" />
+        </div>
+        <div className="my-6 h-px w-full bg-border/60" />
+        <div className="space-y-3">
+          <div className="h-4 w-4/5 rounded bg-muted/40" />
+          <div className="h-4 w-2/3 rounded bg-muted/40" />
+          <div className="flex items-center gap-3">
+            <div className="h-4 w-1/3 rounded bg-muted/40" />
+            <div className="h-5 w-px rounded bg-muted-foreground/30" />
+          </div>
+        </div>
       </div>
     </div>
   );
