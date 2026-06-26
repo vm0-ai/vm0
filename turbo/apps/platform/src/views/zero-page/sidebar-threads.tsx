@@ -5,6 +5,7 @@ import {
   useLastLoadable,
   useLoadable,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
@@ -73,8 +74,6 @@ import {
   sidebarChatThreadsExtraHasMore$,
   sidebarChatThreadsHasLoadedExtraPages$,
   sidebarChatThreadsLatestCursor$,
-  sidebarChatThreadsLoadMoreError$,
-  sidebarChatThreadsLoadingMore$,
 } from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
@@ -630,30 +629,21 @@ function ChatThreadRenameDialog() {
 
 function LoadMoreThreadsButton({
   loadingMore,
-  loadMoreError,
   onLoadMore,
 }: {
   loadingMore: boolean;
-  loadMoreError: string | null;
   onLoadMore: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={onLoadMore}
-        disabled={loadingMore}
-        className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-        data-testid="sidebar-chat-threads-load-more"
-      >
-        {loadingMore ? "Loading…" : "Load more"}
-      </button>
-      {loadMoreError && (
-        <p className="px-2 text-xs leading-5 text-destructive">
-          {loadMoreError}
-        </p>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={onLoadMore}
+      disabled={loadingMore}
+      className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
+      data-testid="sidebar-chat-threads-load-more"
+    >
+      {loadingMore ? "Loading…" : "Load more"}
+    </button>
   );
 }
 
@@ -768,10 +758,10 @@ function ChatThreads() {
   const extraHasMore =
     useLastResolved(sidebarChatThreadsExtraHasMore$) ?? false;
   const extraLatestCursor = useLastResolved(sidebarChatThreadsLatestCursor$);
-  const loadingMore = useLastResolved(sidebarChatThreadsLoadingMore$) ?? false;
-  const loadMoreError =
-    useLastResolved(sidebarChatThreadsLoadMoreError$) ?? null;
-  const loadMore = useSet(loadMoreSidebarChatThreads$);
+  const [loadMoreLoadable, loadMore] = useLoadableSet(
+    loadMoreSidebarChatThreads$,
+  );
+  const loadingMore = loadMoreLoadable.state === "loading";
   const hasMore = hasLoadedExtraPages ? extraHasMore : firstPageHasMore;
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
@@ -799,7 +789,6 @@ function ChatThreads() {
       {hasMore && cursorForLoadMore && (
         <LoadMoreThreadsButton
           loadingMore={loadingMore}
-          loadMoreError={loadMoreError}
           onLoadMore={handleLoadMore}
         />
       )}

@@ -1,7 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { describe, expect, it } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -14,6 +15,10 @@ import { testContext } from "../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const failedRunId = "33333333-3333-4333-8333-333333333333";
+
+afterEach(() => {
+  toast.dismiss();
+});
 
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
@@ -69,5 +74,47 @@ describe("report error page", () => {
       expect(screen.getByText("Report sent")).toBeInTheDocument();
     });
     expect(screen.getByText("Reference: ERR-2026-0001")).toBeInTheDocument();
+  });
+
+  it("keeps the form open and shows a toast when submission fails", async () => {
+    context.mocks.api(zeroRunsByIdContract.getById, ({ params, respond }) => {
+      return respond(200, {
+        runId: params.id,
+        agentComposeVersionId: null,
+        status: "failed",
+        prompt: "Sync the billing export",
+        appendSystemPrompt: null,
+        result: { agentSessionId: "session-1", output: "stack trace" },
+        createdAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(zeroReportErrorContract.submit, ({ respond }) => {
+      return respond(500, {
+        error: {
+          code: "REPORT_ERROR_FAILED",
+          message: "Report service is unavailable",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/runs/${failedRunId}/report-error`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Report error to developer")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Title"), "Billing export failed");
+    click(buttonByText("Send Report"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Report service is unavailable"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Report error to developer")).toBeInTheDocument();
+      expect(screen.queryByText("Try Again")).not.toBeInTheDocument();
+    });
   });
 });

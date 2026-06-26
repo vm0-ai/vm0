@@ -1,6 +1,12 @@
 import { command, computed, state } from "ccstate";
 import { onRef } from "../../utils.ts";
 import {
+  zeroOrgContract,
+  zeroOrgDeleteContract,
+  zeroOrgLeaveContract,
+} from "@vm0/api-contracts/contracts/zero-org";
+import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
@@ -9,7 +15,7 @@ import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { clerk$ } from "../../auth.ts";
+import { clerk$, resolveWebOrigin } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 
@@ -70,24 +76,10 @@ export const setProfileSlug$ = command(({ set }, value: string) => {
   set(internalProfileSlug$, value);
 });
 
-const internalProfileSaving$ = state(false);
-
-export const profileSaving$ = computed((get) => {
-  return get(internalProfileSaving$);
-});
-
-export const setProfileSaving$ = command(({ set }, value: boolean) => {
-  set(internalProfileSaving$, value);
-});
-
 const internalProfileLogoUrl$ = state<string | null>(null);
 
 export const profileLogoUrl$ = computed((get) => {
   return get(internalProfileLogoUrl$);
-});
-
-export const setProfileLogoUrl$ = command(({ set }, value: string | null) => {
-  set(internalProfileLogoUrl$, value);
 });
 
 const internalPendingLogoFile$ = state<File | null>(null);
@@ -140,34 +132,22 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
 export const initProfileName$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const org = await get(org$);
+    const preview = get(internalPendingLogoPreview$);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
     set(internalProfileName$, org?.name ?? "");
     set(internalProfileSlug$, org?.slug ?? "");
+    set(internalProfileLogoUrl$, null);
+    set(internalPendingLogoFile$, null);
+    set(internalPendingLogoPreview$, null);
+    set(internalLogoLoaded$, false);
   },
 );
 
 // ---------------------------------------------------------------------------
 // org-general-tab: DangerZoneSection
 // ---------------------------------------------------------------------------
-
-const internalLeaving$ = state(false);
-
-export const leaving$ = computed((get) => {
-  return get(internalLeaving$);
-});
-
-export const setLeaving$ = command(({ set }, value: boolean) => {
-  set(internalLeaving$, value);
-});
-
-const internalDeleting$ = state(false);
-
-export const deleting$ = computed((get) => {
-  return get(internalDeleting$);
-});
-
-export const setDeleting$ = command(({ set }, value: boolean) => {
-  set(internalDeleting$, value);
-});
 
 const internalDeleteConfirm$ = state("");
 
@@ -303,20 +283,6 @@ export const setRevokeInvitationDialogTarget$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-general-tab: ProfileSection saveError
-// ---------------------------------------------------------------------------
-
-const internalSaveError$ = state<string | null>(null);
-
-export const saveError$ = computed((get) => {
-  return get(internalSaveError$);
-});
-
-export const setSaveError$ = command(({ set }, value: string | null) => {
-  set(internalSaveError$, value);
-});
-
-// ---------------------------------------------------------------------------
 // org-billing-tab: DowngradeConfirmDialog selectedTarget
 // ---------------------------------------------------------------------------
 
@@ -343,6 +309,148 @@ export const setLockedTarget$ = command(
     if (value) {
       set(internalSelectedTarget$, value);
     }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-general-tab: async commands
+// ---------------------------------------------------------------------------
+
+interface SaveOrgProfileInput {
+  readonly name: string;
+  readonly slug: string;
+  readonly logoFile: File | null;
+}
+
+const uploadOrgLogo$ = command(
+  async (
+    { get },
+    file: File,
+    signal: AbortSignal,
+  ): Promise<{ readonly logoUrl: string | null }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const result = await accept(
+      client.post({
+        body: formData,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
+
+export const loadOrgLogo$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const result = await accept(
+      client.get({
+        fetchOptions: { signal },
+      }),
+      [200],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    set(internalProfileLogoUrl$, result.body.logoUrl);
+  },
+);
+
+export const saveOrgProfile$ = command(
+  async (
+    { get, set },
+    input: SaveOrgProfileInput,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const org = await get(org$);
+    signal.throwIfAborted();
+    if (!org) {
+      return;
+    }
+
+    const hasNameChange = input.name !== (org.name ?? "");
+    const hasSlugChange = input.slug !== (org.slug ?? "");
+
+    if (input.logoFile) {
+      const result = await set(uploadOrgLogo$, input.logoFile, signal);
+      signal.throwIfAborted();
+      set(internalProfileLogoUrl$, result.logoUrl);
+    }
+
+    if (hasNameChange || hasSlugChange) {
+      const body: { name?: string; slug?: string; force?: boolean } = {};
+      if (hasNameChange) {
+        body.name = input.name;
+      }
+      if (hasSlugChange) {
+        body.slug = input.slug;
+        body.force = true;
+      }
+      const client = get(zeroClient$)(zeroOrgContract);
+      await accept(
+        client.update({
+          body,
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+    }
+
+    signal.throwIfAborted();
+    const preview = get(internalPendingLogoPreview$);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+    set(internalPendingLogoFile$, null);
+    set(internalPendingLogoPreview$, null);
+    set(refreshOrg$);
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    await clerk?.organization?.reload();
+    signal.throwIfAborted();
+    toast.success("Workspace updated");
+  },
+);
+
+export const leaveOrg$ = command(
+  async ({ get }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroOrgLeaveContract);
+    await accept(
+      client.leave({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    await clerk?.setActive({ organization: null });
+    signal.throwIfAborted();
+    toast.success("You have left the workspace");
+    window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+  },
+);
+
+export const deleteOrg$ = command(
+  async ({ get }, slug: string, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroOrgDeleteContract);
+    await accept(
+      client.delete({
+        body: { slug },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    await clerk?.setActive({ organization: null });
+    signal.throwIfAborted();
+    toast.success("Workspace deleted");
+    window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
   },
 );
 

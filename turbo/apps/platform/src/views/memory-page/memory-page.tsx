@@ -1,4 +1,5 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { IconChevronDown, IconLoader2, IconRefresh } from "@tabler/icons-react";
@@ -17,9 +18,6 @@ import {
   memoryActivityExtraHasMore$,
   memoryActivityHasLoadedExtraPages$,
   memoryActivityLatestCursor$,
-  memoryActivityLoadMoreError$,
-  memoryActivityLoadingMore$,
-  memoryDevRefreshState$,
   memoryDetail$,
   memoryTab$,
   refreshMemoryDevSummaries$,
@@ -195,19 +193,14 @@ function MemoryDevRefreshButton({
   readonly className?: string;
 }) {
   const features = useGet(featureSwitch$);
-  const refreshState = useGet(memoryDevRefreshState$);
-  const refresh = useSet(refreshMemoryDevSummaries$);
+  const [refreshLoadable, refresh] = useLoadableSet(refreshMemoryDevSummaries$);
   const pageSignal = useGet(pageSignal$);
 
   if (!features[FeatureSwitchKey.MemoryDevRefresh]) {
     return null;
   }
 
-  const refreshing = refreshState.status === "refreshing";
-  const status =
-    refreshState.status === "success" || refreshState.status === "error"
-      ? refreshState
-      : null;
+  const refreshing = refreshLoadable.state === "loading";
 
   return (
     <div className={cn("flex shrink-0 flex-col items-end gap-1", className)}>
@@ -229,19 +222,6 @@ function MemoryDevRefreshButton({
         )}
         <span>{refreshing ? "Refreshing" : "Dev refresh"}</span>
       </Button>
-      {status ? (
-        <span
-          role={status.status === "error" ? "alert" : "status"}
-          className={cn(
-            "max-w-[180px] text-right text-[11px] leading-4",
-            status.status === "error"
-              ? "text-destructive"
-              : "text-muted-foreground",
-          )}
-        >
-          {status.message}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -606,9 +586,8 @@ function MemoryUpdates() {
     useLastResolved(memoryActivityHasLoadedExtraPages$) ?? false;
   const extraHasMore = useLastResolved(memoryActivityExtraHasMore$) ?? false;
   const latestCursor = useLastResolved(memoryActivityLatestCursor$);
-  const loadingMore = useLastResolved(memoryActivityLoadingMore$) ?? false;
-  const loadMoreError = useLastResolved(memoryActivityLoadMoreError$) ?? null;
-  const loadMore = useSet(loadMoreMemoryActivity$);
+  const [loadMoreLoadable, loadMore] = useLoadableSet(loadMoreMemoryActivity$);
+  const loadingMore = loadMoreLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
   if (activityLoadable.state === "loading") {
@@ -644,7 +623,6 @@ function MemoryUpdates() {
       {hasMore ? (
         <MemoryUpdatesLoadMore
           loading={loadingMore}
-          error={loadMoreError}
           onLoadMore={handleLoadMore}
         />
       ) : null}
@@ -654,11 +632,9 @@ function MemoryUpdates() {
 
 function MemoryUpdatesLoadMore({
   loading,
-  error,
   onLoadMore,
 }: {
   readonly loading: boolean;
-  readonly error: string | null;
   readonly onLoadMore: () => void;
 }) {
   return (
@@ -676,7 +652,6 @@ function MemoryUpdatesLoadMore({
         )}
         <span>{loading ? "Loading..." : "Load more"}</span>
       </button>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }
