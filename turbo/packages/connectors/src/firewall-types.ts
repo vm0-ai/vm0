@@ -55,11 +55,43 @@ const firewallAuthSchema = z
     }
   });
 
+const firewallProviderOwnedHostPolicySchema = z
+  .object({
+    kind: z.literal("providerOwned"),
+    exactHosts: z.array(z.string().min(1)).optional(),
+    suffixes: z.array(z.string().min(1)).optional(),
+    allowNonDefaultPort: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((policy, ctx) => {
+    if (
+      (policy.exactHosts?.length ?? 0) === 0 &&
+      (policy.suffixes?.length ?? 0) === 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "providerOwned host policy requires exactHosts or suffixes",
+      });
+    }
+  });
+
+const firewallPublicDestinationHostPolicySchema = z
+  .object({
+    kind: z.literal("publicDestination"),
+  })
+  .strict();
+
+export const firewallBaseHostPolicySchema = z.union([
+  firewallProviderOwnedHostPolicySchema,
+  firewallPublicDestinationHostPolicySchema,
+]);
+
 /**
  * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
  */
 export const firewallApiSchema = z.object({
   base: z.string(),
+  hostPolicy: firewallBaseHostPolicySchema.optional(),
   auth: firewallAuthSchema,
   permissions: z.array(firewallPermissionSchema).optional(),
 });
@@ -162,6 +194,17 @@ export type NetworkPolicies = z.infer<typeof networkPoliciesSchema>;
 
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
+export type FirewallBaseHostPolicy = z.infer<
+  typeof firewallBaseHostPolicySchema
+>;
+
+export class FirewallBaseUrlResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FirewallBaseUrlResolutionError";
+  }
+}
+
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 /**
  * Extract the union of permission names from a firewall config object.
@@ -206,6 +249,23 @@ const AUTH_REFERENCE_PREFIX_PATTERN = new RegExp(
 const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
 const IPV4_MAX_OCTET = 255;
+const IPV4_OCTET_BASE = IPV4_MAX_OCTET + 1;
+const IPV4_NON_PUBLIC_RANGES: readonly (readonly [number, number])[] = [
+  [0x00000000, 0x00ffffff],
+  [0x0a000000, 0x0affffff],
+  [0x64400000, 0x647fffff],
+  [0x7f000000, 0x7fffffff],
+  [0xa9fe0000, 0xa9feffff],
+  [0xac100000, 0xac1fffff],
+  [0xc0000000, 0xc00000ff],
+  [0xc0000200, 0xc00002ff],
+  [0xc0586300, 0xc05863ff],
+  [0xc0a80000, 0xc0a8ffff],
+  [0xc6120000, 0xc613ffff],
+  [0xc6336400, 0xc63364ff],
+  [0xcb007100, 0xcb0071ff],
+  [0xe0000000, 0xffffffff],
+];
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -1162,6 +1222,18 @@ function suffixAuthorityPrefix(suffix: string): string {
   return delimiterIndex === -1 ? suffix : suffix.slice(0, delimiterIndex);
 }
 
+function authoritySuffixHasFixedHostOwnership(
+  authoritySuffix: string,
+): boolean {
+  const hostSuffix = authoritySuffix
+    .replace(/^[.]+/u, "")
+    .replace(/:\d*$/u, "");
+  const labels = hostSuffix.split(".").filter((label) => {
+    return label !== "";
+  });
+  return labels.length >= 2;
+}
+
 function validateBaseUrlTemplateVariable({
   base,
   serviceName,
@@ -1242,6 +1314,40 @@ function baseUrlScheme(base: string): string {
   return base.slice(0, schemeEnd).toLowerCase();
 }
 
+export function firewallBaseUrlTemplateNeedsHostPolicy(base: string): boolean {
+  if (!hasBaseUrlVars(base)) return false;
+
+  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+    const fullMatch = match[0];
+    const matchIndex = match.index!;
+    const prefix = base.slice(0, matchIndex);
+    const suffix = base.slice(matchIndex + fullMatch.length);
+    if (prefix === "" && (suffix === "" || suffix.startsWith("/"))) {
+      return true;
+    }
+    if (prefix.endsWith("://")) {
+      const authoritySuffix = suffixAuthorityPrefix(suffix);
+      if (
+        authoritySuffix === "" ||
+        !authoritySuffixHasFixedHostOwnership(authoritySuffix)
+      ) {
+        return true;
+      }
+    }
+    if (prefixIsInsideAuthority(prefix) && !prefix.endsWith(":")) {
+      const authoritySuffix = suffixAuthorityPrefix(suffix);
+      if (
+        authoritySuffix !== "" &&
+        !authoritySuffixHasFixedHostOwnership(authoritySuffix)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function validateCredentialedBaseUrlTransportValue(
   base: string,
   serviceName: string,
@@ -1254,11 +1360,247 @@ function validateCredentialedBaseUrlTransportValue(
   );
 }
 
+function normalizeHostPolicyHostname(hostname: string): string {
+  let normalized = hostname
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .toLowerCase();
+  if (normalized.endsWith(".")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+function normalizeHostPolicySuffix(suffix: string): string {
+  const withoutLeadingDot = suffix.startsWith(".") ? suffix.slice(1) : suffix;
+  return normalizeHostPolicyHostname(withoutLeadingDot);
+}
+
+function parseCanonicalIpv4Address(value: string): readonly number[] | null {
+  if (!isCanonicalIpv4Address(value)) {
+    return null;
+  }
+  return value.split(".").map((part) => {
+    return Number(part);
+  });
+}
+
+function ipv4PartsToNumber(parts: readonly number[]): number | null {
+  if (parts.length !== 4) {
+    return null;
+  }
+  return parts.reduce((acc, part) => {
+    return acc * IPV4_OCTET_BASE + part;
+  }, 0);
+}
+
+function isPublicIpv4Address(parts: readonly number[]): boolean {
+  const value = ipv4PartsToNumber(parts);
+  if (value === null) {
+    return false;
+  }
+  return !IPV4_NON_PUBLIC_RANGES.some(([start, end]) => {
+    return value >= start && value <= end;
+  });
+}
+
+function parseIpv6Word(value: string): number | null {
+  if (
+    value === "" ||
+    value.length > 4 ||
+    ![...value].every((char) => {
+      return isHexDigit(char);
+    })
+  ) {
+    return null;
+  }
+  return Number.parseInt(value, 16);
+}
+
+function parseIpv6WordList(value: string): readonly number[] | null {
+  if (value === "") {
+    return [];
+  }
+  const words: number[] = [];
+  for (const part of value.split(":")) {
+    const word = parseIpv6Word(part);
+    if (word === null) {
+      return null;
+    }
+    words.push(word);
+  }
+  return words;
+}
+
+function parseIpv6Address(value: string): readonly number[] | null {
+  if (value.includes("%")) {
+    return null;
+  }
+
+  let normalized = value.toLowerCase();
+  if (normalized.includes(".")) {
+    const lastColon = normalized.lastIndexOf(":");
+    if (lastColon === -1) {
+      return null;
+    }
+    const ipv4Parts = parseCanonicalIpv4Address(
+      normalized.slice(lastColon + 1),
+    );
+    if (!ipv4Parts) {
+      return null;
+    }
+    const highWord = (ipv4Parts[0]! << 8) + ipv4Parts[1]!;
+    const lowWord = (ipv4Parts[2]! << 8) + ipv4Parts[3]!;
+    normalized = `${normalized.slice(0, lastColon)}:${highWord.toString(16)}:${lowWord.toString(16)}`;
+  }
+
+  const compressed = normalized.split("::");
+  if (compressed.length > 2) {
+    return null;
+  }
+
+  const left = parseIpv6WordList(compressed[0]!);
+  const right =
+    compressed.length === 2 ? parseIpv6WordList(compressed[1]!) : [];
+  if (!left || !right) {
+    return null;
+  }
+
+  if (compressed.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+
+  const zeroCount = 8 - left.length - right.length;
+  if (zeroCount < 1) {
+    return null;
+  }
+  return [
+    ...left,
+    ...Array.from({ length: zeroCount }, () => {
+      return 0;
+    }),
+    ...right,
+  ];
+}
+
+function isPublicIpv6Address(words: readonly number[]): boolean {
+  if (words.length !== 8) {
+    return false;
+  }
+  const first = words[0]!;
+  const second = words[1]!;
+  if ((first & 0xe000) !== 0x2000) {
+    return false;
+  }
+  if (first === 0x2001 && second === 0x0000) {
+    return false;
+  }
+  if (first === 0x2001 && second === 0x0002) {
+    return false;
+  }
+  if (first === 0x2001 && second === 0x0db8) {
+    return false;
+  }
+  if (first === 0x2002) {
+    return false;
+  }
+  return true;
+}
+
+function hostPolicyIpLiteralIsPublic(hostname: string): boolean | null {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    const words = parseIpv6Address(hostname.slice(1, -1));
+    return words ? isPublicIpv6Address(words) : false;
+  }
+
+  const ipv4Parts = parseCanonicalIpv4Address(hostname);
+  return ipv4Parts ? isPublicIpv4Address(ipv4Parts) : null;
+}
+
+function providerOwnedHostMatches(
+  hostname: string,
+  hostPolicy: Extract<
+    FirewallBaseHostPolicy,
+    { readonly kind: "providerOwned" }
+  >,
+): boolean {
+  const exactHosts = hostPolicy.exactHosts ?? [];
+  for (const exactHost of exactHosts) {
+    if (hostname === normalizeHostPolicyHostname(exactHost)) {
+      return true;
+    }
+  }
+
+  const suffixes = hostPolicy.suffixes ?? [];
+  for (const suffix of suffixes) {
+    const normalizedSuffix = normalizeHostPolicySuffix(suffix);
+    if (
+      normalizedSuffix !== "" &&
+      hostname.length > normalizedSuffix.length &&
+      hostname.endsWith(`.${normalizedSuffix}`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateResolvedBaseUrlHostPolicy({
+  templateBase,
+  resolvedBase,
+  serviceName,
+  hostPolicy,
+}: {
+  readonly templateBase: string;
+  readonly resolvedBase: string;
+  readonly serviceName: string;
+  readonly hostPolicy: FirewallBaseHostPolicy | undefined;
+}): void {
+  if (!hostPolicy) {
+    return;
+  }
+
+  const url = new URL(resolvedBase);
+  const hostname = normalizeHostPolicyHostname(url.hostname);
+  if (hostPolicy.kind === "providerOwned") {
+    if (!providerOwnedHostMatches(hostname, hostPolicy)) {
+      throw new Error(
+        errMsg(
+          templateBase,
+          serviceName,
+          `host policy does not allow resolved host "${hostname}"`,
+        ),
+      );
+    }
+    if (!hostPolicy.allowNonDefaultPort && url.port !== "") {
+      throw new Error(
+        errMsg(
+          templateBase,
+          serviceName,
+          "host policy does not allow non-default ports",
+        ),
+      );
+    }
+    return;
+  }
+
+  const publicIpLiteral = hostPolicyIpLiteralIsPublic(hostname);
+  if (publicIpLiteral === false) {
+    throw new Error(
+      errMsg(
+        templateBase,
+        serviceName,
+        `host policy does not allow non-public IP literal "${hostname}"`,
+      ),
+    );
+  }
+}
+
 export interface ResolveFirewallBaseUrlTemplateOptions {
   readonly serviceName: string;
   readonly base: string;
   readonly vars: Record<string, string> | undefined;
   readonly credentialed?: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
 }
 
 export function resolveFirewallBaseUrlTemplate({
@@ -1266,41 +1608,58 @@ export function resolveFirewallBaseUrlTemplate({
   base,
   vars,
   credentialed = false,
+  hostPolicy,
 }: ResolveFirewallBaseUrlTemplateOptions): string {
   if (!hasBaseUrlVars(base)) return base;
 
-  let resolved = "";
-  let lastIndex = 0;
-  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
-    const fullMatch = match[0];
-    const name = match[1]!;
-    const matchIndex = match.index!;
-    const value = vars?.[name];
-    if (!value) {
-      throw new Error(
-        `Firewall "${serviceName}" base URL requires variable "${name}" but it was not provided`,
-      );
+  try {
+    let resolved = "";
+    let lastIndex = 0;
+    for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+      const fullMatch = match[0];
+      const name = match[1]!;
+      const matchIndex = match.index!;
+      const value = vars?.[name];
+      if (!value) {
+        throw new FirewallBaseUrlResolutionError(
+          `Firewall "${serviceName}" base URL requires variable "${name}" but it was not provided`,
+        );
+      }
+      validateBaseUrlTemplateVariable({
+        base,
+        serviceName,
+        name,
+        value,
+        prefix: base.slice(0, matchIndex),
+        suffix: base.slice(matchIndex + fullMatch.length),
+      });
+      resolved += base.slice(lastIndex, matchIndex) + value;
+      lastIndex = matchIndex + fullMatch.length;
     }
-    validateBaseUrlTemplateVariable({
-      base,
+    resolved += base.slice(lastIndex);
+    validateResolvedBaseUrlPathSafety(base, serviceName, resolved);
+    validateBaseUrl(resolved, serviceName);
+    validateCredentialedBaseUrlTransportValue(
+      resolved,
       serviceName,
-      name,
-      value,
-      prefix: base.slice(0, matchIndex),
-      suffix: base.slice(matchIndex + fullMatch.length),
+      credentialed,
+    );
+    validateResolvedBaseUrlHostPolicy({
+      templateBase: base,
+      resolvedBase: resolved,
+      serviceName,
+      hostPolicy,
     });
-    resolved += base.slice(lastIndex, matchIndex) + value;
-    lastIndex = matchIndex + fullMatch.length;
+    return resolved;
+  } catch (error) {
+    if (error instanceof FirewallBaseUrlResolutionError) {
+      throw error;
+    }
+    if (error instanceof Error) {
+      throw new FirewallBaseUrlResolutionError(error.message);
+    }
+    throw error;
   }
-  resolved += base.slice(lastIndex);
-  validateResolvedBaseUrlPathSafety(base, serviceName, resolved);
-  validateBaseUrl(resolved, serviceName);
-  validateCredentialedBaseUrlTransportValue(
-    resolved,
-    serviceName,
-    credentialed,
-  );
-  return resolved;
 }
 
 /**
@@ -1322,6 +1681,7 @@ export function resolveFirewallBaseUrlVars(
           base: api.base,
           vars,
           credentialed: firewallAuthInjectsCredentials(api.auth),
+          hostPolicy: api.hostPolicy,
         });
         return { ...api, base: resolved };
       }),

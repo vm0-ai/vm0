@@ -7,20 +7,27 @@ import registry
 from tests.registry_helpers import write_builtin_firewall_registry
 
 
-def install_test_builtin_firewall(monkeypatch, *, name: str, base: str) -> None:
+def install_test_builtin_firewall(
+    monkeypatch,
+    *,
+    name: str,
+    base: str,
+    host_policy: dict | None = None,
+) -> None:
+    api = {
+        "base": base,
+        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+        "permissions": [],
+    }
+    if host_policy is not None:
+        api["hostPolicy"] = host_policy
     monkeypatch.setattr(
         registry,
         "BUILTIN_FIREWALLS",
         {
             name: {
                 "name": name,
-                "apis": [
-                    {
-                        "base": base,
-                        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
-                        "permissions": [],
-                    }
-                ],
+                "apis": [api],
             }
         },
     )
@@ -131,7 +138,7 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "SNOWFLAKE_ACCOUNT"' in invalid_vm.message
 
-    def test_builtin_whole_authority_accepts_host_value(self, tmp_path):
+    def test_builtin_provider_owned_whole_authority_accepts_allowed_host(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
             path,
@@ -146,6 +153,58 @@ class TestRegistryBuiltinBaseUrlVars:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.atlassian.net"
+
+    def test_builtin_provider_owned_whole_authority_rejects_unowned_hosts(self, tmp_path):
+        for value in [
+            "attacker.example",
+            "evil-atlassian.net",
+            "atlassian.net.evil",
+            "127.0.0.1",
+        ]:
+            path = tmp_path / f"registry-{value.replace('/', '-')}.json"
+            write_builtin_firewall_registry(
+                path,
+                run_id="run-jira",
+                name="jira",
+                base_url_vars={"JIRA_DOMAIN": value},
+            )
+
+            with patch.object(registry.ctx, "log", MagicMock(), create=True):
+                context = registry.get_vm_context("10.200.0.1", str(path))
+                state = registry.load_registry_state(str(path))
+
+            assert context is None
+            assert not isinstance(state, registry.RegistryUnavailable)
+            invalid_vm = state.invalid_vms["10.200.0.1"]
+            assert invalid_vm.reason == "invalid_firewalls"
+            assert "host policy does not allow resolved host" in invalid_vm.message
+
+    def test_builtin_provider_owned_whole_authority_rejects_non_default_port(
+        self, tmp_path, monkeypatch
+    ):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="provider-owned-port",
+            base="https://${{ vars.API_HOST }}:444/v1",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-provider-owned-port",
+            name="provider-owned-port",
+            base_url_vars={"API_HOST": "api.example.com"},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "host policy does not allow non-default ports" in invalid_vm.message
 
     def test_builtin_whole_authority_rejects_path_injection(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -203,6 +262,50 @@ class TestRegistryBuiltinBaseUrlVars:
         invalid_vm = state.invalid_vms["10.200.0.1"]
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "STRAPI_BASE_URL"' in invalid_vm.message
+
+    def test_builtin_public_destination_accepts_public_host_with_port(self, tmp_path):
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-strapi",
+            name="strapi",
+            base_url_vars={"STRAPI_BASE_URL": "https://strapi.example.test:8443"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://strapi.example.test:8443")
+
+    def test_builtin_public_destination_rejects_non_public_ip_literals(self, tmp_path):
+        for value in [
+            "https://127.0.0.1",
+            "https://10.0.0.5",
+            "https://169.254.1.2",
+            "https://192.168.1.10",
+            "https://[::1]",
+            "https://[fc00::1]",
+            "https://[2001:db8::1]",
+        ]:
+            path = tmp_path / f"registry-{abs(hash(value))}.json"
+            write_builtin_firewall_registry(
+                path,
+                run_id="run-strapi",
+                name="strapi",
+                base_url_vars={"STRAPI_BASE_URL": value},
+            )
+
+            with patch.object(registry.ctx, "log", MagicMock(), create=True):
+                context = registry.get_vm_context("10.200.0.1", str(path))
+                state = registry.load_registry_state(str(path))
+
+            assert context is None
+            assert not isinstance(state, registry.RegistryUnavailable)
+            invalid_vm = state.invalid_vms["10.200.0.1"]
+            assert invalid_vm.reason == "invalid_firewalls"
+            assert "host policy does not allow non-public IP literal" in invalid_vm.message
 
     def test_builtin_base_url_prefix_preserves_fixed_path_suffix(self, tmp_path):
         path = tmp_path / "registry.json"

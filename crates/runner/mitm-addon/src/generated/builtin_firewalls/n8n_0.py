@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.N8N_BASE_URL }}/api/v1",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     }
   ],

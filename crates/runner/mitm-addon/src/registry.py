@@ -1,6 +1,7 @@
 """Proxy registry loading and VM lookup cache."""
 
 import copy
+import ipaddress
 import json
 import os
 import re
@@ -37,6 +38,7 @@ _PERCENT_DECODED_BOUNDARY_CHARS = frozenset(("/", ":", "?", "#", "@", "\\"))
 _BASE_URL_VAR_PARAMETER_CHARS = frozenset(("{", "}"))
 _PATH_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "\\"))
 _PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
+_DEFAULT_HTTPS_PORT = 443
 _MAX_PATH_VAR_PERCENT_DECODE_PASSES = 5
 
 
@@ -621,14 +623,162 @@ def _validate_credentialed_builtin_base(
     firewall_name: str,
     base: str,
     auth_config: object,
+    host_policy: object,
 ) -> None:
     if not auth_config_injects_credentials(auth_config):
         return
-    scheme = urllib.parse.urlsplit(base).scheme.lower()
+    parsed = urllib.parse.urlsplit(base)
+    scheme = parsed.scheme.lower()
     if scheme != "https":
         raise _FirewallEntryResolutionError(
             f'builtin firewall "{firewall_name}" credentialed base URL must use https'
         )
+    _validate_builtin_base_host_policy(
+        firewall_name=firewall_name,
+        parsed=parsed,
+        host_policy=host_policy,
+    )
+
+
+def _normalize_host_policy_hostname(hostname: str) -> str:
+    normalized = hostname.lower()
+    if normalized.endswith("."):
+        return normalized[:-1]
+    return normalized
+
+
+def _host_policy_string_list(policy: dict, key: str) -> list[str]:
+    value = policy.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise _FirewallEntryResolutionError(
+            f"builtin firewall hostPolicy.{key} must be a string list"
+        )
+    return value
+
+
+def _normalize_host_policy_suffix(suffix: str) -> str:
+    without_leading_dot = suffix[1:] if suffix.startswith(".") else suffix
+    return _normalize_host_policy_hostname(without_leading_dot)
+
+
+def _provider_owned_host_matches(
+    hostname: str,
+    *,
+    exact_hosts: list[str],
+    suffixes: list[str],
+) -> bool:
+    for exact_host in exact_hosts:
+        if hostname == _normalize_host_policy_hostname(exact_host):
+            return True
+    for suffix in suffixes:
+        normalized_suffix = _normalize_host_policy_suffix(suffix)
+        if (
+            normalized_suffix
+            and len(hostname) > len(normalized_suffix)
+            and hostname.endswith(f".{normalized_suffix}")
+        ):
+            return True
+    return False
+
+
+def _validate_provider_owned_host_policy(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+    policy: dict,
+) -> None:
+    if parsed.hostname is None:
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
+    hostname = _normalize_host_policy_hostname(parsed.hostname)
+    exact_hosts = _host_policy_string_list(policy, "exactHosts")
+    suffixes = _host_policy_string_list(policy, "suffixes")
+    if not exact_hosts and not suffixes:
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+            "requires exactHosts or suffixes"
+        )
+    if not _provider_owned_host_matches(
+        hostname,
+        exact_hosts=exact_hosts,
+        suffixes=suffixes,
+    ):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" host policy does not allow '
+            f'resolved host "{hostname}"'
+        )
+    if (
+        not bool(policy.get("allowNonDefaultPort"))
+        and parsed.port is not None
+        and parsed.port != _DEFAULT_HTTPS_PORT
+    ):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" host policy does not allow non-default ports'
+        )
+
+
+def _ip_literal_is_public(hostname: str) -> bool | None:
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        return None
+    if isinstance(ip, ipaddress.IPv6Address) and (
+        ip.ipv4_mapped is not None or ip.sixtofour is not None or ip.teredo is not None
+    ):
+        return False
+    return ip.is_global
+
+
+def _validate_public_destination_host_policy(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> None:
+    if parsed.hostname is None:
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
+    hostname = _normalize_host_policy_hostname(parsed.hostname)
+    public_ip_literal = _ip_literal_is_public(hostname)
+    if public_ip_literal is False:
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" host policy does not allow '
+            f'non-public IP literal "{hostname}"'
+        )
+
+
+def _validate_builtin_base_host_policy(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+    host_policy: object,
+) -> None:
+    if host_policy is None:
+        return
+    if not isinstance(host_policy, dict):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" hostPolicy must be an object'
+        )
+    kind = host_policy.get("kind")
+    if kind == "providerOwned":
+        _validate_provider_owned_host_policy(
+            firewall_name=firewall_name,
+            parsed=parsed,
+            policy=host_policy,
+        )
+        return
+    if kind == "publicDestination":
+        _validate_public_destination_host_policy(
+            firewall_name=firewall_name,
+            parsed=parsed,
+        )
+        return
+    raise _FirewallEntryResolutionError(
+        f'builtin firewall "{firewall_name}" hostPolicy kind is invalid'
+    )
 
 
 def _copy_builtin_firewall_shell(
@@ -688,6 +838,7 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
             firewall_name=raw_name,
             base=resolved_base,
             auth_config=api.get("auth"),
+            host_policy=api.get("hostPolicy"),
         )
         api["base"] = resolved_base
         resolved_bases.append(resolved_base)

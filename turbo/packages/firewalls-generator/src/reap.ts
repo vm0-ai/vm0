@@ -23,6 +23,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.REAP_API_BASE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.REAP_API_KEY }}",',

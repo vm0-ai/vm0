@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.ALTIUM365_WORKSPACE_URL }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     }
   ],

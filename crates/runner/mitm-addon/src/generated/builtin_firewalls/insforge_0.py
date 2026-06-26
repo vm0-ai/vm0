@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "https://${{ vars.INSFORGE_DOMAIN }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     }
   ],

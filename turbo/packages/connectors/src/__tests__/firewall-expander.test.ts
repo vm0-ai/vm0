@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   expandHostWildcardsInBaseUrl,
+  firewallBaseUrlTemplateNeedsHostPolicy,
   validateBaseUrl,
   hasBaseUrlParams,
   hasBaseUrlVars,
@@ -1179,6 +1180,7 @@ describe("resolveFirewallBaseUrlVars", () => {
     apis: [
       {
         base: "${{ vars.STRAPI_BASE_URL }}",
+        hostPolicy: { kind: "publicDestination" as const },
         auth: {
           headers: { Authorization: "Bearer ${{ secrets.STRAPI_TOKEN }}" },
         },
@@ -1219,6 +1221,10 @@ describe("resolveFirewallBaseUrlVars", () => {
     apis: [
       {
         base: "https://${{ vars.JIRA_DOMAIN }}",
+        hostPolicy: {
+          kind: "providerOwned" as const,
+          suffixes: ["atlassian.net"],
+        },
         auth: {
           headers: {
             Authorization:
@@ -1234,6 +1240,7 @@ describe("resolveFirewallBaseUrlVars", () => {
     apis: [
       {
         base: "${{ vars.N8N_BASE_URL }}/api/v1",
+        hostPolicy: { kind: "publicDestination" as const },
         auth: {
           headers: {
             "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",
@@ -1309,6 +1316,24 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const providerOwnedWithFixedPortFirewall = {
+    name: "provider-owned-port",
+    apis: [
+      {
+        base: "https://${{ vars.API_HOST }}:444/v1",
+        hostPolicy: {
+          kind: "providerOwned" as const,
+          suffixes: ["example.com"],
+        },
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
   it("resolves template base URL with provided vars", () => {
     const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
       ZENDESK_SUBDOMAIN: "mycompany",
@@ -1349,11 +1374,41 @@ describe("resolveFirewallBaseUrlVars", () => {
     }).toThrow("base URL variable");
   });
 
-  it("accepts whole authority template values", () => {
+  it("accepts provider-owned whole authority template values", () => {
     const result = resolveFirewallBaseUrlVars([jiraFirewall], {
       JIRA_DOMAIN: "acme.atlassian.net",
     });
     expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
+  });
+
+  it("accepts provider-owned whole authority template values with trailing dots", () => {
+    const result = resolveFirewallBaseUrlVars([jiraFirewall], {
+      JIRA_DOMAIN: "acme.atlassian.net.",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net.");
+  });
+
+  it("rejects provider-owned whole authority template values outside allowed hosts", () => {
+    for (const JIRA_DOMAIN of [
+      "attacker.example",
+      "evil-atlassian.net",
+      "atlassian.net.evil",
+      "127.0.0.1",
+    ]) {
+      expect(() => {
+        return resolveFirewallBaseUrlVars([jiraFirewall], {
+          JIRA_DOMAIN,
+        });
+      }).toThrow("host policy does not allow resolved host");
+    }
+  });
+
+  it("rejects provider-owned template bases with non-default ports", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([providerOwnedWithFixedPortFirewall], {
+        API_HOST: "api.example.com",
+      });
+    }).toThrow("host policy does not allow non-default ports");
   });
 
   it("rejects whole authority template values with paths", () => {
@@ -1568,6 +1623,38 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[0]!.apis[0]!.base).toBe("https://strapi.example.test");
   });
 
+  it("accepts public-destination template base URLs with custom ports", () => {
+    const result = resolveFirewallBaseUrlVars([strapiFirewall], {
+      STRAPI_BASE_URL: "https://strapi.example.test:8443",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://strapi.example.test:8443");
+  });
+
+  it("rejects public-destination template base URLs with non-public IP literals", () => {
+    for (const STRAPI_BASE_URL of [
+      "https://127.0.0.1",
+      "https://10.0.0.5",
+      "https://169.254.1.2",
+      "https://192.168.1.10",
+      "https://[::1]",
+      "https://[fc00::1]",
+      "https://[2001:db8::1]",
+    ]) {
+      expect(() => {
+        return resolveFirewallBaseUrlVars([strapiFirewall], {
+          STRAPI_BASE_URL,
+        });
+      }).toThrow("host policy does not allow non-public IP literal");
+    }
+  });
+
+  it("accepts public-destination template base URLs with public IP literals", () => {
+    const result = resolveFirewallBaseUrlVars([strapiFirewall], {
+      STRAPI_BASE_URL: "https://8.8.8.8",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://8.8.8.8");
+  });
+
   it("keeps generic http matching available for non-credential template bases", () => {
     const result = resolveFirewallBaseUrlVars([nonCredentialFirewall], {
       DIAGNOSTIC_BASE_URL: "http://diagnostic.example.test",
@@ -1586,5 +1673,50 @@ describe("resolveFirewallBaseUrlVars", () => {
 
   it("returns empty array for empty input", () => {
     expect(resolveFirewallBaseUrlVars([], undefined)).toEqual([]);
+  });
+});
+
+describe("firewallBaseUrlTemplateNeedsHostPolicy", () => {
+  it("flags whole-host and whole-base dynamic templates", () => {
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy("https://${{ vars.JIRA_DOMAIN }}"),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy("${{ vars.STRAPI_BASE_URL }}"),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy("${{ vars.N8N_BASE_URL }}/api/v1"),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://${{ vars.API_HOST }}:8443/v1",
+      ),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://api.${{ vars.DOMAIN }}:8443/v1",
+      ),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy("https://${{ vars.HOST }}.com/v1"),
+    ).toBe(true);
+  });
+
+  it("ignores fixed provider suffix and path-only dynamic templates", () => {
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+      ),
+    ).toBe(false);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://${{ vars.TENANT }}.example.com:8443/v1",
+      ),
+    ).toBe(false);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://api.example.test/accounts/${{ vars.TENANT }}/v1",
+      ),
+    ).toBe(false);
   });
 });

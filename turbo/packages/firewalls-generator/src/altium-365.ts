@@ -34,6 +34,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.ALTIUM365_WORKSPACE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.ALTIUM365_TOKEN }}",',

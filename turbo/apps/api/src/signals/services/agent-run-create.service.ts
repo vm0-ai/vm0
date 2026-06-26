@@ -50,6 +50,7 @@ import {
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
+  FirewallBaseUrlResolutionError,
   type Firewall,
   type FirewallPolicies,
   type FirewallPolicy,
@@ -2435,6 +2436,7 @@ function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
+        ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
         auth: api.auth,
         permissions: api.permissions ?? [],
       };
@@ -2507,6 +2509,9 @@ function builtinFirewallEntryForMetadata(
         apis: metadata.baseUrlTemplates.map((template) => {
           return {
             base: template.base,
+            ...(template.hostPolicy !== undefined
+              ? { hostPolicy: template.hostPolicy }
+              : {}),
             auth: baseUrlValidationAuth(template.credentialed),
             permissions: [],
           };
@@ -4584,16 +4589,25 @@ async function buildPreparedPermissionManifest(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<PermissionManifest | undefined> {
-  return await buildPermissionManifest({
-    modelProvider: args.modelProvider,
-    permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
-    connectorVars: args.connectorContext.vars,
-    connectorTypes: args.connectorContext.connectorTypes,
-    customConnectorFirewalls: args.customConnectorContext.firewalls,
-    timing: args.timing,
-  });
+}): Promise<PermissionManifest | undefined | CreateRunErrorResult> {
+  const result = await settle(
+    buildPermissionManifest({
+      modelProvider: args.modelProvider,
+      permissionPolicies: args.body.permissionPolicies,
+      vars: args.body.vars,
+      connectorVars: args.connectorContext.vars,
+      connectorTypes: args.connectorContext.connectorTypes,
+      customConnectorFirewalls: args.customConnectorContext.firewalls,
+      timing: args.timing,
+    }),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof FirewallBaseUrlResolutionError) {
+    return badRequestMessage(result.error.message);
+  }
+  throw result.error;
 }
 
 function preparedRunAdditionalVolumes(args: {
@@ -4783,6 +4797,9 @@ async function prepareRunRuntimeContext(args: {
     },
   );
   args.signal.throwIfAborted();
+  if (isRouteError(permissionManifest)) {
+    return permissionManifest;
+  }
   const modelUsageContext = prepareModelUsageContext({
     modelProvider,
     permissionManifest,
