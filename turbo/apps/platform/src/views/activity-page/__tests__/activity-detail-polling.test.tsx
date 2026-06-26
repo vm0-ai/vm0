@@ -31,6 +31,7 @@ import { pushPathSilently$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
+const LONG_GENERIC_CODEX_OUTPUT = "verbose adapter output ".repeat(20);
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
@@ -1034,6 +1035,19 @@ function codexFallbackActivityEvents(): AgentEvent[] {
       },
       createdAt: "2026-03-10T15:30:09Z",
     },
+    {
+      sequenceNumber: 9,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "files-malformed",
+          type: "file_change",
+          changes: [{}],
+        },
+      },
+      createdAt: "2026-03-10T15:30:10Z",
+    },
   ];
 }
 
@@ -1196,6 +1210,7 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           status: "completed",
           server: "codex-app-server",
           details: { nested: "bounded detail" },
+          output: LONG_GENERIC_CODEX_OUTPUT,
         },
       },
       createdAt: "2026-03-10T16:00:11Z",
@@ -2471,6 +2486,7 @@ describe("activity detail polling", () => {
     expect(screen.getByText("Codex item.completed")).toBeInTheDocument();
     expect(screen.queryByText(/Codex agent_message/u)).not.toBeInTheDocument();
     expect(screen.queryByText("[files] Files changed")).not.toBeInTheDocument();
+    expect(screen.queryByText(/unknown path/u)).not.toBeInTheDocument();
     expect(screen.getAllByText("Write")).not.toHaveLength(0);
     expect(screen.getByText("src/generated.ts")).toBeInTheDocument();
     expect(screen.getByText("File operation completed")).toBeInTheDocument();
@@ -2833,6 +2849,8 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText(/details: \{nested=bounded detail\}/u),
     ).toBeInTheDocument();
+    expect(document.body.textContent).toContain("verbose adapter output");
+    expect(document.body.textContent).not.toContain(LONG_GENERIC_CODEX_OUTPUT);
     expect(
       screen.getAllByText(/Adapter transport failed \(socket closed\)/u),
     ).toHaveLength(1);

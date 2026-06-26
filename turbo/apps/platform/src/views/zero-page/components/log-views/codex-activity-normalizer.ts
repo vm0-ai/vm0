@@ -517,11 +517,17 @@ function parseCodexChanges(value: unknown): CodexFileChange[] {
   return value
     .slice(0, MAX_FORMATTED_FILE_CHANGES)
     .filter(isRecord)
-    .map((change) => {
-      return {
+    .flatMap((change) => {
+      const parsed = {
         kind: getFirstString(change, ["kind"]),
         path: getFirstString(change, ["path"]),
         diff: getFirstNonBlankString(change, ["diff"]),
+      };
+      if (!parsed.path && !parsed.diff) {
+        return [];
+      }
+      return {
+        ...parsed,
       };
     });
 }
@@ -707,13 +713,16 @@ function formatCodexFileChanges(
 
   for (const change of changes) {
     const kind = change.kind ?? "change";
-    const path = change.path ?? "unknown path";
-    lines.push(`- ${kind} ${path}`);
+    const description = change.path ? `${kind} ${change.path}` : kind;
+    lines.push(`- ${description}`);
     if (change.diff) {
       lines.push(change.diff);
     }
   }
-  const remaining = originalChangeCount - changes.length;
+  const remaining = Math.max(
+    0,
+    originalChangeCount - MAX_FORMATTED_FILE_CHANGES,
+  );
   if (remaining > 0) {
     lines.push(`- ... +${remaining} more changes`);
   }
@@ -780,7 +789,7 @@ function formatGenericCodexItem(
     details.push(`id: ${id}`);
   }
 
-  const readable =
+  const rawReadable =
     getFirstNonBlankString(item, [
       "text",
       "title",
@@ -793,6 +802,7 @@ function formatGenericCodexItem(
       "output",
       "aggregated_output",
     ]) ?? getItemErrorMessage(item);
+  const readable = rawReadable ? truncate(rawReadable.trim()) : undefined;
   const extraFields: string[] = [];
   let inspectedFields = 0;
   for (const key in item) {
