@@ -153,6 +153,40 @@ describe("firewall metadata generator", () => {
     }
   });
 
+  it("keeps package generator scripts aligned with the firewall manifest", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { scripts: Record<string, string> };
+    const manifestTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
+
+    for (const type of FIREWALL_CONNECTOR_TYPES) {
+      expect(packageJson.scripts[`generate:${type}`]).toBe(
+        `tsx src/index.ts ${type}`,
+      );
+    }
+
+    const unexpectedScripts = Object.entries(packageJson.scripts)
+      .filter(([name, command]) => {
+        if (!name.startsWith("generate:")) {
+          return false;
+        }
+        const target = name.slice("generate:".length);
+        if (target === "metadata") {
+          return command !== "tsx src/index.ts metadata";
+        }
+        return (
+          !manifestTypes.has(target) || command !== `tsx src/index.ts ${target}`
+        );
+      })
+      .map(([name]) => name)
+      .sort(compareStrings);
+
+    expect(unexpectedScripts).toStrictEqual([]);
+  });
+
   it("keeps Python builtin firewall rendering detached from source composition", () => {
     for (const file of GENERATOR_RENDERER_BOUNDARY_FILES) {
       const source = fs.readFileSync(
