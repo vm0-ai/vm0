@@ -43,6 +43,31 @@ const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
+function expectPublicSlugSegment(value: string): void {
+  expect(value).toMatch(/^[a-f0-9]{8}$/);
+}
+
+function expectHostedSitePublicSlug(
+  value: string,
+  site: string,
+  slugSuffix?: string,
+): void {
+  const prefix = `${site}-`;
+  expect(value.startsWith(prefix)).toBeTruthy();
+  const rest = value.slice(prefix.length);
+  if (slugSuffix === undefined) {
+    const segments = rest.split("-");
+    expect(segments).toHaveLength(2);
+    expectPublicSlugSegment(segments[0] ?? "");
+    expectPublicSlugSegment(segments[1] ?? "");
+    return;
+  }
+
+  const suffix = `-${slugSuffix}`;
+  expect(rest.endsWith(suffix)).toBeTruthy();
+  expectPublicSlugSegment(rest.slice(0, -suffix.length));
+}
+
 function geocodeOkHandler(requests: URL[]) {
   return http.get(GOOGLE_GEOCODING_URL, ({ request }) => {
     requests.push(new URL(request.url));
@@ -85,9 +110,8 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const first = await api.prepareHostedSite(actor, body);
     const second = await api.prepareHostedSite(actor, body);
 
-    const slugPattern = new RegExp(`^${site}-[a-f0-9]{8}-[a-f0-9]{8}$`);
-    expect(first.publicSlug).toMatch(slugPattern);
-    expect(second.publicSlug).toMatch(slugPattern);
+    expectHostedSitePublicSlug(first.publicSlug, site);
+    expectHostedSitePublicSlug(second.publicSlug, site);
     expect(second.publicSlug).not.toBe(first.publicSlug);
     expect(second.url).not.toBe(first.url);
     expect(second.siteId).toBe(first.siteId);
@@ -1066,9 +1090,7 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
       spaFallback: false,
       files: [hostedTextFile("/index.html", "<main>run artifact</main>")],
     });
-    expect(prepared.publicSlug).toMatch(
-      new RegExp(`^${site}-[a-f0-9]{8}-run-01$`),
-    );
+    expectHostedSitePublicSlug(prepared.publicSlug, site, "run-01");
 
     const completed = await api.completeHostedSite(
       bearer,

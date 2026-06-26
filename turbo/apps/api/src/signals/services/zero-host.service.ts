@@ -441,10 +441,6 @@ function parseHtmlDomEditPatchResult(
   return result.success ? result.data : null;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
 function findTagEnd(html: string, start: number): number {
   let quote: '"' | "'" | null = null;
   for (let index = start; index < html.length; index += 1) {
@@ -464,6 +460,43 @@ function findTagEnd(html: string, start: number): number {
     }
   }
   return -1;
+}
+
+function isWhitespaceChar(char: string | undefined): boolean {
+  return (
+    char === " " ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\t" ||
+    char === "\f"
+  );
+}
+
+function isTagNameStartChar(char: string | undefined): boolean {
+  return (
+    char !== undefined &&
+    ((char >= "A" && char <= "Z") || (char >= "a" && char <= "z"))
+  );
+}
+
+function isTagNameChar(char: string | undefined): boolean {
+  return (
+    isTagNameStartChar(char) ||
+    (char !== undefined && char >= "0" && char <= "9") ||
+    char === ":" ||
+    char === "-" ||
+    char === "_"
+  );
+}
+
+function isAttributeNameChar(char: string | undefined): boolean {
+  return (
+    char !== undefined &&
+    !isWhitespaceChar(char) &&
+    char !== "=" &&
+    char !== "/" &&
+    char !== ">"
+  );
 }
 
 function isSelfClosingStartTag(tagSource: string): boolean {
@@ -489,66 +522,230 @@ function isVoidElement(tagName: string): boolean {
   ].includes(tagName.toLowerCase());
 }
 
+interface ParsedHtmlTag {
+  readonly isClosing: boolean;
+  readonly nameEnd: number;
+  readonly tagName: string;
+}
+
+interface HtmlTagMatch {
+  readonly end: number;
+  readonly isClosing: boolean;
+  readonly source: string;
+  readonly start: number;
+  readonly tagName: string;
+}
+
+function parseHtmlTagSource(tagSource: string): ParsedHtmlTag | null {
+  let index = 1;
+  while (isWhitespaceChar(tagSource[index])) {
+    index += 1;
+  }
+
+  const isClosing = tagSource[index] === "/";
+  if (isClosing) {
+    index += 1;
+    while (isWhitespaceChar(tagSource[index])) {
+      index += 1;
+    }
+  }
+
+  if (!isTagNameStartChar(tagSource[index])) {
+    return null;
+  }
+
+  const nameStart = index;
+  index += 1;
+  while (isTagNameChar(tagSource[index])) {
+    index += 1;
+  }
+
+  return {
+    isClosing,
+    nameEnd: index,
+    tagName: tagSource.slice(nameStart, index),
+  };
+}
+
+function startTagAttributeValue(
+  tagSource: string,
+  attributeName: string,
+): string | null {
+  const parsed = parseHtmlTagSource(tagSource);
+  if (!parsed || parsed.isClosing) {
+    return null;
+  }
+
+  let index = parsed.nameEnd;
+  while (index < tagSource.length) {
+    while (isWhitespaceChar(tagSource[index])) {
+      index += 1;
+    }
+    if (tagSource[index] === "/" || tagSource[index] === ">") {
+      return null;
+    }
+
+    const nameStart = index;
+    while (isAttributeNameChar(tagSource[index])) {
+      index += 1;
+    }
+    const name = tagSource.slice(nameStart, index);
+    while (isWhitespaceChar(tagSource[index])) {
+      index += 1;
+    }
+
+    let value = "";
+    if (tagSource[index] === "=") {
+      index += 1;
+      while (isWhitespaceChar(tagSource[index])) {
+        index += 1;
+      }
+      const quote = tagSource[index];
+      if (quote === '"' || quote === "'") {
+        index += 1;
+        const valueStart = index;
+        while (index < tagSource.length && tagSource[index] !== quote) {
+          index += 1;
+        }
+        value = tagSource.slice(valueStart, index);
+        if (tagSource[index] === quote) {
+          index += 1;
+        }
+      } else {
+        const valueStart = index;
+        while (
+          index < tagSource.length &&
+          !isWhitespaceChar(tagSource[index]) &&
+          tagSource[index] !== ">"
+        ) {
+          index += 1;
+        }
+        value = tagSource.slice(valueStart, index);
+      }
+    }
+
+    if (name === attributeName) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function findStartTagWithAttributeValue(
+  html: string,
+  attributeName: string,
+  attributeValue: string,
+): HtmlTagMatch | null {
+  let searchStart = 0;
+  while (searchStart < html.length) {
+    const start = html.indexOf("<", searchStart);
+    if (start === -1) {
+      return null;
+    }
+    const end = findTagEnd(html, start);
+    if (end === -1) {
+      return null;
+    }
+    const source = html.slice(start, end + 1);
+    const parsed = parseHtmlTagSource(source);
+    if (
+      parsed &&
+      !parsed.isClosing &&
+      startTagAttributeValue(source, attributeName) === attributeValue
+    ) {
+      return {
+        end,
+        isClosing: false,
+        source,
+        start,
+        tagName: parsed.tagName,
+      };
+    }
+    searchStart = end + 1;
+  }
+  return null;
+}
+
+function findNextTagByName(
+  html: string,
+  tagName: string,
+  from: number,
+): HtmlTagMatch | null {
+  const normalizedTagName = tagName.toLowerCase();
+  let searchStart = from;
+  while (searchStart < html.length) {
+    const start = html.indexOf("<", searchStart);
+    if (start === -1) {
+      return null;
+    }
+    const end = findTagEnd(html, start);
+    if (end === -1) {
+      return null;
+    }
+    const source = html.slice(start, end + 1);
+    const parsed = parseHtmlTagSource(source);
+    if (parsed && parsed.tagName.toLowerCase() === normalizedTagName) {
+      return {
+        end,
+        isClosing: parsed.isClosing,
+        source,
+        start,
+        tagName: parsed.tagName,
+      };
+    }
+    searchStart = end + 1;
+  }
+  return null;
+}
+
 function findHtmlElementSpan(
   html: string,
   targetNodeId: string,
 ): HtmlElementSpan | null {
-  const attrPattern = new RegExp(
-    `${HTML_DOM_NODE_ID_ATTR}\\s*=\\s*["']${escapeRegExp(targetNodeId)}["']`,
+  const startTag = findStartTagWithAttributeValue(
+    html,
+    HTML_DOM_NODE_ID_ATTR,
+    targetNodeId,
   );
-  const attrMatch = attrPattern.exec(html);
-  if (!attrMatch) {
+  if (!startTag) {
     return null;
   }
-
-  const start = html.lastIndexOf("<", attrMatch.index);
-  if (start === -1) {
-    return null;
-  }
-  const startTagEnd = findTagEnd(html, start);
-  if (startTagEnd === -1) {
-    return null;
-  }
-  const startTag = html.slice(start, startTagEnd + 1);
-  const tagName = /^<\s*([A-Za-z][\w:-]*)/.exec(startTag)?.[1];
-  if (!tagName) {
-    return null;
-  }
-  if (isVoidElement(tagName) || isSelfClosingStartTag(startTag)) {
+  if (
+    isVoidElement(startTag.tagName) ||
+    isSelfClosingStartTag(startTag.source)
+  ) {
     return {
-      start,
-      startTagEnd,
+      start: startTag.start,
+      startTagEnd: startTag.end,
       closeTagStart: null,
-      end: startTagEnd + 1,
-      tagName,
+      end: startTag.end + 1,
+      tagName: startTag.tagName,
     };
   }
 
-  const tagPattern = new RegExp(
-    `<\\s*(/?)\\s*${escapeRegExp(tagName)}\\b[^>]*>`,
-    "gi",
-  );
-  tagPattern.lastIndex = startTagEnd + 1;
+  let searchStart = startTag.end + 1;
   let depth = 1;
-  let match: RegExpExecArray | null;
-  while ((match = tagPattern.exec(html)) !== null) {
-    const source = match[0];
-    if (match[1] === "/") {
+  let match: HtmlTagMatch | null;
+  while ((match = findNextTagByName(html, startTag.tagName, searchStart))) {
+    if (match.isClosing) {
       depth -= 1;
       if (depth === 0) {
         return {
-          start,
-          startTagEnd,
-          closeTagStart: match.index,
-          end: match.index + source.length,
-          tagName,
+          start: startTag.start,
+          startTagEnd: startTag.end,
+          closeTagStart: match.start,
+          end: match.end + 1,
+          tagName: startTag.tagName,
         };
       }
+      searchStart = match.end + 1;
       continue;
     }
-    if (!isSelfClosingStartTag(source) && !isVoidElement(tagName)) {
+    if (!isSelfClosingStartTag(match.source) && !isVoidElement(match.tagName)) {
       depth += 1;
     }
+    searchStart = match.end + 1;
   }
   return null;
 }

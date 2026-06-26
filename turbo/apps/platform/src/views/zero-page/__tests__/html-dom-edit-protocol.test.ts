@@ -12,11 +12,19 @@ import {
   stripHtmlDomEditInstrumentation,
 } from "../html-dom-edit-protocol.ts";
 
+function htmlDoc(html: string): Document {
+  return new DOMParser().parseFromString(html, "text/html");
+}
+
+function elementsByTagName(html: string, tagName: string): Element[] {
+  return Array.from(htmlDoc(html).getElementsByTagName(tagName));
+}
+
 function nodeIds(html: string): string[] {
   return Array.from(
-    html.matchAll(new RegExp(`${HTML_DOM_NODE_ID_ATTR}="([^"]+)"`, "gu")),
-  ).map((match) => {
-    return match[1] ?? "";
+    htmlDoc(html).querySelectorAll(`[${HTML_DOM_NODE_ID_ATTR}]`),
+  ).map((element) => {
+    return element.getAttribute(HTML_DOM_NODE_ID_ATTR) ?? "";
   });
 }
 
@@ -25,10 +33,9 @@ function elementHasAttribute(
   tagName: string,
   attribute: string,
 ): boolean {
-  return new RegExp(
-    `<${tagName}\\b(?=[^>]*\\b${attribute}\\b)[^>]*>`,
-    "iu",
-  ).test(html);
+  return elementsByTagName(html, tagName).some((element) => {
+    return element.hasAttribute(attribute);
+  });
 }
 
 function elementHasAttributeValue(
@@ -37,10 +44,9 @@ function elementHasAttributeValue(
   attribute: string,
   value: string,
 ): boolean {
-  return new RegExp(
-    `<${tagName}\\b(?=[^>]*\\b${attribute}="${value}")[^>]*>`,
-    "iu",
-  ).test(html);
+  return elementsByTagName(html, tagName).some((element) => {
+    return element.getAttribute(attribute) === value;
+  });
 }
 
 describe("instrumentHtmlDomEditDocument", () => {
@@ -113,17 +119,20 @@ describe("instrumentHtmlDomEditDocument", () => {
       elementHasAttribute(result.html, "style", HTML_DOM_NODE_ID_ATTR),
     ).toBeFalsy();
     expect(
-      elementHasAttribute(
-        result.html,
-        "p",
-        `hidden[^>]*${HTML_DOM_NODE_ID_ATTR}`,
-      ),
+      elementsByTagName(result.html, "p").some((element) => {
+        return (
+          element.hasAttribute("hidden") &&
+          element.hasAttribute(HTML_DOM_NODE_ID_ATTR)
+        );
+      }),
     ).toBeFalsy();
     expect(
-      new RegExp(
-        `<p\\b(?=[^>]*\\baria-hidden="true")(?=[^>]*\\b${HTML_DOM_NODE_ID_ATTR}\\b)[^>]*>`,
-        "iu",
-      ).test(result.html),
+      elementsByTagName(result.html, "p").some((element) => {
+        return (
+          element.getAttribute("aria-hidden") === "true" &&
+          element.hasAttribute(HTML_DOM_NODE_ID_ATTR)
+        );
+      }),
     ).toBeFalsy();
     expect(result.html).not.toContain("<aside");
     expect(
