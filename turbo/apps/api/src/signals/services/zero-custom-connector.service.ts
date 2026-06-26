@@ -1443,12 +1443,21 @@ export function renderCustomConnectorRuntimePrefix(args: {
   return "error" in validation ? null : base;
 }
 
+type CustomConnectorRuntimeDataTimingStep =
+  | "connectorRows"
+  | "connectorValueRows";
+type CustomConnectorRuntimeDataTimingMeasure = <T>(
+  step: CustomConnectorRuntimeDataTimingStep,
+  operation: () => Promise<T>,
+) => Promise<T>;
+
 export async function loadCustomConnectorRuntimeData(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds: readonly string[] | undefined;
+    readonly measure?: CustomConnectorRuntimeDataTimingMeasure;
   },
 ): Promise<
   readonly {
@@ -1456,29 +1465,45 @@ export async function loadCustomConnectorRuntimeData(
     readonly values: readonly StoredValueRow[];
   }[]
 > {
-  const connectors = await db
-    .select()
-    .from(orgCustomConnectors)
-    .where(
-      args.connectorIds
-        ? and(
-            eq(orgCustomConnectors.orgId, args.orgId),
-            inArray(orgCustomConnectors.id, [...args.connectorIds]),
-          )
-        : eq(orgCustomConnectors.orgId, args.orgId),
+  const measure =
+    args.measure ??
+    (async <T>(
+      _step: CustomConnectorRuntimeDataTimingStep,
+      operation: () => Promise<T>,
+    ) => {
+      return await operation();
+    });
+  const connectors = await measure("connectorRows", async () => {
+    return await db
+      .select()
+      .from(orgCustomConnectors)
+      .where(
+        args.connectorIds
+          ? and(
+              eq(orgCustomConnectors.orgId, args.orgId),
+              inArray(orgCustomConnectors.id, [...args.connectorIds]),
+            )
+          : eq(orgCustomConnectors.orgId, args.orgId),
+      );
+  });
+  if (connectors.length === 0) {
+    return [];
+  }
+
+  return await measure("connectorValueRows", async () => {
+    return await Promise.all(
+      connectors.map(async (row) => {
+        const connector = normaliseCustomConnectorRow(row);
+        const values = await loadStoredValuesForConnector({
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: connector.id,
+        });
+        return { connector, values };
+      }),
     );
-  return await Promise.all(
-    connectors.map(async (row) => {
-      const connector = normaliseCustomConnectorRow(row);
-      const values = await loadStoredValuesForConnector({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: connector.id,
-      });
-      return { connector, values };
-    }),
-  );
+  });
 }
 
 interface SaveCustomConnectorProposalArgs {

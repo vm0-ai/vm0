@@ -123,6 +123,35 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_build_stored_execution_context",
 ] as const;
+const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_rows",
+  "api_dispatch_prepare_context_filter_stored_connector_rows",
+  "api_dispatch_prepare_context_build_stored_connector_state",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+  "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_stored_connector_variable_rows",
+] as const;
+const API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES = [
+  ...API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+  ...API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+  ...API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+] as const;
+const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_custom_connector_rows",
+  "api_dispatch_prepare_context_load_custom_connector_value_rows",
+  "api_dispatch_prepare_context_build_custom_connector_firewalls",
+] as const;
+const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_prepare_context_load_builtin_permission_indexes",
+  "api_dispatch_prepare_context_apply_builtin_permission_policies",
+  "api_dispatch_prepare_context_apply_custom_permission_policies",
+  "api_dispatch_prepare_context_apply_model_provider_permission_policy",
+  "api_dispatch_prepare_context_merge_permission_manifest",
+] as const;
 const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
   "api_dispatch_resolve_compose_by_compose_id",
   "api_dispatch_resolve_compose_by_version_id",
@@ -359,6 +388,21 @@ function expectNoApiDispatchActions(
   }
 }
 
+function expectApiDispatchTimingEventsNotToLeak(
+  events: readonly Record<string, unknown>[],
+  forbiddenValues: readonly string[],
+): void {
+  for (const event of events) {
+    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
+}
+
 function mockSessionHistoryBlob(hash: string, history: string): void {
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = (command as { readonly input?: { readonly Key?: string } })
@@ -483,6 +527,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",
       "api_dispatch_resolve_compose_lookup_compose",
@@ -539,13 +587,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
       expect(["top_level", "nested"]).toContain(event.span_kind);
-      for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
-        expect(event).not.toHaveProperty(forbiddenKey);
-      }
-      const serialized = JSON.stringify(event);
-      expect(serialized).not.toContain(prompt);
-      expect(serialized).not.toContain(agentId);
     }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
   });
 
   it("emits compose resolution timing for direct compose version runs", async () => {
@@ -1409,6 +1452,15 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "run without enabled stored connectors",
       modelProvider: "anthropic-api-key",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -1447,6 +1499,19 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "use the x connector",
       modelProvider: "anthropic-api-key",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -1537,6 +1602,19 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "use gitlab with the optional host",
       modelProvider: "anthropic-api-key",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(withHost.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+    );
     const hostClaim = await api.claimRunnerJob(withHost.runId);
     expect(hostClaim.environment?.GITLAB_TOKEN).toBe(
       connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
@@ -1784,6 +1862,20 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the custom connector",
       modelProvider: "anthropic-api-key",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      custom.id,
+      slug,
+      "custom-secret-value",
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -2214,6 +2306,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentComposeId: compose.composeId,
       prompt: "direct run cloudflare defaults",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.CLOUDFLARE_TOKEN).toBe(

@@ -392,6 +392,8 @@ export const zeroWorkflowSummarySchema = z.object({
   visibility: zeroWorkflowVisibilitySchema,
   requestToPublish: z.boolean(),
   ownerUserId: z.string(),
+  ownerUserDisplayName: z.string().nullable().optional(),
+  ownerUserImageUrl: z.string().nullable().optional(),
   canManage: z.boolean(),
   shadowedBy: z
     .object({
