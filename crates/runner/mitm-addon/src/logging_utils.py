@@ -63,6 +63,12 @@ def log_network_entry(log_path: str, entry: dict) -> None:
 
 
 def sanitize_proxy_log_extra_value(key: str, value: object) -> object:
+    """Sanitize the narrow set of proxy-log extras owned by this module.
+
+    Only the exact ``url`` field is treated specially, and only when the
+    value is a string.  Every other field is returned unchanged; this helper
+    is not a general secret-redaction boundary for arbitrary proxy-log data.
+    """
     if key == "url" and isinstance(value, str):
         return network_log_sanitization.sanitize_url_for_network_log(value)
     return value
@@ -75,7 +81,19 @@ def log_proxy_entry(
     /,
     **extra: object,
 ) -> None:
-    """Write a diagnostic log entry to the per-job proxy log file (JSONL)."""
+    """Write a best-effort per-job proxy diagnostic JSONL entry.
+
+    The logger owns the canonical ``timestamp``, ``level``, and ``message``
+    fields; extras with those exact names are ignored and cannot override
+    them.  Among remaining extras, only an exact ``url`` string is sanitized
+    by ``sanitize_proxy_log_extra_value``.  All other extras are written as
+    provided, so callers must pass only values that are safe to persist and
+    JSON-serializable.
+
+    Do not assume broad redaction for raw headers, bodies, cookies, tokens,
+    or arbitrary nested values.  Usage underbilling signals should use the
+    dedicated usage-underbilling helper for that logging contract.
+    """
     entry: dict = {
         "timestamp": _utc_log_timestamp(),
         "level": log_level,
