@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.108.3",
+  "version": "1.108.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -47,6 +47,10 @@
     "./firewall-metadata/server": {
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
+    },
+    "./firewall-metadata/routing": {
+      "import": "./src/firewall-metadata/routing.ts",
+      "types": "./src/firewall-metadata/routing.ts"
     },
     "./firewalls": null,
     "./firewalls/runtime": {
