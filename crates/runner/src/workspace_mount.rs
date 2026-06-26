@@ -1,3 +1,27 @@
+//! Workspace drive mount lifecycle boundary.
+//!
+//! This module is the Rust entry point for mounting and unmounting the sandbox
+//! guest workspace drive. It injects the canonical workspace path and the
+//! workspace block device (`/dev/vdb`) into the included shell helpers, then
+//! executes those helpers through the sandbox sudo exec path with diagnostic
+//! labels, a bounded timeout, and bounded output capture.
+//!
+//! The mount helper is intentionally workspace-device-only: an existing mount is
+//! accepted only when the workspace path is already mounted from the workspace
+//! device. It refuses symlink workspace path components, unrelated mountpoints,
+//! and a workspace device that is already mounted somewhere else.
+//!
+//! The unmount helper verifies that the workspace path is still backed by the
+//! workspace device before it syncs, unmounts, scans holders, or signals
+//! processes. A clean unmount is attempted first. If that fails, diagnostics and
+//! cleanup stay targeted to processes that still reference the workspace:
+//! fast cwd/root/exe/fd holder scan, TERM, retry, KILL for confirmed remaining
+//! holders, a slower maps scan, and a final retry. Holder diagnostics are
+//! bounded and truncated.
+//!
+//! Keep this as a high-level contract. The included shell helpers and their
+//! tests remain the source of truth for exact command behavior and limits.
+
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
