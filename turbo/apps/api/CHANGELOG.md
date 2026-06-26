@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.181.0](https://github.com/vm0-ai/vm0/compare/api-v1.180.0...api-v1.181.0) (2026-06-26)
+
+
+### Features
+
+* add onboarding template params and scrollable org switcher ([#19067](https://github.com/vm0-ai/vm0/issues/19067)) ([cef7cbd](https://github.com/vm0-ai/vm0/commit/cef7cbd4f8f6af4f7e17702a09a9417c908cd8e2))
+* show workflow audit metadata in actions menu ([#19058](https://github.com/vm0-ai/vm0/issues/19058)) ([a631f04](https://github.com/vm0-ai/vm0/commit/a631f049970f7de34b6f21932a4e5cda7b01f124))
+
+
+### Bug Fixes
+
+* scope computer use authorization state to host ([#19072](https://github.com/vm0-ai/vm0/issues/19072)) ([ba5240d](https://github.com/vm0-ai/vm0/commit/ba5240d98bc76ad127919f98ee2ddcbb7274c66b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.117.0
+    * @vm0/connectors bumped to 1.109.1
+    * @vm0/core bumped to 8.371.1
+    * @vm0/db bumped to 1.74.0
+
 ## [1.180.0](https://github.com/vm0-ai/vm0/compare/api-v1.179.7...api-v1.180.0) (2026-06-26)
 
 
