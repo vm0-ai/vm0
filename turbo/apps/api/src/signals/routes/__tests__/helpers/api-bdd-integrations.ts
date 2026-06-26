@@ -71,6 +71,7 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 interface AuthHeaders {
@@ -866,9 +867,12 @@ export function createBddIntegrationApi(context: TestContext) {
     acceptSlackSessionHistoryDownloads(): void {
       context.mocks.s3.send.mockImplementation((command: unknown) => {
         if (command instanceof GetObjectCommand) {
+          const key =
+            typeof command.input.Key === "string" ? command.input.Key : "";
+          const historyBody = sessionHistoryBlobBodyForKey(context, key);
           return Promise.resolve({
             Body: (async function* () {
-              yield new TextEncoder().encode("[]");
+              yield historyBody ?? new TextEncoder().encode("[]");
             })(),
           });
         }

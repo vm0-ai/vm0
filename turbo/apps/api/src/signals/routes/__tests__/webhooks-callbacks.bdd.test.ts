@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
@@ -1350,6 +1351,19 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     expectApiError(malformedCheckpoint.body);
     expect(malformedCheckpoint.body.error.code).toBe("BAD_REQUEST");
 
+    const uppercaseCheckpointHash = await api.requestAgentCheckpointUnchecked(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: "A".repeat(64),
+      },
+      headers,
+      [400],
+    );
+    expectApiError(uppercaseCheckpointHash.body);
+    expect(uppercaseCheckpointHash.body.error.code).toBe("BAD_REQUEST");
+
     const missingCheckpointRun = await api.requestAgentCheckpoint(
       {
         runId,
@@ -1393,6 +1407,24 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
       );
     expectApiError(malformedHistoryPrepare.body);
     expect(malformedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const uppercaseHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash: "A".repeat(64), size: 128 },
+        headers,
+        [400],
+      );
+    expectApiError(uppercaseHistoryPrepare.body);
+    expect(uppercaseHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const oversizedHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash, size: RESUME_SESSION_HISTORY_MAX_BYTES + 1 },
+        headers,
+        [400],
+      );
+    expectApiError(oversizedHistoryPrepare.body);
+    expect(oversizedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
 
     const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
       {

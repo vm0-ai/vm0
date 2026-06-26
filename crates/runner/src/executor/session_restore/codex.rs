@@ -92,13 +92,15 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
+    let session_history = session.session_history().ok_or_else(|| {
+        RunnerError::Internal("resume session history was not materialized".into())
+    })?;
     let thread_id = CodexThreadId::parse(&session.cli_agent_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
     let session_id = thread_id.as_str();
     let session_filename_key = thread_id.filename_key();
 
-    let session_path =
-        codex_restore_rollout_path(session_id, &session.session_history, chrono::Utc::now());
+    let session_path = codex_restore_rollout_path(session_id, session_history, chrono::Utc::now());
 
     cleanup_existing_codex_session_files(
         sandbox,
@@ -113,14 +115,14 @@ pub(super) async fn restore_codex_session(
         sandbox,
         &session_path,
         &[session_id, &session.cli_agent_session_id],
-        &session.session_history,
+        session_history,
     )
     .await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
         session_fingerprint: diagnostic_session_fingerprint(session_id),
-        bytes_in: session.session_history.len(),
+        bytes_in: session_history.len(),
     };
     info!(
         run_id = %context.run_id,

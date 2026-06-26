@@ -8,6 +8,9 @@ use std::time::Duration;
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use sandbox::{ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::MockSandboxFactory;
+use sha2::{Digest, Sha256};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 use super::super::agent_run::{
     ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
@@ -23,7 +26,27 @@ use super::support::{
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
-use crate::types::SandboxReuseResult;
+use crate::types::{
+    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+    SandboxReuseResult,
+};
+
+async fn serve_history_once(body: &'static [u8]) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request).await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+    });
+    format!("http://{address}/history.blob?token=secret")
+}
 
 #[test]
 fn agent_start_command_reports_missing_agent_on_stderr() {
@@ -214,6 +237,51 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
             .any(|call| call.cmd == guest_download_stdin_command()),
         "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-ref-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: serve_history_once(history).await,
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-ref-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
 }
 
 #[tokio::test]

@@ -27,10 +27,10 @@ fn context_with_session_opt(
 ) -> crate::types::ExecutionContext {
     let mut ctx = minimal_context(run_id);
     if let Some(sid) = session_id {
-        ctx.resume_session = Some(crate::types::ResumeSession {
-            cli_agent_session_id: sid.to_string(),
-            session_history: String::new(),
-        });
+        ctx.resume_session = Some(crate::types::ResumeSession::inline(
+            sid.to_string(),
+            String::new(),
+        ));
     }
     ctx
 }

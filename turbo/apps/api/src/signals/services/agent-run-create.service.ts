@@ -114,7 +114,6 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { writeDb$, type Db } from "../external/db";
-import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   publishOrgSignal,
@@ -3171,9 +3170,7 @@ function loadResumeSession(
   timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
   return computed(
-    async (
-      get,
-    ): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
+    async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
           cliAgentSessionId: conversations.cliAgentSessionId,
@@ -3188,61 +3185,40 @@ function loadResumeSession(
         return undefined;
       }
 
-      const sessionHistory = await measureApiDispatchTiming(
+      const resumeSession = await measureApiDispatchTiming(
         timing,
         "api_dispatch_resolve_compose_resolve_session_history",
         "nested",
-        async () => {
-          return await get(
-            resolveConversationSessionHistory({
-              hash: conversation.cliAgentSessionHistoryHash,
-              legacyText: conversation.cliAgentSessionHistory,
-            }),
-          );
+        (): Promise<StoredExecutionContext["resumeSession"] | null> => {
+          const cliAgentSessionId = conversation.cliAgentSessionId;
+          const hash = conversation.cliAgentSessionHistoryHash;
+          if (hash) {
+            return Promise.resolve({
+              sessionId: cliAgentSessionId,
+              historyRef: {
+                kind: "blob",
+                hash,
+              },
+            });
+          }
+          const sessionHistory = conversation.cliAgentSessionHistory;
+          if (sessionHistory) {
+            return Promise.resolve({
+              sessionId: cliAgentSessionId,
+              sessionHistory,
+            });
+          }
+          return Promise.resolve(null);
         },
       );
 
-      if (sessionHistory === null) {
+      if (resumeSession === null) {
         return undefined;
       }
 
-      const cliAgentSessionId = conversation.cliAgentSessionId;
-      return {
-        sessionId: cliAgentSessionId,
-        sessionHistory,
-      };
+      return resumeSession;
     },
   );
-}
-
-function resolveConversationSessionHistory(args: {
-  readonly hash: string | null;
-  readonly legacyText: string | null;
-}): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    const { hash, legacyText } = args;
-    if (hash) {
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const result = await settle(
-        get(downloadS3Buffer(bucket, `blobs/${hash}.blob`)),
-      );
-      if (result.ok) {
-        return result.value.toString("utf8");
-      }
-      if (legacyText) {
-        L.warn(
-          "session history R2 retrieval failed; falling back to legacy TEXT",
-          { hash, error: result.error },
-        );
-        return legacyText;
-      }
-      throw result.error;
-    }
-    if (legacyText) {
-      return legacyText;
-    }
-    return null;
-  });
 }
 
 function resolveCompose(

@@ -359,10 +359,10 @@ async fn execute_inner_with_resume_session() {
     let factory = MockSandboxFactory::new();
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-abc-123".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-abc-123".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
     let (exit_code, _) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();

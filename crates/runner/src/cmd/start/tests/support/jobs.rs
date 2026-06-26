@@ -45,9 +45,9 @@ pub(in super::super) fn context_with_session(
     session_id: &str,
 ) -> crate::types::ExecutionContext {
     let mut ctx = minimal_context(run_id);
-    ctx.resume_session = Some(crate::types::ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: String::new(),
-    });
+    ctx.resume_session = Some(crate::types::ResumeSession::inline(
+        session_id.into(),
+        String::new(),
+    ));
     ctx
 }
