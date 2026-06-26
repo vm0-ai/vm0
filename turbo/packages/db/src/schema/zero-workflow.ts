@@ -64,6 +64,7 @@ export const zeroWorkflows = pgTable(
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

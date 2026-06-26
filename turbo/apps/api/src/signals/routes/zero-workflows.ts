@@ -238,6 +238,7 @@ const createWorkflowInner$ = command(
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         createdBy: auth.userId,
+        updatedBy: auth.userId,
       })
       .returning({ id: zeroWorkflows.id });
     signal.throwIfAborted();
@@ -335,7 +336,11 @@ const updateWorkflowInner$ = command(
 
     await set(
       updateZeroWorkflow$,
-      { workflow: visible.workflow, body: bodyResult.data },
+      {
+        workflow: visible.workflow,
+        body: bodyResult.data,
+        updatedByUserId: auth.userId,
+      },
       signal,
     );
     signal.throwIfAborted();
@@ -451,6 +456,7 @@ const copyWorkflowInner$ = command(
         displayName: source.workflow.displayName,
         description: source.workflow.description,
         createdBy: auth.userId,
+        updatedBy: auth.userId,
       })
       .returning({ id: zeroWorkflows.id });
     signal.throwIfAborted();
@@ -608,16 +614,23 @@ interface VisibilityTransition {
 
 async function applyVisibilityUpdate(
   db: Db,
-  workflowId: string,
-  patch: {
-    readonly visibility?: "public" | "private";
-    readonly requestToPublish?: boolean;
+  args: {
+    readonly workflowId: string;
+    readonly updatedByUserId: string;
+    readonly patch: {
+      readonly visibility?: "public" | "private";
+      readonly requestToPublish?: boolean;
+    };
   },
 ): Promise<void> {
   await db
     .update(zeroWorkflows)
-    .set({ ...patch, updatedAt: nowDate() })
-    .where(eq(zeroWorkflows.id, workflowId));
+    .set({
+      ...args.patch,
+      updatedBy: args.updatedByUserId,
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflows.id, args.workflowId));
 }
 
 function summaryFrom(
@@ -705,9 +718,13 @@ const requestPublishInner$ = command(
         return slugError;
       }
 
-      await applyVisibilityUpdate(writeDb, workflow.id, {
-        visibility: "public",
-        requestToPublish: false,
+      await applyVisibilityUpdate(writeDb, {
+        workflowId: workflow.id,
+        updatedByUserId: auth.userId,
+        patch: {
+          visibility: "public",
+          requestToPublish: false,
+        },
       });
       signal.throwIfAborted();
       return {
@@ -719,8 +736,12 @@ const requestPublishInner$ = command(
       };
     }
 
-    await applyVisibilityUpdate(writeDb, workflow.id, {
-      requestToPublish: true,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: true,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -752,8 +773,12 @@ const cancelPublishRequestInner$ = command(
       return forbidden("Only the workflow owner can cancel a publish request");
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -801,9 +826,13 @@ const approvePublishInner$ = command(
       return slugError;
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      visibility: "public",
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        visibility: "public",
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -843,8 +872,12 @@ const rejectPublishInner$ = command(
       return reviewError;
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -878,9 +911,13 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return reviewError;
   }
 
-  await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-    visibility: "private",
-    requestToPublish: false,
+  await applyVisibilityUpdate(writeDb, {
+    workflowId: loaded.workflow.id,
+    updatedByUserId: auth.userId,
+    patch: {
+      visibility: "private",
+      requestToPublish: false,
+    },
   });
   signal.throwIfAborted();
   return {

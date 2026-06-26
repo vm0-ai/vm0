@@ -44,6 +44,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Select,
   SelectContent,
@@ -86,6 +87,10 @@ import {
   workflowDetail,
   workflowTriggerPermissionsDrawerTriggerId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  orgMembers$,
+  type OrgMember,
+} from "../../signals/external/org-members.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -522,6 +527,10 @@ function WorkflowActionsMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
+          <div className="px-2 py-2">
+            <WorkflowPublicToggle detail={detail} />
+          </div>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={!detail.canManage}
             className="gap-2"
@@ -532,10 +541,6 @@ function WorkflowActionsMenu({
             <IconPencil size={15} stroke={1.5} />
             Edit
           </DropdownMenuItem>
-          <div className="px-2 py-2">
-            <WorkflowPublicToggle detail={detail} />
-          </div>
-          <div className="my-1 h-px bg-border/60" />
           <DropdownMenuItem
             className="gap-2"
             onSelect={() => {
@@ -556,6 +561,8 @@ function WorkflowActionsMenu({
               Delete
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuSeparator />
+          <WorkflowAuditMetadata detail={detail} />
         </DropdownMenuContent>
       </DropdownMenu>
       <WorkflowEditDialog
@@ -581,6 +588,66 @@ function WorkflowActionsMenu({
       />
     </>
   );
+}
+
+function WorkflowAuditMetadata({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const membersLoadable = useLoadable(orgMembers$);
+  const members =
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+  const membersById = new Map(
+    members.map((member) => {
+      return [member.userId, member];
+    }),
+  );
+
+  return (
+    <div className="px-3 py-2 text-xs leading-5 text-muted-foreground">
+      <div>
+        <p>
+          Created by {workflowUserLabel(detail.createdByUserId, membersById)}
+        </p>
+        <p>{formatWorkflowAuditDate(detail.createdAt)}</p>
+      </div>
+      <div className="mt-2">
+        <p>
+          Last updated by{" "}
+          {workflowUserLabel(detail.updatedByUserId, membersById)}
+        </p>
+        <p>{formatWorkflowAuditDate(detail.updatedAt)}</p>
+      </div>
+    </div>
+  );
+}
+
+function workflowUserLabel(
+  userId: string,
+  membersById: ReadonlyMap<string, OrgMember>,
+): string {
+  const member = membersById.get(userId);
+  return member ? orgMemberDisplayName(member) : userId;
+}
+
+function orgMemberDisplayName(member: OrgMember): string {
+  const fullName = [member.firstName, member.lastName]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join(" ");
+  return fullName || member.email || member.userId;
+}
+
+function formatWorkflowAuditDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function WorkflowEditDialog({
@@ -719,7 +786,7 @@ function WorkflowPublicToggle({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Public</p>
+          <p className="text-sm font-medium text-foreground">Visibility</p>
           <p className="text-xs text-muted-foreground">{statusLabel}</p>
         </div>
         <button

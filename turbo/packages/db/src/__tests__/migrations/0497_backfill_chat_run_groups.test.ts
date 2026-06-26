@@ -152,6 +152,7 @@ describe("migration 0497 backfill chat run groups", () => {
           name: uniqueId("workflow"),
           ownerUserId: userId,
           createdBy: userId,
+          updatedBy: userId,
         })
         .returning({ id: zeroWorkflows.id });
 

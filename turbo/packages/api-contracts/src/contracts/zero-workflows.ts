@@ -405,6 +405,10 @@ export const zeroWorkflowSummarySchema = z.object({
 
 export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowSummarySchema.extend({
+    createdByUserId: z.string(),
+    updatedByUserId: z.string(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
     fileContents: z.array(workflowFileEntrySchema).nullable(),
