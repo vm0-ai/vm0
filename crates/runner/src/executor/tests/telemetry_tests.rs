@@ -7,7 +7,7 @@ use sandbox_mock::MockSandboxFactory;
 use super::super::telemetry::{elapsed_since_api_start_ms, record_reuse_result};
 use super::super::{
     ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming, execute_job, execute_job_reuse,
-    execute_job_reuse_with_active_input_source, execute_job_with_prepared_notifier,
+    execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
 };
 use super::support::{
     default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
@@ -195,6 +195,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
             sandbox_prepared: None,
             active_input_source: None,
             pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            session_history_materializer: None,
         },
     )
     .await;
@@ -243,14 +244,18 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
-    let (_outcome, telemetry) = execute_job_reuse_with_active_input_source(
+    let (_outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
         minimal_context(),
         &config,
         &default_params(),
         cancel,
-        None,
-        Some(RunnerPreSpawnTiming::start_after_claim()),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            session_history_materializer: None,
+        },
     )
     .await;
 
@@ -302,6 +307,7 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
             sandbox_prepared: None,
             active_input_source: None,
             pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            session_history_materializer: None,
         },
     )
     .await;
