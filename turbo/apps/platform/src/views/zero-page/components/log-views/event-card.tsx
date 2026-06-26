@@ -122,8 +122,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toNullableNumber(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
+function toNonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function toNonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    Number.isInteger(value)
+    ? value
+    : null;
 }
 
 function toModelUsage(value: unknown): ModelUsage | undefined {
@@ -139,9 +150,9 @@ function toModelUsage(value: unknown): ModelUsage | undefined {
       [
         model,
         {
-          costUSD: toNullableNumber(usage.costUSD),
-          inputTokens: toNullableNumber(usage.inputTokens),
-          outputTokens: toNullableNumber(usage.outputTokens),
+          costUSD: toNonNegativeFiniteNumber(usage.costUSD),
+          inputTokens: toNonNegativeInteger(usage.inputTokens),
+          outputTokens: toNonNegativeInteger(usage.outputTokens),
         },
       ],
     ];
@@ -242,9 +253,8 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
 // Exported for use in GroupedMessageCard
 export function ResultEventContent({ eventData }: { eventData: unknown }) {
   const data = isRecord(eventData) ? eventData : {};
-  const durationMs =
-    typeof data.duration_ms === "number" ? data.duration_ms : null;
-  const numTurns = typeof data.num_turns === "number" ? data.num_turns : null;
+  const durationMs = toNonNegativeFiniteNumber(data.duration_ms);
+  const numTurns = toNonNegativeInteger(data.num_turns);
   const modelUsage = toModelUsage(data.modelUsage);
   const result = typeof data.result === "string" ? data.result : null;
 

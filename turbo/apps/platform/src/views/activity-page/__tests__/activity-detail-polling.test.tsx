@@ -2806,20 +2806,27 @@ describe("activity detail polling", () => {
               eventData: {
                 type: "result",
                 is_error: false,
-                result: "Survived malformed payloads.",
-                num_turns: 1,
-                duration_ms: 100,
+                result: "Ignored malformed result stats.",
+                num_turns: 1.5,
+                duration_ms: Number.NaN,
+                modelUsage: {
+                  malformed: {
+                    inputTokens: Number.NaN,
+                    outputTokens: 1.5,
+                  },
+                },
               },
               createdAt: "2026-03-10T16:20:08Z",
             },
             {
               sequenceNumber: 8,
-              eventType: "system",
+              eventType: "result",
               eventData: {
-                subtype: "task_started",
-                task_id: "task-malformed",
-                tool_use_id: "task-tool-malformed",
-                description: { nested: true },
+                type: "result",
+                is_error: false,
+                result: "Survived malformed payloads.",
+                num_turns: 1,
+                duration_ms: 100,
               },
               createdAt: "2026-03-10T16:20:09Z",
             },
@@ -2827,12 +2834,23 @@ describe("activity detail polling", () => {
               sequenceNumber: 9,
               eventType: "system",
               eventData: {
+                subtype: "task_started",
+                task_id: "task-malformed",
+                tool_use_id: "task-tool-malformed",
+                description: { nested: true },
+              },
+              createdAt: "2026-03-10T16:20:10Z",
+            },
+            {
+              sequenceNumber: 10,
+              eventType: "system",
+              eventData: {
                 subtype: "task_notification",
                 task_id: "task-malformed",
                 status: { nested: true },
                 summary: { nested: true },
               },
-              createdAt: "2026-03-10T16:20:10Z",
+              createdAt: "2026-03-10T16:20:11Z",
             },
           ],
           hasMore: false,
@@ -2858,7 +2876,13 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Survived malformed payloads."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Ignored malformed result stats."),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("NaN");
+    expect(document.body.textContent).not.toContain("1.5 turns");
+    expect(document.body.textContent).not.toContain("out: 1.5");
 
     await fill(screen.getByPlaceholderText("Search steps"), "[");
 
