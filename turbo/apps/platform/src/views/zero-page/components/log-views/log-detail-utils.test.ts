@@ -130,3 +130,72 @@ describe("groupEventsIntoMessages thinking content", () => {
     expect(messages[0]?.textBefore).toBeUndefined();
   });
 });
+
+describe("groupEventsIntoMessages malformed tool ids", () => {
+  it("uses stable fallback ids for tool uses without ids", () => {
+    const events: AgentEvent[] = [
+      {
+        sequenceNumber: 4,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "Bash",
+                input: { command: "echo stable" },
+              },
+              {
+                type: "tool_use",
+                name: "Read",
+                input: { file_path: "src/stable.ts" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ];
+
+    const firstMessages = groupEventsIntoMessages(events);
+    const secondMessages = groupEventsIntoMessages(events);
+
+    expect(
+      firstMessages[0]?.toolOperations?.map((operation) => {
+        return operation.toolUseId;
+      }),
+    ).toEqual(["unknown-4-0", "unknown-4-1"]);
+    expect(secondMessages[0]?.toolOperations).toEqual(
+      firstMessages[0]?.toolOperations,
+    );
+  });
+
+  it("keeps multiple orphan tool results from one event addressable", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 9,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              { type: "tool_result", content: "first orphan" },
+              { type: "tool_result", content: "second orphan" },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.sequenceNumber;
+      }),
+    ).toEqual([9 + 1 / 1_000_000, 9 + 2 / 1_000_000]);
+    expect(
+      messages.map((message) => {
+        return message.toolOperations?.[0]?.toolUseId;
+      }),
+    ).toEqual(["orphan-9-0", "orphan-9-1"]);
+  });
+});

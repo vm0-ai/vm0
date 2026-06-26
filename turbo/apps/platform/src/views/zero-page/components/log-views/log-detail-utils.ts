@@ -67,6 +67,8 @@ interface GroupEventsIntoMessagesOptions {
   framework?: string | null;
 }
 
+const CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
+
 // ============ EVENT GROUPING ============
 
 interface ToolResultMeta {
@@ -228,7 +230,25 @@ function extractKeyParam(
 /**
  * Parse assistant event content into text parts and tool operations.
  */
-function parseAssistantContent(contents: readonly unknown[]): {
+function fallbackToolUseId(
+  prefix: "orphan" | "unknown",
+  sequenceNumber: number,
+  contentIndex: number,
+): string {
+  return `${prefix}-${sequenceNumber}-${contentIndex}`;
+}
+
+function sequenceNumberWithContentOffset(
+  sequenceNumber: number,
+  contentIndex: number,
+): number {
+  return sequenceNumber + (contentIndex + 1) / CONTENT_SEQUENCE_OFFSET_SCALE;
+}
+
+function parseAssistantContent(
+  contents: readonly unknown[],
+  sequenceNumber: number,
+): {
   thinkingParts: string[];
   textParts: string[];
   toolOperations: ToolOperation[];
@@ -239,7 +259,7 @@ function parseAssistantContent(contents: readonly unknown[]): {
   const toolOperations: ToolOperation[] = [];
   let foundToolUse = false;
 
-  for (const content of contents) {
+  for (const [contentIndex, content] of contents.entries()) {
     if (!isRecord(content)) {
       continue;
     }
@@ -258,9 +278,9 @@ function parseAssistantContent(contents: readonly unknown[]): {
       foundToolUse = true;
       const input = isRecord(content.input) ? content.input : {};
       const toolUseId =
-        typeof content.id === "string"
+        typeof content.id === "string" && content.id.length > 0
           ? content.id
-          : `unknown-${Math.random()}`;
+          : fallbackToolUseId("unknown", sequenceNumber, contentIndex);
       toolOperations.push({
         toolUseId,
         toolName: content.name,
@@ -276,16 +296,27 @@ function parseAssistantContent(contents: readonly unknown[]): {
 /**
  * Process a tool_result content block and attach to pending tool use or create orphan.
  */
-function processToolResult(
-  resultContent: ToolResultContent,
-  toolMeta: ToolResultMeta | undefined,
+function processToolResult(params: {
+  resultContent: ToolResultContent;
+  toolMeta: ToolResultMeta | undefined;
   pendingToolUses: Map<
     string,
     { operation: ToolOperation; message: GroupedMessage }
-  >,
-  event: AgentEvent,
-  grouped: GroupedMessage[],
-): void {
+  >;
+  event: AgentEvent;
+  fallbackSequenceNumber: number;
+  fallbackToolUseIdValue: string;
+  grouped: GroupedMessage[];
+}): void {
+  const {
+    resultContent,
+    toolMeta,
+    pendingToolUses,
+    event,
+    fallbackSequenceNumber,
+    fallbackToolUseIdValue,
+    grouped,
+  } = params;
   const toolUseId = resultContent.tool_use_id;
   const pending = toolUseId ? pendingToolUses.get(toolUseId) : undefined;
 
@@ -305,11 +336,11 @@ function processToolResult(
   // Orphan tool_result - create standalone message
   grouped.push({
     type: "assistant",
-    sequenceNumber: event.sequenceNumber,
+    sequenceNumber: fallbackSequenceNumber,
     createdAt: event.createdAt,
     toolOperations: [
       {
-        toolUseId: toolUseId ?? `orphan-${Math.random()}`,
+        toolUseId: toolUseId ?? fallbackToolUseIdValue,
         toolName: "Unknown",
         keyParam: "",
         input: {},
@@ -543,8 +574,10 @@ function processChildAssistantEvent(
   ctx: GroupingContext,
 ): void {
   const contents = getMessageContents(eventData);
-  const { thinkingParts, textParts, toolOperations } =
-    parseAssistantContent(contents);
+  const { thinkingParts, textParts, toolOperations } = parseAssistantContent(
+    contents,
+    event.sequenceNumber,
+  );
   const hasThinking = thinkingParts.length > 0;
   const hasText = textParts.length > 0;
   const hasTools = toolOperations.length > 0;
@@ -590,8 +623,10 @@ function processAssistantEvent(
   }
 
   const contents = getMessageContents(eventData);
-  const { thinkingParts, textParts, toolOperations } =
-    parseAssistantContent(contents);
+  const { thinkingParts, textParts, toolOperations } = parseAssistantContent(
+    contents,
+    event.sequenceNumber,
+  );
   const hasThinking = thinkingParts.length > 0;
   const hasText = textParts.length > 0;
 
@@ -665,7 +700,7 @@ function processUserEvent(
   const contents = getMessageContents(eventData);
   const toolMeta = toToolResultMeta(eventData.tool_use_result);
 
-  for (const content of contents) {
+  for (const [contentIndex, content] of contents.entries()) {
     if (!isRecord(content) || content.type !== "tool_result") {
       continue;
     }
@@ -677,13 +712,22 @@ function processUserEvent(
     if (typeof content.tool_use_id === "string") {
       resultContent.tool_use_id = content.tool_use_id;
     }
-    processToolResult(
+    processToolResult({
       resultContent,
       toolMeta,
-      ctx.pendingToolUses,
+      pendingToolUses: ctx.pendingToolUses,
       event,
-      target,
-    );
+      fallbackSequenceNumber: sequenceNumberWithContentOffset(
+        event.sequenceNumber,
+        contentIndex,
+      ),
+      fallbackToolUseIdValue: fallbackToolUseId(
+        "orphan",
+        event.sequenceNumber,
+        contentIndex,
+      ),
+      grouped: target,
+    });
   }
 }
 
