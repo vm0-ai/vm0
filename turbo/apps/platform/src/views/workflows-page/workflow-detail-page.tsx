@@ -2317,6 +2317,7 @@ function WorkflowCronFieldsForm({
           <WorkflowCronTimeField
             hour={fields.hour}
             minute={fields.minute}
+            displayTimezone={displayTimezone}
             disabled={disabled}
             onHourChange={(hour) => {
               updateFields({ hour });
@@ -2327,10 +2328,6 @@ function WorkflowCronFieldsForm({
           />
         </>
       )}
-
-      <span className="text-xs text-muted-foreground">
-        Shown in {timezoneDisplayName(displayTimezone)}. Saved as UTC.
-      </span>
     </div>
   );
 }
@@ -2431,19 +2428,23 @@ function WorkflowDayOfMonthField({
 function WorkflowCronTimeField({
   hour,
   minute,
+  displayTimezone,
   disabled,
   onHourChange,
   onMinuteChange,
 }: {
   readonly hour: number;
   readonly minute: number;
+  readonly displayTimezone: string;
   readonly disabled: boolean;
   readonly onHourChange: (hour: number) => void;
   readonly onMinuteChange: (minute: number) => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">Time</span>
+      <span className="text-xs text-muted-foreground">
+        Time ({timezoneDisplayName(displayTimezone)})
+      </span>
       <div className="flex items-center gap-2">
         <WorkflowNumberSelect
           value={hour}

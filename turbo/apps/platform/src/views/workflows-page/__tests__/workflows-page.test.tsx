@@ -898,10 +898,9 @@ describe("workflow detail page", () => {
       name: "Add schedule trigger",
     });
     expect(
-      within(createTriggerForm).getByText(
-        "Shown in Asia/Shanghai. Saved as UTC.",
-      ),
+      within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
     ).toBeInTheDocument();
+    expect(within(createTriggerForm).queryByText(/Saved as/u)).toBeNull();
     click(buttonByText("Add schedule", createTriggerForm));
 
     await waitFor(() => {
