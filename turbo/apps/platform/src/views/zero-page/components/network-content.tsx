@@ -35,6 +35,9 @@ import {
 
 function formatTime(timestamp: string): string {
   const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) {
+    return timestamp.trim().length > 0 ? timestamp : "—";
+  }
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");

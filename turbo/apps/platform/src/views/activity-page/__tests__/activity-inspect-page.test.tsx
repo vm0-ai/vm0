@@ -350,7 +350,7 @@ function malformedInspectFile(): File {
         networkLogs: [
           null,
           {
-            timestamp: "2026-03-10T17:00:03.000Z",
+            timestamp: "not-a-date",
             type: "http",
             method: "GET",
             url: "https://example.com/imported-valid-network-log",
@@ -636,6 +636,8 @@ describe("activity inspect page", () => {
         screen.getByText("https://example.com/imported-valid-network-log"),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText("not-a-date")).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
     expect(
       screen.queryByText("https://example.com/invalid-network-log"),
     ).not.toBeInTheDocument();
