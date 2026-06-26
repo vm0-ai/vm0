@@ -8,9 +8,9 @@
 # of treating every 64 KB body limit as interchangeable.
 _SMALL_BODY_LIMIT_BYTES = 64 * 1024  # 64 KB
 
-# Cap for request and response stream buffers. Request-body billing inspection
-# currently depends on complete, untruncated request stream buffers, so do not
-# raise its inspection cap independently without also changing its body source.
+# Cap for request and response stream buffers. Stream-buffered request-body
+# billing inspection depends on this cap for complete, untruncated bodies, so do
+# not raise its inspection cap independently without also changing that source.
 STREAM_BUFFER_LIMIT = _SMALL_BODY_LIMIT_BYTES
 
 # Cap for request and response bodies persisted into network-log capture fields.
@@ -20,8 +20,8 @@ BODY_CAPTURE_LIMIT = _SMALL_BODY_LIMIT_BYTES
 DEFAULT_BODY_DECODE_LIMIT = _SMALL_BODY_LIMIT_BYTES
 
 # Cap for connector request-body billing inspection. This is intentionally tied
-# to STREAM_BUFFER_LIMIT while billing reads complete bodies from request stream
-# buffers.
+# to STREAM_BUFFER_LIMIT while stream-buffered billing refinement reads complete
+# bodies from request stream buffers.
 REQUEST_BODY_BILLING_INSPECTION_LIMIT = _SMALL_BODY_LIMIT_BYTES
 
 # Maximum decoded chunk size fed to incremental usage parsers. This bounds
