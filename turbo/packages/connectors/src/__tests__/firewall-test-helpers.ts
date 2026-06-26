@@ -45,6 +45,7 @@ export function isStringRecord(
   return (
     typeof value === "object" &&
     value !== null &&
+    !Array.isArray(value) &&
     Object.values(value).every((item) => {
       return typeof item === "string";
     })
@@ -57,6 +58,7 @@ export function isNumberRecord(
   return (
     typeof value === "object" &&
     value !== null &&
+    !Array.isArray(value) &&
     Object.values(value).every((item) => {
       return typeof item === "number";
     })
@@ -69,6 +71,7 @@ export function isNumberOrStringRecord(
   return (
     typeof value === "object" &&
     value !== null &&
+    !Array.isArray(value) &&
     Object.values(value).every((item) => {
       return typeof item === "number" || typeof item === "string";
     })

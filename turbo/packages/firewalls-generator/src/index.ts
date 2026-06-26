@@ -274,6 +274,20 @@ import { createGoogleGenerator, googleServiceNames } from "./google";
 import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
 import { generatePythonBuiltinFirewallCatalogPackage } from "./python-builtin-firewall-catalog-package";
+import {
+  FIREWALL_CONNECTOR_TYPES,
+  type FirewallConnectorType,
+} from "./connector-firewall-manifest";
+
+const FIREWALL_CONNECTOR_TYPE_SET: ReadonlySet<string> = new Set(
+  FIREWALL_CONNECTOR_TYPES,
+);
+
+function isFirewallConnectorType(
+  target: string,
+): target is FirewallConnectorType {
+  return FIREWALL_CONNECTOR_TYPE_SET.has(target);
+}
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
@@ -564,6 +578,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     await gen();
+    if (isFirewallConnectorType(target)) {
+      await generateFirewallMetadata();
+      await generatePythonBuiltinFirewallCatalogPackage();
+    }
   } else {
     // Run all generators
     for (const [name, gen] of Object.entries(GENERATORS)) {

@@ -18,7 +18,7 @@ source is not written into `@vm0/connectors`.
 # Generate all (reads from local spec cache, no network)
 cd turbo && pnpm -F @vm0/firewalls-generator generate
 
-# Generate one
+# Generate one connector source and rebuild derived artifacts
 cd turbo && pnpm -F @vm0/firewalls-generator generate:github
 ```
 

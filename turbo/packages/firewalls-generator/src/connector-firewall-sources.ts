@@ -66,7 +66,7 @@ const generatedModuleCache = new Map<
 const generatedOutputPromises = new Map<FirewallConnectorType, Promise<void>>();
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isStringArray(value: unknown): value is readonly string[] {
