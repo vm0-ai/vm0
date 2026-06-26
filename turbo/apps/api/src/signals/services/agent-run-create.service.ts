@@ -43,7 +43,6 @@ import {
   type FirewallExecutionMetadataConnectorType,
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
-import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   extractSecretNamesFromApis,
@@ -166,6 +165,7 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -194,6 +194,17 @@ type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_validate_environment"
   | "api_dispatch_prepare_context_load_user_timezone"
   | "api_dispatch_prepare_context_prepare_output_metadata"
+  | "api_dispatch_resolve_compose_by_compose_id"
+  | "api_dispatch_resolve_compose_by_version_id"
+  | "api_dispatch_resolve_compose_by_session_id"
+  | "api_dispatch_resolve_compose_by_checkpoint_id"
+  | "api_dispatch_resolve_compose_lookup_compose"
+  | "api_dispatch_resolve_compose_lookup_version"
+  | "api_dispatch_resolve_compose_lookup_session"
+  | "api_dispatch_resolve_compose_lookup_checkpoint"
+  | "api_dispatch_resolve_compose_load_resume_session"
+  | "api_dispatch_resolve_compose_resolve_session_history"
+  | "api_dispatch_resolve_compose_lookup_session_vars"
   | "api_dispatch_check_vm0_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_mark_pending_heartbeat"
@@ -285,6 +296,7 @@ async function measureApiDispatchTiming<T>(
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
+  "limited-free-1": 1,
   pro: 2,
   team: 10,
 });
@@ -547,7 +559,6 @@ interface ConnectorRuntimeContext {
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
-  readonly connectorAuthMethods: Partial<Record<ConnectorType, string>>;
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -1923,7 +1934,6 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     connectorTypes: [],
-    connectorAuthMethods: {},
     storedEnvironment: undefined,
   };
 }
@@ -2164,6 +2174,14 @@ async function loadStoredConnectorContext(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ConnectorRuntimeContext> {
+  if (args.allowedConnectorTypes?.length === 0) {
+    return emptyConnectorRuntimeContext();
+  }
+
+  const allowedConnectorTypes = args.allowedConnectorTypes
+    ? [...new Set(args.allowedConnectorTypes)]
+    : undefined;
+
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
@@ -2180,6 +2198,9 @@ async function loadStoredConnectorContext(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          allowedConnectorTypes
+            ? inArray(connectors.type, allowedConnectorTypes)
+            : undefined,
         ),
       );
     if (connectorRows.length === 0) {
@@ -2188,7 +2209,7 @@ async function loadStoredConnectorContext(
 
     const allowedConnectorRows = allowedStoredConnectorRows(
       connectorRows,
-      args.allowedConnectorTypes,
+      allowedConnectorTypes,
       nowDate(),
     );
     if (allowedConnectorRows.length === 0) {
@@ -2221,11 +2242,6 @@ async function loadStoredConnectorContext(
       connectorTypes: allowedConnectorRows.map((row) => {
         return row.connectorType;
       }),
-      connectorAuthMethods: Object.fromEntries(
-        allowedConnectorRows.map((row) => {
-          return [row.connectorType, row.authMethod];
-        }),
-      ),
       storedEnvironment: compactRecord(resolved.environment),
     };
   });
@@ -2523,36 +2539,6 @@ function inlineFirewallEntry(
   return { kind: "inline", firewall: runtimeFirewall(firewall) };
 }
 
-const FIGMA_API_TOKEN_TEMPLATE = ["$", "{{ secrets.FIGMA_TOKEN }}"].join("");
-const FIGMA_API_TOKEN_AUTH_HEADERS = Object.freeze({
-  "X-Figma-Token": FIGMA_API_TOKEN_TEMPLATE,
-});
-
-function figmaApiTokenFirewall(
-  firewall: ExpandedFirewallConfig,
-): ExpandedFirewallConfig {
-  return {
-    ...firewall,
-    apis: firewall.apis.map((api) => {
-      return {
-        ...api,
-        auth: {
-          ...api.auth,
-          headers: FIGMA_API_TOKEN_AUTH_HEADERS,
-        },
-      };
-    }),
-  };
-}
-
-async function loadFigmaApiTokenFirewall(): Promise<ExpandedFirewallConfig> {
-  const firewall = await loadConnectorFirewall("figma");
-  if (!firewall) {
-    throw new Error("Missing figma runtime firewall");
-  }
-  return figmaApiTokenFirewall(firewall);
-}
-
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
@@ -2689,7 +2675,6 @@ async function buildPermissionManifest(args: {
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
-  readonly connectorAuthMethods?: Partial<Record<ConnectorType, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
 }): Promise<PermissionManifest | undefined> {
   const connectorTypes =
@@ -2702,62 +2687,18 @@ async function buildPermissionManifest(args: {
     isFirewallExecutionMetadataConnectorType,
   );
 
-  const builtinSources: BuiltinConnectorManifestSource[] = [];
-  const inlineConnectorFirewalls: ExpandedFirewallConfig[] = [];
-  const inlineConnectorDefaultPolicies = new Map<string, FirewallPolicy>();
-  const inlineConnectorBillableFirewalls: string[] = [];
-
-  const loadedConnectorSources = await Promise.all(
+  const builtinSources = await Promise.all(
     builtinConnectorTypes.map(async (type) => {
       const metadata = getRequiredFirewallExecutionMetadata(type);
       const permissionIndex = await loadRequiredFirewallPermissionIndex(type);
-      if (
-        type === "figma" &&
-        args.connectorAuthMethods?.[type] === "api-token"
-      ) {
-        return {
-          type,
-          metadata,
-          permissionIndex,
-          inlineFirewall: await loadFigmaApiTokenFirewall(),
-        };
-      }
-      return { type, metadata, permissionIndex, inlineFirewall: null };
+      return { metadata, permissionIndex };
     }),
   );
-  for (const source of loadedConnectorSources) {
-    if (source.inlineFirewall) {
-      inlineConnectorFirewalls.push(source.inlineFirewall);
-      inlineConnectorDefaultPolicies.set(
-        source.type,
-        defaultPolicyForPermissionIndex(source.permissionIndex),
-      );
-      if (source.metadata.billable) {
-        inlineConnectorBillableFirewalls.push(source.type);
-      }
-      continue;
-    }
-    builtinSources.push({
-      metadata: source.metadata,
-      permissionIndex: source.permissionIndex,
-    });
-  }
 
   const connectorManifest = applyBuiltinConnectorMetadataPolicies(
     builtinSources,
     args.permissionPolicies,
     connectorBaseUrlVars,
-  );
-  const inlineConnectorManifest = applyConnectorPolicies(
-    inlineConnectorFirewalls,
-    args.permissionPolicies,
-    inlineFirewallEntry,
-    (firewall, permissionNames) => {
-      return (
-        inlineConnectorDefaultPolicies.get(firewall.name) ??
-        allAllowPolicyForPermissions(permissionNames)
-      );
-    },
   );
   const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
     (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
@@ -2778,7 +2719,6 @@ async function buildPermissionManifest(args: {
   const firewalls = [
     ...(providerManifest?.firewalls ?? []),
     ...connectorManifest.firewalls,
-    ...inlineConnectorManifest.firewalls,
     ...customConnectorManifest.firewalls,
   ];
 
@@ -2791,18 +2731,15 @@ async function buildPermissionManifest(args: {
     environmentSecretPlaceholders: mergeRecords(
       providerManifest?.environmentSecretPlaceholders,
       connectorManifest.environmentSecretPlaceholders,
-      firewallSecretPlaceholdersFromFirewalls(inlineConnectorFirewalls),
       firewallSecretPlaceholdersFromFirewalls(args.customConnectorFirewalls),
     ),
     billableFirewalls: [
       ...(providerManifest?.billableFirewalls ?? []),
       ...connectorManifest.billableFirewalls,
-      ...inlineConnectorBillableFirewalls,
     ],
     networkPolicies: {
       ...providerManifest?.networkPolicies,
       ...connectorManifest.networkPolicies,
-      ...inlineConnectorManifest.networkPolicies,
       ...customConnectorManifest.networkPolicies,
     },
   };
@@ -2972,22 +2909,30 @@ async function checkOrgRunTier(
 async function lookupComposeByVersion(
   db: Db,
   versionId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await db
-    .select({
-      versionContent: agentComposeVersions.content,
-      composeName: agentComposes.name,
-      composeOrgId: agentComposes.orgId,
-      composeId: agentComposes.id,
-      composeUserId: agentComposes.userId,
-    })
-    .from(agentComposeVersions)
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .where(eq(agentComposeVersions.id, versionId))
-    .limit(1);
+  const [row] = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_resolve_compose_lookup_version",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          versionContent: agentComposeVersions.content,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeId: agentComposes.id,
+          composeUserId: agentComposes.userId,
+        })
+        .from(agentComposeVersions)
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
+        .where(eq(agentComposeVersions.id, versionId))
+        .limit(1);
+    },
+  );
 
   if (!row?.composeId || !row.composeOrgId || !row.composeUserId) {
     return notFound("Agent compose version not found");
@@ -3007,24 +2952,32 @@ async function lookupComposeByVersion(
 async function resolveByComposeId(
   db: Db,
   composeId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await db
-    .select({
-      composeId: agentComposes.id,
-      composeName: agentComposes.name,
-      composeOrgId: agentComposes.orgId,
-      composeUserId: agentComposes.userId,
-      headVersionId: agentComposes.headVersionId,
-      versionId: agentComposeVersions.id,
-      versionContent: agentComposeVersions.content,
-    })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentComposes.headVersionId),
-    )
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
+  const [row] = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_resolve_compose_lookup_compose",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          composeId: agentComposes.id,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeUserId: agentComposes.userId,
+          headVersionId: agentComposes.headVersionId,
+          versionId: agentComposeVersions.id,
+          versionContent: agentComposeVersions.content,
+        })
+        .from(agentComposes)
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentComposeVersions.id, agentComposes.headVersionId),
+        )
+        .where(eq(agentComposes.id, composeId))
+        .limit(1);
+    },
+  );
 
   if (!row) {
     return notFound("Agent compose not found");
@@ -3051,50 +3004,78 @@ function resolveBySessionId(
   agentSessionId: string,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [session] = await db
-        .select({
-          id: agentSessions.id,
-          agentComposeId: agentSessions.agentComposeId,
-          conversationId: agentSessions.conversationId,
-          artifacts: agentSessions.artifacts,
-          conversationRunId: conversations.runId,
-        })
-        .from(agentSessions)
-        .leftJoin(
-          conversations,
-          eq(agentSessions.conversationId, conversations.id),
-        )
-        .where(
-          and(
-            eq(agentSessions.id, agentSessionId),
-            eq(agentSessions.userId, userId),
-            eq(agentSessions.orgId, orgId),
-          ),
-        )
-        .limit(1);
+      const [session] = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_lookup_session",
+        "nested",
+        async () => {
+          return await db
+            .select({
+              id: agentSessions.id,
+              agentComposeId: agentSessions.agentComposeId,
+              conversationId: agentSessions.conversationId,
+              artifacts: agentSessions.artifacts,
+              conversationRunId: conversations.runId,
+            })
+            .from(agentSessions)
+            .leftJoin(
+              conversations,
+              eq(agentSessions.conversationId, conversations.id),
+            )
+            .where(
+              and(
+                eq(agentSessions.id, agentSessionId),
+                eq(agentSessions.userId, userId),
+                eq(agentSessions.orgId, orgId),
+              ),
+            )
+            .limit(1);
+        },
+      );
 
       if (!session) {
         return notFound("Agent session not found");
       }
 
-      const resolved = await resolveByComposeId(db, session.agentComposeId);
+      const resolved = await resolveByComposeId(
+        db,
+        session.agentComposeId,
+        timing,
+      );
       if (isRouteError(resolved)) {
         return resolved;
       }
 
+      const conversationId = session.conversationId;
       const resumeSession =
-        session.conversationId === null
+        conversationId === null
           ? undefined
-          : await get(loadResumeSession(db, session.conversationId));
-      const [lastRun] = session.conversationRunId
-        ? await db
-            .select({ vars: agentRuns.vars })
-            .from(agentRuns)
-            .where(eq(agentRuns.id, session.conversationRunId))
-            .limit(1)
+          : await measureApiDispatchTiming(
+              timing,
+              "api_dispatch_resolve_compose_load_resume_session",
+              "nested",
+              async () => {
+                return await get(loadResumeSession(db, conversationId, timing));
+              },
+            );
+      const conversationRunId = session.conversationRunId;
+      const [lastRun] = conversationRunId
+        ? await measureApiDispatchTiming(
+            timing,
+            "api_dispatch_resolve_compose_lookup_session_vars",
+            "nested",
+            async () => {
+              return await db
+                .select({ vars: agentRuns.vars })
+                .from(agentRuns)
+                .where(eq(agentRuns.id, conversationRunId))
+                .limit(1);
+            },
+          )
         : [];
 
       return {
@@ -3114,22 +3095,30 @@ function resolveByCheckpointId(
   checkpointId: string,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [row] = await db
-        .select({
-          snapshot: checkpoints.agentComposeSnapshot,
-          artifacts: checkpoints.artifactSnapshots,
-          volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
-          conversationId: checkpoints.conversationId,
-          runUserId: agentRuns.userId,
-          runOrgId: agentRuns.orgId,
-        })
-        .from(checkpoints)
-        .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-        .where(eq(checkpoints.id, checkpointId))
-        .limit(1);
+      const [row] = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_lookup_checkpoint",
+        "nested",
+        async () => {
+          return await db
+            .select({
+              snapshot: checkpoints.agentComposeSnapshot,
+              artifacts: checkpoints.artifactSnapshots,
+              volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+              conversationId: checkpoints.conversationId,
+              runUserId: agentRuns.userId,
+              runOrgId: agentRuns.orgId,
+            })
+            .from(checkpoints)
+            .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+            .where(eq(checkpoints.id, checkpointId))
+            .limit(1);
+        },
+      );
 
       if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
         return notFound("Checkpoint not found");
@@ -3148,6 +3137,7 @@ function resolveByCheckpointId(
       const resolved = await lookupComposeByVersion(
         db,
         snapshot.agentComposeVersionId,
+        timing,
       );
       if (isRouteError(resolved)) {
         return resolved;
@@ -3162,7 +3152,14 @@ function resolveByCheckpointId(
           row.volumeVersionsSnapshot,
         ),
         resumedFromCheckpointId: checkpointId,
-        resumeSession: await get(loadResumeSession(db, row.conversationId)),
+        resumeSession: await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_load_resume_session",
+          "nested",
+          async () => {
+            return await get(loadResumeSession(db, row.conversationId, timing));
+          },
+        ),
       };
     },
   );
@@ -3171,6 +3168,7 @@ function resolveByCheckpointId(
 function loadResumeSession(
   db: Db,
   conversationId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
   return computed(
     async (
@@ -3190,11 +3188,18 @@ function loadResumeSession(
         return undefined;
       }
 
-      const sessionHistory = await get(
-        resolveConversationSessionHistory({
-          hash: conversation.cliAgentSessionHistoryHash,
-          legacyText: conversation.cliAgentSessionHistory,
-        }),
+      const sessionHistory = await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_resolve_session_history",
+        "nested",
+        async () => {
+          return await get(
+            resolveConversationSessionHistory({
+              hash: conversation.cliAgentSessionHistoryHash,
+              legacyText: conversation.cliAgentSessionHistory,
+            }),
+          );
+        },
       );
 
       if (sessionHistory === null) {
@@ -3245,6 +3250,7 @@ function resolveCompose(
   body: CreateRunBody,
   userId: string,
   orgId: string,
+  timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
@@ -3255,22 +3261,60 @@ function resolveCompose(
       }
 
       if (body.checkpointId) {
-        return await get(
-          resolveByCheckpointId(db, body.checkpointId, userId, orgId),
+        const checkpointId = body.checkpointId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_checkpoint_id",
+          "nested",
+          async () => {
+            return await get(
+              resolveByCheckpointId(db, checkpointId, userId, orgId, timing),
+            );
+          },
         );
       }
       if (body.sessionId) {
-        return await get(resolveBySessionId(db, body.sessionId, userId, orgId));
+        const sessionId = body.sessionId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_session_id",
+          "nested",
+          async () => {
+            return await get(
+              resolveBySessionId(db, sessionId, userId, orgId, timing),
+            );
+          },
+        );
       }
       if (body.agentComposeVersionId) {
-        return await lookupComposeByVersion(db, body.agentComposeVersionId);
+        const agentComposeVersionId = body.agentComposeVersionId;
+        return await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_by_version_id",
+          "nested",
+          async () => {
+            return await lookupComposeByVersion(
+              db,
+              agentComposeVersionId,
+              timing,
+            );
+          },
+        );
       }
       if (!body.agentComposeId) {
         return badRequestMessage(
           "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
         );
       }
-      return await resolveByComposeId(db, body.agentComposeId);
+      const agentComposeId = body.agentComposeId;
+      return await measureApiDispatchTiming(
+        timing,
+        "api_dispatch_resolve_compose_by_compose_id",
+        "nested",
+        async () => {
+          return await resolveByComposeId(db, agentComposeId, timing);
+        },
+      );
     },
   );
 }
@@ -4533,7 +4577,6 @@ async function buildPreparedPermissionManifest(args: {
     vars: args.body.vars,
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
-    connectorAuthMethods: args.connectorContext.connectorAuthMethods,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
 }
@@ -4604,6 +4647,7 @@ async function prepareRunBodyContext(args: {
           args.initialBody,
           args.createArgs.userId,
           args.createArgs.orgId,
+          args.timing,
         ),
       );
     },
@@ -5094,6 +5138,17 @@ export const createAgentRun$ = command(
     signal.throwIfAborted();
     if (isRouteError(context)) {
       return context;
+    }
+
+    const modelTierGate = await checkLimitedFreeRunModelAdmission({
+      db,
+      orgId: args.orgId,
+      selectedModel:
+        context.modelProvider?.selectedModel ?? args.selectedModelOverride,
+    });
+    signal.throwIfAborted();
+    if (modelTierGate) {
+      return modelTierGate;
     }
 
     if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {

@@ -52,6 +52,7 @@ const STATIC_ALLOWED_ORIGINS = new Set([
   "https://vm0.ai",
   "https://app.vm7.ai:8443",
 ]);
+const DEFAULT_ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 
 function isSubdomainOf(hostname: string, domain: string): boolean {
   return hostname.endsWith(`.${domain}`) && hostname.length > domain.length + 1;
@@ -130,6 +131,17 @@ function notFoundResponse(): Response {
   return new Response("Not found", {
     status: 404,
     headers: { "Cache-Control": "public, max-age=60" },
+  });
+}
+
+function defaultRobotsResponse(request: Request): Response {
+  return new Response(request.method === "HEAD" ? null : DEFAULT_ROBOTS_TXT, {
+    status: 200,
+    headers: {
+      "Cache-Control": "public, max-age=3600",
+      "Content-Type": "text/plain; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
 
@@ -258,6 +270,10 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   );
   if (!manifest || manifest.deploymentId !== pointer.deploymentId) {
     return notFoundResponse();
+  }
+
+  if (pathname === "/robots.txt" && !manifest.files["/robots.txt"]) {
+    return defaultRobotsResponse(request);
   }
 
   const filePath = resolveFilePath(request, pathname, pointer, manifest);

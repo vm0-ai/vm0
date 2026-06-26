@@ -46,6 +46,7 @@ const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
   Object.freeze({
     free: 1,
+    "limited-free-1": 1,
     "pro-suspend": 0,
     pro: 2,
     team: 10,

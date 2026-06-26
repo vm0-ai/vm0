@@ -60,6 +60,10 @@ describe("so frontend rewrites", () => {
       source: "/sign-up",
       destination: "https://pr-123-so.vm6.ai/sign-up",
     });
+    expect(rewrites).toContainEqual({
+      source: "/sign-up/:path*",
+      destination: "https://pr-123-so.vm6.ai/sign-up/:path*",
+    });
   });
 
   it("rewrites sign-in/sign-up when a so frontend target is configured", () => {
@@ -75,6 +79,10 @@ describe("so frontend rewrites", () => {
     expect(rewrites).toContainEqual({
       source: "/sign-up",
       destination: "https://so.vm0.ai/sign-up",
+    });
+    expect(rewrites).toContainEqual({
+      source: "/sign-up/:path*",
+      destination: "https://so.vm0.ai/sign-up/:path*",
     });
   });
 
@@ -105,6 +113,9 @@ describe("so frontend rewrites", () => {
     expect(matchesSoFrontendRewritePath("/assets/vm0-logo.svg")).toBe(true);
 
     expect(matchesSoFrontendRewritePath("/sign-in/sso-callback")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
+      true,
+    );
     expect(matchesSoFrontendRewritePath("/connector/success")).toBe(false);
     expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(false);
     expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(
@@ -124,6 +135,9 @@ describe("so frontend rewrites", () => {
     );
     expect(resolveSoFrontendRewritePath("/sign-in/factor-one")).toBe(
       "/sign-in/factor-one",
+    );
+    expect(resolveSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
+      "/sign-up/verify-email-address",
     );
     expect(resolveSoFrontendRewritePath("/connector/success")).toBeUndefined();
   });

@@ -8,6 +8,10 @@ import type {
   ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
+import { formatIsoTimestamp } from "../../../lib/utils/time-format";
+import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
+import { parseSearchQuery } from "../../../lib/utils/search-query";
+import { isUUID } from "../../run/shared";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -63,31 +67,25 @@ function parseContextOptions(options: SearchOptions): {
   before: number;
   after: number;
 } {
-  const contextN = options.context ? parseInt(options.context, 10) : 0;
-  const before = options.beforeContext
-    ? parseInt(options.beforeContext, 10)
-    : contextN;
-  const after = options.afterContext
-    ? parseInt(options.afterContext, 10)
-    : contextN;
-
-  if (isNaN(before) || before < 0 || before > 10) {
-    throw new Error("--before-context must be between 0 and 10");
-  }
-  if (isNaN(after) || after < 0 || after > 10) {
-    throw new Error("--after-context must be between 0 and 10");
-  }
+  const contextN =
+    options.context !== undefined
+      ? parseBoundedLogCount(options.context, "--context", 0, 10)
+      : 0;
+  const before =
+    options.beforeContext !== undefined
+      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
+      : contextN;
+  const after =
+    options.afterContext !== undefined
+      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
+      : contextN;
 
   return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const limit = parseInt(value, 10);
-  if (isNaN(limit) || limit < 1 || limit > 50) {
-    throw new Error("--limit must be between 1 and 50");
-  }
-  return limit;
+  if (value === undefined) return undefined;
+  return parseBoundedLogCount(value, "--limit", 1, 50);
 }
 
 async function runLogsSource(
@@ -107,7 +105,7 @@ async function runLogsSource(
 }
 
 function formatTimestamp(iso: string): string {
-  return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return formatIsoTimestamp(iso);
 }
 
 function renderChatMessage(msg: ChatSearchMessage, isMatch: boolean): void {
@@ -151,15 +149,23 @@ async function runChatSource(
   query: string,
   options: SearchOptions,
 ): Promise<void> {
-  if (options.run) {
+  if (options.run !== undefined) {
     throw new Error("--run is not supported with --source chat");
+  }
+  if (options.agent !== undefined && !isUUID(options.agent)) {
+    console.error(
+      chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
+    );
+    console.error(chalk.dim("  Run: zero logs list    to find agent IDs"));
+    process.exit(1);
   }
 
   const { before, after } = parseContextOptions(options);
   const limit = parseLimit(options.limit);
-  const since = options.since
-    ? parseTime(options.since)
-    : Date.now() - SEVEN_DAYS_MS;
+  const since =
+    options.since !== undefined
+      ? parseTime(options.since)
+      : Date.now() - SEVEN_DAYS_MS;
 
   const response = await searchZeroChat({
     keyword: query,
@@ -210,6 +216,7 @@ export const zeroSearchCommand = new Command()
   .addHelpText("after", SEARCH_EXPLAINER)
   .action(
     withErrorHandler(async (query: string, options: SearchOptions) => {
+      const searchQuery = parseSearchQuery(query, "Query");
       const sources = options.source;
 
       if (sources.length === 0) {
@@ -230,13 +237,13 @@ export const zeroSearchCommand = new Command()
 
       switch (source as Source) {
         case "logs":
-          await runLogsSource(query, options);
+          await runLogsSource(searchQuery, options);
           return;
         case "chat":
-          await runChatSource(query, options);
+          await runChatSource(searchQuery, options);
           return;
         case "slack":
-          await runSlackSource(query, options);
+          await runSlackSource(searchQuery, options);
           return;
       }
     }),

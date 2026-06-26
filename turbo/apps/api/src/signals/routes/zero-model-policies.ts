@@ -58,6 +58,9 @@ const updateModelPoliciesInner$ = command(
       signal,
     );
     if (!result.ok) {
+      if ("response" in result) {
+        return result.response;
+      }
       return badRequestMessage(result.message);
     }
 

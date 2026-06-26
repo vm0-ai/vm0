@@ -604,7 +604,6 @@ export {
   type FirewallPolicy,
   type FirewallPolicies,
   type NetworkPolicies,
-  type FirewallSelection,
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
   type SendMode,

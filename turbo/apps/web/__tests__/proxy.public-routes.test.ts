@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { brotliCompressSync } from "node:zlib";
 import { NextRequest, NextResponse } from "next/server";
 import { HttpResponse, http } from "msw";
 import { server } from "../src/mocks/server";
@@ -92,6 +93,18 @@ function captureForwardedRequests(
     }),
   );
   return requests;
+}
+
+function compressedComponentResponse(body: string, status: number): Response {
+  const encodedBody = brotliCompressSync(Buffer.from(body));
+  return new HttpResponse(encodedBody, {
+    status,
+    headers: {
+      "content-encoding": "br",
+      "content-length": String(encodedBody.byteLength),
+      "content-type": "text/x-component",
+    },
+  });
 }
 
 describe("proxy middleware: public routes", () => {
@@ -203,6 +216,108 @@ describe("proxy middleware: public routes", () => {
     expect(response?.status).toBe(202);
   });
 
+  it("uses the SO origin as forwarded host for SO frontend server actions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "next-action": "abc123",
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://so.vm0.ai/en");
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("so.vm0.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response?.status).toBe(202);
+  });
+
+  it("uses the final staging SO origin for local SO alias server actions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm7.ai:8443");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost:3000/en", {
+      method: "POST",
+      headers: {
+        "next-action": "abc123",
+        origin: "https://www.vm7.ai:8443",
+        referer: "https://www.vm7.ai:8443/en",
+        "x-forwarded-host": "www.vm7.ai:8443",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://staging-so.vm6.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://staging-so.vm6.ai/en");
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("staging-so.vm6.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response?.status).toBe(202);
+  });
+
+  it("treats SO frontend form POSTs as server actions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    reloadEnv();
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("proxied", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "content-type": "multipart/form-data; boundary=boundary",
+        origin: "https://www.vm0.ai",
+        referer: "https://www.vm0.ai/en",
+      },
+      body: "--boundary--",
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected fetch init");
+    }
+    const proxiedHeaders = init.headers as Headers;
+    expect(proxiedHeaders.get("origin")).toBe("https://so.vm0.ai");
+    expect(proxiedHeaders.get("referer")).toBe("https://so.vm0.ai/en");
+    expect(proxiedHeaders.get("x-forwarded-host")).toBe("so.vm0.ai");
+    expect(proxiedHeaders.get("x-forwarded-proto")).toBe("https");
+    expect(response?.status).toBe(202);
+  });
+
   it("does not proxy non-GET requests when so frontend forwarding is disabled", async () => {
     const request = new NextRequest("https://www.vm0.ai/en", {
       method: "POST",
@@ -270,6 +385,115 @@ describe("proxy middleware: public routes", () => {
       throw new Error("Expected auth proxy response");
     }
     expect(response.status).toBe(202);
+  });
+
+  it("proxies sign-up verification routes to so while preserving redirect_url", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/sign-up/verify-email-address",
+      new HttpResponse("verification proxied", { status: 202 }),
+    );
+
+    const request = new NextRequest(
+      "https://www.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+      {
+        method: "POST",
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(forwardedRequests).toHaveLength(1);
+    expect(forwardedRequests[0]?.url).toBe(
+      "https://so.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+    );
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected verification proxy response");
+    }
+    expect(response.status).toBe(202);
+  });
+
+  it("normalizes compression headers for proxied sign-up verification responses", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/sign-up/verify-email-address",
+      compressedComponentResponse("verification proxied", 202),
+    );
+
+    const request = new NextRequest(
+      "https://www.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+      {
+        method: "POST",
+        headers: {
+          "accept-encoding": "gzip, deflate, br, zstd",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(forwardedRequests).toHaveLength(1);
+    const [forwardedRequest] = forwardedRequests;
+    if (!forwardedRequest) {
+      throw new Error("Expected forwarded verification request");
+    }
+    expect(forwardedRequest.url).toBe(
+      "https://so.vm0.ai/sign-up/verify-email-address?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fagents%2F4f189ea8-ada2-416d-83a9-9c25ddb960c9%2Fchat",
+    );
+    expect(forwardedRequest.headers.get("accept-encoding")).toBe("identity");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected verification proxy response");
+    }
+    expect(response.status).toBe(202);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/x-component");
+    await expect(response.text()).resolves.toBe("verification proxied");
+  });
+
+  it("normalizes compression headers for proxied locale page action responses", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
+    vi.stubEnv("VERCEL_ENV", "production");
+    reloadEnv();
+    const forwardedRequests = captureForwardedRequests(
+      "post",
+      "https://so.vm0.ai/en",
+      compressedComponentResponse("locale action proxied", 200),
+    );
+
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      method: "POST",
+      headers: {
+        "accept-encoding": "gzip, deflate, br, zstd",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    expect(forwardedRequests).toHaveLength(1);
+    const [forwardedRequest] = forwardedRequests;
+    if (!forwardedRequest) {
+      throw new Error("Expected forwarded locale page request");
+    }
+    expect(forwardedRequest.url).toBe("https://so.vm0.ai/en");
+    expect(forwardedRequest.headers.get("accept-encoding")).toBe("identity");
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected locale page proxy response");
+    }
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/x-component");
+    await expect(response.text()).resolves.toBe("locale action proxied");
   });
 
   it("does not proxy app-only functional routes when so forwarding is enabled", async () => {

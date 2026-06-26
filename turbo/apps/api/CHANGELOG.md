@@ -1,5 +1,84 @@
 # Changelog
 
+## [1.179.3](https://github.com/vm0-ai/vm0/compare/api-v1.179.2...api-v1.179.3) (2026-06-25)
+
+
+### Bug Fixes
+
+* refresh presentation template registry archives ([#18980](https://github.com/vm0-ai/vm0/issues/18980)) ([941727a](https://github.com/vm0-ai/vm0/commit/941727a14a176feb173f70c63843dafb027fe964))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+    * @vm0/db bumped to 1.72.2
+
+## [1.179.2](https://github.com/vm0-ai/vm0/compare/api-v1.179.1...api-v1.179.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+    * @vm0/db bumped to 1.72.1
+
+## [1.179.1](https://github.com/vm0-ai/vm0/compare/api-v1.179.0...api-v1.179.1) (2026-06-25)
+
+
+### Performance Improvements
+
+* split compose resolution timing ([#18979](https://github.com/vm0-ai/vm0/issues/18979)) ([dcfda07](https://github.com/vm0-ai/vm0/commit/dcfda07e5bc575a0752b2c08532f3b739e952491))
+
+## [1.179.0](https://github.com/vm0-ai/vm0/compare/api-v1.178.4...api-v1.179.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger connector access ([#18959](https://github.com/vm0-ai/vm0/issues/18959)) ([2302afb](https://github.com/vm0-ai/vm0/commit/2302afb6169ec835f3f9782c99c0573a598132b9))
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Bug Fixes
+
+* normalize codex cli log rendering ([#18773](https://github.com/vm0-ai/vm0/issues/18773)) ([731975b](https://github.com/vm0-ai/vm0/commit/731975b8fa1376fbec62c86527ae87935d9a4d07))
+* use figma api token header in builtin firewall ([#18953](https://github.com/vm0-ai/vm0/issues/18953)) ([81dad4e](https://github.com/vm0-ai/vm0/commit/81dad4e7685ae21c7f6a3df863934adb6d44207c))
+
+
+### Performance Improvements
+
+* optimize stored connector allowlist loading ([#18972](https://github.com/vm0-ai/vm0/issues/18972)) ([5ab6e86](https://github.com/vm0-ai/vm0/commit/5ab6e8681d0956097b515809014d5239a5f8bfaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+    * @vm0/db bumped to 1.72.0
+
+## [1.178.4](https://github.com/vm0-ai/vm0/compare/api-v1.178.3...api-v1.178.4) (2026-06-25)
+
+
+### Performance Improvements
+
+* add runner queue-to-claim timing ([#18940](https://github.com/vm0-ai/vm0/issues/18940)) ([ae6564c](https://github.com/vm0-ai/vm0/commit/ae6564cd58f595ec239d6f1c1f4155911ded8655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+    * @vm0/db bumped to 1.71.3
+
 ## [1.178.3](https://github.com/vm0-ai/vm0/compare/api-v1.178.2...api-v1.178.3) (2026-06-25)
 
 

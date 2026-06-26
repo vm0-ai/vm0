@@ -64,7 +64,9 @@ export const VM0_ORG_SLUG = "vm0";
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-opus-4-8",
   "claude-sonnet-4-6",
+  "deepseek-v4-pro",
   "kimi-k2.7-code",
+  "glm-5.2",
   "gpt-5.5",
 ] as const satisfies readonly SupportedRunModel[];
 
@@ -236,6 +238,21 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
 
 export function normalizeVm0ModelId(model: string): string {
   return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
+}
+
+export function isLimitedFree1RestrictedRunModel(
+  model: string | null | undefined,
+): boolean {
+  if (!model) {
+    return false;
+  }
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === "gpt-5.5" ||
+    normalized === "openai/gpt-5.5" ||
+    normalized.startsWith("claude-opus-") ||
+    normalized.startsWith("anthropic/claude-opus-")
+  );
 }
 
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";

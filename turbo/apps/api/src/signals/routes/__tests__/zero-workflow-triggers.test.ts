@@ -240,6 +240,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     expect(created.body.unattendedPermissionPolicy).toBeNull();
+    expect(created.body.unattendedConnectorRefs).toStrictEqual([]);
     return created.body.id;
   }
 
@@ -252,6 +253,7 @@ describe("zero workflow triggers", () => {
         headers: authHeaders(),
         params: { id: triggerId },
         body: {
+          unattendedConnectorRefs: ["gmail"],
           unattendedPermissionPolicy: {
             gmail: { policies: { "messages.write": "allow" } },
           },
@@ -262,6 +264,7 @@ describe("zero workflow triggers", () => {
     expect(set.body.unattendedPermissionPolicy).toStrictEqual({
       gmail: { policies: { "messages.write": "allow" } },
     });
+    expect(set.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
 
     const cleared = await accept(
       triggersClient().setPermissionPolicy({
@@ -272,6 +275,24 @@ describe("zero workflow triggers", () => {
       [200],
     );
     expect(cleared.body.unattendedPermissionPolicy).toBeNull();
+    expect(cleared.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
+  });
+
+  it("rejects an unknown unattended connector ref", async () => {
+    const { workflowId } = await setupFixture();
+    const triggerId = await createScheduleTrigger(workflowId);
+
+    await accept(
+      triggersClient().setPermissionPolicy({
+        headers: authHeaders(),
+        params: { id: triggerId },
+        body: {
+          unattendedConnectorRefs: ["not-a-connector"],
+          unattendedPermissionPolicy: null,
+        },
+      }),
+      [400],
+    );
   });
 
   it("rejects a permission policy with an unknown permission name", async () => {
@@ -621,6 +642,7 @@ describe("zero workflow triggers", () => {
       nextRunAt: null,
     });
     expect(created.body.chatThreadId).toBeTruthy();
+    expect(created.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
 
     const db = store.set(writeDb$);
     const watches = await db

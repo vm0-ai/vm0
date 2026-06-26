@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.108.1",
+  "version": "1.108.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -52,10 +52,6 @@
     "./firewalls/runtime": {
       "import": "./src/firewall-runtime.ts",
       "types": "./src/firewall-runtime.ts"
-    },
-    "./firewalls/selection-resolver": {
-      "import": "./src/firewall-selection-resolver.ts",
-      "types": "./src/firewall-selection-resolver.ts"
     },
     "./firewalls/*": null,
     "./auth-providers": {

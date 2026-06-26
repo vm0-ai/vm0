@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.493.0](https://github.com/vm0-ai/vm0/compare/app-v0.492.1...app-v0.493.0) (2026-06-25)
+
+
+### Features
+
+* redesign workflow detail workspace ([#18985](https://github.com/vm0-ai/vm0/issues/18985)) ([ff808f7](https://github.com/vm0-ai/vm0/commit/ff808f7ad3e40a585998488ed055317adfc60a73))
+
+
+### Bug Fixes
+
+* roll up run group usage ([#18989](https://github.com/vm0-ai/vm0/issues/18989)) ([b46db5f](https://github.com/vm0-ai/vm0/commit/b46db5f29021cf1665d238cbeb1c9fa023e9a8be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+
+## [0.492.1](https://github.com/vm0-ai/vm0/compare/app-v0.492.0...app-v0.492.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+
+## [0.492.0](https://github.com/vm0-ai/vm0/compare/app-v0.491.2...app-v0.492.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger connector access ([#18959](https://github.com/vm0-ai/vm0/issues/18959)) ([2302afb](https://github.com/vm0-ai/vm0/commit/2302afb6169ec835f3f9782c99c0573a598132b9))
+* add workflow trigger permission drawer ([#18947](https://github.com/vm0-ai/vm0/issues/18947)) ([8a52018](https://github.com/vm0-ai/vm0/commit/8a52018f7e3e1e9ec6b7d914cb50ef512024bc59))
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+
+## [0.491.2](https://github.com/vm0-ai/vm0/compare/app-v0.491.1...app-v0.491.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* simplify workflow detail navigation ([#18942](https://github.com/vm0-ai/vm0/issues/18942)) ([e1175ca](https://github.com/vm0-ai/vm0/commit/e1175ca8bc19e8f59c68fca48d41b08cf352460d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+
 ## [0.491.1](https://github.com/vm0-ai/vm0/compare/app-v0.491.0...app-v0.491.1) (2026-06-25)
 
 

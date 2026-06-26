@@ -22,7 +22,7 @@ export type Pagination = z.infer<typeof paginationSchema>;
  */
 const listQuerySchema = z.object({
   cursor: z.string().optional(),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 const c = initContract();

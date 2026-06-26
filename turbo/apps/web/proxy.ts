@@ -116,6 +116,43 @@ const HOP_BY_HOP_HEADERS = [
   "upgrade",
 ];
 
+function isServerActionRequest(request: NextRequest): boolean {
+  if (request.method !== "POST") {
+    return false;
+  }
+
+  const contentType = request.headers.get("content-type");
+  return (
+    request.headers.has("next-action") ||
+    contentType === "application/x-www-form-urlencoded" ||
+    contentType?.startsWith("multipart/form-data") === true
+  );
+}
+
+function soFrontendActionOrigin(targetUrl: URL): string {
+  if (targetUrl.hostname === "so.vm7.ai") {
+    return "https://staging-so.vm6.ai";
+  }
+
+  return targetUrl.origin;
+}
+
+function firstForwardedHeaderValue(value: string | null): string | undefined {
+  return value?.split(",")[0]?.trim() || undefined;
+}
+
+function requestPublicOrigin(request: NextRequest): string {
+  const host =
+    firstForwardedHeaderValue(request.headers.get("x-forwarded-host")) ??
+    request.headers.get("host") ??
+    request.nextUrl.host;
+  const proto =
+    firstForwardedHeaderValue(request.headers.get("x-forwarded-proto")) ??
+    request.nextUrl.protocol.slice(0, -1);
+
+  return `${proto}://${host}`;
+}
+
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-forwarded-host", request.nextUrl.host);
@@ -172,25 +209,39 @@ async function proxySoFrontendRequest(
   targetUrl: URL,
 ): Promise<Response> {
   const requestHeaders = new Headers(request.headers);
+  const serverActionRequest = isServerActionRequest(request);
   for (const header of HOP_BY_HOP_HEADERS) {
     requestHeaders.delete(header);
   }
-  requestHeaders.set("x-forwarded-host", request.nextUrl.host);
+  const publicOrigin = requestPublicOrigin(request);
+  const publicOriginUrl = new URL(publicOrigin);
+  const actionOrigin = serverActionRequest
+    ? soFrontendActionOrigin(targetUrl)
+    : undefined;
+  const actionOriginUrl = actionOrigin ? new URL(actionOrigin) : undefined;
+  requestHeaders.set(
+    "x-forwarded-host",
+    actionOriginUrl?.host ?? publicOriginUrl.host,
+  );
   requestHeaders.set(
     "x-forwarded-proto",
-    request.nextUrl.protocol.slice(0, -1),
+    actionOriginUrl?.protocol.slice(0, -1) ??
+      publicOriginUrl.protocol.slice(0, -1),
   );
 
-  if (requestHeaders.get("origin") === request.nextUrl.origin) {
-    requestHeaders.set("origin", targetUrl.origin);
+  if (requestHeaders.get("origin") === publicOrigin) {
+    requestHeaders.set("origin", actionOrigin ?? targetUrl.origin);
   }
   const referer = requestHeaders.get("referer");
-  if (referer?.startsWith(request.nextUrl.origin)) {
+  if (referer?.startsWith(publicOrigin)) {
     requestHeaders.set(
       "referer",
-      `${targetUrl.origin}${referer.slice(request.nextUrl.origin.length)}`,
+      `${actionOrigin ?? targetUrl.origin}${referer.slice(
+        publicOrigin.length,
+      )}`,
     );
   }
+  requestHeaders.set("accept-encoding", "identity");
 
   const proxyRequestInit: RequestInit & { duplex?: "half" } = {
     method: request.method,
@@ -202,7 +253,16 @@ async function proxySoFrontendRequest(
     proxyRequestInit.duplex = "half";
   }
 
-  return fetch(targetUrl, proxyRequestInit);
+  const upstreamResponse = await fetch(targetUrl, proxyRequestInit);
+  const responseHeaders = new Headers(upstreamResponse.headers);
+  responseHeaders.delete("content-encoding");
+  responseHeaders.delete("content-length");
+
+  return new Response(upstreamResponse.body, {
+    headers: responseHeaders,
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -332,8 +392,7 @@ export const config = {
     // - _vercel (Vercel internals)
     // - assets (static assets)
     // - files with extensions (images, fonts, etc.)
-    // - sign-in and sign-up (Clerk auth pages, no i18n)
-    "/((?!_next|_vercel|assets|sign-in|sign-up|.*\\..*).*)",
+    "/((?!_next|_vercel|assets|.*\\..*).*)",
     // Match API routes for CORS handling
     "/(api|v1|trpc)(.*)",
   ],

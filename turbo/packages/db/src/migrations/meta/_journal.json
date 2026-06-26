@@ -3515,6 +3515,13 @@
       "when": 1782356464677,
       "tag": "0501_add_zero_maps_osm_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1782381315622,
+      "tag": "0502_bouncy_triton",
+      "breakpoints": true
     }
   ]
 }

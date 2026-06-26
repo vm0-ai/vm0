@@ -12,14 +12,31 @@ import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
 import { listCommand } from "./list";
 import { searchCommand } from "./search";
+import { isSupportedFramework } from "@vm0/core/frameworks";
 
 const PAGE_LIMIT = 100;
+
+interface AgentEventWithFramework {
+  readonly event: RunEvent;
+  readonly framework?: string;
+  readonly useDefaultFramework: boolean;
+}
+
+function supportedLogFramework(
+  framework: string | undefined,
+): string | undefined {
+  return isSupportedFramework(framework) ? framework : undefined;
+}
+
+function hasLogFramework(framework: string | null | undefined): boolean {
+  return framework !== undefined && framework !== null;
+}
 
 function renderAgentEvent(
   event: RunEvent,
   renderer: EventRenderer,
   normalizer: EventStreamNormalizer,
-  framework: string,
+  framework: string | undefined,
 ): void {
   const parsedEvents = normalizer.process(
     event.eventData,
@@ -39,13 +56,21 @@ async function showAgentEvents(
     order: "asc" | "desc";
   },
 ): Promise<void> {
-  let framework = "claude-code";
-  const events = await collectLogItems<RunEvent>({
+  const events = await collectLogItems<AgentEventWithFramework>({
     fetchPage: async (request) => {
       const response = await getZeroRunAgentEvents(runId, request);
-      framework = response.framework;
+      const responseFramework: string | null | undefined = response.framework;
       return {
-        items: response.events,
+        items: response.events.map((event) => {
+          const framework = supportedLogFramework(
+            responseFramework ?? undefined,
+          );
+          return {
+            event,
+            ...(framework ? { framework } : {}),
+            useDefaultFramework: !hasLogFramework(responseFramework),
+          };
+        }),
         hasMore: response.hasMore,
         nextCursor: response.nextCursor,
       };
@@ -65,14 +90,23 @@ async function showAgentEvents(
     showTimestamp: true,
     verbose: true,
   });
+  const framework = events.find((item) => {
+    return item.framework !== undefined;
+  })?.framework;
   const normalizer = new EventStreamNormalizer();
 
-  for (const event of events) {
-    renderAgentEvent(event, renderer, normalizer, framework);
+  for (const item of events) {
+    renderAgentEvent(
+      item.event,
+      renderer,
+      normalizer,
+      item.framework ?? (item.useDefaultFramework ? framework : undefined),
+    );
   }
   for (const parsed of normalizer.flush()) {
     renderer.render(parsed);
   }
+  renderer.flush();
 }
 
 export const zeroLogsCommand = new Command()
@@ -134,7 +168,7 @@ Examples:
         }
 
         let since: number | undefined;
-        if (options.since) {
+        if (options.since !== undefined) {
           since = parseTime(options.since);
         }
 

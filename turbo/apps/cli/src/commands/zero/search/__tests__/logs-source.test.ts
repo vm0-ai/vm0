@@ -18,7 +18,7 @@ function stubResponse() {
   return HttpResponse.json({
     results: [
       {
-        runId: "abc12345-1234-1234-1234-123456789abc",
+        runId: "550e8400-e29b-41d4-a716-446655440001",
         agentName: "my-agent",
         matchedEvent: {
           sequenceNumber: 3,
@@ -58,14 +58,34 @@ async function capture(
 }
 
 describe("zero search --source logs parity with zero logs search", () => {
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
   beforeEach(() => {
+    mockExit.mockClear();
+    mockConsoleError.mockClear();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     zeroSearchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mockExit.mockClear();
+    mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects whitespace-only queries", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync(["node", "cli", "   ", "--source", "logs"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Query cannot be empty");
   });
 
   it("produces identical output for the same query and flags", async () => {
@@ -123,9 +143,9 @@ describe("zero search --source logs parity with zero logs search", () => {
       "--agent",
       AGENT_ID,
       "--run",
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
       "--since",
-      "3d",
+      "1970-01-01T00:00:00Z",
       "--limit",
       "10",
       "-A",
@@ -139,10 +159,28 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(url.searchParams.get("keyword")).toBe("error");
     expect(url.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(url.searchParams.get("runId")).toBe(
-      "abc12345-1234-1234-1234-123456789abc",
+      "550e8400-e29b-41d4-a716-446655440001",
     );
     expect(url.searchParams.get("limit")).toBe("10");
     expect(url.searchParams.get("before")).toBe("1");
     expect(url.searchParams.get("after")).toBe("2");
+    expect(url.searchParams.get("since")).toBe("0");
+  });
+
+  it("rejects non-UUID --agent values", async () => {
+    await expect(
+      zeroSearchCommand.parseAsync([
+        "node",
+        "cli",
+        "error",
+        "--source",
+        "logs",
+        "--agent",
+        "agent-123",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errors).toContain("Invalid agent ID");
   });
 });

@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -36,7 +36,17 @@ struct ClaimRequestTelemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     local_admission_to_claim_request_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    poll_due_to_job_discovered_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    poll_http_request_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     poll_reason: Option<String>,
+}
+
+#[derive(Debug)]
+struct PollApiResult {
+    job: Option<Job>,
+    http_request_elapsed: Duration,
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +145,7 @@ impl JobProvider for ApiProvider {
                 .wait_for_poll_due(&self.cancel, POLL_SLOW, POLL_FAST)
                 .await?;
             let reason = due.reason();
+            let poll_due_started_at = Instant::now();
 
             let held_session_states = self.held_session_states.lock().await.clone();
             let poll_result = tokio::select! {
@@ -142,11 +153,14 @@ impl JobProvider for ApiProvider {
                 () = self.cancel.cancelled() => {
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, &held_session_states) => result,
+                result = self.api.poll(&self.group, &self.profiles, &held_session_states, reason) => result,
             };
 
             match poll_result {
-                Ok(Some(job)) => {
+                Ok(PollApiResult {
+                    job: Some(job),
+                    http_request_elapsed,
+                }) => {
                     let record = self
                         .poll_wakeups
                         .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
@@ -170,10 +184,11 @@ impl JobProvider for ApiProvider {
                     info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
                     return Some(
                         JobCandidate::new(job.run_id, profile)
-                            .with_poll_reason(poll_reason_value(reason)),
+                            .with_poll_reason(poll_reason_value(reason))
+                            .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed),
                     );
                 }
-                Ok(None) => {
+                Ok(PollApiResult { job: None, .. }) => {
                     self.poll_wakeups
                         .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                         .await;
@@ -294,23 +309,16 @@ impl ApiClient {
         Self { http, token }
     }
 
-    /// Poll for a pending job. Returns `Ok(None)` when no work is available.
+    /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
         group: &str,
         profiles: &[String],
         held_session_states: &[HeldSessionState],
-    ) -> RunnerResult<Option<Job>> {
-        let mut body = serde_json::json!({ "group": group, "profiles": profiles });
-        let held_session_states = poll_held_session_states(held_session_states);
-        if !held_session_states.is_empty()
-            && let Some(obj) = body.as_object_mut()
-        {
-            obj.insert(
-                "heldSessionStates".to_string(),
-                serde_json::json!(&*held_session_states),
-            );
-        }
+        reason: PollReason,
+    ) -> RunnerResult<PollApiResult> {
+        let body = poll_request_body(group, profiles, held_session_states, reason);
+        let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
                 .request_route(routes::runners::poll::POLL, &self.token)
@@ -322,7 +330,10 @@ impl ApiClient {
         let resp = check_api_status(resp, "poll").await?;
         let poll: PollResponse = decode_api_json(resp, "poll").await?;
 
-        Ok(poll.job)
+        Ok(PollApiResult {
+            job: poll.job,
+            http_request_elapsed: poll_started_at.elapsed(),
+        })
     }
 
     /// Send a heartbeat with runner state. Uses a short timeout (3s) to
@@ -436,9 +447,38 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
                 .map(duration_ms),
+            poll_due_to_job_discovered_ms: candidate
+                .poll_due_to_job_discovered_elapsed()
+                .map(duration_ms),
+            poll_http_request_ms: candidate.poll_http_request_elapsed().map(duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
     }
+}
+
+fn poll_request_body(
+    group: &str,
+    profiles: &[String],
+    held_session_states: &[HeldSessionState],
+    reason: PollReason,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "group": group,
+        "profiles": profiles,
+        "telemetry": {
+            "pollReason": poll_reason_value(reason),
+        },
+    });
+    let held_session_states = poll_held_session_states(held_session_states);
+    if !held_session_states.is_empty()
+        && let Some(obj) = body.as_object_mut()
+    {
+        obj.insert(
+            "heldSessionStates".to_string(),
+            serde_json::json!(&*held_session_states),
+        );
+    }
+    body
 }
 
 fn poll_reason_value(reason: PollReason) -> &'static str {
@@ -858,6 +898,17 @@ mod tests {
     }
 
     #[test]
+    fn poll_request_body_serializes_poll_reason_telemetry() {
+        let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
+        let body = poll_request_body("vm0/test", &profiles, &[], PollReason::Immediate);
+
+        assert_eq!(body["group"], "vm0/test");
+        assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
+        assert_eq!(body["telemetry"]["pollReason"], "immediate");
+        assert!(body.get("heldSessionStates").is_none());
+    }
+
+    #[test]
     fn claim_request_body_serializes_runner_timing() {
         let now = std::time::Instant::now();
         let candidate = JobCandidate::new_with_timing_for_test(
@@ -866,7 +917,8 @@ mod tests {
             now.checked_sub(Duration::from_millis(25)).unwrap(),
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
-        .with_poll_reason("deferred");
+        .with_poll_reason("deferred")
+        .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -880,6 +932,8 @@ mod tests {
                 .as_u64()
                 .is_some_and(|value| value >= 7)
         );
+        assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
+        assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
     }
 
@@ -905,6 +959,8 @@ mod tests {
                 .get("localAdmissionToClaimRequestMs")
                 .is_none()
         );
+        assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
+        assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
     }
 
@@ -989,6 +1045,8 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
+        assert!(discovered.poll_due_to_job_discovered_elapsed().is_some());
+        assert!(discovered.poll_http_request_elapsed().is_some());
         mock.assert_async().await;
     }
 
@@ -1051,7 +1109,10 @@ mod tests {
             .await;
         let api = api_client_for_server(&server);
 
-        let err = api.poll("default", &[], &[]).await.unwrap_err();
+        let err = api
+            .poll("default", &[], &[], PollReason::Immediate)
+            .await
+            .unwrap_err();
 
         assert_api_error(err, "poll 503 Service Unavailable: poll unavailable");
         mock.assert_async().await;
@@ -1068,7 +1129,10 @@ mod tests {
             .await;
         let api = api_client_for_server(&server);
 
-        let err = api.poll("default", &[], &[]).await.unwrap_err();
+        let err = api
+            .poll("default", &[], &[], PollReason::Immediate)
+            .await
+            .unwrap_err();
 
         match err {
             RunnerError::Api(message) => assert!(
@@ -1090,6 +1154,9 @@ mod tests {
                     .json_body(serde_json::json!({
                         "group": "default",
                         "profiles": ["vm0/default"],
+                        "telemetry": {
+                            "pollReason": "deferred"
+                        },
                         "heldSessionStates": [
                             {
                                 "sessionId": "sess-a",
@@ -1108,12 +1175,17 @@ mod tests {
             last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
         }];
 
-        let job = api
-            .poll("default", &profiles, &held_session_states)
+        let poll = api
+            .poll(
+                "default",
+                &profiles,
+                &held_session_states,
+                PollReason::Deferred,
+            )
             .await
             .unwrap();
 
-        assert!(job.is_none());
+        assert!(poll.job.is_none());
         mock.assert_async().await;
     }
 
@@ -1380,6 +1452,7 @@ mod tests {
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
                 &[],
+                PollReason::Immediate,
             )
             .await
             .unwrap_err();

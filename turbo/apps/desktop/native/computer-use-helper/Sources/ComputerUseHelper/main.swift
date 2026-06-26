@@ -57,6 +57,7 @@ func startSentry() {
         options.tracesSampleRate = NSNumber(value: 0)
         options.enableAutoPerformanceTracing = false
         options.enableUncaughtNSExceptionReporting = true
+        options.appHangTimeoutInterval = 5
         options.initialScope = { scope in
             scope.setTag(value: "desktop", key: "app")
             scope.setTag(value: "computer-use-helper", key: "component")
@@ -1950,7 +1951,8 @@ func isSelectableElement(role roleName: String?, subrole: String?, selected: Boo
 func clickCapabilities(
     _ element: AXUIElement,
     actions actionList: [String]? = nil,
-    selected selectedValue: Bool? = nil
+    selected selectedValue: Bool? = nil,
+    webAreaMouseClick webAreaMouseClickOverride: Bool? = nil
 ) -> ElementClickCapabilities {
     let elementRole = role(element)
     let elementSubrole = stringValue(attribute(element, kAXSubroleAttribute as CFString))
@@ -1958,7 +1960,8 @@ func clickCapabilities(
     let elementSelected = selectedValue ?? boolValue(attribute(element, kAXSelectedAttribute as CFString))
     let frame = clickableFrame(element)
     let selectable = isSelectableElement(role: elementRole, subrole: elementSubrole, selected: elementSelected)
-    let webAreaMouseClick = shouldUseMouseClickForElement(element)
+    let webAreaMouseClick = webAreaMouseClickOverride
+        ?? shouldUseMouseClickForElement(element, role: elementRole)
     let mouseClickable = frame != nil && (webAreaMouseClick || selectable)
     return ElementClickCapabilities(
         role: elementRole,
@@ -3310,7 +3313,8 @@ func describe(
     depth: Int,
     nodeCount: inout Int,
     truncationReasons: inout [String],
-    ancestry: Set<CFHashCode> = []
+    ancestry: Set<CFHashCode> = [],
+    insideWebArea: Bool = false
 ) -> [String: Any]? {
     let elementHash = CFHash(element)
     if ancestry.contains(elementHash) {
@@ -3327,8 +3331,10 @@ func describe(
     nodeCount += 1
 
     var node: [String: Any] = ["id": id]
-    if let role = role(element) {
-        node["role"] = role
+    let elementRole = role(element)
+    let elementInsideWebArea = insideWebArea || elementRole == "AXWebArea"
+    if let elementRole {
+        node["role"] = elementRole
     }
     if let roleDescription = stringValue(attribute(element, kAXRoleDescriptionAttribute as CFString)) {
         node["roleDescription"] = roleDescription
@@ -3400,7 +3406,16 @@ func describe(
     if let bounds = bounds(element) {
         node["bounds"] = bounds
     }
-    setClickCapabilityFields(&node, capabilities: clickCapabilities(element, actions: actions, selected: selected))
+    let webAreaMouseClick = elementInsideWebArea && elementRole != "AXMenuBarItem" && elementRole != "AXMenuItem"
+    setClickCapabilityFields(
+        &node,
+        capabilities: clickCapabilities(
+            element,
+            actions: actions,
+            selected: selected,
+            webAreaMouseClick: webAreaMouseClick
+        )
+    )
 
     if depth >= limits.maxDepth {
         markTruncated(&truncationReasons, "max_depth")
@@ -3416,7 +3431,8 @@ func describe(
             depth: depth + 1,
             nodeCount: &nodeCount,
             truncationReasons: &truncationReasons,
-            ancestry: childAncestry
+            ancestry: childAncestry,
+            insideWebArea: elementInsideWebArea
         )
     }
     if !children.isEmpty {
@@ -4108,8 +4124,11 @@ func hasRoleInElementAncestry(_ element: AXUIElement, roleName: String) -> Bool 
     return false
 }
 
-func shouldUseMouseClickForElement(_ element: AXUIElement) -> Bool {
-    let elementRole = role(element)
+func shouldUseMouseClickForElement(
+    _ element: AXUIElement,
+    role elementRoleOverride: String? = nil
+) -> Bool {
+    let elementRole = elementRoleOverride ?? role(element)
     if elementRole == "AXMenuBarItem" || elementRole == "AXMenuItem" {
         return false
     }

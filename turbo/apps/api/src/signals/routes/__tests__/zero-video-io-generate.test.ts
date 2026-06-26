@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 
 import { createApp } from "../../../app-factory";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
@@ -399,6 +400,7 @@ async function restoreVideoPricingRows(
 
 async function seedVideoFixture(options: {
   readonly credits?: number;
+  readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VideoFixture> {
   const orgId = `org_${randomUUID()}`;
@@ -412,7 +414,7 @@ async function seedVideoFixture(options: {
   );
   await writeDb.insert(orgMetadata).values({
     orgId,
-    tier: "free",
+    tier: options.tier ?? "free",
     credits: options.credits ?? 10_000,
   });
   await writeDb.execute(sql`
@@ -570,6 +572,41 @@ describe("POST /api/zero/video-io/generate", () => {
         code: "INSUFFICIENT_CREDITS",
       },
     });
+  });
+
+  it("returns 402 with the Pro upgrade message for limited-free-1 orgs", async () => {
+    const fixture = await track(
+      seedVideoFixture({
+        credits: 10_000,
+        tier: "limited-free-1",
+        withPricing: true,
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledBytePlus = false;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: "a city" }),
+    });
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message:
+          "Built-in video generation requires Pro. Return `pro_required` as the assistant error marker so the app can show the Pro upgrade card. Do not retry video generation until the workspace upgrades.",
+        code: "PRO_REQUIRED",
+      },
+    });
+    expect(calledBytePlus).toBeFalsy();
   });
 
   it("returns 503 when video pricing is not configured", async () => {

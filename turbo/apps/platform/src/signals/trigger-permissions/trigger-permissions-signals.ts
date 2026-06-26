@@ -47,6 +47,137 @@ export const setTriggerPermissionsConnectorSearch$ = command(
   },
 );
 
+interface TriggerPermissionEditorUiState {
+  readonly key: string | null;
+  readonly search: string;
+  readonly expandedGroups: ReadonlySet<string>;
+  readonly scrolled: boolean;
+}
+
+interface TriggerPermissionsDrawerConnectorState {
+  readonly triggerId: string | null;
+  readonly connectorRef: string | null;
+}
+
+function emptyTriggerPermissionEditorUiState({
+  key,
+  expandedGroups,
+}: {
+  readonly key: string | null;
+  readonly expandedGroups?: readonly string[];
+}): TriggerPermissionEditorUiState {
+  return {
+    key,
+    search: "",
+    expandedGroups: new Set(expandedGroups ?? []),
+    scrolled: false,
+  };
+}
+
+function triggerPermissionEditorStateForKey(
+  current: TriggerPermissionEditorUiState,
+  key: string,
+): TriggerPermissionEditorUiState {
+  return current.key === key
+    ? current
+    : emptyTriggerPermissionEditorUiState({ key });
+}
+
+export function triggerPermissionEditorUiStateForKey({
+  current,
+  key,
+  expandedGroups,
+}: {
+  readonly current: TriggerPermissionEditorUiState;
+  readonly key: string;
+  readonly expandedGroups: readonly string[];
+}): TriggerPermissionEditorUiState {
+  return current.key === key
+    ? current
+    : emptyTriggerPermissionEditorUiState({ key, expandedGroups });
+}
+
+const internalTriggerPermissionEditorUiState$ =
+  state<TriggerPermissionEditorUiState>(
+    emptyTriggerPermissionEditorUiState({ key: null }),
+  );
+
+export const triggerPermissionEditorUiState$ = computed((get) => {
+  return get(internalTriggerPermissionEditorUiState$);
+});
+
+export const setTriggerPermissionEditorSearch$ = command(
+  ({ get, set }, key: string, search: string) => {
+    const current = triggerPermissionEditorStateForKey(
+      get(internalTriggerPermissionEditorUiState$),
+      key,
+    );
+    set(internalTriggerPermissionEditorUiState$, { ...current, search });
+  },
+);
+
+export const setTriggerPermissionEditorScrolled$ = command(
+  ({ get, set }, key: string, scrolled: boolean) => {
+    const current = triggerPermissionEditorStateForKey(
+      get(internalTriggerPermissionEditorUiState$),
+      key,
+    );
+    set(internalTriggerPermissionEditorUiState$, { ...current, scrolled });
+  },
+);
+
+export const toggleTriggerPermissionEditorGroup$ = command(
+  ({ get, set }, key: string, category: string) => {
+    const current = triggerPermissionEditorStateForKey(
+      get(internalTriggerPermissionEditorUiState$),
+      key,
+    );
+    const expandedGroups = new Set(current.expandedGroups);
+    if (expandedGroups.has(category)) {
+      expandedGroups.delete(category);
+    } else {
+      expandedGroups.add(category);
+    }
+    set(internalTriggerPermissionEditorUiState$, {
+      ...current,
+      expandedGroups,
+    });
+  },
+);
+
+const internalTriggerPermissionsDrawerConnector$ =
+  state<TriggerPermissionsDrawerConnectorState>({
+    triggerId: null,
+    connectorRef: null,
+  });
+
+export const triggerPermissionsDrawerConnector$ = computed((get) => {
+  return get(internalTriggerPermissionsDrawerConnector$);
+});
+
+export function triggerPermissionsDrawerConnectorForTrigger({
+  current,
+  triggerId,
+  defaultConnectorRef,
+}: {
+  readonly current: TriggerPermissionsDrawerConnectorState;
+  readonly triggerId: string;
+  readonly defaultConnectorRef: string | null;
+}): string | null {
+  return current.triggerId === triggerId
+    ? current.connectorRef
+    : defaultConnectorRef;
+}
+
+export const setTriggerPermissionsDrawerConnector$ = command(
+  ({ set }, triggerId: string, connectorRef: string | null) => {
+    set(internalTriggerPermissionsDrawerConnector$, {
+      triggerId,
+      connectorRef,
+    });
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Trigger data (derived from the workflow detail's trigger list)
 // ---------------------------------------------------------------------------
@@ -178,6 +309,24 @@ function createTriggerPermissionEditorSignals(): TriggerPermissionEditorSignals 
   return { overrides$, setOverride$ };
 }
 
+function createTriggerPermissionEditorSignalsFactory(): (
+  key: string,
+) => TriggerPermissionEditorSignals {
+  const cache = new Map<string, TriggerPermissionEditorSignals>();
+  return (key: string) => {
+    const existing = cache.get(key);
+    if (existing) {
+      return existing;
+    }
+    const signals = createTriggerPermissionEditorSignals();
+    cache.set(key, signals);
+    return signals;
+  };
+}
+
+export const triggerPermissionEditorSignalsForKey =
+  createTriggerPermissionEditorSignalsFactory();
+
 /**
  * Editor signals for the active trigger + connector. ccstate memoizes the
  * computed, so the same signal group is reused until the trigger or connector
@@ -190,9 +339,6 @@ export const currentTriggerPermissionEditorSignals$ = computed(
     if (!triggerId || !ref) {
       return null;
     }
-    // The factory is created per (triggerId, ref); ccstate's memoization keys
-    // this computed on those route values, so navigating to a different
-    // trigger/connector yields a fresh editor with no carried-over edits.
-    return createTriggerPermissionEditorSignals();
+    return triggerPermissionEditorSignalsForKey(`${triggerId}\u0000${ref}`);
   },
 );

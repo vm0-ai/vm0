@@ -30,6 +30,7 @@ import type {
   UpdateOrgMemberRoleRequest,
 } from "@vm0/api-contracts/contracts/org-members";
 import {
+  onboardingCompleteLimitedFreeContract,
   onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
@@ -778,6 +779,19 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           body,
         }),
         [200, 403, 409, 422],
+      );
+    },
+
+    async completeLimitedFreeOnboarding(actor: ApiTestUser) {
+      const client = setupApp({ context })(
+        onboardingCompleteLimitedFreeContract,
+      );
+      return await accept(
+        client.complete({
+          headers: authenticate(actor),
+          body: {},
+        }),
+        [200, 403, 409],
       );
     },
 

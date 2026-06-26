@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
@@ -181,6 +182,64 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(paidOnboardingMetadata).toStrictEqual({
       tier: "free",
       onboardingPaymentPending: true,
+    });
+
+    const forgedLimitedFree = await api.requestRawJson(
+      admin,
+      "/api/zero/onboarding/complete-limited-free",
+      "POST",
+      { credits: 999_999 },
+      [400],
+    );
+    expectApiError(forgedLimitedFree.body);
+    expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
+
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    expect(completeLimitedFree.status).toBe(200);
+    expect(completeLimitedFree.body).toStrictEqual({
+      agentId: defaultAgentId,
+      tier: "limited-free-1",
+      needsOnboarding: false,
+    });
+
+    const afterLimitedFree = await api.readOnboardingStatus(admin);
+    expect(afterLimitedFree.needsOnboarding).toBeFalsy();
+    expect(afterLimitedFree.defaultAgentId).toBe(defaultAgentId);
+
+    const [limitedFreeMetadata] = await writeDb
+      .select({
+        credits: orgMetadata.credits,
+        tier: orgMetadata.tier,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, adminOrgId))
+      .limit(1);
+    expect(limitedFreeMetadata).toStrictEqual({
+      credits: 1000,
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
+    });
+    const [onboardingCreditGrant] = await writeDb
+      .select({
+        source: creditExpiresRecord.source,
+        amount: creditExpiresRecord.amount,
+        remaining: creditExpiresRecord.remaining,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          eq(creditExpiresRecord.orgId, adminOrgId),
+          eq(creditExpiresRecord.source, "onboarding"),
+        ),
+      )
+      .limit(1);
+    expect(onboardingCreditGrant).toStrictEqual({
+      source: "onboarding",
+      amount: 1000,
+      remaining: 1000,
+      expiresAt: new Date("2999-12-31T00:00:00Z"),
     });
 
     const afterRepeatedSetup = await api.listAgents(admin);

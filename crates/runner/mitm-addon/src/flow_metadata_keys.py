@@ -91,6 +91,10 @@ Firewall and auth context
 - ``AUTH_URL_REWRITE``: ``bool`` written only after inline auth.base forwarding
   succeeds and sets the provider response on the flow. Read by network-log
   firewall metadata.
+- ``AUTH_BASE_FORWARD_ADMISSION``: opaque auth.base forwarding admission
+  reservation written by header-phase auth.base admission and consumed by the
+  request auth.base forwarder path. Released by request/terminal cleanup if it
+  is not transferred to the forwarder.
 - ``TRUSTED_AUTHORITY_HOST``: ``str`` host from authority validation. Read by
   auth-base URL rewrite logic when reconstructing trusted request authority.
 
@@ -108,11 +112,16 @@ Request streaming
 -----------------
 - ``REQUEST_STREAM_BUFFER``: capped ``bytearray`` written by
   ``requestheaders()`` via request streaming setup for stream-safe body
-  capture paths. Read by request body capture. Removed by stream cleanup after
-  terminal hooks.
+  capture paths. Read by request body capture and connector billing refinement.
+  Removed by stream cleanup after terminal hooks.
 - ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
   ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
-  size and capture truncation. Removed by stream cleanup.
+  size, capture truncation, and connector billing refinement. Removed by stream
+  cleanup.
+- ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
+  mitmproxy has delivered the full streamed request body to the addon. Read by
+  connector billing before treating a non-truncated request stream buffer as a
+  complete request body. Removed by stream cleanup.
 
 Model-provider usage
 --------------------
@@ -178,6 +187,7 @@ AUTH_REFRESHED_CONNECTORS: Final = "auth_refreshed_connectors"
 AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"
 AUTH_CACHE_HIT: Final = "auth_cache_hit"
 AUTH_URL_REWRITE: Final = "auth_url_rewrite"
+AUTH_BASE_FORWARD_ADMISSION: Final = "auth_base_forward_admission"
 TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 
 # Usage and streaming metadata
@@ -189,5 +199,6 @@ STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
 REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"
 REQUEST_STREAM_BUFFER_STATE: Final = "request_stream_buffer_state"
+REQUEST_STREAM_COMPLETE: Final = "request_stream_complete"
 X_NDJSON_STATE: Final = "x_ndjson_state"
 X_JSON_STATE: Final = "x_json_state"

@@ -5559,9 +5559,9 @@ function InsufficientCreditsCard() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const requiresPro = tier === "pro-suspend";
+  const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
   const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === null;
+  const isFree = tier === "free" || tier === "limited-free-1" || tier === null;
   const shouldStartProCheckout = requiresPro || isFree;
   const redirecting =
     checkoutLoadable.state === "loading" ||
@@ -5627,12 +5627,17 @@ function InsufficientCreditsCard() {
   );
 }
 
+function isBillingRecoveryError(error: string): boolean {
+  const normalized = error.trim().toLowerCase();
+  return normalized === "insufficient_credits" || normalized === "pro_required";
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
 
-  if (error === "insufficient_credits") {
+  if (isBillingRecoveryError(error)) {
     return <InsufficientCreditsCard />;
   }
 

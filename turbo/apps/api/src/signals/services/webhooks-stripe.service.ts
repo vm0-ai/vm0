@@ -272,6 +272,9 @@ function monthlyCreditsForTier(tier: OrgTier): number {
     case "free": {
       return 0;
     }
+    case "limited-free-1": {
+      return 0;
+    }
     case "pro-suspend": {
       return 0;
     }

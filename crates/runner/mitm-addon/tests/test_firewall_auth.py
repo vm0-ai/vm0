@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import auth
+import auth_base_forwarder
 import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
+import flow_metadata_keys as metadata_keys
 import matching
 import platform_api
 from aws_sigv4 import AwsSigV4Credentials
@@ -117,7 +119,7 @@ def _firewall_flow(
     run_id: str = "test-run",
 ):
     flow = real_flow(with_response=False, host=host, path=path)
-    flow.metadata["vm_run_id"] = run_id
+    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
     return flow
 
 
@@ -727,7 +729,7 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         api_entry = _api_entry(
             api_id="run-1:0",
             auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
@@ -752,21 +754,21 @@ class TestHandleFirewallRequest:
         assert flow.request.headers["X-Custom"] == "value"
 
         # Token replacement metadata
-        assert flow.metadata["auth_resolved_secrets"] == ["GITHUB_TOKEN"]
-        assert flow.metadata["auth_refreshed_connectors"] == []
-        assert flow.metadata["auth_refreshed_secrets"] == []
-        assert flow.metadata["auth_cache_hit"] is False
+        assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == ["GITHUB_TOKEN"]
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] == []
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] == []
+        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
 
         # Core metadata
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_base"] == "https://api.github.com"
-        assert flow.metadata["firewall_api_id"] == "run-1:0"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+        assert flow.metadata[metadata_keys.FIREWALL_API_ID] == "run-1:0"
 
         # Audit metadata
-        assert flow.metadata["firewall_name"] == "github"
-        assert flow.metadata["firewall_permission"] == "repo-read"
-        assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
-        assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "repo-read"
+        assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == "GET /repos/{owner}/{repo}"
+        assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"owner": "octocat", "repo": "hello"}
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
@@ -847,8 +849,8 @@ class TestHandleFirewallRequest:
                 ("Authorization", placeholder_authorization),
             ),
         )
-        flow.metadata["vm_run_id"] = "test-run"
-        flow.metadata["original_url"] = get_original_url(flow)
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = get_original_url(flow)
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
             auth_config={
@@ -932,8 +934,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "invalid_resolved_auth_header"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_resolved_auth_header"
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
@@ -959,7 +961,7 @@ class TestHandleFirewallRequest:
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        assert flow.metadata["firewall_billable"] is False
+        assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
 
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
@@ -981,8 +983,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_failed"
         assert "API unreachable" in body["message"]
@@ -1029,8 +1031,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         assert "Authorization" not in flow.request.headers
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_failed"
@@ -1067,8 +1069,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
@@ -1111,8 +1113,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
@@ -1150,8 +1152,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
@@ -1191,8 +1193,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "TOKEN_REFRESH_FAILED"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "TOKEN_REFRESH_FAILED"
         body = json.loads(flow.response.content)
         assert body["error"] == "TOKEN_REFRESH_FAILED"
         assert body["message"] == "Access token expired and refresh failed for: codex-oauth-token."
@@ -1231,8 +1233,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 403
-        assert flow.metadata["firewall_action"] == "BLOCK"
-        assert flow.metadata["firewall_error"] == "FORBIDDEN"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "FORBIDDEN"
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
@@ -1246,7 +1248,7 @@ class TestHandleFirewallRequest:
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         api_entry = _api_entry()
         vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
@@ -1271,10 +1273,10 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "invalid_auth_expiry"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_auth_expiry"
         assert "Authorization" not in flow.request.headers
-        assert "auth_url_rewrite" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert "api_key" not in flow.request.query
         assert cached_headers(("test-run", "https://api.github.com")) is None
         body = json.loads(flow.response.content)
@@ -1340,8 +1342,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 424
-        assert flow.metadata["firewall_action"] == "BLOCK"
-        assert flow.metadata["firewall_error"] == "connector_not_configured"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
         assert body["message"] == "Connector not configured"
@@ -1370,8 +1372,8 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 402
-        assert flow.metadata["firewall_action"] == "BLOCK"
-        assert flow.metadata["firewall_error"] == "insufficient_credits"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "insufficient_credits"
         body = json.loads(flow.response.content)
         assert body["error"] == "insufficient_credits"
         assert body["message"] == "Insufficient credits"
@@ -1405,8 +1407,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 424
-        assert flow.metadata["firewall_action"] == "BLOCK"
-        assert flow.metadata["firewall_error"] == "connector_not_configured"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
         assert body["message"] == "Connector not configured"
@@ -1449,6 +1451,8 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry()
         vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
+        admission = auth_base_forwarder.reserve_forward_request_admission(42)
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
 
         with mitm_ctx():
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1456,14 +1460,53 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_unavailable"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_unavailable"
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_unavailable"
         assert body["message"] == "Auth secrets not configured"
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
+        assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+    async def test_cancelled_auth_resolution_releases_forward_admission(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        admission = auth_base_forwarder.reserve_forward_request_admission(42)
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        auth_resolution_entered = asyncio.Event()
+        release_auth_resolution = asyncio.Event()
+
+        async def wait_for_auth_resolution(*_args, **_kwargs):
+            auth_resolution_entered.set()
+            await release_auth_resolution.wait()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(side_effect=wait_for_auth_resolution),
+            ),
+        ):
+            task = asyncio.create_task(auth.handle_firewall_request(flow, allow, vm_info))
+            try:
+                await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    _ = await task
+            finally:
+                release_auth_resolution.set()
+                await cancel_pending_task(task)
+
+        assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
 # =========================================================================

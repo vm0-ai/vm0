@@ -3,12 +3,15 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
+import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   bytePlusBuiltInGenerationWebhookUrl,
@@ -26,6 +29,7 @@ import {
   videoPricing$,
   videoPricingCategoryForOptions,
   videoPricingKey,
+  videoRequiresPro,
   videoServiceUnavailable,
 } from "../services/zero-video-io-generate.service";
 import {
@@ -213,6 +217,17 @@ const submitVideoProviderWebhookJob$ = command(
 
 const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const [org] = await db
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, auth.orgId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (org?.tier === "limited-free-1") {
+    return videoRequiresPro();
+  }
+
   const bodyResult = await get(videoBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
