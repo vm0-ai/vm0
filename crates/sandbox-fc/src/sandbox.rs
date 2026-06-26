@@ -1605,7 +1605,14 @@ fn process_stderr_policy(output: ProcessOutputMode) -> ExecOutputPolicy {
         ProcessOutputMode::Buffered { output_limits } => ExecOutputPolicy::Capture {
             limit_bytes: output_limits.stderr_limit_bytes,
         },
-        ProcessOutputMode::Stream { .. } => ExecOutputPolicy::Discard,
+        ProcessOutputMode::Stream {
+            stderr_capture_limit_bytes: Some(limit_bytes),
+            ..
+        } => ExecOutputPolicy::Capture { limit_bytes },
+        ProcessOutputMode::Stream {
+            stderr_capture_limit_bytes: None,
+            ..
+        } => ExecOutputPolicy::Discard,
     }
 }
 
@@ -5203,6 +5210,7 @@ mod tests {
             stream_limit_bytes: 123,
             chunk_limit_bytes: 45,
             queue_capacity: 7,
+            stderr_capture_limit_bytes: None,
         };
 
         assert_eq!(
@@ -5214,6 +5222,21 @@ mod tests {
         );
         assert_eq!(process_stderr_policy(output), ExecOutputPolicy::Discard);
         assert_eq!(process_stream_queue_capacity(output), Some(7));
+    }
+
+    #[test]
+    fn process_output_stream_can_capture_stderr() {
+        let output = ProcessOutputMode::Stream {
+            stream_limit_bytes: 123,
+            chunk_limit_bytes: 45,
+            queue_capacity: 7,
+            stderr_capture_limit_bytes: Some(4096),
+        };
+
+        assert_eq!(
+            process_stderr_policy(output),
+            ExecOutputPolicy::Capture { limit_bytes: 4096 }
+        );
     }
 
     #[test]

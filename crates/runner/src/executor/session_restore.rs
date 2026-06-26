@@ -17,11 +17,19 @@ const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
 const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
 const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
 const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct SessionRestoreDiagnostics {
+    pub(super) framework: &'static str,
+    pub(super) session_fingerprint: String,
+    pub(super) bytes_in: usize,
+}
+
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
-) -> RunnerResult<()> {
+) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
@@ -52,7 +60,7 @@ pub(super) async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
-) -> RunnerResult<()> {
+) -> RunnerResult<SessionRestoreDiagnostics> {
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
@@ -66,14 +74,19 @@ pub(super) async fn restore_claude_session(
         &session.session_history,
     )
     .await?;
+    let diagnostics = SessionRestoreDiagnostics {
+        framework: "claude-code",
+        session_fingerprint: diagnostic_session_fingerprint(&session.cli_agent_session_id),
+        bytes_in: session.session_history.len(),
+    };
     info!(
         run_id = %context.run_id,
-        framework = "claude-code",
-        session_fingerprint = %diagnostic_session_fingerprint(&session.cli_agent_session_id),
-        bytes_in = session.session_history.len(),
+        framework = diagnostics.framework,
+        session_fingerprint = %diagnostics.session_fingerprint,
+        bytes_in = diagnostics.bytes_in,
         "restored session history"
     );
-    Ok(())
+    Ok(diagnostics)
 }
 
 async fn write_session_history_file(

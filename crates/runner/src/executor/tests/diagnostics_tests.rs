@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
-use sandbox::ProcessOutputChunk;
+use sandbox::{ExecTermination, ProcessExit, ProcessOutputChunk};
 use sandbox_mock::MockSandbox;
 
 use super::super::diagnostics::{
@@ -13,6 +13,8 @@ use super::super::diagnostics::{
     copy_guest_logs, dmesg_indicates_oom, drain_stdout_to_file, guest_log_copy_failure_kind,
     host_dmesg_indicates_oom, parse_agent_abnormal_exit_resource_diagnostics,
     read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
+    should_collect_agent_abnormal_exit_diagnostics,
+    should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::super::sandbox_run::post_job_cleanup;
 use super::super::{
@@ -39,6 +41,9 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
             "stored-secret-value".to_string(),
         ),
     ]);
+    let big_value = "largest-secret-value".repeat(20);
+    let big_value_len = big_value.len();
+    bootstrap_env.insert("BIG_VALUE".to_string(), big_value);
     for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
         bootstrap_env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
     }
@@ -50,20 +55,23 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
 
     let diagnostics = build_agent_env_diagnostics(&bootstrap_env, &user_env);
 
-    assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5);
+    assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 6);
+    assert!(diagnostics.env_bytes >= big_value_len);
     assert_eq!(diagnostics.runner_owned_count, 2);
     assert_eq!(
         diagnostics.external_count,
-        AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
+        AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 4
     );
     assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
+    assert_eq!(diagnostics.largest_entries[0].key, "BIG_VALUE");
+    assert_eq!(diagnostics.largest_entries[0].value_len, big_value_len);
     let env_pairs: Vec<(String, String)> = bootstrap_env.into_iter().collect();
     let key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
     assert_eq!(
         key_diagnostics.logged_keys.len(),
         AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
     );
-    assert_eq!(key_diagnostics.omitted_key_count, 5);
+    assert_eq!(key_diagnostics.omitted_key_count, 6);
     let mut sorted_logged_keys = key_diagnostics.logged_keys.clone();
     sorted_logged_keys.sort();
     assert_eq!(key_diagnostics.logged_keys, sorted_logged_keys);
@@ -75,18 +83,70 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
     assert_eq!(long_key.chars().count(), AGENT_ENV_KEY_MAX_CHARS + 3);
     assert!(long_key.ends_with("..."));
     let rendered = format!(
-        "{} {}",
+        "{} {} {}",
         diagnostics.suspicious_keys_csv(),
-        key_diagnostics.logged_keys_csv()
+        key_diagnostics.logged_keys_csv(),
+        diagnostics.largest_entries_csv()
     );
     assert!(rendered.contains("BASH_ENV"));
+    assert!(rendered.contains("BIG_VALUE"));
     assert!(rendered.contains("VM0_RUN_ID"));
     assert!(!rendered.contains("super-secret-bash-env"));
     assert!(!rendered.contains("user-secret-bash-env"));
+    assert!(!rendered.contains("largest-secret-value"));
     assert!(!rendered.contains("normal-secret-value"));
     assert!(!rendered.contains("runner-secret-value"));
     assert!(!rendered.contains("stored-secret-value"));
     assert!(!rendered.contains("long-secret-value"));
+}
+
+#[test]
+fn bootstrap_abnormal_exit_diagnostics_allow_captured_stderr_without_resource_probe() {
+    let exit = ProcessExit::new(1, 126, Vec::new(), b"permission denied".to_vec());
+    let stderr = "permission denied";
+
+    assert!(should_log_agent_bootstrap_abnormal_exit_diagnostics(
+        false, &exit, None, None
+    ));
+    assert!(!should_collect_agent_abnormal_exit_diagnostics(
+        false, &exit, stderr, None, None
+    ));
+
+    let diagnostic = FailureDiagnostic::new(
+        agent_diagnostics::FailureClass::CliNonzero,
+        agent_diagnostics::AgentFramework::ClaudeCode,
+        agent_diagnostics::PromptMetadata::from_prompt("/help"),
+    );
+    assert!(!should_log_agent_bootstrap_abnormal_exit_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic),
+        None
+    ));
+    assert!(!should_log_agent_bootstrap_abnormal_exit_diagnostics(
+        false,
+        &exit,
+        None,
+        Some("guest error")
+    ));
+
+    let successful_exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+    assert!(!should_log_agent_bootstrap_abnormal_exit_diagnostics(
+        false,
+        &successful_exit,
+        None,
+        None
+    ));
+    let timed_out_exit = ProcessExit {
+        termination: ExecTermination::TimedOut,
+        ..ProcessExit::new(1, 0, Vec::new(), Vec::new())
+    };
+    assert!(!should_log_agent_bootstrap_abnormal_exit_diagnostics(
+        false,
+        &timed_out_exit,
+        None,
+        None
+    ));
 }
 
 #[test]
