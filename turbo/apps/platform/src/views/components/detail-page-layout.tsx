@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@vm0/ui";
 
-export const DETAIL_PAGE_CONTENT_CLASS = "mx-auto w-full max-w-[900px]";
+const DETAIL_PAGE_CONTENT_CLASS = "mx-auto w-full max-w-[900px]";
 
 export function DetailPageShell({
   children,
