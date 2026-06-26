@@ -8,6 +8,10 @@ import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  storedExecutionContextSchema,
+  type StoredExecutionContext,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -16,6 +20,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -71,6 +76,7 @@ const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
   "claim_route_lookup_authorization",
   "claim_route_context_parse",
+  "claim_route_resolve_resume_session_history",
   "claim_route_feature_switch_context",
   "claim_route_secret_materialization",
   "claim_route_response_assembly",
@@ -359,11 +365,13 @@ function expectNoApiDispatchActions(
   }
 }
 
-function mockSessionHistoryBlob(hash: string, history: string): void {
+function mockSessionHistoryBlob(hash: string, history: string): () => number {
+  let readCount = 0;
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = (command as { readonly input?: { readonly Key?: string } })
       .input;
     if (input?.Key === `blobs/${hash}.blob`) {
+      readCount += 1;
       return Promise.resolve({
         Body: {
           async *[Symbol.asyncIterator]() {
@@ -374,6 +382,23 @@ function mockSessionHistoryBlob(hash: string, history: string): void {
     }
     return Promise.resolve({});
   });
+  return () => {
+    return readCount;
+  };
+}
+
+async function storedExecutionContextForQueuedRun(
+  runId: string,
+): Promise<StoredExecutionContext> {
+  const [row] = await writeDb
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected runner job queue row");
+  }
+  return storedExecutionContextSchema.parse(row.executionContext);
 }
 
 /**
@@ -615,7 +640,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const claim = await api.claimRunnerJob(first.runId);
     const history = `bdd timing session history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
-    mockSessionHistoryBlob(historyHash, history);
+    const historyBlobReads = mockSessionHistoryBlob(historyHash, history);
 
     await webhooks.requestAgentCheckpoint(
       {
@@ -638,6 +663,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected checkpointed timing run to expose checkpoint");
     }
 
+    const historyBlobReadsBeforeResume = historyBlobReads();
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -645,14 +671,26 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
+    expect(historyBlobReads()).toBe(historyBlobReadsBeforeResume);
+    const storedSessionContext = await storedExecutionContextForQueuedRun(
+      resumed.runId,
+    );
+    expect(storedSessionContext.resumeSession).toStrictEqual({
+      kind: "history-ref",
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      historyHash,
+    });
+    expect(JSON.stringify(storedSessionContext)).not.toContain(history);
     const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
     expectApiDispatchActions(sessionTimingEvents, [
       "api_dispatch_resolve_compose_by_session_id",
       "api_dispatch_resolve_compose_lookup_session",
       "api_dispatch_resolve_compose_lookup_compose",
       "api_dispatch_resolve_compose_load_resume_session",
-      "api_dispatch_resolve_compose_resolve_session_history",
       "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    expectNoApiDispatchActions(sessionTimingEvents, [
+      "api_dispatch_resolve_compose_resolve_session_history",
     ]);
     expectNoApiDispatchActions(
       sessionTimingEvents,
@@ -666,13 +704,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(historyHash);
       expect(serialized).not.toContain(first.sessionId);
     }
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toStrictEqual({
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      sessionHistory: history,
+    });
+    expect(historyBlobReads()).toBe(historyBlobReadsBeforeResume + 1);
 
     const checkpointZeroToken = "bdd-checkpoint-zero-token";
+    const historyBlobReadsBeforeCheckpointResume = historyBlobReads();
     const checkpointRun = await api.createDirectRun(actor, {
       checkpointId,
       prompt: "resume checkpoint with timing",
       secrets: { ZERO_TOKEN: checkpointZeroToken },
     });
+    expect(historyBlobReads()).toBe(historyBlobReadsBeforeCheckpointResume);
+    const storedCheckpointContext = await storedExecutionContextForQueuedRun(
+      checkpointRun.runId,
+    );
+    expect(storedCheckpointContext.resumeSession).toStrictEqual({
+      kind: "history-ref",
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      historyHash,
+    });
+    expect(JSON.stringify(storedCheckpointContext)).not.toContain(history);
     const checkpointTimingEvents = apiDispatchTimingEventsForRun(
       checkpointRun.runId,
     );
@@ -681,6 +736,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "api_dispatch_resolve_compose_lookup_checkpoint",
       "api_dispatch_resolve_compose_lookup_version",
       "api_dispatch_resolve_compose_load_resume_session",
+    ]);
+    expectNoApiDispatchActions(checkpointTimingEvents, [
       "api_dispatch_resolve_compose_resolve_session_history",
     ]);
     expectNoApiDispatchActions(
@@ -704,6 +761,73 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
     await api.requestCancelRun(actor, checkpointRun.runId, [200]);
+  });
+
+  it("fails claim before running when referenced session history is missing", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a missing-history session",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(first.runId);
+    const history = `missing history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-missing-history-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+
+    context.mocks.s3.send.mockResolvedValue({});
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue missing-history session",
+      modelProvider: "anthropic-api-key",
+    });
+    const storedContext = await storedExecutionContextForQueuedRun(
+      resumed.runId,
+    );
+    expect(storedContext.resumeSession).toStrictEqual({
+      kind: "history-ref",
+      sessionId: `bdd-missing-history-cli-${first.runId}`,
+      historyHash,
+    });
+
+    const rejectedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [400],
+    );
+    expectApiError(rejectedClaim.body);
+    expect(rejectedClaim.body.error.message).toBe(
+      "Job missing resume session history",
+    );
+
+    const failed = await api.readRun(actor, resumed.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("Runner job missing resume session history");
+    const [remainingJob] = await writeDb
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, resumed.runId))
+      .limit(1);
+    expect(remainingJob).toBeUndefined();
   });
 
   it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {

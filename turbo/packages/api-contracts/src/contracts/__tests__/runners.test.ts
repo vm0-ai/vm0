@@ -236,6 +236,41 @@ describe("runner firewall entry contract", () => {
   });
 });
 
+describe("runner resume session contracts", () => {
+  it("accepts legacy inline resume sessions in stored contexts", () => {
+    const resumeSession = {
+      sessionId: "session-1",
+      sessionHistory: '{"type":"init"}\n',
+    };
+
+    expect(
+      storedExecutionContextSchema.shape.resumeSession.safeParse(resumeSession)
+        .success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.resumeSession.safeParse(resumeSession)
+        .success,
+    ).toBe(true);
+  });
+
+  it("accepts hash references only in stored resume sessions", () => {
+    const resumeSession = {
+      kind: "history-ref",
+      sessionId: "session-1",
+      historyHash: "a".repeat(64),
+    };
+
+    expect(
+      storedExecutionContextSchema.shape.resumeSession.safeParse(resumeSession)
+        .success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.resumeSession.safeParse(resumeSession)
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe("runner apiStartTime contract", () => {
   it("accepts Unix epoch millisecond integers", () => {
     const timestamp = 1_700_000_000_000;

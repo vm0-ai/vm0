@@ -642,6 +642,7 @@ export {
   artifactEntrySchema,
   storageManifestSchema,
   resumeSessionSchema,
+  storedResumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type RunnersHeartbeatContract,
@@ -653,6 +654,7 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
+  type StoredResumeSession,
 } from "./runners";
 
 export {

@@ -170,6 +170,15 @@ export const resumeSessionSchema = z.object({
   sessionHistory: z.string(),
 });
 
+export const storedResumeSessionSchema = z.union([
+  resumeSessionSchema,
+  z.object({
+    kind: z.literal("history-ref"),
+    sessionId: z.string(),
+    historyHash: z.string().length(64),
+  }),
+]);
+
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider"]),
   sourceUserId: z.string().optional(),
@@ -190,7 +199,7 @@ export const secretConnectorMetadataMapSchema = z.record(
 export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
-  resumeSession: resumeSessionSchema.nullable(),
+  resumeSession: storedResumeSessionSchema.nullable(),
   // AES-256-GCM encrypted Record<string, string>. Keys are the runtime secret
   // names used by `${{ secrets.NAME }}`; connector/model-provider keys are env
   // aliases, not backing storage secret names.
@@ -386,3 +395,4 @@ export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;

@@ -7,7 +7,9 @@ import {
   storedExecutionContextSchema,
   type ExecutionContext,
   type HeldSessionState,
+  type ResumeSession,
   type StoredExecutionContext,
+  type StoredResumeSession,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -21,6 +23,7 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
+import { downloadS3Buffer } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
@@ -28,13 +31,14 @@ import {
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
-import { tapError } from "../utils";
+import { settle, tapError } from "../utils";
 
 const L = logger("Runners");
 
@@ -45,6 +49,8 @@ type SandboxOperationAttrs = Parameters<
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
+const MISSING_RESUME_SESSION_HISTORY_ERROR =
+  "Runner job missing resume session history";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
@@ -52,6 +58,7 @@ type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
+  | "claim_route_resolve_resume_session_history"
   | "claim_route_feature_switch_context"
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
@@ -575,6 +582,10 @@ type ClaimedTransitionResult = Extract<
   ClaimTransitionResult,
   { readonly status: "claimed" }
 >;
+type ClaimTransitionFailureResult = Exclude<
+  ClaimTransitionResult,
+  ClaimedTransitionResult
+>;
 
 interface LockedClaimRunRow extends Record<string, unknown> {
   readonly id: string;
@@ -699,6 +710,18 @@ async function transitionClaimedJobToRunning(
   });
 }
 
+function claimTransitionFailureResponse(
+  result: ClaimTransitionFailureResult,
+): ReturnType<typeof conflict> | ReturnType<typeof notFound> {
+  if (result.status === "conflict") {
+    return conflict("Job was claimed by another runner");
+  }
+  if (result.status === "job-not-found") {
+    return notFound("Job not found in queue");
+  }
+  return notFound("Run not found");
+}
+
 type PoisonJobResult =
   | { readonly status: "failed" }
   | { readonly status: "conflict" }
@@ -754,6 +777,115 @@ async function failPoisonQueuedJob(
   });
 }
 
+type ResumeSessionResolutionResult =
+  | {
+      readonly status: "ok";
+      readonly resumeSession: ResumeSession | null;
+    }
+  | { readonly status: "missing-history" };
+
+type PoisonClaimResponse =
+  | ReturnType<typeof conflict>
+  | ReturnType<typeof notFound>
+  | ReturnType<typeof badRequestMessage>;
+
+function isStoredResumeSessionHistoryRef(
+  resumeSession: StoredResumeSession,
+): resumeSession is Extract<
+  StoredResumeSession,
+  { readonly kind: "history-ref" }
+> {
+  return "kind" in resumeSession && resumeSession.kind === "history-ref";
+}
+
+async function resolveClaimResumeSession(args: {
+  readonly storedResumeSession: StoredResumeSession | null;
+  readonly loadHistory: (historyHash: string) => Promise<Buffer>;
+}): Promise<ResumeSessionResolutionResult> {
+  const storedResumeSession = args.storedResumeSession;
+  if (!storedResumeSession) {
+    return { status: "ok", resumeSession: null };
+  }
+  if (!isStoredResumeSessionHistoryRef(storedResumeSession)) {
+    return { status: "ok", resumeSession: storedResumeSession };
+  }
+
+  const result = await settle(
+    args.loadHistory(storedResumeSession.historyHash),
+  );
+  if (!result.ok) {
+    L.warn(MISSING_RESUME_SESSION_HISTORY_ERROR);
+    return { status: "missing-history" };
+  }
+
+  return {
+    status: "ok",
+    resumeSession: {
+      sessionId: storedResumeSession.sessionId,
+      sessionHistory: result.value.toString("utf8"),
+    },
+  };
+}
+
+async function resolveClaimResumeSessionWithTiming(args: {
+  readonly storedContext: StoredExecutionContext;
+  readonly timing: ClaimRouteTimingCollector;
+  readonly loadHistory: (historyHash: string) => Promise<Buffer>;
+}): Promise<ResumeSessionResolutionResult> {
+  return await args.timing.measure(
+    "claim_route_resolve_resume_session_history",
+    "top_level",
+    async () => {
+      return await resolveClaimResumeSession({
+        storedResumeSession: args.storedContext.resumeSession,
+        loadHistory: args.loadHistory,
+      });
+    },
+  );
+}
+
+function parseStoredExecutionContextForClaim(args: {
+  readonly executionContext: unknown;
+  readonly timing: ClaimRouteTimingCollector;
+}): ReturnType<typeof storedExecutionContextSchema.safeParse> {
+  const startedAt = now();
+  const result = storedExecutionContextSchema.safeParse(args.executionContext);
+  args.timing.recordElapsed(
+    "claim_route_context_parse",
+    "top_level",
+    startedAt,
+  );
+  return result;
+}
+
+async function failClaimWithPoisonedJob(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+  readonly errorMessage: string;
+  readonly responseMessage: string;
+  readonly scheduleFailedSideEffects: () => void;
+}): Promise<PoisonClaimResponse> {
+  const poisonResult = await failPoisonQueuedJob(
+    args.db,
+    args.runId,
+    args.errorMessage,
+    args.signal,
+  );
+  if (poisonResult.status === "conflict") {
+    return conflict("Job was claimed by another runner");
+  }
+  if (poisonResult.status === "job-not-found") {
+    return notFound("Job not found in queue");
+  }
+  if (poisonResult.status === "run-not-found") {
+    return notFound("Run not found");
+  }
+
+  args.scheduleFailedSideEffects();
+  return badRequestMessage(args.responseMessage);
+}
+
 async function secretValuesForRunner(
   storedContext: StoredExecutionContext,
   featureSwitchContext: FeatureSwitchContext,
@@ -778,6 +910,7 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly resumeSession: ResumeSession | null;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<ExecutionContext> {
@@ -809,6 +942,7 @@ async function buildClaimResponseBody(args: {
   );
   const responseBody = {
     ...args.storedContext,
+    resumeSession: args.resumeSession,
     runId: args.run.id,
     prompt: args.run.prompt,
     appendSystemPrompt: args.run.appendSystemPrompt,
@@ -1107,48 +1241,63 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const run = jobWithRun.run;
 
-  const contextParseStartedAt = now();
-  const storedContextResult = storedExecutionContextSchema.safeParse(
-    jobWithRun.job.executionContext,
-  );
-  claimRouteTiming.recordElapsed(
-    "claim_route_context_parse",
-    "top_level",
-    contextParseStartedAt,
-  );
+  const storedContextResult = parseStoredExecutionContextForClaim({
+    executionContext: jobWithRun.job.executionContext,
+    timing: claimRouteTiming,
+  });
   signal.throwIfAborted();
   if (!storedContextResult.success) {
     warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
-    const poisonResult = await failPoisonQueuedJob(
+    return await failClaimWithPoisonedJob({
       db,
       runId,
-      INVALID_EXECUTION_CONTEXT_ERROR,
       signal,
-    );
-    if (poisonResult.status === "conflict") {
-      return conflict("Job was claimed by another runner");
-    }
-    if (poisonResult.status === "job-not-found") {
-      return notFound("Job not found in queue");
-    }
-    if (poisonResult.status === "run-not-found") {
-      return notFound("Run not found");
-    }
-
-    set(scheduleClaimFailedSideEffects$, {
-      runId,
-      userId: run.userId,
-      orgId: run.orgId,
-      error: INVALID_EXECUTION_CONTEXT_ERROR,
+      errorMessage: INVALID_EXECUTION_CONTEXT_ERROR,
+      responseMessage: "Job missing execution context",
+      scheduleFailedSideEffects: () => {
+        set(scheduleClaimFailedSideEffects$, {
+          runId,
+          userId: run.userId,
+          orgId: run.orgId,
+          error: INVALID_EXECUTION_CONTEXT_ERROR,
+        });
+      },
     });
-    return badRequestMessage("Job missing execution context");
   }
   const storedContext = storedContextResult.data;
+
+  const resumeSessionResult = await resolveClaimResumeSessionWithTiming({
+    storedContext,
+    timing: claimRouteTiming,
+    loadHistory: async (historyHash) => {
+      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+      return await get(downloadS3Buffer(bucket, `blobs/${historyHash}.blob`));
+    },
+  });
+  signal.throwIfAborted();
+  if (resumeSessionResult.status === "missing-history") {
+    return await failClaimWithPoisonedJob({
+      db,
+      runId,
+      signal,
+      errorMessage: MISSING_RESUME_SESSION_HISTORY_ERROR,
+      responseMessage: "Job missing resume session history",
+      scheduleFailedSideEffects: () => {
+        set(scheduleClaimFailedSideEffects$, {
+          runId,
+          userId: run.userId,
+          orgId: run.orgId,
+          error: MISSING_RESUME_SESSION_HISTORY_ERROR,
+        });
+      },
+    });
+  }
 
   const responseBody = await buildClaimResponseBody({
     db,
     run,
     storedContext,
+    resumeSession: resumeSessionResult.resumeSession,
     timing: claimRouteTiming,
     signal,
   });
@@ -1167,14 +1316,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
   );
   signal.throwIfAborted();
-  if (claimResult.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
-  if (claimResult.status === "job-not-found") {
-    return notFound("Job not found in queue");
-  }
-  if (claimResult.status === "run-not-found") {
-    return notFound("Run not found");
+  if (claimResult.status !== "claimed") {
+    return claimTransitionFailureResponse(claimResult);
   }
 
   scheduleSuccessfulClaimSideEffects({
