@@ -109,7 +109,7 @@ fn exec_operation_stream_sequences_many_stdout_stderr_chunks() {
     send_exec_start(
         &mut host_stream,
         124,
-        "for i in $(seq 1 64); do printf o; printf e >&2; done",
+        "i=0; while [ \"$i\" -lt 64 ]; do printf o; printf e >&2; i=$((i + 1)); done",
         5000,
         ExecOutputPolicy::Stream {
             limit_bytes: expected_stdout.len() as u32,
