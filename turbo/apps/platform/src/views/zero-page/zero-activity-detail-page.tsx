@@ -885,6 +885,7 @@ export function StepsList({
   stepSearch: string;
   isLoading: boolean;
 }) {
+  const normalizedStepSearch = stepSearch.trim();
   const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
   const hasPrompt = prompt.trim().length > 0;
   const hasContent = hasSystemPrompt || hasPrompt || messages.length > 0;
@@ -922,7 +923,7 @@ export function StepsList({
             <GroupedMessageCard
               key={groupedMessageKey(message)}
               message={message}
-              searchTerm={stepSearch}
+              searchTerm={normalizedStepSearch}
               showConnector={index < messages.length - 1}
             />
           );

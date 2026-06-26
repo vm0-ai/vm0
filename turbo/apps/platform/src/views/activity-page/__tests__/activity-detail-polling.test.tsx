@@ -2264,7 +2264,7 @@ describe("activity detail polling", () => {
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
-      "billing worker failed",
+      " billing worker failed ",
     );
 
     await waitFor(() => {
@@ -2272,6 +2272,9 @@ describe("activity detail polling", () => {
         screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
       ).toBeInTheDocument();
       expect(screen.getAllByText("billing worker failed")).not.toHaveLength(0);
+      expect(
+        document.querySelector('mark[data-match-index="0"]')?.textContent,
+      ).toBe("billing worker failed");
     });
     expect(screen.queryByText(/Codex unknown_item/u)).not.toBeInTheDocument();
 
