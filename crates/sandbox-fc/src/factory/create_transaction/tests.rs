@@ -44,6 +44,63 @@ fn test_network() -> NetnsLease {
     NetnsLease::new_for_test("test-ns")
 }
 
+struct SlotWorkspaceFixture {
+    _tmp: tempfile::TempDir,
+    slot_workspace: PathBuf,
+    target_workspace: PathBuf,
+}
+
+impl SlotWorkspaceFixture {
+    async fn new() -> Self {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        Self {
+            _tmp: tmp,
+            slot_workspace,
+            target_workspace,
+        }
+    }
+
+    fn slot(&self) -> crate::cow_pool::PrewarmedSlot {
+        test_slot("slot", self.slot_workspace.clone())
+    }
+}
+
+struct WorkspaceSockFixture {
+    _tmp: tempfile::TempDir,
+    workspace: PathBuf,
+    sock_dir: PathBuf,
+}
+
+impl WorkspaceSockFixture {
+    async fn new() -> Self {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(sock_dir.join("vsock"))
+            .await
+            .unwrap();
+
+        Self {
+            _tmp: tmp,
+            workspace,
+            sock_dir,
+        }
+    }
+
+    fn track_on(&self, tx: &mut SandboxCreateTransaction) {
+        tx.track_workspace_for_test(self.workspace.clone()).unwrap();
+        tx.track_sock_dir(self.sock_dir.clone());
+    }
+}
+
 struct RollbackTaskDropSignal(Option<tokio::sync::oneshot::Sender<()>>);
 
 impl Drop for RollbackTaskDropSignal {
@@ -54,39 +111,54 @@ impl Drop for RollbackTaskDropSignal {
     }
 }
 
-#[derive(Default)]
-struct RecordingCreateRollbackCleanup {
+#[derive(Clone, Default)]
+struct CleanupEvents {
     events: Arc<Mutex<Vec<String>>>,
 }
 
-impl RecordingCreateRollbackCleanup {
+impl CleanupEvents {
     fn events(&self) -> Vec<String> {
         self.events.lock().unwrap().clone()
     }
 
     fn record(&self, event: String) {
         self.events.lock().unwrap().push(event);
+    }
+}
+
+#[derive(Default)]
+struct RecordingCreateRollbackCleanup {
+    events: CleanupEvents,
+}
+
+impl RecordingCreateRollbackCleanup {
+    fn events(&self) -> Vec<String> {
+        self.events.events()
+    }
+
+    fn record(&self, event: String) {
+        self.events.record(event);
     }
 }
 
 #[derive(Default)]
 struct FailingNetworkReleaseCleanup {
-    events: Arc<Mutex<Vec<String>>>,
+    events: CleanupEvents,
 }
 
 impl FailingNetworkReleaseCleanup {
     fn events(&self) -> Vec<String> {
-        self.events.lock().unwrap().clone()
+        self.events.events()
     }
 
     fn record(&self, event: String) {
-        self.events.lock().unwrap().push(event);
+        self.events.record(event);
     }
 }
 
 #[derive(Clone, Default)]
 struct BlockingRemoveDirCleanup {
-    events: Arc<Mutex<Vec<String>>>,
+    events: CleanupEvents,
     entered: Arc<AtomicUsize>,
     entered_notify: Arc<tokio::sync::Notify>,
     removed: Arc<AtomicUsize>,
@@ -97,11 +169,11 @@ struct BlockingRemoveDirCleanup {
 
 impl BlockingRemoveDirCleanup {
     fn events(&self) -> Vec<String> {
-        self.events.lock().unwrap().clone()
+        self.events.events()
     }
 
     fn record(&self, event: String) {
-        self.events.lock().unwrap().push(event);
+        self.events.record(event);
     }
 
     fn record_filesystem_cleanup_step(&self, step: &CreateRollbackFilesystemCleanupStep) {
@@ -279,36 +351,24 @@ fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
 
 #[tokio::test]
 async fn create_transaction_rollback_before_rename_destroys_slot_workspace() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
-        .unwrap();
+    tx.track_slot(fixture.slot()).unwrap();
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!slot_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
     assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
 }
 
 #[tokio::test]
 async fn create_transaction_rollback_before_rename_waits_for_slot_teardown() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
-        .unwrap();
+    tx.track_slot(fixture.slot()).unwrap();
     let cleanup = BlockingRemoveDirCleanup::default();
     let rollback_cleanup = cleanup.clone();
     let rollback = tokio::spawn(async move {
@@ -319,38 +379,33 @@ async fn create_transaction_rollback_before_rename_waits_for_slot_teardown() {
     tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(1))
         .await
         .unwrap();
-    assert!(slot_workspace.exists());
+    assert!(fixture.slot_workspace.exists());
     assert!(!rollback.is_finished());
 
     cleanup.release();
     rollback.await.unwrap();
     cleanup.wait_removed(1).await;
 
-    assert!(!slot_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
     assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
 }
 
 #[tokio::test]
 async fn create_transaction_rollback_during_rename_removes_slot_source() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    let tracked_slot_workspace = tx
+        .begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
-    assert_eq!(tracked_slot_workspace, slot_workspace);
+    assert_eq!(tracked_slot_workspace, fixture.slot_workspace);
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
     assert_eq!(
         cleanup.events(),
         vec![
@@ -362,27 +417,22 @@ async fn create_transaction_rollback_during_rename_removes_slot_source() {
 
 #[tokio::test]
 async fn create_transaction_rollback_during_rename_removes_target_after_move() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    let tracked_slot_workspace = tx
+        .begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
         .await
         .unwrap();
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
     assert_eq!(
         cleanup.events(),
         vec![
@@ -394,73 +444,60 @@ async fn create_transaction_rollback_during_rename_removes_target_after_move() {
 
 #[tokio::test]
 async fn create_transaction_rollback_after_rename_error_preserves_target() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+    let fixture = SlotWorkspaceFixture::new().await;
+    tokio::fs::create_dir_all(&fixture.target_workspace)
         .await
         .unwrap();
-    tokio::fs::create_dir_all(&target_workspace).await.unwrap();
-    tokio::fs::write(target_workspace.join("owner.txt"), b"other")
+    tokio::fs::write(fixture.target_workspace.join("owner.txt"), b"other")
         .await
         .unwrap();
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    tx.begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    tx.begin_workspace_rename(target_workspace.clone()).unwrap();
     tx.abort_workspace_rename_after_error().unwrap();
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!slot_workspace.exists());
-    assert!(target_workspace.join("owner.txt").exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(fixture.target_workspace.join("owner.txt").exists());
     assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
 }
 
 #[tokio::test]
 async fn create_transaction_drop_after_rename_error_preserves_target() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+    let fixture = SlotWorkspaceFixture::new().await;
+    tokio::fs::create_dir_all(&fixture.target_workspace)
         .await
         .unwrap();
-    tokio::fs::create_dir_all(&target_workspace).await.unwrap();
-    tokio::fs::write(target_workspace.join("owner.txt"), b"other")
+    tokio::fs::write(fixture.target_workspace.join("owner.txt"), b"other")
         .await
         .unwrap();
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    tx.begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    tx.begin_workspace_rename(target_workspace.clone()).unwrap();
     tx.abort_workspace_rename_after_error().unwrap();
 
     drop(tx);
 
-    assert!(!slot_workspace.exists());
-    assert!(target_workspace.join("owner.txt").exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(fixture.target_workspace.join("owner.txt").exists());
 }
 
 #[tokio::test]
 async fn create_transaction_rollback_after_rename_removes_target_workspace() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    let tracked_slot_workspace = tx
+        .begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
         .await
         .unwrap();
     tx.finish_workspace_rename().unwrap();
@@ -468,8 +505,8 @@ async fn create_transaction_rollback_after_rename_removes_target_workspace() {
 
     tx.rollback(&cleanup).await;
 
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
     assert_eq!(
         cleanup.events(),
         vec!["remove_dir:workspace:sandbox-workspace"]
@@ -478,23 +515,16 @@ async fn create_transaction_rollback_after_rename_removes_target_workspace() {
 
 #[tokio::test]
 async fn create_transaction_rollback_after_sock_dir_removes_sock_then_workspace() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(sock_dir.join("vsock"))
-        .await
-        .unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
     assert_eq!(
         cleanup.events(),
         vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
@@ -553,22 +583,17 @@ async fn create_transaction_rollback_remove_dir_error_is_best_effort() {
 
 #[tokio::test]
 async fn create_transaction_rollback_releases_network_before_dirs() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
     let cleanup = RecordingCreateRollbackCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(!workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
     assert_eq!(
         cleanup.events(),
         vec![
@@ -581,23 +606,18 @@ async fn create_transaction_rollback_releases_network_before_dirs() {
 
 #[tokio::test]
 async fn create_transaction_rollback_keeps_dirs_when_network_release_fails() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
     let cleanup = FailingNetworkReleaseCleanup::default();
 
     tx.rollback(&cleanup).await;
 
-    assert!(workspace.exists());
-    assert!(sock_dir.exists());
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
     assert_eq!(cleanup.events(), vec!["release_network:test-ns"]);
 
     drop(tx);
@@ -605,149 +625,118 @@ async fn create_transaction_rollback_keeps_dirs_when_network_release_fails() {
     let network = leaked.network.take().unwrap();
     assert_eq!(network.name(), "test-ns");
     let _ = network.into_info_for_test();
-    assert_eq!(leaked.sock_dir, sock_dir);
-    assert_eq!(leaked.workspace, workspace);
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
 }
 
 #[tokio::test]
 async fn create_transaction_commit_disarms_rollback() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
 
     let resources = tx.commit_without_cow_for_test().unwrap();
     drop(tx);
 
-    assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
-    assert_eq!(resources.sock_paths.dir(), sock_dir.as_path());
+    assert_eq!(
+        resources.sandbox_paths.workspace(),
+        fixture.workspace.as_path()
+    );
+    assert_eq!(resources.sock_paths.dir(), fixture.sock_dir.as_path());
     let network = resources.network;
     assert_eq!(network.name(), "test-ns");
     let _ = network.into_info_for_test();
-    assert!(workspace.exists());
-    assert!(sock_dir.exists());
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_before_rename_destroys_slot_workspace() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
-        .unwrap();
+    tx.track_slot(fixture.slot()).unwrap();
 
     drop(tx);
 
-    assert!(!slot_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_during_rename_removes_slot_source() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    let tracked_slot_workspace = tx
+        .begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
-    assert_eq!(tracked_slot_workspace, slot_workspace);
+    assert_eq!(tracked_slot_workspace, fixture.slot_workspace);
 
     drop(tx);
 
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_during_rename_removes_target_after_move() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
-    tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
-        .await
-        .unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    let tracked_slot_workspace = tx
+        .begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
-    tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+    tokio::fs::rename(&tracked_slot_workspace, &fixture.target_workspace)
         .await
         .unwrap();
 
     drop(tx);
 
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_commit_rejects_pending_workspace_rename() {
-    let tmp = tempfile::tempdir().unwrap();
-    let slot_workspace = tmp.path().join("slot-workspace");
-    let target_workspace = tmp.path().join("sandbox-workspace");
-    tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+    let fixture = SlotWorkspaceFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_slot(test_slot("slot", slot_workspace.clone()))
+    tx.track_slot(fixture.slot()).unwrap();
+    tx.begin_workspace_rename(fixture.target_workspace.clone())
         .unwrap();
-    tx.begin_workspace_rename(target_workspace.clone()).unwrap();
 
     assert!(tx.commit_without_cow_for_test().is_err());
 
     drop(tx);
-    assert!(!slot_workspace.exists());
-    assert!(!target_workspace.exists());
+    assert!(!fixture.slot_workspace.exists());
+    assert!(!fixture.target_workspace.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_without_async_resources_removes_dirs() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
 
     drop(tx);
 
-    assert!(!workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_with_closed_leak_channel_falls_back_to_sync_dirs() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
     let (leak_tx, leak_rx) = tokio::sync::mpsc::unbounded_channel();
     drop(leak_rx);
 
     let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
 
     assert!(!tx.send_async_leaked_resources());
@@ -757,42 +746,32 @@ async fn create_transaction_drop_with_closed_leak_channel_falls_back_to_sync_dir
 
     drop(tx);
 
-    assert!(!workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_sync_fallback_respects_workspace_preservation() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.delete_workspace_on_leak_cleanup = false;
 
     drop(tx);
 
-    assert!(workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
 }
 
 #[tokio::test]
 async fn create_transaction_drop_does_not_drop_queued_leak_cleanup_work() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
     let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
     leak_tx.send(test_leaked_resource("queued")).unwrap();
 
     let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
 
     drop(tx);
@@ -805,22 +784,17 @@ async fn create_transaction_drop_does_not_drop_queued_leak_cleanup_work() {
     let network = leaked.network.take().unwrap();
     assert_eq!(network.name(), "test-ns");
     let _ = network.into_info_for_test();
-    assert_eq!(leaked.sock_dir, sock_dir);
-    assert_eq!(leaked.workspace, workspace);
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
 }
 
 #[tokio::test]
 async fn create_transaction_drop_sends_async_resources_to_leak_cleaner() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
     let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
     tx.track_network(test_network());
 
     drop(tx);
@@ -831,21 +805,16 @@ async fn create_transaction_drop_sends_async_resources_to_leak_cleaner() {
     let network = leaked.network.take().unwrap();
     assert_eq!(network.name(), "test-ns");
     let _ = network.into_info_for_test();
-    assert_eq!(leaked.sock_dir, sock_dir);
-    assert_eq!(leaked.workspace, workspace);
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
 }
 
 #[tokio::test]
 async fn create_transaction_rollback_continues_after_waiter_abort() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
 
     let cleanup = BlockingRemoveDirCleanup::default();
     let cleanup_group = Arc::new(FactoryCleanupGroup::new());
@@ -875,8 +844,8 @@ async fn create_transaction_rollback_continues_after_waiter_abort() {
         .unwrap();
     cleanup.wait_removed(2).await;
 
-    assert!(!sock_dir.exists());
-    assert!(!workspace.exists());
+    assert!(!fixture.sock_dir.exists());
+    assert!(!fixture.workspace.exists());
     assert_eq!(
         cleanup.events(),
         vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
@@ -885,15 +854,10 @@ async fn create_transaction_rollback_continues_after_waiter_abort() {
 
 #[tokio::test]
 async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
-    let tmp = tempfile::tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let sock_dir = tmp.path().join("sock");
-    tokio::fs::create_dir_all(&workspace).await.unwrap();
-    tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+    let fixture = WorkspaceSockFixture::new().await;
 
     let mut tx = SandboxCreateTransaction::new("sandbox".into());
-    tx.track_workspace_for_test(workspace.clone()).unwrap();
-    tx.track_sock_dir(sock_dir.clone());
+    fixture.track_on(&mut tx);
 
     let cleanup = BlockingRemoveDirCleanup::default();
     let cleanup_group = FactoryCleanupGroup::new();
@@ -910,8 +874,8 @@ async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
     tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(2))
         .await
         .unwrap();
-    assert!(workspace.exists());
-    assert!(sock_dir.exists());
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
 
     drop(cleanup_group);
     tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
@@ -919,14 +883,14 @@ async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
         .unwrap()
         .unwrap();
 
-    assert!(workspace.exists());
-    assert!(sock_dir.exists());
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
 
     cleanup.release();
     cleanup.wait_removed(2).await;
 
-    assert!(!workspace.exists());
-    assert!(!sock_dir.exists());
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
     assert_eq!(
         cleanup.events(),
         vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]

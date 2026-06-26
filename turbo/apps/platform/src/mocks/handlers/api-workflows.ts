@@ -117,6 +117,7 @@ export const apiWorkflowsHandlers = [
   }),
 
   mockApi(zeroWorkflowsCollectionContract.create, ({ body, respond }) => {
+    const now = new Date().toISOString();
     const created: ZeroWorkflowDetailResponse = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
@@ -129,6 +130,10 @@ export const apiWorkflowsHandlers = [
       requestToPublish: false,
       ownerUserId: "test-user-123",
       canManage: true,
+      createdByUserId: "test-user-123",
+      updatedByUserId: "test-user-123",
+      createdAt: now,
+      updatedAt: now,
       instruction: body.instruction ?? null,
       files: (body.files ?? []).map((file) => {
         return {
@@ -162,9 +167,12 @@ export const apiWorkflowsHandlers = [
     }
 
     const existing = mockWorkflows[index]!;
+    const now = new Date().toISOString();
     const files = body.files ?? existing.fileContents ?? [];
     const updated: ZeroWorkflowDetailResponse = {
       ...existing,
+      updatedByUserId: "test-user-123",
+      updatedAt: now,
       instruction:
         body.instruction === undefined
           ? existing.instruction
@@ -209,12 +217,18 @@ export const apiWorkflowsHandlers = [
     if (!source) {
       return respond(404, notFound(params.workflowId));
     }
+    const now = new Date().toISOString();
     const copied: ZeroWorkflowDetailResponse = {
       ...source,
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
       visibility: "private",
       requestToPublish: false,
+      ownerUserId: "test-user-123",
+      createdByUserId: "test-user-123",
+      updatedByUserId: "test-user-123",
+      createdAt: now,
+      updatedAt: now,
       triggers: [],
     };
     mockWorkflows = [...mockWorkflows, copied];
@@ -250,8 +264,13 @@ function visibilityHandlers() {
       return null;
     }
     const updated = apply(mockWorkflows[index]!);
-    mockWorkflows[index] = updated;
-    return summary(updated);
+    const now = new Date().toISOString();
+    mockWorkflows[index] = {
+      ...updated,
+      updatedByUserId: "test-user-123",
+      updatedAt: now,
+    };
+    return summary(mockWorkflows[index]!);
   };
 
   return [
