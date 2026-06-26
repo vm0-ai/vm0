@@ -1324,6 +1324,33 @@ function codexAdapterActivityEvents(): AgentEvent[] {
       },
       createdAt: "2026-03-10T16:00:19Z",
     },
+    {
+      sequenceNumber: 19,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        message: "Turn failed",
+        turn: {
+          id: "turn-deep-error",
+          status: "failed",
+          error: {
+            error: {
+              error: {
+                error: {
+                  error: {
+                    error: {
+                      message: "Deep nested adapter failure",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:20Z",
+    },
   ];
 }
 
@@ -2831,6 +2858,7 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText(/Different turn interrupted \(user interrupt\)/u),
     ).toBeInTheDocument();
+    expect(screen.getByText("Deep nested adapter failure")).toBeInTheDocument();
     expect(screen.getByText("Recoverable adapter error")).toBeInTheDocument();
     const detailText = document.body.textContent ?? "";
     expect(detailText.indexOf("Recoverable adapter error")).toBeGreaterThan(-1);

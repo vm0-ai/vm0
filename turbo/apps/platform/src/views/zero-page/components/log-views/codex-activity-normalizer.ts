@@ -31,6 +31,7 @@ const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
 const MAX_FORMATTED_TEXT_LENGTH = 240;
+const MAX_ERROR_SIGNAL_DEPTH = 8;
 const MAX_FORMATTED_PLAN_STEPS = 20;
 const MAX_FORMATTED_FILE_CHANGES = 20;
 
@@ -186,10 +187,13 @@ function hasSignalValue(value: unknown, depth = 0): boolean {
   if (typeof value === "boolean") {
     return true;
   }
-  if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
     return false;
   }
   if (Array.isArray(value)) {
+    if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+      return false;
+    }
     return value.slice(0, MAX_FORMATTED_ARRAY_ITEMS).some((item) => {
       return hasSignalValue(item, depth + 1);
     });
@@ -214,12 +218,20 @@ function hasSignalValue(value: unknown, depth = 0): boolean {
   return false;
 }
 
-function formatSignalValue(value: unknown): string | undefined {
+function formatSignalValue(
+  value: unknown,
+  includeBoundedPlaceholder = false,
+): string | undefined {
   const formatted = formatUnknownValue(value);
   if (!formatted) {
     return undefined;
   }
-  return hasSignalValue(value) ? formatted : undefined;
+  if (hasSignalValue(value)) {
+    return formatted;
+  }
+  return includeBoundedPlaceholder && formatted.includes("...")
+    ? formatted
+    : undefined;
 }
 
 function combineDistinctMessages(
@@ -301,7 +313,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
   const details = [
     getFirstString(value, ["additional_details", "additionalDetails"]),
     getFirstString(value, ["codex_error_info", "codexErrorInfo"]),
-    formatSignalValue(value.connectors),
+    formatSignalValue(value.connectors, message !== undefined),
   ].filter((detail): detail is string => {
     return detail !== undefined && detail.length > 0;
   });
@@ -317,7 +329,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
     return details.join("; ");
   }
 
-  if (depth >= MAX_FORMATTED_ARRAY_DEPTH) {
+  if (depth >= MAX_ERROR_SIGNAL_DEPTH) {
     return undefined;
   }
 
@@ -335,6 +347,20 @@ function extractEventErrorMessage(
   return combineDistinctMessages(
     trimmedStringValue(eventData.message),
     extractErrorMessage(eventData.error),
+  );
+}
+
+function isGenericFailureMessage(message: string): boolean {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.:!?]+$/u, "");
+  return (
+    normalized === "error" ||
+    normalized === "turn failed" ||
+    normalized === "turn interrupted" ||
+    normalized === "unknown error" ||
+    normalized === "codex error"
   );
 }
 
@@ -401,6 +427,9 @@ function getTurnErrorMessage(
   const turn = getTurnRecord(eventData);
   const turnMessage = turn ? extractErrorMessage(turn.error) : undefined;
   const eventMessage = extractEventErrorMessage(eventData);
+  if (turnMessage && eventMessage && isGenericFailureMessage(eventMessage)) {
+    return turnMessage;
+  }
   return combineDistinctMessages(turnMessage, eventMessage);
 }
 

@@ -77,6 +77,10 @@ import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-il
 // Error Banner
 // ---------------------------------------------------------------------------
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function getErrorGuidance(error: string) {
   for (const [, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
     if (error.toLowerCase().includes(guidance.title.toLowerCase())) {
@@ -133,7 +137,9 @@ export function isVisibleMessage(
   if (framework !== "claude-code") {
     return true;
   }
-  const result = (nextMessage.eventData as { result?: unknown }).result;
+  const result = isRecord(nextMessage.eventData)
+    ? nextMessage.eventData.result
+    : undefined;
   if (typeof result !== "string" || result.trim().length === 0) {
     return true;
   }
