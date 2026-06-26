@@ -50,8 +50,8 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconKey,
   IconPencil,
-  IconShieldLock,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -2340,6 +2340,7 @@ function HeaderWorkflowTriggerCard({
   const description = trigger.workflowDescription?.trim();
   const triggerTitle = gmailTriggerTitle(trigger.trigger);
   const triggerSummary = gmailTriggerSummary(trigger.trigger);
+  const permissionPreview = workflowTriggerPermissionPreview(trigger);
   const summaryLabel =
     trigger.trigger.kind === "event" &&
     trigger.trigger.eventType === "gmail-label-applied"
@@ -2408,8 +2409,21 @@ function HeaderWorkflowTriggerCard({
           ) : null}
           <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
             <dt className="shrink-0 text-muted-foreground">Permissions</dt>
-            <dd className="min-w-0 truncate text-right font-medium text-foreground">
-              {workflowTriggerPermissionPreview(trigger)}
+            <dd className="flex min-w-0 items-center justify-end gap-2 text-right text-foreground">
+              <span className="min-w-0 truncate font-medium">
+                {permissionPreview}
+              </span>
+              <button
+                type="button"
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label={`Edit permissions for ${title}`}
+                onClick={() => {
+                  setPermissionsOpen(true);
+                }}
+              >
+                <IconKey size={12} stroke={1.5} />
+                Edit
+              </button>
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3 py-2.5">
@@ -2453,8 +2467,8 @@ function HeaderWorkflowTriggerCard({
               setPermissionsOpen(true);
             }}
           >
-            <IconShieldLock size={13} stroke={1.5} />
-            Manage
+            <IconKey size={13} stroke={1.5} />
+            Edit permissions
           </button>
         </div>
       </article>
