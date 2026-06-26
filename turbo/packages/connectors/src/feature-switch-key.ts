@@ -56,4 +56,5 @@ export enum FeatureSwitchKey {
   WorkflowGmailEventTriggers = "workflowGmailEventTriggers",
   GoalWorkflows = "goalWorkflows",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
+  ConnectorAccessManagement = "connectorAccessManagement",
 }

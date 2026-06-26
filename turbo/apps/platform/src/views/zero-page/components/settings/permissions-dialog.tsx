@@ -10,6 +10,12 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -113,7 +119,10 @@ interface PermissionDrawerApplyOptions {
   readonly metadata: FirewallPermissionDetailMetadata;
 }
 
+type PermissionsSurface = "sheet" | "dialog";
+
 interface PermissionsDrawerFooterProps {
+  readonly surface: PermissionsSurface;
   readonly readOnly?: boolean;
   readonly resetEnabled?: boolean;
   readonly canReset: boolean;
@@ -135,6 +144,7 @@ type LoadedPermissionsDrawerContentProps = Pick<
   PermissionsDrawerProps,
   "initialPolicies" | "resetEnabled" | "readOnly" | "onApply" | "onClose"
 > & {
+  readonly surface: PermissionsSurface;
   readonly metadata: FirewallPermissionDetailMetadata;
   readonly initialState: InitialPermissionDrawerState;
 };
@@ -165,24 +175,41 @@ function buildInitialPermissionDrawerState({
 function PermissionsDrawerHeader({
   connectorType,
   displayName,
-}: Pick<PermissionsDrawerProps, "connectorType" | "displayName">) {
+  surface,
+}: Pick<PermissionsDrawerProps, "connectorType" | "displayName"> & {
+  readonly surface: PermissionsSurface;
+}) {
   const connectorLabel = CONNECTOR_TYPES[connectorType].label;
+  const title = (
+    <>
+      {connectorLabel} permissions
+      <span className="text-sm font-normal text-muted-foreground ml-1">
+        for {displayName}
+      </span>
+    </>
+  );
+  const description =
+    "Configure which actions this agent is allowed to perform via this connector.";
+
+  if (surface === "dialog") {
+    return (
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <ConnectorIcon type={connectorType} size={24} />
+          <DialogTitle className="text-base">{title}</DialogTitle>
+        </div>
+        <DialogDescription>{description}</DialogDescription>
+      </DialogHeader>
+    );
+  }
 
   return (
     <SheetHeader>
       <div className="flex items-center gap-3">
         <ConnectorIcon type={connectorType} size={24} />
-        <SheetTitle className="text-base">
-          {connectorLabel} permissions
-          <span className="text-sm font-normal text-muted-foreground ml-1">
-            for {displayName}
-          </span>
-        </SheetTitle>
+        <SheetTitle className="text-base">{title}</SheetTitle>
       </div>
-      <SheetDescription>
-        Configure which actions this agent is allowed to perform via this
-        connector.
-      </SheetDescription>
+      <SheetDescription>{description}</SheetDescription>
     </SheetHeader>
   );
 }
@@ -1033,7 +1060,23 @@ function PermissionRow({
   );
 }
 
+function PermissionsFooterShell({
+  surface,
+  className,
+  children,
+}: {
+  readonly surface: PermissionsSurface;
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  if (surface === "dialog") {
+    return <DialogFooter className={className}>{children}</DialogFooter>;
+  }
+  return <SheetFooter className={className}>{children}</SheetFooter>;
+}
+
 function PermissionsDrawerFooter({
+  surface,
   readOnly,
   resetEnabled,
   canReset,
@@ -1048,7 +1091,7 @@ function PermissionsDrawerFooter({
 
   if (!showReset) {
     return (
-      <SheetFooter>
+      <PermissionsFooterShell surface={surface}>
         <Button variant="outline" onClick={onClose}>
           {readOnly ? "Close" : "Cancel"}
         </Button>
@@ -1057,12 +1100,15 @@ function PermissionsDrawerFooter({
             {saving ? "Saving..." : "Apply"}
           </Button>
         )}
-      </SheetFooter>
+      </PermissionsFooterShell>
     );
   }
 
   return (
-    <SheetFooter className="gap-2 sm:justify-between sm:space-x-0">
+    <PermissionsFooterShell
+      surface={surface}
+      className="gap-2 sm:justify-between sm:space-x-0"
+    >
       <div>
         <Button
           variant="outline"
@@ -1082,7 +1128,7 @@ function PermissionsDrawerFooter({
           </Button>
         )}
       </div>
-    </SheetFooter>
+    </PermissionsFooterShell>
   );
 }
 
@@ -1092,6 +1138,7 @@ function LoadedPermissionsDrawerContent({
   readOnly,
   onApply,
   onClose,
+  surface,
   metadata,
   initialState,
 }: LoadedPermissionsDrawerContentProps) {
@@ -1433,6 +1480,7 @@ function LoadedPermissionsDrawerContent({
       </div>
 
       <PermissionsDrawerFooter
+        surface={surface}
         readOnly={readOnly}
         resetEnabled={resetEnabled}
         canReset
@@ -1447,13 +1495,20 @@ function LoadedPermissionsDrawerContent({
   );
 }
 
-export function PermissionsDrawer(props: PermissionsDrawerProps) {
+function PermissionsContent({
+  props,
+  surface,
+  onClose,
+}: {
+  readonly props: PermissionsDrawerProps;
+  readonly surface: PermissionsSurface;
+  readonly onClose: () => void;
+}) {
   const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
       connectorType: props.connectorType,
     }),
   );
-  const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
   const loadedMetadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   const loadedInitialState = loadedMetadata
@@ -1465,15 +1520,59 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
         initialGrants: props.initialGrants,
       })
     : null;
-  const handleClose = () => {
-    resetPermissionDrawerState();
-    props.onClose();
-  };
   const loading = metadataLoadable.state === "loading";
   const message =
     metadataLoadable.state === "hasError"
       ? "Failed to load permission metadata"
       : `No permission metadata found for ${props.connectorType}`;
+
+  return (
+    <>
+      <PermissionsDrawerHeader
+        connectorType={props.connectorType}
+        displayName={props.displayName}
+        surface={surface}
+      />
+
+      {loadedMetadata && loadedInitialState ? (
+        <LoadedPermissionsDrawerContent
+          key={loadedInitialState.initialPolicyKey}
+          {...props}
+          surface={surface}
+          metadata={loadedMetadata}
+          initialState={loadedInitialState}
+          onClose={onClose}
+        />
+      ) : (
+        <>
+          <div className="flex flex-1 items-center justify-center">
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <IconLoader2 size={16} className="animate-spin" />
+                Loading permissions...
+              </div>
+            ) : (
+              <p className="text-sm text-destructive">{message}</p>
+            )}
+          </div>
+
+          <PermissionsFooterShell surface={surface}>
+            <Button variant="outline" onClick={onClose}>
+              {props.readOnly ? "Close" : "Cancel"}
+            </Button>
+          </PermissionsFooterShell>
+        </>
+      )}
+    </>
+  );
+}
+
+export function PermissionsDrawer(props: PermissionsDrawerProps) {
+  const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
+  const handleClose = () => {
+    resetPermissionDrawerState();
+    props.onClose();
+  };
 
   return (
     <Sheet
@@ -1483,40 +1582,37 @@ export function PermissionsDrawer(props: PermissionsDrawerProps) {
       }}
     >
       <SheetContent side="right">
-        <PermissionsDrawerHeader
-          connectorType={props.connectorType}
-          displayName={props.displayName}
+        <PermissionsContent
+          props={props}
+          surface="sheet"
+          onClose={handleClose}
         />
-
-        {loadedMetadata && loadedInitialState ? (
-          <LoadedPermissionsDrawerContent
-            key={loadedInitialState.initialPolicyKey}
-            {...props}
-            metadata={loadedMetadata}
-            initialState={loadedInitialState}
-            onClose={handleClose}
-          />
-        ) : (
-          <>
-            <div className="flex flex-1 items-center justify-center">
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <IconLoader2 size={16} className="animate-spin" />
-                  Loading permissions...
-                </div>
-              ) : (
-                <p className="text-sm text-destructive">{message}</p>
-              )}
-            </div>
-
-            <SheetFooter>
-              <Button variant="outline" onClick={handleClose}>
-                {props.readOnly ? "Close" : "Cancel"}
-              </Button>
-            </SheetFooter>
-          </>
-        )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+export function PermissionsDialog(props: PermissionsDrawerProps) {
+  const resetPermissionDrawerState = useSet(resetPermissionDrawerState$);
+  const handleClose = () => {
+    resetPermissionDrawerState();
+    props.onClose();
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        return !open && handleClose();
+      }}
+    >
+      <DialogContent className="!flex h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[760px] !flex-col !overflow-hidden">
+        <PermissionsContent
+          props={props}
+          surface="dialog"
+          onClose={handleClose}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
