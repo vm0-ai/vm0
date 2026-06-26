@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
-    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_STARTED,
+    MSG_EXEC_RESULT, MSG_EXEC_STARTED,
 };
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
@@ -38,9 +38,7 @@ const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
 const THREAD_EXEC_OPERATION_STDIN: &str = "vsock-exec-operation-stdin";
 const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
 const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
-const THREAD_EXEC_OPERATION_OUTPUT: &str = "vsock-exec-operation-output";
 const STDIN_WRITE_CANCELLED: &str = "stdin write cancelled";
-const OUTPUT_CHANNEL_CAPACITY: usize = 32;
 const FRAME_BODY_HEADER_LEN: usize = 1 + 4; // message type + sequence
 const EXEC_OUTPUT_PAYLOAD_OVERHEAD: usize = 1 + 4 + 1 + 4;
 const EXEC_RESULT_EXITED_LEN: usize = 1 + 4;
@@ -258,16 +256,58 @@ impl ExecOperationWorkerRequest {
 struct DrainWorker {
     stream: ExecOutputStream,
     policy: OutputSettings,
-    output_tx: Option<SyncSender<StreamEvent>>,
+    stream_writer: Option<SharedExecStreamWriter>,
     drain_cancel: Arc<AtomicBool>,
     exec_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
 }
 
-struct StreamEvent {
-    stream: ExecOutputStream,
-    chunk: Vec<u8>,
-    truncated: bool,
+type SharedExecStreamWriter = Arc<Mutex<ExecStreamWriter>>;
+
+struct ExecStreamWriter {
+    seq: u32,
+    label_preview: String,
+    writer: GuestWriter,
+    output_seq: u32,
+    frame: Vec<u8>,
+}
+
+impl ExecStreamWriter {
+    fn new(seq: u32, label_preview: String, writer: GuestWriter) -> Self {
+        Self {
+            seq,
+            label_preview,
+            writer,
+            output_seq: 0,
+            frame: Vec::new(),
+        }
+    }
+
+    fn write_output(
+        &mut self,
+        stream: ExecOutputStream,
+        chunk: &[u8],
+        truncated: bool,
+    ) -> Result<(), ExecStreamWriteError> {
+        vsock_proto::encode_exec_output_frame_into(
+            &mut self.frame,
+            self.seq,
+            stream,
+            self.output_seq,
+            chunk,
+            truncated,
+        )
+        .map_err(ExecStreamWriteError::Encode)?;
+        self.output_seq = self.output_seq.wrapping_add(1);
+        self.writer
+            .write_frame(&self.frame)
+            .map_err(ExecStreamWriteError::Write)
+    }
+}
+
+enum ExecStreamWriteError {
+    Encode(vsock_proto::ProtocolError),
+    Write(io::Error),
 }
 
 struct StdinWriter {
@@ -356,8 +396,6 @@ struct ExecSetup {
     child: Child,
     kill_target: ProcessTreeKillTarget,
     stdin_writer: Option<StdinWriter>,
-    output_tx: Option<SyncSender<StreamEvent>>,
-    output_handle: Option<JoinHandle<()>>,
     drain_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
     drain_done_rx: mpsc::Receiver<()>,
@@ -372,8 +410,6 @@ impl ExecSetup {
             child,
             kill_target,
             stdin_writer: None,
-            output_tx: None,
-            output_handle: None,
             drain_cancel,
             drain_done_tx,
             drain_done_rx,
@@ -394,15 +430,6 @@ impl ExecSetup {
 
     fn set_stdin_writer(&mut self, writer: StdinWriter) {
         self.stdin_writer = Some(writer);
-    }
-
-    fn set_output_writer(&mut self, tx: SyncSender<StreamEvent>, handle: JoinHandle<()>) {
-        self.output_tx = Some(tx);
-        self.output_handle = Some(handle);
-    }
-
-    fn output_tx(&self) -> Option<SyncSender<StreamEvent>> {
-        self.output_tx.clone()
     }
 
     fn drain_cancel(&self) -> Arc<AtomicBool> {
@@ -435,31 +462,23 @@ impl ExecSetup {
             child,
             kill_target,
             stdin_writer,
-            output_tx,
-            output_handle,
             drain_cancel,
             drain_done_tx: _,
             drain_done_rx: _,
         } = self;
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
-        drop(output_tx);
         kill_and_reap_child_with_target(child, kill_target);
         join_stdin_writer_after_kill(stdin_writer);
-        join_output_writer(output_handle);
         completion.wait_failed(diagnostic);
     }
 
     fn abort_exec_started_send_failed(self, completion: &ExecCompletion<'_>) {
         debug_assert!(self.stdin_writer.is_none());
-        debug_assert!(self.output_tx.is_none());
-        debug_assert!(self.output_handle.is_none());
         let ExecSetup {
             child,
             kill_target,
             stdin_writer: _,
-            output_tx: _,
-            output_handle: _,
             drain_cancel: _,
             drain_done_tx: _,
             drain_done_rx: _,
@@ -476,10 +495,6 @@ struct ExecSetupWithStdout {
 }
 
 impl ExecSetupWithStdout {
-    fn output_tx(&self) -> Option<SyncSender<StreamEvent>> {
-        self.setup.output_tx()
-    }
-
     fn drain_cancel(&self) -> Arc<AtomicBool> {
         self.setup.drain_cancel()
     }
@@ -503,28 +518,23 @@ impl ExecSetupWithStdout {
             child,
             kill_target,
             stdin_writer,
-            output_tx,
-            output_handle,
             drain_cancel,
             drain_done_tx: _,
             drain_done_rx: _,
         } = setup;
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
-        drop(output_tx);
         kill_and_reap_child_with_target(child, kill_target);
         join_stdin_writer_after_kill(stdin_writer);
         let _ = stdout_handle.join();
-        join_output_writer(output_handle);
         completion.wait_failed(diagnostic);
     }
 
     fn into_running(
-        mut self,
+        self,
         stderr_handle: JoinHandle<()>,
         stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
     ) -> RunningExec {
-        drop(self.setup.output_tx.take());
         let ExecSetupWithStdout {
             setup,
             stdout_handle,
@@ -534,8 +544,6 @@ impl ExecSetupWithStdout {
             child,
             kill_target,
             stdin_writer,
-            output_tx: _,
-            output_handle,
             drain_cancel,
             drain_done_tx,
             drain_done_rx,
@@ -546,7 +554,6 @@ impl ExecSetupWithStdout {
             child,
             kill_target,
             stdin_writer,
-            output_handle,
             stdout_handle,
             stdout_result_rx,
             stderr_handle,
@@ -561,7 +568,6 @@ struct RunningExec {
     child: Child,
     kill_target: ProcessTreeKillTarget,
     stdin_writer: Option<StdinWriter>,
-    output_handle: Option<JoinHandle<()>>,
     stdout_handle: JoinHandle<()>,
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
     stderr_handle: JoinHandle<()>,
@@ -582,7 +588,6 @@ impl RunningExec {
             child,
             mut kill_target,
             stdin_writer,
-            output_handle,
             stdout_handle,
             stdout_result_rx,
             stderr_handle,
@@ -622,7 +627,6 @@ impl RunningExec {
 
         let _ = stdout_handle.join();
         let _ = stderr_handle.join();
-        join_output_writer(output_handle);
         let stdout_result = stdout_result_rx.recv().unwrap_or_default();
         let stderr_result = stderr_result_rx.recv().unwrap_or_default();
 
@@ -862,37 +866,20 @@ fn run_exec_operation_worker<S>(
     let stdout_settings = output_settings(request.stdout);
     let stderr_settings = output_settings(request.stderr);
     let needs_stream = stdout_settings.stream.is_some() || stderr_settings.stream.is_some();
-
-    if needs_stream {
-        let (tx, rx) = mpsc::sync_channel(OUTPUT_CHANNEL_CAPACITY);
-        let label_preview = truncate_command_preview(&request.label);
-        match spawn_output_writer(
+    let stream_writer = needs_stream.then(|| {
+        Arc::new(Mutex::new(ExecStreamWriter::new(
             request.seq,
-            label_preview,
-            rx,
+            truncate_command_preview(&request.label),
             writer.clone(),
-            exec_cancel.clone(),
-            setup.drain_cancel(),
-            spawner.clone(),
-        ) {
-            Ok(handle) => setup.set_output_writer(tx, handle),
-            Err(e) => {
-                setup.abort_wait_failed(
-                    &exec_cancel,
-                    &completion,
-                    &format!("failed to spawn exec output writer thread: {e}"),
-                );
-                return;
-            }
-        }
-    }
+        )))
+    });
 
     let stdout_spawn = spawn_exec_operation_drain(
         stdout,
         DrainWorker {
             stream: ExecOutputStream::Stdout,
             policy: stdout_settings,
-            output_tx: setup.output_tx(),
+            stream_writer: stream_writer.clone(),
             drain_cancel: setup.drain_cancel(),
             exec_cancel: exec_cancel.clone(),
             drain_done_tx: setup.drain_done_tx(),
@@ -918,7 +905,7 @@ fn run_exec_operation_worker<S>(
         DrainWorker {
             stream: ExecOutputStream::Stderr,
             policy: stderr_settings,
-            output_tx: setup.output_tx(),
+            stream_writer,
             drain_cancel: setup.drain_cancel(),
             exec_cancel: exec_cancel.clone(),
             drain_done_tx: setup.drain_done_tx(),
@@ -1031,76 +1018,6 @@ fn stream_config(policy: ExecOutputPolicy) -> Option<BoundedStreamConfig> {
     }
 }
 
-fn spawn_output_writer<S>(
-    seq: u32,
-    label_preview: String,
-    rx: Receiver<StreamEvent>,
-    writer: GuestWriter,
-    exec_cancel: Arc<AtomicBool>,
-    drain_cancel: Arc<AtomicBool>,
-    spawner: S,
-) -> io::Result<JoinHandle<()>>
-where
-    S: ThreadSpawner,
-{
-    spawner.spawn_unit(
-        THREAD_EXEC_OPERATION_OUTPUT,
-        Box::new(move || {
-            let mut output_seq = 0u32;
-            for event in rx {
-                if exec_cancel.load(Ordering::Acquire) {
-                    break;
-                }
-                let payload = match vsock_proto::encode_exec_output(
-                    event.stream,
-                    output_seq,
-                    &event.chunk,
-                    event.truncated,
-                ) {
-                    Ok(payload) => payload,
-                    Err(e) => {
-                        log(
-                            "ERROR",
-                            &format!(
-                                "exec operation: failed to encode output seq={seq} label={label_preview}: {e}"
-                            ),
-                        );
-                        exec_cancel.store(true, Ordering::Release);
-                        drain_cancel.store(true, Ordering::Release);
-                        break;
-                    }
-                };
-                output_seq = output_seq.wrapping_add(1);
-                let frame = match vsock_proto::encode(MSG_EXEC_OUTPUT, seq, &payload) {
-                    Ok(frame) => frame,
-                    Err(e) => {
-                        log(
-                            "ERROR",
-                            &format!(
-                                "exec operation: failed to encode output frame seq={seq} label={label_preview}: {e}"
-                            ),
-                        );
-                        exec_cancel.store(true, Ordering::Release);
-                        drain_cancel.store(true, Ordering::Release);
-                        break;
-                    }
-                };
-                if let Err(e) = writer.write_frame(&frame) {
-                    log(
-                        "WARN",
-                        &format!(
-                            "exec operation: failed to send output chunk seq={seq} label={label_preview}: {e}"
-                        ),
-                    );
-                    exec_cancel.store(true, Ordering::Release);
-                    drain_cancel.store(true, Ordering::Release);
-                    break;
-                }
-            }
-        }),
-    )
-}
-
 fn spawn_exec_operation_drain<R, S>(
     pipe: R,
     worker: DrainWorker,
@@ -1113,7 +1030,7 @@ where
     let DrainWorker {
         stream,
         policy,
-        output_tx,
+        stream_writer,
         drain_cancel,
         exec_cancel,
         drain_done_tx,
@@ -1132,19 +1049,38 @@ where
                 policy.capture_limit_bytes,
                 policy.stream,
                 |chunk, truncated| {
-                    let Some(tx) = &output_tx else {
+                    let Some(stream_writer) = &stream_writer else {
                         return true;
                     };
                     if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
                         return false;
                     }
-                    match tx.send(StreamEvent {
-                        stream,
-                        chunk: chunk.to_vec(),
-                        truncated,
-                    }) {
+                    let mut writer = stream_writer.lock().unwrap_or_else(|e| e.into_inner());
+                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
+                        return false;
+                    }
+                    match writer.write_output(stream, chunk, truncated) {
                         Ok(()) => true,
-                        Err(_) => {
+                        Err(ExecStreamWriteError::Encode(e)) => {
+                            log(
+                                "ERROR",
+                                &format!(
+                                    "exec operation: failed to encode output seq={} label={}: {e}",
+                                    writer.seq, writer.label_preview
+                                ),
+                            );
+                            exec_cancel.store(true, Ordering::Release);
+                            drain_cancel.store(true, Ordering::Release);
+                            false
+                        }
+                        Err(ExecStreamWriteError::Write(e)) => {
+                            log(
+                                "WARN",
+                                &format!(
+                                    "exec operation: failed to send output chunk seq={} label={}: {e}",
+                                    writer.seq, writer.label_preview
+                                ),
+                            );
                             exec_cancel.store(true, Ordering::Release);
                             drain_cancel.store(true, Ordering::Release);
                             false
@@ -1559,12 +1495,6 @@ fn log_exec_terminal_if_notable(
     }
 }
 
-fn join_output_writer(handle: Option<JoinHandle<()>>) {
-    if let Some(handle) = handle {
-        let _ = handle.join();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1574,7 +1504,7 @@ mod tests {
     use std::net::Shutdown;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::os::unix::net::UnixStream;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     fn read_message(stream: &mut UnixStream) -> vsock_proto::RawMessage {
         let mut hdr = [0u8; 4];
@@ -1974,12 +1904,12 @@ mod tests {
     }
 
     #[test]
-    fn output_writer_spawn_failure_returns_wait_failed_and_cleans_registry() {
-        let (guest, mut host) = UnixStream::pair().unwrap();
-        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    fn stream_write_failure_cleans_registry() {
+        let (guest, host) = UnixStream::pair().unwrap();
+        drop(host);
         let writer = GuestWriter::new(guest);
         let registry = ExecOperationRegistry::default();
-        let mut request = request(44, "sleep 60");
+        let mut request = request(44, "printf output");
         request.stdout = ExecOutputPolicy::Stream {
             limit_bytes: 64,
             chunk_limit_bytes: 8,
@@ -1991,16 +1921,21 @@ mod tests {
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
-            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_OUTPUT),
+            SystemThreadSpawner,
         )
         .unwrap();
 
-        let msg = read_message(&mut host);
-        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
-        assert_eq!(msg.seq, 44);
-        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
-        assert_eq!(result.termination, ExecTermination::WaitFailed);
-        assert!(result.diagnostic.contains("output writer thread"));
-        assert_registry_released(&registry, 44);
+        let started = Instant::now();
+        loop {
+            if let Ok(registration) = registry.register(44, "released") {
+                drop(registration);
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "exec operation registry entry for seq=44 was not released"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }

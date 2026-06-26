@@ -71,7 +71,7 @@ fn exec_operation_stream_only_stdout_stderr_success() {
 }
 
 #[test]
-fn exec_operation_stream_handles_more_chunks_than_output_queue_capacity() {
+fn exec_operation_stream_handles_many_small_chunks() {
     let (handle, mut host_stream) = start_guest_connection();
     let expected = "x".repeat(96);
     let command = format!("printf {expected}");

@@ -3,7 +3,7 @@ use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u32_len, expect_consumed,
     read_slice, read_u8, read_u32,
 };
-use crate::wire::EXEC_OUTPUT_FLAG_TRUNCATED;
+use crate::wire::{EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE, MIN_BODY_SIZE, MSG_EXEC_OUTPUT};
 
 const EXEC_OUTPUT_STREAM_STDOUT: u8 = 0x00;
 const EXEC_OUTPUT_STREAM_STDERR: u8 = 0x01;
@@ -43,11 +43,53 @@ pub fn encode_exec_output(
     chunk: &[u8],
     truncated: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
+    let (chunk_len, payload_len) = validate_exec_output_payload(chunk)?;
+
+    let mut p = Vec::with_capacity(payload_len);
+    append_exec_output_payload(&mut p, stream, output_seq, chunk, chunk_len, truncated);
+    Ok(p)
+}
+
+/// Encode a full exec_output frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_EXEC_OUTPUT, seq, &encode_exec_output(...))` without allocating
+/// separate payload and frame vectors.
+pub fn encode_exec_output_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    stream: ExecOutputStream,
+    output_seq: u32,
+    chunk: &[u8],
+    truncated: bool,
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let (chunk_len, payload_len) = validate_exec_output_payload(chunk)?;
+    let body_len = MIN_BODY_SIZE + payload_len;
+
+    frame.reserve(HEADER_SIZE + body_len);
+    frame.extend_from_slice(&(body_len as u32).to_be_bytes());
+    frame.push(MSG_EXEC_OUTPUT);
+    frame.extend_from_slice(&seq.to_be_bytes());
+    append_exec_output_payload(frame, stream, output_seq, chunk, chunk_len, truncated);
+    Ok(())
+}
+
+fn validate_exec_output_payload(chunk: &[u8]) -> Result<(u32, usize), ProtocolError> {
     let chunk_len = ensure_u32_len("chunk", chunk.len())?;
     let payload_len = checked_payload_len_add(1 + 4 + 1 + 4, chunk.len())?;
     ensure_payload_fits_message(payload_len)?;
+    Ok((chunk_len, payload_len))
+}
 
-    let mut p = Vec::with_capacity(payload_len);
+fn append_exec_output_payload(
+    p: &mut Vec<u8>,
+    stream: ExecOutputStream,
+    output_seq: u32,
+    chunk: &[u8],
+    chunk_len: u32,
+    truncated: bool,
+) {
     p.push(match stream {
         ExecOutputStream::Stdout => EXEC_OUTPUT_STREAM_STDOUT,
         ExecOutputStream::Stderr => EXEC_OUTPUT_STREAM_STDERR,
@@ -60,7 +102,6 @@ pub fn encode_exec_output(
     });
     p.extend_from_slice(&chunk_len.to_be_bytes());
     p.extend_from_slice(chunk);
-    Ok(p)
 }
 
 /// Decode exec_output payload into a [`DecodedExecOutput`] struct.
