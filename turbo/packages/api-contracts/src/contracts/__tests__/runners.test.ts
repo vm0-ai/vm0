@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   elapsedSinceApiStartMs,
   executionContextSchema,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersJobClaimContract,
   storageManifestSchema,
@@ -228,6 +229,20 @@ describe("runner resume session contract", () => {
     expect(storedResumeSessionSchema.safeParse(resumeSession).success).toBe(
       false,
     );
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
+  });
+
+  it("rejects oversized hash-backed claim resume sessions", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+      },
+    };
+
     expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
   });
 });

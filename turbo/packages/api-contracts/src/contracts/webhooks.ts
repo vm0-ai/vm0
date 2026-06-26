@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -411,7 +412,11 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       hash: sha256HexSchema,
-      size: z.number().int().positive("size must be a positive integer"),
+      size: z
+        .number()
+        .int()
+        .positive("size must be a positive integer")
+        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
     }),
     responses: {
       200: z.object({

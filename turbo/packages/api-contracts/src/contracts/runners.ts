@@ -19,6 +19,9 @@ const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
 ).replace(/\//g, "-");
 export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
 export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.codex/memories`;
+// Must stay in sync with the runner download cap:
+// crates/runner/src/executor/session_history_download.rs.
+export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -187,7 +190,12 @@ const resumeSessionRefSchema = z.object({
   sessionId: z.string(),
   historyRef: resumeSessionHistoryBlobRefSchema.extend({
     url: z.string().url(),
-    size: z.number().int().nonnegative().optional(),
+    size: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(RESUME_SESSION_HISTORY_MAX_BYTES)
+      .optional(),
   }),
 });
 

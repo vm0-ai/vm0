@@ -9,6 +9,7 @@ use crate::http::HttpClient;
 use crate::types::{ResumeSession, ResumeSessionHistoryRefKind};
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+// Must stay in sync with RESUME_SESSION_HISTORY_MAX_BYTES in the API contracts.
 const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(super) enum SessionHistoryMaterializer {
