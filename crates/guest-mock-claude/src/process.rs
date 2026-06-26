@@ -10,9 +10,12 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::path::Path;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Child, Command, ExitCode, ExitStatus, Stdio};
 use std::thread;
 use std::time::Duration;
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
@@ -558,32 +561,123 @@ fn join_captured_shell_stream(
     }
 }
 
-fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
-    let mut child = match Command::new("bash")
+fn spawn_captured_shell(prompt: &str) -> std::io::Result<Child> {
+    let mut command = Command::new("bash");
+    command
         .args(["-c", prompt])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+    spawn_shell_process(&mut command)
+}
+
+#[cfg(unix)]
+fn spawn_shell_process(command: &mut Command) -> std::io::Result<Child> {
+    command.process_group(0).spawn()
+}
+
+#[cfg(not(unix))]
+fn spawn_shell_process(command: &mut Command) -> std::io::Result<Child> {
+    command.spawn()
+}
+
+fn terminate_shell_child(mut child: Child) {
+    terminate_shell_process_group(child.id());
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(unix)]
+fn wait_shell_child_and_cleanup_group(mut child: Child) -> std::io::Result<ExitStatus> {
+    let pid = child.id();
+    if let Err(error) = observe_shell_child_exit_without_reaping(pid) {
+        terminate_shell_process_group(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+
+    terminate_shell_process_group(pid);
+    child.wait()
+}
+
+#[cfg(not(unix))]
+fn wait_shell_child_and_cleanup_group(mut child: Child) -> std::io::Result<ExitStatus> {
+    child.wait()
+}
+
+#[cfg(unix)]
+fn observe_shell_child_exit_without_reaping(pid: u32) -> std::io::Result<()> {
+    let pid = i32::try_from(pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "shell child PID does not fit in i32",
+        )
+    })?;
+
+    loop {
+        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::uninit();
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            return Ok(());
+        }
+
+        let error = std::io::Error::last_os_error();
+        if error.kind() != ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn terminate_shell_process_group(child_pid: u32) {
+    if let Some(pgid) = signalable_shell_process_group(child_pid) {
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_shell_process_group(_child_pid: u32) {}
+
+#[cfg(unix)]
+fn signalable_shell_process_group(child_pid: u32) -> Option<libc::pid_t> {
+    let pgid = i32::try_from(child_pid).ok()?;
+    (pgid > 1 && pgid != current_process_group()).then_some(pgid as libc::pid_t)
+}
+
+#[cfg(unix)]
+fn current_process_group() -> i32 {
+    unsafe { libc::getpgrp() }
+}
+
+fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
+    let mut child = match spawn_captured_shell(prompt) {
         Ok(child) => child,
         Err(_) => return CapturedShellOutput::failed(),
     };
 
     let Some(stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
+        terminate_shell_child(child);
         return CapturedShellOutput::failed();
     };
     let Some(stderr) = child.stderr.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
+        terminate_shell_child(child);
         return CapturedShellOutput::failed();
     };
     let stdout_thread = thread::spawn(move || capture_shell_stream(stdout));
     let stderr_thread = thread::spawn(move || capture_shell_stream(stderr));
 
-    let exit_code = child.wait().map_or(1, |status| status.code().unwrap_or(1));
+    let exit_code =
+        wait_shell_child_and_cleanup_group(child).map_or(1, |status| status.code().unwrap_or(1));
     let stdout = join_captured_shell_stream(stdout_thread);
     let stderr = join_captured_shell_stream(stderr_thread);
     let (Ok(stdout), Ok(stderr)) = (stdout, stderr) else {
@@ -664,4 +758,19 @@ fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
     }
 
     ExitCode::from(exit_code as u8)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signalable_shell_process_group_rejects_dangerous_values() {
+        assert_eq!(signalable_shell_process_group(0), None);
+        assert_eq!(signalable_shell_process_group(1), None);
+        assert_eq!(signalable_shell_process_group((i32::MAX as u32) + 1), None);
+        if let Ok(current_pgid) = u32::try_from(current_process_group()) {
+            assert_eq!(signalable_shell_process_group(current_pgid), None);
+        }
+    }
 }
