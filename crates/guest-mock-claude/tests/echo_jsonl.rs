@@ -677,6 +677,52 @@ fn stream_json_shell_background_child_does_not_hold_output_open()
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn stream_json_shell_escaped_child_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let ready = home.path().join("escaped-child-ready");
+    let pid_file = home.path().join("escaped-child-pid");
+    let ready_path = ready.to_string_lossy();
+    let pid_path = pid_file.to_string_lossy();
+    let prompt = format!(
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; sleep 30' & \
+         while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt);
+    if let Ok(pid) = fs::read_to_string(&pid_file).map(|value| value.trim().to_string())
+        && let Ok(pid) = pid.parse::<libc::pid_t>()
+    {
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    Ok(())
+}
+
 #[test]
 fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;

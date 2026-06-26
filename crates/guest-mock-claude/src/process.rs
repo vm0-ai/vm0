@@ -9,8 +9,15 @@ use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::{Child, Command, ExitCode, ExitStatus, Stdio};
+#[cfg(unix)]
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread;
 use std::time::Duration;
 
@@ -21,6 +28,8 @@ const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
 const STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STREAM_JSON_SHELL_READ_BUFFER_BYTES: usize = 8 * 1024;
+#[cfg(unix)]
+const STREAM_JSON_SHELL_CANCEL_POLL_TIMEOUT_MS: libc::c_int = 100;
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
     if parsed.input_format == "stream-json" {
@@ -521,11 +530,30 @@ impl CapturedShellOutput {
     }
 }
 
-fn capture_shell_stream(mut reader: impl Read) -> std::io::Result<CapturedShellStream> {
-    let mut stream = CapturedShellStream {
+fn new_captured_shell_stream() -> CapturedShellStream {
+    CapturedShellStream {
         bytes: Vec::with_capacity(STREAM_JSON_SHELL_READ_BUFFER_BYTES),
         truncated: false,
-    };
+    }
+}
+
+fn retain_captured_shell_bytes(stream: &mut CapturedShellStream, bytes: &[u8]) {
+    let remaining = STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES.saturating_sub(stream.bytes.len());
+    if remaining == 0 {
+        stream.truncated = true;
+        return;
+    }
+
+    let retained = remaining.min(bytes.len());
+    stream.bytes.extend(bytes.iter().take(retained).copied());
+    if retained < bytes.len() {
+        stream.truncated = true;
+    }
+}
+
+#[cfg(not(unix))]
+fn capture_shell_stream(mut reader: impl Read) -> std::io::Result<CapturedShellStream> {
+    let mut stream = new_captured_shell_stream();
     let mut buffer = [0_u8; STREAM_JSON_SHELL_READ_BUFFER_BYTES];
 
     loop {
@@ -536,17 +564,77 @@ fn capture_shell_stream(mut reader: impl Read) -> std::io::Result<CapturedShellS
             Err(error) => return Err(error),
         };
 
-        let remaining = STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES.saturating_sub(stream.bytes.len());
-        if remaining == 0 {
-            stream.truncated = true;
+        let Some(chunk) = buffer.get(..read) else {
+            return Err(std::io::Error::other("shell stream read exceeded buffer"));
+        };
+        retain_captured_shell_bytes(&mut stream, chunk);
+    }
+
+    Ok(stream)
+}
+
+#[cfg(unix)]
+fn capture_shell_stream_until_cancelled<R>(
+    mut reader: R,
+    cancel: Arc<AtomicBool>,
+) -> std::io::Result<CapturedShellStream>
+where
+    R: Read + AsRawFd,
+{
+    let fd = reader.as_raw_fd();
+    let mut stream = new_captured_shell_stream();
+    let mut buffer = [0_u8; STREAM_JSON_SHELL_READ_BUFFER_BYTES];
+
+    loop {
+        // After bash exits, escaped descendants can keep the write end open.
+        // Cancellation switches to a zero-timeout final drain instead of
+        // waiting for EOF from those descendants.
+        let cancelled = cancel.load(Ordering::Acquire);
+        let timeout_ms = if cancelled {
+            0
+        } else {
+            STREAM_JSON_SHELL_CANCEL_POLL_TIMEOUT_MS
+        };
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let poll_result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+        if poll_result < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        if poll_result == 0 {
+            if cancelled {
+                break;
+            }
+            continue;
+        }
+        if pollfd.revents & libc::POLLNVAL != 0 {
+            break;
+        }
+        if pollfd.revents & (libc::POLLIN | libc::POLLHUP) == 0 {
+            if pollfd.revents & libc::POLLERR != 0 || cancelled {
+                break;
+            }
             continue;
         }
 
-        let retained = remaining.min(read);
-        stream.bytes.extend(buffer.iter().take(retained).copied());
-        if retained < read {
-            stream.truncated = true;
-        }
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == ErrorKind::WouldBlock => continue,
+            Err(error) => return Err(error),
+        };
+        let Some(chunk) = buffer.get(..read) else {
+            return Err(std::io::Error::other("shell stream read exceeded buffer"));
+        };
+        retain_captured_shell_bytes(&mut stream, chunk);
     }
 
     Ok(stream)
@@ -673,11 +761,30 @@ fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
         terminate_shell_child(child);
         return CapturedShellOutput::failed();
     };
+    #[cfg(unix)]
+    let cancel_streams = Arc::new(AtomicBool::new(false));
+
+    #[cfg(unix)]
+    let stdout_thread = {
+        let cancel = Arc::clone(&cancel_streams);
+        thread::spawn(move || capture_shell_stream_until_cancelled(stdout, cancel))
+    };
+    #[cfg(unix)]
+    let stderr_thread = {
+        let cancel = Arc::clone(&cancel_streams);
+        thread::spawn(move || capture_shell_stream_until_cancelled(stderr, cancel))
+    };
+
+    #[cfg(not(unix))]
     let stdout_thread = thread::spawn(move || capture_shell_stream(stdout));
+    #[cfg(not(unix))]
     let stderr_thread = thread::spawn(move || capture_shell_stream(stderr));
 
     let exit_code =
         wait_shell_child_and_cleanup_group(child).map_or(1, |status| status.code().unwrap_or(1));
+    #[cfg(unix)]
+    cancel_streams.store(true, Ordering::Release);
+
     let stdout = join_captured_shell_stream(stdout_thread);
     let stderr = join_captured_shell_stream(stderr_thread);
     let (Ok(stdout), Ok(stderr)) = (stdout, stderr) else {
