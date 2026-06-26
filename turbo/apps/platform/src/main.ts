@@ -1,5 +1,6 @@
 import { initSentry, Sentry } from "./lib/sentry.ts";
 import { initPostHog } from "./lib/posthog.ts";
+import { setupVisualViewportKeyboardState } from "./lib/visual-viewport-keyboard.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
@@ -11,6 +12,7 @@ import { setupRouter } from "./views/main.tsx";
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
 initPostHog();
+setupVisualViewportKeyboardState();
 
 setLogErrorHandler((loggerName, args) => {
   const error = args.find((a): a is Error => {
