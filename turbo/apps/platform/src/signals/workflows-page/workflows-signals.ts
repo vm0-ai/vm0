@@ -52,7 +52,6 @@ const internalWorkflowReload$ = state(0);
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
-const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
@@ -61,14 +60,6 @@ const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
   null,
 );
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
-
-export const workflowSearch$ = computed((get) => {
-  return get(internalWorkflowSearch$);
-});
-
-export const setWorkflowSearch$ = command(({ set }, value: string) => {
-  set(internalWorkflowSearch$, value);
-});
 
 export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
   return (
@@ -173,25 +164,6 @@ export const setScheduleTriggerType$ = command(
   },
 );
 
-function matchesWorkflowSearch(
-  workflow: ZeroWorkflowSummary,
-  search: string,
-): boolean {
-  if (!search) {
-    return true;
-  }
-  return [
-    workflow.name,
-    workflow.displayName ?? "",
-    workflow.description ?? "",
-    workflow.agentDisplayName ?? "",
-    workflow.agentName ?? "",
-  ]
-    .join(" ")
-    .toLowerCase()
-    .includes(search);
-}
-
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
   return get(internalSelectedFilePath$);
@@ -240,32 +212,7 @@ function createAgentWorkflowsFactory(): (
 }
 
 const agentWorkflows = createAgentWorkflowsFactory();
-
-function createFilteredAgentWorkflowsFactory(): (
-  agentId: string,
-) => Computed<Promise<readonly ZeroWorkflowSummary[]>> {
-  const cache = new Map<
-    string,
-    Computed<Promise<readonly ZeroWorkflowSummary[]>>
-  >();
-  return (agentId: string) => {
-    const existing = cache.get(agentId);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = computed(async (get) => {
-      const workflows = await get(agentWorkflows(agentId));
-      const search = get(internalWorkflowSearch$).trim().toLowerCase();
-      return workflows.filter((workflow) => {
-        return matchesWorkflowSearch(workflow, search);
-      });
-    });
-    cache.set(agentId, atom$);
-    return atom$;
-  };
-}
-
-export const agentVisibleWorkflows$ = createFilteredAgentWorkflowsFactory();
+export const agentVisibleWorkflows$ = agentWorkflows;
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow

@@ -135,10 +135,7 @@ import type {
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
-import {
-  WorkflowListPanel,
-  WorkflowsSearch,
-} from "../workflows-page/workflows-page.tsx";
+import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
 
 type ApplyUserPermissionGrants = (
   params: {
@@ -1245,9 +1242,6 @@ function JobWorkflowsTab({ agentId }: { agentId: string }) {
 
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="flex justify-end">
-        <WorkflowsSearch />
-      </div>
       <WorkflowListPanel
         workflows={workflows}
         loading={loading}
