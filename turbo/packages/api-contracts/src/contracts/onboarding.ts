@@ -73,7 +73,12 @@ export const onboardingCompleteLimitedFreeContract = c.router({
     method: "POST",
     path: "/api/zero/onboarding/complete-limited-free",
     headers: authHeadersSchema,
-    body: z.object({}).strict(),
+    body: z
+      .object({
+        credits: z.number().int().positive().max(1000).default(1000),
+        expiresAt: z.string().datetime().nullable().default(null),
+      })
+      .strict(),
     responses: {
       200: z.object({
         agentId: z.string(),

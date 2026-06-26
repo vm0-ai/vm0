@@ -197,4 +197,62 @@ describe("zero org switcher", () => {
       });
     });
   });
+
+  it("bounds long workspace lists inside a scrollable menu region", async () => {
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Current",
+      slug: "current",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Current",
+          slug: "current",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Current",
+            },
+          },
+          ...Array.from({ length: 12 }, (_, index) => {
+            return {
+              id: `membership_${index}`,
+              organization: {
+                id: `org_${index}`,
+                name: `Workspace ${index + 1}`,
+              },
+            };
+          }),
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Current");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    const scrollRegion = await screen.findByTestId(
+      "org-switcher-options-scroll",
+    );
+
+    expect(scrollRegion).toHaveClass("max-h-72");
+    expect(scrollRegion).toHaveClass("overflow-y-auto");
+    expect(screen.getByText("Workspace 12")).toBeInTheDocument();
+  });
 });

@@ -210,14 +210,25 @@ function OrgDropdownContent() {
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const orgName = currentOrg?.name ?? "Organization";
   const orgSlug = orgData?.slug;
+  const memberships = clerk?.user?.organizationMemberships ?? [];
+  const currentOrgId = clerk?.organization?.id;
 
   const hasPendingInvitations =
     pendingInvitations !== undefined && pendingInvitations.length > 0;
+  const hasOtherMemberships = memberships.some((membership) => {
+    return (
+      membership.organization && membership.organization.id !== currentOrgId
+    );
+  });
+  const hasOrgOptions = hasOtherMemberships || hasPendingInvitations;
   const canCreateOrg = clerk?.user?.createOrganizationEnabled ?? false;
 
   return (
-    <DropdownMenuContent align="start" className="w-72">
-      <div className="flex items-center gap-3 px-2 py-1.5">
+    <DropdownMenuContent
+      align="start"
+      className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+    >
+      <div className="flex shrink-0 items-center gap-3 px-2 py-1.5">
         <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-tight truncate text-foreground">
@@ -231,21 +242,32 @@ function OrgDropdownContent() {
         </div>
       </div>
 
-      <OtherMembershipsList />
+      {hasOrgOptions && (
+        <div
+          data-testid="org-switcher-options-scroll"
+          className="min-h-0 max-h-72 flex-1 overflow-y-auto [scrollbar-gutter:stable]"
+        >
+          <OtherMembershipsList />
 
-      {/* Pending invitations */}
-      {hasPendingInvitations && (
-        <>
-          <DropdownMenuSeparator />
-          {pendingInvitations.map((invitation) => {
-            return (
-              <InvitationRow key={invitation.id} invitation={invitation} />
-            );
-          })}
-        </>
+          {/* Pending invitations */}
+          {hasPendingInvitations && (
+            <>
+              <DropdownMenuSeparator />
+              {pendingInvitations.map((invitation) => {
+                return (
+                  <InvitationRow key={invitation.id} invitation={invitation} />
+                );
+              })}
+            </>
+          )}
+        </div>
       )}
 
-      {canCreateOrg && <CreateWorkspaceItem />}
+      {canCreateOrg && (
+        <div className="shrink-0">
+          <CreateWorkspaceItem />
+        </div>
+      )}
     </DropdownMenuContent>
   );
 }

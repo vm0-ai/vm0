@@ -194,7 +194,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(forgedLimitedFree.body);
     expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
 
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
+      credits: 1000,
+      expiresAt: null,
+    });
     expect(completeLimitedFree.status).toBe(200);
     expect(completeLimitedFree.body).toStrictEqual({
       agentId: defaultAgentId,
