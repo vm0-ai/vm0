@@ -1,6 +1,10 @@
+import { isUtf8 } from "node:buffer";
+import { createHash } from "node:crypto";
+
 import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -22,7 +26,11 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
-import { downloadS3Buffer, generatePresignedGetUrl } from "../external/s3";
+import {
+  downloadS3BufferWithMaxBytes,
+  generatePresignedGetUrl,
+  S3ObjectSizeLimitError,
+} from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
@@ -54,6 +62,8 @@ const RESUME_SESSION_HISTORY_REF_CAPABILITY =
   "resumeSessionHistoryRef" satisfies RunnerClaimCapability;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
+const RESUME_SESSION_HISTORY_INVALID_ERROR =
+  "Runner job has invalid resume session history";
 const EMPTY_S3_BODY_MESSAGE = "S3 object body is empty";
 
 interface ClaimFailedSideEffectArgs {
@@ -66,9 +76,10 @@ interface ClaimFailedSideEffectArgs {
 class ResumeSessionHistoryLoadError extends Error {
   constructor(
     readonly hash: string,
+    message: string,
     readonly cause: unknown,
   ) {
-    super(RESUME_SESSION_HISTORY_LOAD_ERROR);
+    super(message);
     this.name = "ResumeSessionHistoryLoadError";
   }
 }
@@ -889,6 +900,37 @@ function resumeSessionHistoryBlobKey(hash: string): string {
   return `blobs/${hash}.blob`;
 }
 
+function invalidResumeSessionHistoryError(
+  hash: string,
+  cause: unknown,
+): ResumeSessionHistoryLoadError {
+  return new ResumeSessionHistoryLoadError(
+    hash,
+    RESUME_SESSION_HISTORY_INVALID_ERROR,
+    cause,
+  );
+}
+
+function decodeVerifiedResumeSessionHistory(
+  hash: string,
+  buffer: Buffer,
+): string {
+  const actualHash = createHash("sha256").update(buffer).digest("hex");
+  if (actualHash !== hash) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error(`hash mismatch: expected ${hash}, got ${actualHash}`),
+    );
+  }
+  if (!isUtf8(buffer)) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error("session history is not utf-8"),
+    );
+  }
+  return buffer.toString("utf8");
+}
+
 const generateResumeSessionHistoryUrl$ = command(
   async ({ get }, hash: string): Promise<string> => {
     return await get(
@@ -906,12 +948,13 @@ const generateResumeSessionHistoryUrl$ = command(
 const loadResumeSessionHistory$ = command(
   async ({ get }, hash: string): Promise<string> => {
     const buffer = await get(
-      downloadS3Buffer(
+      downloadS3BufferWithMaxBytes(
         env("R2_USER_STORAGES_BUCKET_NAME"),
         resumeSessionHistoryBlobKey(hash),
+        RESUME_SESSION_HISTORY_MAX_BYTES,
       ),
     );
-    return buffer.toString("utf8");
+    return decodeVerifiedResumeSessionHistory(hash, buffer);
   },
 );
 
@@ -932,11 +975,21 @@ async function resolveResumeSessionForClaim(args: {
       args.loadResumeSessionHistory(historyRef.hash),
     );
     if (!sessionHistoryResult.ok) {
+      if (isResumeSessionHistoryLoadError(sessionHistoryResult.error)) {
+        throw sessionHistoryResult.error;
+      }
+      if (sessionHistoryResult.error instanceof S3ObjectSizeLimitError) {
+        throw invalidResumeSessionHistoryError(
+          historyRef.hash,
+          sessionHistoryResult.error,
+        );
+      }
       if (!isMissingResumeSessionHistoryError(sessionHistoryResult.error)) {
         throw sessionHistoryResult.error;
       }
       throw new ResumeSessionHistoryLoadError(
         historyRef.hash,
+        RESUME_SESSION_HISTORY_LOAD_ERROR,
         sessionHistoryResult.error,
       );
     }
@@ -1264,19 +1317,21 @@ async function failClaimForResumeSessionHistoryLoad(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly hash: string;
+  readonly errorMessage: string;
   readonly cause: unknown;
   readonly signal: AbortSignal;
   readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
 }) {
-  L.warn("session history R2 object is missing during claim", {
+  L.warn("session history R2 object could not be loaded during claim", {
     runId: args.runId,
     hash: args.hash,
+    errorMessage: args.errorMessage,
     error: args.cause,
   });
   const poisonResult = await failPoisonQueuedJob(
     args.db,
     args.runId,
-    RESUME_SESSION_HISTORY_LOAD_ERROR,
+    args.errorMessage,
     args.signal,
   );
   if (poisonResult.status !== "failed") {
@@ -1286,9 +1341,9 @@ async function failClaimForResumeSessionHistoryLoad(args: {
     runId: args.runId,
     userId: args.userId,
     orgId: args.orgId,
-    error: RESUME_SESSION_HISTORY_LOAD_ERROR,
+    error: args.errorMessage,
   });
-  return badRequestMessage(RESUME_SESSION_HISTORY_LOAD_ERROR);
+  return badRequestMessage(args.errorMessage);
 }
 
 async function failClaimForInvalidStoredExecutionContext(args: {
@@ -1315,6 +1370,30 @@ async function failClaimForInvalidStoredExecutionContext(args: {
     error: INVALID_EXECUTION_CONTEXT_ERROR,
   });
   return badRequestMessage("Job missing execution context");
+}
+
+async function claimResponseBuildErrorResponse(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly runId: string;
+  readonly error: unknown;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  if (!isResumeSessionHistoryLoadError(args.error)) {
+    throw args.error;
+  }
+  return await failClaimForResumeSessionHistoryLoad({
+    db: args.db,
+    runId: args.runId,
+    hash: args.error.hash,
+    userId: args.run.userId,
+    orgId: args.run.orgId,
+    errorMessage: args.error.message,
+    cause: args.error.cause,
+    signal: args.signal,
+    scheduleFailedSideEffects: args.scheduleFailedSideEffects,
+  });
 }
 
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -1402,17 +1481,11 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   if (!responseBodyResult.ok) {
-    const error = responseBodyResult.error;
-    if (!isResumeSessionHistoryLoadError(error)) {
-      throw error;
-    }
-    return await failClaimForResumeSessionHistoryLoad({
+    return await claimResponseBuildErrorResponse({
       db,
+      run,
       runId,
-      hash: error.hash,
-      userId: run.userId,
-      orgId: run.orgId,
-      cause: error.cause,
+      error: responseBodyResult.error,
       signal,
       scheduleFailedSideEffects(args) {
         set(scheduleClaimFailedSideEffects$, args);

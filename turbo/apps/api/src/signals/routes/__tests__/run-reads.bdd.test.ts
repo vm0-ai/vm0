@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -120,6 +123,14 @@ function countSessionHistoryBlobReads(hash: string): number {
   return context.mocks.s3.send.mock.calls.filter(([command]) => {
     return s3CommandKey(command) === blobKey;
   }).length;
+}
+
+function s3TextBody(text: string): AsyncIterable<Buffer> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(text, "utf8");
+    },
+  };
 }
 
 async function createHashBackedResumeRun(
@@ -1309,6 +1320,87 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expect(pendingRun.status).toBe("pending");
     expect(pendingRun.error).toBeUndefined();
     await api.requestCancelRun(actor, resumed.runId, [200]);
+  });
+
+  it("fails a hash-backed resume run when old runner history hash validation fails", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-bad-history-hash");
+    const historyHash = createHash("sha256")
+      .update(`expected resume history ${randomUUID()}`)
+      .digest("hex");
+
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
+        return Promise.resolve({
+          Body: s3TextBody(`corrupt resume history ${randomUUID()}`),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const resumed = await createHashBackedResumeRun(
+      actor,
+      compose.composeId,
+      historyHash,
+      "bad history hash",
+    );
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [400],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe(
+      "Runner job has invalid resume session history",
+    );
+
+    const failedRun = await api.readRun(actor, resumed.runId);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe(
+      "Runner job has invalid resume session history",
+    );
+    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+  });
+
+  it("fails a hash-backed resume run when old runner history is oversized", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-oversized-history");
+    const historyHash = createHash("sha256")
+      .update(`oversized resume history ${randomUUID()}`)
+      .digest("hex");
+
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
+        return Promise.resolve({
+          ContentLength: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+          Body: s3TextBody(""),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const resumed = await createHashBackedResumeRun(
+      actor,
+      compose.composeId,
+      historyHash,
+      "oversized history",
+    );
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [400],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe(
+      "Runner job has invalid resume session history",
+    );
+
+    const failedRun = await api.readRun(actor, resumed.runId);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe(
+      "Runner job has invalid resume session history",
+    );
+    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
   });
 });
 
