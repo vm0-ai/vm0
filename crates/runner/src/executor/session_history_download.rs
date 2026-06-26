@@ -96,6 +96,10 @@ impl SessionHistoryMaterializer {
             SessionHistoryMaterializerState::Downloading { started_at, task } => {
                 let started_at = *started_at;
                 if cancel.is_cancelled() {
+                    if let Some(task) = task.take() {
+                        task.abort();
+                        let _ = task.await;
+                    }
                     return SessionHistoryDownloadTaskResult::cancelled(started_at)
                         .into_materialization();
                 }
