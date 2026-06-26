@@ -69,6 +69,22 @@ export const pushPathSilently$ = command(
   },
 );
 
+export const replacePathSilently$ = command(
+  (
+    { set },
+    pathnameTemplate: Parameters<typeof generateRouterPath>[0],
+    pathParams?: Parameters<typeof generateRouterPath>[1],
+    searchParams?: URLSearchParams,
+  ) => {
+    const newPath = generateRouterPath(pathnameTemplate, pathParams);
+    const searchStr = searchParams?.toString();
+    replaceState({}, "", `${newPath}${searchStr ? `?${searchStr}` : ""}`);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
+  },
+);
+
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;
