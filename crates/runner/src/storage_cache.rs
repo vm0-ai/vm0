@@ -182,6 +182,48 @@ impl GuestWriteLocks {
         sandbox.write_file(guest_path, bytes).await?;
         Ok(())
     }
+
+    async fn write_files(
+        &self,
+        sandbox: &dyn Sandbox,
+        writes: &[GuestStageWrite],
+    ) -> RunnerResult<()> {
+        if writes.is_empty() {
+            return Ok(());
+        }
+        let mut paths = writes
+            .iter()
+            .map(|write| write.guest_path.as_str())
+            .collect::<Vec<_>>();
+        paths.sort_unstable();
+        paths.dedup();
+        let locks = {
+            let mut lock_map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            paths
+                .into_iter()
+                .map(|path| {
+                    Arc::clone(
+                        lock_map
+                            .entry(path.to_string())
+                            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut guards = Vec::with_capacity(locks.len());
+        for lock in &locks {
+            guards.push(lock.lock().await);
+        }
+        let entries = writes
+            .iter()
+            .map(|write| WriteFileEntry {
+                path: write.guest_path.as_str(),
+                content: write.bytes.as_ref(),
+            })
+            .collect::<Vec<_>>();
+        sandbox.write_files(&entries).await?;
+        Ok(())
+    }
 }
 
 impl GuestStageBatch {
@@ -206,31 +248,14 @@ impl GuestStageBatch {
 async fn flush_guest_stage_batch(
     batch: &mut GuestStageBatch,
     sandbox: &dyn Sandbox,
+    guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<()> {
     if batch.writes.is_empty() {
         return Ok(());
     }
-    write_guest_stage_files(sandbox, &batch.writes).await?;
+    guest_writes.write_files(sandbox, &batch.writes).await?;
     batch.writes.clear();
     batch.content_bytes = 0;
-    Ok(())
-}
-
-async fn write_guest_stage_files(
-    sandbox: &dyn Sandbox,
-    writes: &[GuestStageWrite],
-) -> RunnerResult<()> {
-    if writes.is_empty() {
-        return Ok(());
-    }
-    let entries = writes
-        .iter()
-        .map(|write| WriteFileEntry {
-            path: write.guest_path.as_str(),
-            content: write.bytes.as_ref(),
-        })
-        .collect::<Vec<_>>();
-    sandbox.write_files(&entries).await?;
     Ok(())
 }
 
@@ -247,13 +272,23 @@ async fn push_guest_stage_write(
         return Ok(());
     }
     if batch.should_flush_before(&write) {
-        flush_guest_stage_batch(batch, sandbox).await?;
+        flush_guest_stage_batch(batch, sandbox, guest_writes).await?;
     }
     batch.push(write);
     if batch.should_flush_after_push() {
-        flush_guest_stage_batch(batch, sandbox).await?;
+        flush_guest_stage_batch(batch, sandbox, guest_writes).await?;
     }
     Ok(())
+}
+
+fn should_batch_stage_write(outcome: &GroupOutcome) -> bool {
+    matches!(
+        outcome,
+        GroupOutcome::Shared {
+            outcome: TargetOutcome::Hit,
+            ..
+        }
+    )
 }
 
 /// Populate the runner-side cache for eligible entries in `manifest`.
@@ -285,14 +320,13 @@ pub async fn populate_cache(
 
     // `buffer_unordered` drives up to CONCURRENCY futures concurrently while
     // keeping their borrows alive on the caller's stack. Unlike
-    // `tokio::task::JoinSet`, it does not require `'static` futures — which
-    // matters because our `sandbox: &dyn Sandbox` is a borrow, not an Arc.
+    // `tokio::task::JoinSet`, it does not require `'static` futures for the
+    // borrowed cache home and HTTP client state used here.
     let mut groups = stream::iter(target_groups)
         .map(|group| {
             let http = http.clone();
-            let guest_writes = &guest_writes;
             async move {
-                let res = process_group(&group, &http, home, sandbox, guest_writes).await;
+                let res = process_group(&group, &http, home).await;
                 (group, res)
             }
         })
@@ -302,12 +336,24 @@ pub async fn populate_cache(
     let mut stage_batch = GuestStageBatch::default();
     while let Some((group, outcome)) = groups.next().await {
         let outcome = outcome?;
-        if let Some(stage_write) = outcome.stage_write {
-            push_guest_stage_write(&mut stage_batch, stage_write, sandbox, &guest_writes).await?;
+        let ProcessedGroup {
+            outcome,
+            stage_write,
+        } = outcome;
+        if let Some(stage_write) = stage_write {
+            if should_batch_stage_write(&outcome) {
+                push_guest_stage_write(&mut stage_batch, stage_write, sandbox, &guest_writes)
+                    .await?;
+            } else {
+                flush_guest_stage_batch(&mut stage_batch, sandbox, &guest_writes).await?;
+                guest_writes
+                    .write_file(sandbox, &stage_write.guest_path, &stage_write.bytes)
+                    .await?;
+            }
         }
-        outcomes.push((group, outcome.outcome));
+        outcomes.push((group, outcome));
     }
-    flush_guest_stage_batch(&mut stage_batch, sandbox).await?;
+    flush_guest_stage_batch(&mut stage_batch, sandbox, &guest_writes).await?;
 
     for (group, outcome) in outcomes {
         apply_group_outcome(manifest, &group, &outcome, telemetry);
@@ -401,8 +447,6 @@ async fn process_group(
     group: &CacheTargetGroup,
     http: &Client,
     home: &HomePaths,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<ProcessedGroup> {
     // Same-key targets are expected to refer to the same archive content, so a
     // definitive cache outcome can be shared across the group. Probe and full
@@ -413,7 +457,7 @@ async fn process_group(
         let ProcessedTarget {
             outcome,
             stage_write,
-        } = process_one(target, http, home, sandbox, guest_writes).await?;
+        } = process_one(target, http, home).await?;
         match outcome {
             TargetOutcome::SkippedHeadFailed { .. }
             | TargetOutcome::SkippedInvalidDownload { .. } => {
@@ -447,8 +491,6 @@ async fn process_one(
     target: &CacheTarget,
     http: &Client,
     home: &HomePaths,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<ProcessedTarget> {
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
@@ -608,15 +650,12 @@ async fn process_one(
     write_to_cache(&cache_dir, &bytes).await?;
     let guest_path = guest_archive_path(&target.name, &target.version);
     drop(writer);
-    guest_writes
-        .write_file(sandbox, &guest_path, &bytes)
-        .await?;
 
     Ok(ProcessedTarget {
         outcome: TargetOutcome::Miss {
             download_duration: t.elapsed(),
         },
-        stage_write: None,
+        stage_write: Some(GuestStageWrite { guest_path, bytes }),
     })
 }
 
