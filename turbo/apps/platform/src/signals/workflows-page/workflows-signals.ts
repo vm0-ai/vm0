@@ -192,16 +192,6 @@ function matchesWorkflowSearch(
     .includes(search);
 }
 
-export const filteredVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    const workflows = await get(allVisibleWorkflows$);
-    const search = get(internalWorkflowSearch$).trim().toLowerCase();
-    return workflows.filter((workflow) => {
-      return matchesWorkflowSearch(workflow, search);
-    });
-  },
-);
-
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
   return get(internalSelectedFilePath$);
@@ -219,19 +209,6 @@ const reloadWorkflows$ = command(({ set }) => {
     return prev + 1;
   });
 });
-
-/**
- * The user's visible workflows across every agent. Used by the read-only
- * cross-agent index at `/workflows`.
- */
-const allVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    get(internalWorkflowReload$);
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(client.list(), [200], { toast: false });
-    return result.body;
-  },
-);
 
 /**
  * Factory for a single agent's visible workflows (public ∪ the caller's own
@@ -263,6 +240,32 @@ function createAgentWorkflowsFactory(): (
 }
 
 const agentWorkflows = createAgentWorkflowsFactory();
+
+function createFilteredAgentWorkflowsFactory(): (
+  agentId: string,
+) => Computed<Promise<readonly ZeroWorkflowSummary[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly ZeroWorkflowSummary[]>>
+  >();
+  return (agentId: string) => {
+    const existing = cache.get(agentId);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      const workflows = await get(agentWorkflows(agentId));
+      const search = get(internalWorkflowSearch$).trim().toLowerCase();
+      return workflows.filter((workflow) => {
+        return matchesWorkflowSearch(workflow, search);
+      });
+    });
+    cache.set(agentId, atom$);
+    return atom$;
+  };
+}
+
+export const agentVisibleWorkflows$ = createFilteredAgentWorkflowsFactory();
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow

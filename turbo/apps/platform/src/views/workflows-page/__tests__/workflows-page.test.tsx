@@ -10,6 +10,9 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -24,8 +27,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000101";
+const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
+const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 
 type WorkflowScheduleTriggerSummary = Extract<
@@ -138,6 +143,40 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
+function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
+  return {
+    id: OTHER_WORKFLOW_ID,
+    agentId: OTHER_AGENT_ID,
+    agentName: "support-bot",
+    agentDisplayName: "Support Bot",
+    name: "support-intake",
+    displayName: "Support Intake",
+    description: "Sorts incoming support requests.",
+    visibility: "public",
+    requestToPublish: false,
+    ownerUserId: CURRENT_USER_ID,
+    canManage: true,
+    instruction: null,
+    files: [],
+    fileContents: [],
+    triggers: [],
+  };
+}
+
+function agent(id: string, displayName: string): TeamComposeItem {
+  return {
+    id,
+    ownerId: CURRENT_USER_ID,
+    displayName,
+    description: "Finds and summarizes information",
+    sound: null,
+    avatarUrl: null,
+    visibility: "public",
+    headVersionId: "version_2",
+    updatedAt: "2026-06-01T00:00:00Z",
+  };
+}
+
 function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   return {
     id: workflow.id,
@@ -152,6 +191,29 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     ownerUserId: workflow.ownerUserId,
     canManage: workflow.canManage,
   };
+}
+
+function mockAgentPageApis(): void {
+  context.mocks.data.team([
+    agent(AGENT_ID, "Research Bot"),
+    agent(OTHER_AGENT_ID, "Support Bot"),
+  ]);
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const displayName =
+      params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
+    return respond(200, {
+      agentId: params.id,
+      ownerId: CURRENT_USER_ID,
+      description: "Finds and summarizes information",
+      displayName,
+      sound: null,
+      avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "public",
+    });
+  });
 }
 
 function applyWorkflowUpdate(
@@ -323,17 +385,22 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
   return item;
 }
 
-describe("workflows index page", () => {
-  it("shows every visible workflow with its agent and links into the detail page", async () => {
-    mockWorkflowApis([salesResearch(), opsPlaybook()]);
+describe("agent workflows tab", () => {
+  it("shows the agent's workflows and links into the detail page", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
 
-    detachedSetupPage({ context, path: "/workflows" });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
     expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
-    expect(screen.getAllByText("Research Bot").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
     expect(screen.getByText("private")).toBeInTheDocument();
 
     const searchInput = screen.getByLabelText("Search workflows");
@@ -371,7 +438,10 @@ describe("workflow detail page", () => {
         return link.textContent?.trim() === "workflows";
       },
     );
-    expect(workflowsLink).toHaveAttribute("href", "/workflows");
+    expect(workflowsLink).toHaveAttribute(
+      "href",
+      `/agents/${AGENT_ID}/workflows`,
+    );
     expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();

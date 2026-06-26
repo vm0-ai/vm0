@@ -244,7 +244,12 @@ function WorkflowBreadcrumb({
         {agentLabel(detail)}
       </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
-      <BreadcrumbLink pathname={ROUTES.workflows}>workflows</BreadcrumbLink>
+      <BreadcrumbLink
+        pathname={ROUTES.agentWorkflows}
+        options={{ pathParams: { agentId: detail.agentId } }}
+      >
+        workflows
+      </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
         {workflowTitle(detail)}
@@ -330,7 +335,9 @@ function WorkflowMobileCascade({
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            navigate(ROUTES.workflows);
+            navigate(ROUTES.agentWorkflows, {
+              pathParams: { agentId: detail.agentId },
+            });
           }}
         >
           workflows
@@ -888,7 +895,9 @@ function WorkflowDeleteDialog({
                 (async () => {
                   await deleteWorkflow(detail.id, pageSignal);
                   onOpenChange(false);
-                  navigate(ROUTES.workflows);
+                  navigate(ROUTES.agentWorkflows, {
+                    pathParams: { agentId: detail.agentId },
+                  });
                 })(),
                 Reason.DomCallback,
               );
