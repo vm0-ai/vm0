@@ -84,6 +84,65 @@ describe("groupEventsIntoMessages progress events", () => {
   });
 });
 
+describe("groupEventsIntoMessages Codex turn completion signals", () => {
+  it("keeps top-level success false even when nested turn status is completed", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "turn.completed",
+          eventData: {
+            type: "turn.completed",
+            success: false,
+            turn: {
+              id: "turn-conflicting-success",
+              success: true,
+              status: "completed",
+            },
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.type).toBe("result");
+    expect(messages[0]?.eventData).toMatchObject({
+      is_error: true,
+      result: "Turn failed",
+    });
+  });
+
+  it("keeps top-level failed status even when nested turn status is completed", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "turn.completed",
+          eventData: {
+            type: "turn.completed",
+            status: "failed",
+            turn: {
+              id: "turn-conflicting-status",
+              status: "completed",
+            },
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.type).toBe("result");
+    expect(messages[0]?.eventData).toMatchObject({
+      is_error: true,
+      result: "Turn failed",
+    });
+  });
+});
+
 describe("groupEventsIntoMessages Codex plan events", () => {
   it("drops empty Codex plan updates", () => {
     const messages = groupEventsIntoMessages(

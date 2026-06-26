@@ -386,20 +386,32 @@ function getTurnId(eventData: Record<string, unknown>): string | undefined {
 
 function getTurnStatus(eventData: Record<string, unknown>): string | undefined {
   const turn = getTurnRecord(eventData);
-  return (
-    (turn ? getFirstString(turn, ["status"]) : undefined) ??
-    getFirstString(eventData, ["status"])
-  );
+  const turnStatus = turn ? getFirstString(turn, ["status"]) : undefined;
+  const eventStatus = getFirstString(eventData, ["status"]);
+  if (isFailedStatus(turnStatus)) {
+    return turnStatus;
+  }
+  if (isFailedStatus(eventStatus)) {
+    return eventStatus;
+  }
+  return turnStatus ?? eventStatus;
 }
 
 function getTurnSuccess(
   eventData: Record<string, unknown>,
 ): boolean | undefined {
   const turn = getTurnRecord(eventData);
-  const value =
-    (turn && typeof turn.success === "boolean" ? turn.success : undefined) ??
-    eventData.success;
-  return typeof value === "boolean" ? value : undefined;
+  const turnSuccess =
+    turn && typeof turn.success === "boolean" ? turn.success : undefined;
+  const eventSuccess =
+    typeof eventData.success === "boolean" ? eventData.success : undefined;
+  if (turnSuccess === false || eventSuccess === false) {
+    return false;
+  }
+  if (turnSuccess === true || eventSuccess === true) {
+    return true;
+  }
+  return undefined;
 }
 
 function getUsage(eventData: Record<string, unknown>): CodexUsage | undefined {
@@ -904,7 +916,9 @@ function normalizeCodexRunEvent(
         hasTurnCompletionError(eventData);
       const result = failed
         ? (getTurnErrorMessage(eventData) ??
-          (status ? `Turn ${status}` : "Turn failed"))
+          (status && !isSuccessfulTurnCompletionStatus(status)
+            ? `Turn ${status}`
+            : "Turn failed"))
         : "";
       return {
         event: makeCodexResultEvent({
