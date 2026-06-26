@@ -293,6 +293,19 @@ export function buildSignupRedirectUrl(
   return url.toString();
 }
 
+export function buildSignInRedirectUrl(
+  appUrl: string,
+  signInSearch: string,
+  allowedRedirectOrigins: readonly string[] = [appUrl],
+  paidOnboardingUrl?: string,
+): string {
+  const params = new URLSearchParams(signInSearch);
+  return (
+    readAllowedRedirectUrl(params, allowedRedirectOrigins, paidOnboardingUrl) ??
+    appUrl
+  );
+}
+
 function readAllowedRedirectUrl(
   params: URLSearchParams,
   allowedRedirectOrigins: readonly string[],

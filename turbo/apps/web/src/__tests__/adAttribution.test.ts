@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHomepageAttributionProperties,
+  buildSignInRedirectUrl,
   buildSignupHref,
   buildSignupRedirectUrl,
   hasAdAttributionParams,
@@ -273,5 +274,27 @@ describe("buildSignupRedirectUrl", () => {
     expect(url.origin).toBe("https://app.vm0.ai");
     expect(url.pathname).toBe("/onboarding");
     expect(url.searchParams.get("gclid")).toBe("test-click");
+  });
+});
+
+describe("buildSignInRedirectUrl", () => {
+  it("honors an allowed redirect_url without applying signup attribution fallback", () => {
+    const redirectUrl = buildSignInRedirectUrl(
+      "https://app.vm7.ai:8443",
+      "redirect_url=https%3A%2F%2Fso.vm7.ai%3A8443%2Fonboarding%2F2afcf6&gclid=test-click",
+      ["https://app.vm7.ai:8443", "https://so.vm7.ai:8443"],
+    );
+
+    expect(redirectUrl).toBe("https://so.vm7.ai:8443/onboarding/2afcf6");
+  });
+
+  it("falls back to the app URL when redirect_url is not allowed", () => {
+    expect(
+      buildSignInRedirectUrl(
+        "https://app.vm0.ai",
+        "redirect_url=https%3A%2F%2Fevil.example%2Fonboarding",
+        ["https://app.vm0.ai", "https://so.vm0.ai"],
+      ),
+    ).toBe("https://app.vm0.ai");
   });
 });
