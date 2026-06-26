@@ -324,38 +324,37 @@ function generatedExportCandidates(
   });
 }
 
-function getRequiredGeneratedExportByName<T>(
+function hasOwnKey(
+  value: Readonly<Record<string, unknown>>,
+  key: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function getOptionalGeneratedExportByName<T>(
   moduleExports: Readonly<Record<string, unknown>>,
   type: FirewallConnectorType,
   name: string,
-  isExpected: (value: unknown) => value is T,
-): T {
-  const value = moduleExports[name];
-  if (!isExpected(value)) {
-    throw new Error(
-      `Unexpected ${name} export shape for firewall metadata: ${type}`,
-    );
-  }
-  return value;
-}
-
-function getOptionalGeneratedExport<T>(
-  moduleExports: Readonly<Record<string, unknown>>,
-  type: FirewallConnectorType,
   suffix: string,
   isExpected: (value: unknown) => value is T,
 ): T | null {
-  const matches = generatedExportCandidates(moduleExports, suffix);
-  if (matches.length > 1) {
+  const unexpectedMatches = generatedExportCandidates(moduleExports, suffix)
+    .map(([matchName]) => {
+      return matchName;
+    })
+    .filter((matchName) => {
+      return matchName !== name;
+    })
+    .sort(compareStrings);
+  if (unexpectedMatches.length > 0) {
     throw new Error(
-      `Expected at most one ${suffix} export for firewall metadata: ${type}`,
+      `Unexpected ${suffix} export names for firewall metadata: ${type}: ${unexpectedMatches.join(", ")}; expected ${name}`,
     );
   }
-  const [match] = matches;
-  if (!match) {
+  if (!hasOwnKey(moduleExports, name)) {
     return null;
   }
-  const [name, value] = match;
+  const value = moduleExports[name];
   if (!isExpected(value)) {
     throw new Error(
       `Unexpected ${name} export shape for firewall metadata: ${type}`,
@@ -563,6 +562,13 @@ export function generatedFirewallExportName(
     .join("")}Firewall`;
 }
 
+function generatedOptionalExportName(
+  type: FirewallConnectorType,
+  suffix: string,
+): string {
+  return `${generatedFirewallExportName(type).replace(/Firewall$/, "")}${suffix}`;
+}
+
 function defaultConnectorsDir(): string {
   return path.resolve(import.meta.dirname, "../../connectors/src/connectors");
 }
@@ -687,15 +693,17 @@ async function loadGeneratedFirewallSource(
     firewallExportName,
     moduleExports[firewallExportName],
   );
-  const categories = getOptionalGeneratedExport(
+  const categories = getOptionalGeneratedExportByName(
     moduleExports,
     type,
+    generatedOptionalExportName(type, "Categories"),
     "Categories",
     isStringRecord,
   );
-  const displayOrder = getOptionalGeneratedExport(
+  const displayOrder = getOptionalGeneratedExportByName(
     moduleExports,
     type,
+    generatedOptionalExportName(type, "CategoryOrder"),
     "CategoryOrder",
     isStringArray,
   );
@@ -706,9 +714,10 @@ async function loadGeneratedFirewallSource(
   }
   const connectorCategories =
     categories && displayOrder ? { categories, displayOrder } : null;
-  const defaultAllowed = getOptionalGeneratedExport(
+  const defaultAllowed = getOptionalGeneratedExportByName(
     moduleExports,
     type,
+    generatedOptionalExportName(type, "DefaultAllowed"),
     "DefaultAllowed",
     isStringArray,
   );
@@ -725,9 +734,10 @@ async function loadGeneratedFirewallSource(
     categories: connectorCategories,
     defaultAllowed,
     defaultUnknownPolicy:
-      getOptionalGeneratedExport(
+      getOptionalGeneratedExportByName(
         moduleExports,
         type,
+        generatedOptionalExportName(type, "DefaultUnknownPolicy"),
         "DefaultUnknownPolicy",
         isPolicyValue,
       ) ?? "allow",

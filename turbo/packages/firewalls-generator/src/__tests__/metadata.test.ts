@@ -318,6 +318,60 @@ describe("firewall metadata generator", () => {
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
 
+  it(
+    "rejects generated optional metadata exports with the wrong connector prefix",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          "        headers: {",
+          '          Authorization: "Bearer token",',
+          "        },",
+          "      },",
+          "      permissions: [",
+          "        {",
+          '          name: "repo-read",',
+          '          rules: ["GET /repos/{owner}/{repo}"],',
+          "        },",
+          "      ],",
+          "    },",
+          "  ],",
+          "};",
+          "export const gitHubDefaultAllowed = [",
+          '  "repo-read",',
+          "];",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Unexpected DefaultAllowed export names for firewall metadata: github: gitHubDefaultAllowed; expected githubDefaultAllowed",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
   it("derives generated firewall export names from connector types", () => {
     const examples: readonly (readonly [FirewallConnectorType, string])[] = [
       ["google-drive", "googleDriveFirewall"],
