@@ -285,7 +285,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_materializer,
     } = controls;
     let session_history_materializer = session_history_materializer.unwrap_or_else(|| {
-        SessionHistoryMaterializer::start(&config.http, context.resume_session.as_ref())
+        SessionHistoryMaterializer::start_cancellable(
+            &config.http,
+            context.resume_session.as_ref(),
+            cancel.clone(),
+        )
     });
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).

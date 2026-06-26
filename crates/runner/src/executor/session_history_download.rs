@@ -44,22 +44,10 @@ struct SessionHistoryDownloadTaskResult {
 }
 
 impl SessionHistoryMaterializer {
-    pub(crate) fn start(http: &HttpClient, session: Option<&ResumeSession>) -> Self {
-        Self::start_inner(http, session, None)
-    }
-
     pub(crate) fn start_cancellable(
         http: &HttpClient,
         session: Option<&ResumeSession>,
         cancel: CancellationToken,
-    ) -> Self {
-        Self::start_inner(http, session, Some(cancel))
-    }
-
-    fn start_inner(
-        http: &HttpClient,
-        session: Option<&ResumeSession>,
-        cancel: Option<CancellationToken>,
     ) -> Self {
         let Some(session) = session else {
             return Self {
@@ -79,17 +67,12 @@ impl SessionHistoryMaterializer {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
                 task: Some(tokio::spawn(async move {
-                    match cancel {
-                        Some(cancel) => {
-                            tokio::select! {
-                                biased;
-                                _ = cancel.cancelled() => {
-                                    SessionHistoryDownloadTaskResult::cancelled(started_at)
-                                }
-                                result = download_resume_session_history_timed(http, session) => result,
-                            }
+                    tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            SessionHistoryDownloadTaskResult::cancelled(started_at)
                         }
-                        None => download_resume_session_history_timed(http, session).await,
+                        result = download_resume_session_history_timed(http, session) => result,
                     }
                 })),
             },
@@ -355,6 +338,14 @@ mod tests {
         }
     }
 
+    fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
+        SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            Some(session),
+            CancellationToken::new(),
+        )
+    }
+
     async fn serve_once(
         status: &'static str,
         body: &'static [u8],
@@ -386,7 +377,7 @@ mod tests {
             Some(body.len() as u64),
         );
 
-        let materializer = SessionHistoryMaterializer::start(&http_client(), Some(&session));
+        let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
 
         match result {
@@ -408,7 +399,7 @@ mod tests {
             Some(6),
         );
 
-        let result = SessionHistoryMaterializer::start(&http_client(), Some(&session))
+        let result = start_materializer(&session)
             .finish(&CancellationToken::new())
             .await;
 
@@ -432,7 +423,7 @@ mod tests {
             Some(2),
         );
 
-        let result = SessionHistoryMaterializer::start(&http_client(), Some(&session))
+        let result = start_materializer(&session)
             .finish(&CancellationToken::new())
             .await;
 
@@ -454,7 +445,7 @@ mod tests {
             None,
         );
 
-        let result = SessionHistoryMaterializer::start(&http_client(), Some(&session))
+        let result = start_materializer(&session)
             .finish(&CancellationToken::new())
             .await;
 
@@ -497,9 +488,7 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
 
-        let result = SessionHistoryMaterializer::start(&http_client(), Some(&session))
-            .finish(&cancel)
-            .await;
+        let result = start_materializer(&session).finish(&cancel).await;
 
         match result {
             SessionHistoryMaterialization::Failed { error, .. } => {
@@ -532,7 +521,7 @@ mod tests {
             None,
         );
 
-        let materializer = SessionHistoryMaterializer::start(&http_client(), Some(&session));
+        let materializer = start_materializer(&session);
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
             .await
             .unwrap()

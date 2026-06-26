@@ -334,7 +334,11 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         },
     });
 
-    let materializer = SessionHistoryMaterializer::start(&config.http, ctx.resume_session.as_ref());
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_received_rx)
         .await
         .unwrap()
