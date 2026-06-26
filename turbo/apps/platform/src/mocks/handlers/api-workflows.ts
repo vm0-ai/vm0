@@ -324,54 +324,56 @@ function visibilityHandlers() {
   ];
 }
 
-function workflowTriggerHandlers() {
-  const updateDetailTrigger = (
-    triggerId: string,
-    apply: (trigger: ZeroWorkflowTriggerSummary) => ZeroWorkflowTriggerSummary,
-  ): ZeroWorkflowTriggerSummary | null => {
-    for (const workflow of mockWorkflows) {
-      const triggerIndex = workflow.triggers.findIndex((trigger) => {
-        return trigger.id === triggerId;
-      });
-      if (triggerIndex === -1) {
-        continue;
-      }
-      const updated = apply(workflow.triggers[triggerIndex]!);
-      workflow.triggers = workflow.triggers.map((trigger) => {
-        return trigger.id === triggerId ? updated : trigger;
-      });
-      return updated;
-    }
-    return null;
-  };
-
-  const updateChatThreadTrigger = (
-    triggerId: string,
-    apply: (trigger: ChatThreadWorkflowTrigger) => ChatThreadWorkflowTrigger,
-  ): ZeroWorkflowTriggerSummary | null => {
-    const triggers = getMockWorkflowTriggers();
-    const trigger = triggers.find((item) => {
-      return item.id === triggerId;
+function updateDetailTrigger(
+  triggerId: string,
+  apply: (trigger: ZeroWorkflowTriggerSummary) => ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerSummary | null {
+  for (const workflow of mockWorkflows) {
+    const triggerIndex = workflow.triggers.findIndex((trigger) => {
+      return trigger.id === triggerId;
     });
-    if (!trigger) {
-      return null;
+    if (triggerIndex === -1) {
+      continue;
     }
-    const updated = apply(trigger);
-    setMockWorkflowTriggers(
-      triggers.map((item) => {
-        return item.id === triggerId ? updated : item;
-      }),
-    );
-    return triggerSummary(updated);
-  };
+    const updated = apply(workflow.triggers[triggerIndex]!);
+    workflow.triggers = workflow.triggers.map((trigger) => {
+      return trigger.id === triggerId ? updated : trigger;
+    });
+    return updated;
+  }
+  return null;
+}
 
-  const notFoundTrigger = {
+function updateChatThreadTrigger(
+  triggerId: string,
+  apply: (trigger: ChatThreadWorkflowTrigger) => ChatThreadWorkflowTrigger,
+): ZeroWorkflowTriggerSummary | null {
+  const triggers = getMockWorkflowTriggers();
+  const trigger = triggers.find((item) => {
+    return item.id === triggerId;
+  });
+  if (!trigger) {
+    return null;
+  }
+  const updated = apply(trigger);
+  setMockWorkflowTriggers(
+    triggers.map((item) => {
+      return item.id === triggerId ? updated : item;
+    }),
+  );
+  return triggerSummary(updated);
+}
+
+function notFoundTrigger() {
+  return {
     error: {
       message: "Workflow trigger not found",
       code: "NOT_FOUND",
     },
   };
+}
 
+function workflowTriggerListHandlers() {
   return [
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
@@ -394,51 +396,41 @@ function workflowTriggerHandlers() {
         );
       },
     ),
+  ];
+}
 
+function setMockWorkflowTriggerEnabled(triggerId: string, enabled: boolean) {
+  const triggers = getMockWorkflowTriggers();
+  const trigger = triggers.find((item) => {
+    return item.id === triggerId;
+  });
+  if (!trigger) {
+    return null;
+  }
+  const updated = { ...trigger, enabled };
+  setMockWorkflowTriggers(
+    triggers.map((item) => {
+      return item.id === triggerId ? updated : item;
+    }),
+  );
+  return triggerSummary(updated);
+}
+
+function workflowTriggerEnabledHandlers() {
+  return [
     mockApi(zeroWorkflowTriggersContract.enable, ({ params, respond }) => {
-      const triggers = getMockWorkflowTriggers();
-      const trigger = triggers.find((item) => {
-        return item.id === params.id;
-      });
-      if (!trigger) {
-        return respond(404, {
-          error: {
-            message: "Workflow trigger not found",
-            code: "NOT_FOUND",
-          },
-        });
-      }
-      const updated = { ...trigger, enabled: true };
-      setMockWorkflowTriggers(
-        triggers.map((item) => {
-          return item.id === params.id ? updated : item;
-        }),
-      );
-      return respond(200, triggerSummary(updated));
+      const updated = setMockWorkflowTriggerEnabled(params.id, true);
+      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
     }),
-
     mockApi(zeroWorkflowTriggersContract.disable, ({ params, respond }) => {
-      const triggers = getMockWorkflowTriggers();
-      const trigger = triggers.find((item) => {
-        return item.id === params.id;
-      });
-      if (!trigger) {
-        return respond(404, {
-          error: {
-            message: "Workflow trigger not found",
-            code: "NOT_FOUND",
-          },
-        });
-      }
-      const updated = { ...trigger, enabled: false };
-      setMockWorkflowTriggers(
-        triggers.map((item) => {
-          return item.id === params.id ? updated : item;
-        }),
-      );
-      return respond(200, triggerSummary(updated));
+      const updated = setMockWorkflowTriggerEnabled(params.id, false);
+      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
     }),
+  ];
+}
 
+function workflowTriggerUpdateHandlers() {
+  return [
     mockApi(
       zeroWorkflowTriggersContract.update,
       ({ body, params, respond }) => {
@@ -472,10 +464,14 @@ function workflowTriggerHandlers() {
         );
         return updatedDetailTrigger
           ? respond(200, updatedDetailTrigger)
-          : respond(404, notFoundTrigger);
+          : respond(404, notFoundTrigger());
       },
     ),
+  ];
+}
 
+function workflowTriggerPermissionHandlers() {
+  return [
     mockApi(
       zeroWorkflowTriggersContract.setPermissionPolicy,
       ({ body, params, respond }) => {
@@ -507,8 +503,17 @@ function workflowTriggerHandlers() {
         );
         return updatedDetailTrigger
           ? respond(200, updatedDetailTrigger)
-          : respond(404, notFoundTrigger);
+          : respond(404, notFoundTrigger());
       },
     ),
+  ];
+}
+
+function workflowTriggerHandlers() {
+  return [
+    ...workflowTriggerListHandlers(),
+    ...workflowTriggerEnabledHandlers(),
+    ...workflowTriggerUpdateHandlers(),
+    ...workflowTriggerPermissionHandlers(),
   ];
 }

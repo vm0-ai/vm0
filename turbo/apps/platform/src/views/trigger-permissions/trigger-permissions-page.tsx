@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -47,11 +46,15 @@ import {
 } from "@vm0/connectors/firewall-metadata";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
-import { allConnectorTypes$ } from "../../signals/zero-page/settings/connectors.ts";
+import {
+  allConnectorTypes$,
+  type ConnectorTypeWithStatus,
+} from "../../signals/zero-page/settings/connectors.ts";
 import {
   currentTriggerPermissionEditorSignals$,
   mergeConnectorPolicy,
   resolveTriggerPermissionAction,
+  setTriggerPermissionsDialogConnectorRef$,
   setTriggerPermissionEditorScrolled$,
   setTriggerPermissionEditorSearch$,
   setTriggerPermissionsDrawerConnector$,
@@ -61,6 +64,7 @@ import {
   triggerPermissionEditorUiStateForKey,
   triggerPermissionsAgentId$,
   triggerPermissionsConnectorSearch$,
+  triggerPermissionsDialogConnectorRef$,
   triggerPermissionsDrawerConnector$,
   triggerPermissionsDrawerConnectorForTrigger,
   triggerPermissionsRef$,
@@ -278,6 +282,101 @@ function LoadingState({
   return <LoadingCard />;
 }
 
+function ConnectorAllowedPermissions({
+  allowedPermissions,
+}: {
+  readonly allowedPermissions: readonly string[];
+}) {
+  if (allowedPermissions.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        No allowed permissions
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {allowedPermissions.slice(0, 3).map((permission) => {
+        return (
+          <code
+            key={permission}
+            className="max-w-[160px] truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            title={permission}
+          >
+            {permission}
+          </code>
+        );
+      })}
+      {allowedPermissions.length > 3 ? (
+        <span className="text-[11px] text-muted-foreground">
+          +{allowedPermissions.length - 3} more
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function ConnectorPickerRowContent({
+  allowedPermissions,
+  type,
+}: {
+  readonly allowedPermissions?: readonly string[];
+  readonly type: ConnectorType;
+}) {
+  const config = CONNECTOR_TYPES[type];
+
+  return (
+    <>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
+        <ConnectorIcon type={type} size={19} />
+      </span>
+      <span className="min-w-0 flex flex-1 flex-col gap-1">
+        <span className="text-sm font-medium text-foreground">
+          {config.label}
+        </span>
+        {allowedPermissions ? (
+          <ConnectorAllowedPermissions
+            allowedPermissions={allowedPermissions}
+          />
+        ) : config.helpText ? (
+          <span className="line-clamp-1 text-xs text-muted-foreground">
+            {config.helpText}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+}
+
+function ConnectorPickerRowToggle({
+  connectorEnabled,
+  saving,
+  type,
+  onToggleConnector,
+}: {
+  readonly connectorEnabled: boolean;
+  readonly saving: boolean;
+  readonly type: ConnectorType;
+  readonly onToggleConnector: (
+    connectorRef: ConnectorType,
+    enabled: boolean,
+  ) => void;
+}) {
+  const config = CONNECTOR_TYPES[type];
+
+  return (
+    <LoadingSwitch
+      checked={connectorEnabled}
+      loading={saving}
+      ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${config.label}`}
+      onCheckedChange={(enabled) => {
+        onToggleConnector(type, enabled);
+      }}
+    />
+  );
+}
+
 function ConnectorPickerRow({
   agentId,
   workflowId,
@@ -308,55 +407,17 @@ function ConnectorPickerRow({
   const rowClass =
     "flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/40";
   const content = (
-    <>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
-        <ConnectorIcon type={type} size={19} />
-      </span>
-      <span className="min-w-0 flex flex-1 flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">
-          {config.label}
-        </span>
-        {allowedPermissions ? (
-          allowedPermissions.length > 0 ? (
-            <span className="flex min-w-0 flex-wrap items-center gap-1">
-              {allowedPermissions.slice(0, 3).map((permission) => {
-                return (
-                  <code
-                    key={permission}
-                    className="max-w-[160px] truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                    title={permission}
-                  >
-                    {permission}
-                  </code>
-                );
-              })}
-              {allowedPermissions.length > 3 ? (
-                <span className="text-[11px] text-muted-foreground">
-                  +{allowedPermissions.length - 3} more
-                </span>
-              ) : null}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              No allowed permissions
-            </span>
-          )
-        ) : config.helpText ? (
-          <span className="line-clamp-1 text-xs text-muted-foreground">
-            {config.helpText}
-          </span>
-        ) : null}
-      </span>
-    </>
+    <ConnectorPickerRowContent
+      allowedPermissions={allowedPermissions}
+      type={type}
+    />
   );
   const toggle = (
-    <LoadingSwitch
-      checked={connectorEnabled}
-      loading={saving}
-      ariaLabel={`${connectorEnabled ? "Disable" : "Enable"} ${config.label}`}
-      onCheckedChange={(enabled) => {
-        onToggleConnector(type, enabled);
-      }}
+    <ConnectorPickerRowToggle
+      connectorEnabled={connectorEnabled}
+      saving={saving}
+      type={type}
+      onToggleConnector={onToggleConnector}
     />
   );
 
@@ -425,6 +486,128 @@ function ConnectorPickerRow({
   );
 }
 
+function visibleConnectedTriggerPermissionConnectors(
+  connectors: readonly ConnectorTypeWithStatus[],
+  normalizedQuery: string,
+): readonly ConnectorType[] {
+  return connectors
+    .filter((connector) => {
+      if (
+        !connector.connected ||
+        !isFirewallMetadataConnectorType(connector.type)
+      ) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
+      return [
+        connector.type,
+        connector.label,
+        connector.helpText,
+        ...connector.tags,
+      ]
+        .join("\n")
+        .toLowerCase()
+        .includes(normalizedQuery);
+    })
+    .map((connector) => {
+      return connector.type;
+    });
+}
+
+function ConnectorPickerIntro({
+  layout,
+}: {
+  readonly layout: TriggerPermissionsLayout;
+}) {
+  if (layout !== "page") {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-base font-medium text-foreground">
+        Trigger permissions
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Choose the connector this trigger may use when it runs unattended.
+      </p>
+    </div>
+  );
+}
+
+function ConnectorPickerList({
+  agentId,
+  connectorRefs,
+  connectorsLoading,
+  layout,
+  onConfigureConnector,
+  onSelectConnector,
+  onToggleConnector,
+  saving,
+  trigger,
+  triggerId,
+  visibleConnectors,
+  workflowId,
+}: {
+  readonly agentId: string;
+  readonly connectorRefs: readonly string[];
+  readonly connectorsLoading: boolean;
+  readonly layout: TriggerPermissionsLayout;
+  readonly onConfigureConnector?: (connectorRef: ConnectorType) => void;
+  readonly onSelectConnector?: (connectorRef: ConnectorType) => void;
+  readonly onToggleConnector: (
+    connectorRef: ConnectorType,
+    enabled: boolean,
+  ) => void;
+  readonly saving: boolean;
+  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly triggerId: string;
+  readonly visibleConnectors: readonly string[];
+  readonly workflowId: string;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/70">
+      {connectorsLoading ? (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+          <IconLoader2 size={14} className="animate-spin" />
+          Loading connectors...
+        </div>
+      ) : null}
+      {visibleConnectors.map((type) => {
+        const connectorType = type as ConnectorType;
+        return (
+          <ConnectorPickerRow
+            key={type}
+            agentId={agentId}
+            workflowId={workflowId}
+            triggerId={triggerId}
+            type={connectorType}
+            connectorEnabled={connectorRefs.includes(type)}
+            allowedPermissions={
+              layout === "dialog"
+                ? allowedPermissionNamesForConnector(trigger, connectorType)
+                : undefined
+            }
+            saving={saving}
+            onSelectConnector={onSelectConnector}
+            onConfigureConnector={onConfigureConnector}
+            onToggleConnector={onToggleConnector}
+          />
+        );
+      })}
+      {visibleConnectors.length === 0 && !connectorsLoading ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground">
+          {layout === "dialog"
+            ? "No connected connectors found"
+            : "No connectors found"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ConnectorPicker({
   agentId,
   workflowId,
@@ -455,30 +638,10 @@ function ConnectorPicker({
   const normalizedQuery = query.trim().toLowerCase();
   const visibleConnectors =
     layout === "dialog" && connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data
-          .filter((connector) => {
-            if (
-              !connector.connected ||
-              !isFirewallMetadataConnectorType(connector.type)
-            ) {
-              return false;
-            }
-            if (!normalizedQuery) {
-              return true;
-            }
-            return [
-              connector.type,
-              connector.label,
-              connector.helpText,
-              ...connector.tags,
-            ]
-              .join("\n")
-              .toLowerCase()
-              .includes(normalizedQuery);
-          })
-          .map((connector) => {
-            return connector.type;
-          })
+      ? visibleConnectedTriggerPermissionConnectors(
+          connectorTypesLoadable.data,
+          normalizedQuery,
+        )
       : visibleTriggerPermissionConnectors(query);
   const containerClass =
     layout === "page"
@@ -527,16 +690,7 @@ function ConnectorPicker({
 
   return (
     <div className={containerClass}>
-      {layout === "page" && (
-        <div className="flex flex-col gap-1">
-          <p className="text-base font-medium text-foreground">
-            Trigger permissions
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Choose the connector this trigger may use when it runs unattended.
-          </p>
-        </div>
-      )}
+      <ConnectorPickerIntro layout={layout} />
       <input
         value={query}
         onChange={(event) => {
@@ -545,44 +699,22 @@ function ConnectorPicker({
         placeholder="Search connectors"
         className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
       />
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/70">
-        {layout === "dialog" && connectorTypesLoadable.state === "loading" ? (
-          <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-            <IconLoader2 size={14} className="animate-spin" />
-            Loading connectors...
-          </div>
-        ) : null}
-        {visibleConnectors.map((type) => {
-          const connectorType = type as ConnectorType;
-          return (
-            <ConnectorPickerRow
-              key={type}
-              agentId={agentId}
-              workflowId={workflowId}
-              triggerId={triggerId}
-              type={connectorType}
-              connectorEnabled={connectorRefs.includes(type)}
-              allowedPermissions={
-                layout === "dialog"
-                  ? allowedPermissionNamesForConnector(trigger, connectorType)
-                  : undefined
-              }
-              saving={saving}
-              onSelectConnector={onSelectConnector}
-              onConfigureConnector={onConfigureConnector}
-              onToggleConnector={handleToggleConnector}
-            />
-          );
-        })}
-        {visibleConnectors.length === 0 &&
-        !(layout === "dialog" && connectorTypesLoadable.state === "loading") ? (
-          <p className="px-4 py-3 text-sm text-muted-foreground">
-            {layout === "dialog"
-              ? "No connected connectors found"
-              : "No connectors found"}
-          </p>
-        ) : null}
-      </div>
+      <ConnectorPickerList
+        agentId={agentId}
+        connectorRefs={connectorRefs}
+        connectorsLoading={
+          layout === "dialog" && connectorTypesLoadable.state === "loading"
+        }
+        layout={layout}
+        onConfigureConnector={onConfigureConnector}
+        onSelectConnector={onSelectConnector}
+        onToggleConnector={handleToggleConnector}
+        saving={saving}
+        trigger={trigger}
+        triggerId={triggerId}
+        visibleConnectors={visibleConnectors}
+        workflowId={workflowId}
+      />
     </div>
   );
 }
@@ -1647,7 +1779,12 @@ export function TriggerPermissionsDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onPolicyChanged?: () => void;
 }) {
-  const [connectorRef, setConnectorRef] = useState<ConnectorType | null>(null);
+  const connectorRefValue = useGet(triggerPermissionsDialogConnectorRef$);
+  const setConnectorRef = useSet(setTriggerPermissionsDialogConnectorRef$);
+  const connectorRef =
+    connectorRefValue && isFirewallMetadataConnectorType(connectorRefValue)
+      ? connectorRefValue
+      : null;
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setConnectorRef(null);
