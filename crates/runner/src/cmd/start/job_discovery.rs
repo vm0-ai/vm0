@@ -134,6 +134,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         &ctx.spawn_ctx.exec_config.http,
         claimed.context(),
         resume_session_valid,
+        &job_cancel,
     );
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
@@ -202,15 +203,17 @@ fn start_session_history_materializer_after_claim(
     http: &HttpClient,
     context: &ExecutionContext,
     resume_session_valid: bool,
+    cancel: &RunCancellationHandle,
 ) -> Option<SessionHistoryMaterializer> {
     if !resume_session_valid {
         return None;
     }
     let resume_session = context.resume_session.as_ref()?;
     resume_session.history_ref()?;
-    Some(SessionHistoryMaterializer::start(
+    Some(SessionHistoryMaterializer::start_cancellable(
         http,
         Some(resume_session),
+        cancel.token(),
     ))
 }
 

@@ -41,6 +41,22 @@ pub(crate) struct SessionHistoryDownloadTaskResult {
 
 impl SessionHistoryMaterializer {
     pub(crate) fn start(http: &HttpClient, session: Option<&ResumeSession>) -> Self {
+        Self::start_inner(http, session, None)
+    }
+
+    pub(crate) fn start_cancellable(
+        http: &HttpClient,
+        session: Option<&ResumeSession>,
+        cancel: CancellationToken,
+    ) -> Self {
+        Self::start_inner(http, session, Some(cancel))
+    }
+
+    fn start_inner(
+        http: &HttpClient,
+        session: Option<&ResumeSession>,
+        cancel: Option<CancellationToken>,
+    ) -> Self {
         let Some(session) = session else {
             return Self::Missing;
         };
@@ -50,10 +66,21 @@ impl SessionHistoryMaterializer {
 
         let http = http.clone();
         let session = session.clone();
+        let started_at = Instant::now();
         Self::Downloading {
-            started_at: Instant::now(),
+            started_at,
             task: Some(tokio::spawn(async move {
-                download_resume_session_history_timed(http, session).await
+                match cancel {
+                    Some(cancel) => {
+                        tokio::select! {
+                            _ = cancel.cancelled() => {
+                                SessionHistoryDownloadTaskResult::cancelled(started_at)
+                            }
+                            result = download_resume_session_history_timed(http, session) => result,
+                        }
+                    }
+                    None => download_resume_session_history_timed(http, session).await,
+                }
             })),
         }
     }
@@ -83,12 +110,7 @@ impl SessionHistoryMaterializer {
                     _ = cancel.cancelled() => {
                         task.abort();
                         let _ = task.await;
-                        SessionHistoryDownloadTaskResult {
-                            elapsed: started_at.elapsed(),
-                            result: Err(RunnerError::Internal(
-                                "session history download cancelled".into(),
-                            )),
-                        }
+                        SessionHistoryDownloadTaskResult::cancelled(started_at)
                     }
                     joined = &mut task => {
                         joined.unwrap_or_else(|error| {
@@ -112,6 +134,17 @@ impl SessionHistoryMaterializer {
                     },
                 }
             }
+        }
+    }
+}
+
+impl SessionHistoryDownloadTaskResult {
+    fn cancelled(started_at: Instant) -> Self {
+        Self {
+            elapsed: started_at.elapsed(),
+            result: Err(RunnerError::Internal(
+                "session history download cancelled".into(),
+            )),
         }
     }
 }
@@ -477,5 +510,53 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(closed, 0);
+    }
+
+    #[tokio::test]
+    async fn cancellable_materializer_aborts_pending_download_before_finish() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_received_tx, request_received_rx) = oneshot::channel();
+        let (connection_closed_tx, connection_closed_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).await;
+            let _ = request_received_tx.send(());
+            let mut buf = [0u8; 1];
+            let closed = stream.read(&mut buf).await;
+            let _ = connection_closed_tx.send(closed);
+        });
+        let session = ref_session(
+            format!("http://{address}/history.blob?token=secret"),
+            hex::encode(Sha256::digest(b"")),
+            None,
+        );
+        let cancel = CancellationToken::new();
+
+        let materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            Some(&session),
+            cancel.clone(),
+        );
+        tokio::time::timeout(Duration::from_secs(5), request_received_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        cancel.cancel();
+
+        let closed = tokio::time::timeout(Duration::from_secs(5), connection_closed_rx)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(closed, 0);
+        let result = materializer.finish(&CancellationToken::new()).await;
+        match result {
+            SessionHistoryMaterialization::Failed { error, .. } => {
+                assert!(error.to_string().contains("cancelled"));
+            }
+            _ => panic!("expected cancelled download"),
+        }
     }
 }
