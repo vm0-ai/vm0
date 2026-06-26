@@ -100,7 +100,10 @@ export const zeroWorkflows = pgTable(
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";
-export type ZeroWorkflowEventType = "gmail-new-message" | "gmail-label-applied";
+export type ZeroWorkflowEventType =
+  | "gmail-new-message"
+  | "gmail-label-applied"
+  | "webhook-received";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
 /**
@@ -199,13 +202,75 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'gmail-label-applied')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL
             AND interval_seconds IS NULL
             AND at_time IS NULL
           )`,
+      ),
+    ];
+  },
+);
+
+export const zeroWorkflowWebhookTriggers = pgTable(
+  "zero_workflow_webhook_triggers",
+  {
+    triggerId: uuid("trigger_id")
+      .primaryKey()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    tokenHash: text("token_hash").notNull(),
+    encryptedToken: text("encrypted_token").notNull(),
+    encryptedSecret: text("encrypted_secret").notNull(),
+    secretLastFour: varchar("secret_last_four", { length: 4 }).notNull(),
+    lastReceivedAt: timestamp("last_received_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_zero_workflow_webhook_triggers_token_hash").on(
+        table.tokenHash,
+      ),
+    ];
+  },
+);
+
+export const zeroWorkflowWebhookDeliveries = pgTable(
+  "zero_workflow_webhook_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    triggerId: uuid("trigger_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    deliveryKey: text("delivery_key").notNull(),
+    bodySha256: text("body_sha256").notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    runId: uuid("run_id"),
+    errorMessage: text("error_message"),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_zero_workflow_webhook_deliveries_key").on(
+        table.triggerId,
+        table.deliveryKey,
+      ),
+      index("idx_zero_workflow_webhook_deliveries_received").on(
+        table.triggerId,
+        table.receivedAt,
       ),
     ];
   },

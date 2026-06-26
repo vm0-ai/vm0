@@ -108,6 +108,24 @@ const gmailLabelTrigger = {
   nextRunAt: null,
 };
 
+const webhookTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "webhook-received",
+  eventConfig: {
+    provider: "webhook",
+    event: "received",
+    auth: { mode: "hmac-sha256" },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+  webhookUrl: "http://localhost:3000/api/webhooks/workflow-triggers/whk_test",
+  secretLastFour: "abcd",
+  lastReceivedAt: null,
+  webhookSecret: "webhook-secret-abcd",
+};
+
 describe("zero workflow trigger commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -367,6 +385,34 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Support");
     });
 
+    it("should add a webhook trigger", async () => {
+      const captured = captureCreateTrigger(webhookTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "webhook",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: {
+          provider: "webhook",
+          event: "received",
+          auth: { mode: "hmac-sha256" },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Webhook");
+      expect(logCalls).toContain(webhookTrigger.webhookUrl);
+      expect(logCalls).toContain(webhookTrigger.webhookSecret);
+      expect(logCalls).toContain("X-VM0-Signature");
+    });
+
     it.each([
       {
         field: "hasAttachment",
@@ -413,12 +459,12 @@ describe("zero workflow trigger commands", () => {
           "cli",
           "add",
           WORKFLOW_ID,
-          "webhook",
+          "not-a-trigger",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown trigger kind: "webhook"'),
+        expect.stringContaining('Unknown trigger kind: "not-a-trigger"'),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -1,4 +1,7 @@
-import { publicAttachmentUrl } from "./zero-attachment-url.ts";
+import {
+  publicAttachmentUrl,
+  readableAttachmentResourceUrl,
+} from "./zero-attachment-url.ts";
 import domToPptxBundleUrl from "../../../node_modules/dom-to-pptx/dist/dom-to-pptx.bundle.js?url";
 import JSZip from "jszip";
 import {
@@ -10,7 +13,6 @@ import {
 import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
-const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
 const PRESENTATION_PATH = "ppt/presentation.xml";
@@ -88,38 +90,6 @@ function pptxFilename(filename: string): string {
 
 function domToPptxScriptUrl(): string {
   return new URL(domToPptxBundleUrl, window.location.origin).toString();
-}
-
-function canUseDevArtifactFetchProxy(): boolean {
-  if (!import.meta.env.DEV) {
-    return false;
-  }
-  return ["app.vm7.ai", "localhost", "127.0.0.1"].includes(
-    window.location.hostname,
-  );
-}
-
-function isDevArtifactFetchProxyTarget(url: URL): boolean {
-  if (url.protocol !== "https:") {
-    return false;
-  }
-  return (
-    url.hostname === "cdn.vm0.io" ||
-    url.hostname === "cdn.vm7.io" ||
-    url.hostname.endsWith(".sites.vm0.io") ||
-    url.hostname.endsWith(".sites.vm7.io")
-  );
-}
-
-export function readablePresentationResourceUrl(url: string): string {
-  if (!canUseDevArtifactFetchProxy() || !URL.canParse(url)) {
-    return url;
-  }
-  const parsed = new URL(url);
-  if (!isDevArtifactFetchProxyTarget(parsed)) {
-    return url;
-  }
-  return `${DEV_ARTIFACT_FETCH_PROXY_PATH}?url=${encodeURIComponent(url)}`;
 }
 
 function isExportFrameMessage(value: unknown): value is ExportFrameMessage {
@@ -200,7 +170,7 @@ async function fetchResourceAsDataUrl(
   signal: AbortSignal,
 ): Promise<string | null> {
   const response = await settle(
-    fetch(readablePresentationResourceUrl(url), {
+    fetch(readableAttachmentResourceUrl(url), {
       cache: "reload",
       mode: "cors",
       signal,
@@ -1228,7 +1198,7 @@ export async function downloadPresentationHtmlPptx(params: {
   readonly url: string;
 }): Promise<void> {
   const htmlUrl = publicAttachmentUrl(params.url);
-  const response = await fetch(readablePresentationResourceUrl(htmlUrl), {
+  const response = await fetch(readableAttachmentResourceUrl(htmlUrl), {
     cache: "reload",
     mode: "cors",
     signal: params.signal,

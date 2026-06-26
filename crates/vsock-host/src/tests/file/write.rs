@@ -11,10 +11,11 @@ use super::super::support::{
     make_pair, normal_operation_readiness, pending_request_count, setup_host_and_guest,
 };
 use super::support::{
-    expect_write_file, send_guest_error, send_write_file_failure, send_write_file_success,
-    spawn_write_file,
+    expect_write_file, expect_write_files, send_guest_error, send_write_file_failure,
+    send_write_file_success, send_write_files_failure, send_write_files_success, spawn_write_file,
+    spawn_write_files,
 };
-use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
+use crate::{FrameWriteObserver, WriteFileEntry, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn test_write_file() {
@@ -31,6 +32,122 @@ async fn test_write_file() {
     send_write_file_success(&mut guest, write.seq()).await;
 
     write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_files_sends_single_batch_and_tracks_until_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        write.files,
+        vec![
+            ("/tmp/a.txt".to_string(), b"alpha".to_vec()),
+            ("/tmp/b.txt".to_string(), b"beta".to_vec()),
+        ]
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_guest_failure_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_failure(&mut guest, write.seq(), "permission denied").await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("permission denied"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_empty_batch_is_noop() {
+    let (host, guest) = setup_host_and_guest().await;
+
+    host.write_files(&[]).await.unwrap();
+
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("empty write_files must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after empty write_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_rejects_invalid_path_before_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let err = host
+        .write_files_with_write_observer(
+            &[WriteFileEntry {
+                path: "/tmp/has\0nul",
+                content: b"hello",
+            }],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("invalid write_files path must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after invalid write_files path: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
 }
 
 #[tokio::test]

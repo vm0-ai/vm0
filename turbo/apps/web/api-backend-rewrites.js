@@ -272,6 +272,10 @@ const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const GMAIL_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/gmail";
+const WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE =
+  "/api/webhooks/workflow-triggers/:token";
+const WORKFLOW_TRIGGER_WEBHOOK_PATH_RE =
+  /^\/api\/webhooks\/workflow-triggers\/[^/]+$/;
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
 const TELEGRAM_REGISTER_REWRITE_SOURCE = "/api/telegram/register";
 const TELEGRAM_SETUP_STATUS_REWRITE_SOURCE = "/api/telegram/setup-status";
@@ -713,6 +717,11 @@ export const API_BACKEND_REWRITES = [
   [CLERK_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/clerk"],
   [GITHUB_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/github"],
   [GMAIL_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/gmail"],
+  [
+    WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE,
+    "/api/webhooks/workflow-triggers/:token",
+    WORKFLOW_TRIGGER_WEBHOOK_PATH_RE,
+  ],
   [STRIPE_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/stripe"],
   [
     TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE,
@@ -919,6 +928,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/presentation-html/redeploy",
     "/api/zero/host/presentation-html/redeploy",
   ],
+  ["/api/zero/host/html-edit-draft", "/api/zero/host/html-edit-draft"],
+  ["/api/zero/host/html/redeploy", "/api/zero/host/html/redeploy"],
   [
     "/api/zero/host/presentation-html/speaker-notes",
     "/api/zero/host/presentation-html/speaker-notes",
@@ -1264,6 +1275,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/telegram/upload-file/init",
   ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
+  [
+    "/api/zero/uploads/html-dom-edit-snapshot",
+    "/api/zero/uploads/html-dom-edit-snapshot",
+  ],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
   ["/api/zero/user-permission-grants", "/api/zero/user-permission-grants"],
   [

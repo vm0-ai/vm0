@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path>";
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch";
 
 fn run_helper(args: &[&str], stdin: &[u8]) -> std::process::Output {
     run_helper_with_current_dir(args, stdin, None)
@@ -153,6 +153,69 @@ fn create_mode_writes_empty_file() {
 
     assert!(output.status.success(), "stderr={:?}", output.stderr);
     assert_eq!(std::fs::read(path).unwrap(), b"");
+}
+
+#[test]
+fn batch_mode_creates_missing_parents_and_writes_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("a/b/one.txt");
+    let second = dir.path().join("c/two.txt");
+    let payload = vsock_proto::encode_write_files(&[
+        vsock_proto::WriteFileBatchEntry {
+            path: first.to_str().unwrap(),
+            content: b"one",
+        },
+        vsock_proto::WriteFileBatchEntry {
+            path: second.to_str().unwrap(),
+            content: b"two",
+        },
+    ])
+    .unwrap();
+
+    let output = run_helper(&["--batch"], &payload);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(first).unwrap(), b"one");
+    assert_eq!(std::fs::read(second).unwrap(), b"two");
+}
+
+#[test]
+fn batch_mode_truncates_existing_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("out.txt");
+    std::fs::write(&path, b"old longer content").unwrap();
+    let payload = vsock_proto::encode_write_files(&[vsock_proto::WriteFileBatchEntry {
+        path: path.to_str().unwrap(),
+        content: b"new",
+    }])
+    .unwrap();
+
+    let output = run_helper(&["--batch"], &payload);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(path).unwrap(), b"new");
+}
+
+#[test]
+fn batch_mode_rejects_malformed_payload() {
+    let output = run_helper(&["--batch"], &[0, 0]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("file count must be positive"),
+        "stderr={stderr}"
+    );
+}
+
+#[test]
+fn batch_mode_rejects_single_file_flags() {
+    let output = run_helper(&["--batch", "--create-parents"], b"");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used"), "stderr={stderr}");
+    assert!(stderr.contains(USAGE));
 }
 
 #[test]

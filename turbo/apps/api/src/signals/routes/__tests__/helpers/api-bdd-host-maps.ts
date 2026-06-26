@@ -1,10 +1,12 @@
 import {
   zeroHostContract,
+  type CreateHtmlEditDraftRequest,
   type GeneratePresentationSpeakerNotesRequest,
   type HostedSiteCompleteResponse,
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
+  type HostedSiteRedeployHtmlRequest,
   type HostedSiteRedeployPresentationHtmlRequest,
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
@@ -36,6 +38,7 @@ type HostCompleteStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostFilesStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type HostRedeployStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostSpeakerNotesStatus = 200 | 400 | 401 | 402 | 403 | 500;
+type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500;
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 
 interface HostedSitesS3Capture {
@@ -269,6 +272,34 @@ export function createHostMapsBddApi(context: TestContext) {
       );
     },
 
+    async redeployHtml(
+      actor: ApiTestUser,
+      body: HostedSiteRedeployHtmlRequest,
+    ): Promise<HostedSiteCompleteResponse> {
+      const response = await accept(
+        hostClient().redeployHtml({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRedeployHtml(
+      actor: ApiTestUser,
+      body: HostedSiteRedeployHtmlRequest,
+      statuses: readonly HostRedeployStatus[],
+    ) {
+      return await accept(
+        hostClient().redeployHtml({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async requestGenerateSpeakerNotes(
       actor: ApiTestUser,
       body: GeneratePresentationSpeakerNotesRequest,
@@ -276,6 +307,20 @@ export function createHostMapsBddApi(context: TestContext) {
     ) {
       return await accept(
         hostClient().generatePresentationSpeakerNotes({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestCreateHtmlEditDraft(
+      actor: ApiTestUser,
+      body: CreateHtmlEditDraftRequest,
+      statuses: readonly HostHtmlDomEditStatus[],
+    ) {
+      return await accept(
+        hostClient().createHtmlEditDraft({
           headers: authenticate(context, actor),
           body,
         }),

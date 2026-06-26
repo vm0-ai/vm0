@@ -307,6 +307,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow signed inbound webhook workflow event triggers. Creating a trigger mints a workflow-native endpoint and signing secret; valid deliveries run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GoalWorkflows]: {
     maintainer: "ethan@vm0.ai",
     description:

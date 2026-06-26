@@ -1,4 +1,4 @@
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
@@ -8,7 +8,11 @@ use tracing::trace;
 
 use crate::process::ChildExitNotifier;
 
-type PipeReadTask = JoinHandle<std::io::Result<Vec<u8>>>;
+type PipeReadTask = JoinHandle<std::io::Result<PipeReadOutput>>;
+
+const DEFAULT_SEMANTIC_OUTPUT_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+const DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES: usize = 64 * 1024;
+const PIPE_READ_CHUNK_BYTES: usize = 8192;
 
 /// Error from a failed command.
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +33,7 @@ pub enum IgnoredCommandOutcome {
     SpawnError,
     WaitError,
     PipeError,
+    OutputTooLarge,
     Timeout,
 }
 
@@ -50,8 +55,100 @@ enum CommandRunError {
     PipeRead(std::io::Error),
     #[error("{0} pipe unavailable")]
     PipeUnavailable(&'static str),
+    #[error("{pipe} exceeded output limit of {limit} bytes")]
+    OutputTooLarge { pipe: &'static str, limit: usize },
     #[error("timed out after {0}ms")]
     Timeout(u128),
+}
+
+#[derive(Debug)]
+struct CommandOutput {
+    status: ExitStatus,
+    stdout: CapturedPipeOutput,
+    stderr: CapturedPipeOutput,
+}
+
+#[derive(Debug)]
+struct CapturedPipeOutput {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+impl CapturedPipeOutput {
+    fn discarded() -> Self {
+        Self {
+            bytes: Vec::new(),
+            truncated: false,
+        }
+    }
+
+    fn to_lossy_trimmed_string(&self) -> String {
+        let mut output = String::from_utf8_lossy(&self.bytes).trim().to_string();
+        if self.truncated {
+            if output.is_empty() {
+                output = "[output truncated]".to_string();
+            } else {
+                output.push_str("\n[output truncated]");
+            }
+        }
+        output
+    }
+}
+
+#[derive(Debug)]
+struct PipeReadOutput {
+    output: CapturedPipeOutput,
+    overflow: Option<usize>,
+}
+
+#[derive(Clone, Copy)]
+struct CommandOutputPolicy {
+    stdout: StreamOutputPolicy,
+    stderr: StreamOutputPolicy,
+}
+
+impl CommandOutputPolicy {
+    fn capture_semantic_stdout() -> Self {
+        Self {
+            stdout: StreamOutputPolicy::SemanticCapture {
+                max_bytes: DEFAULT_SEMANTIC_OUTPUT_LIMIT_BYTES,
+            },
+            stderr: StreamOutputPolicy::DiagnosticCapture {
+                max_bytes: DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES,
+            },
+        }
+    }
+
+    fn status_only() -> Self {
+        Self {
+            stdout: StreamOutputPolicy::Discard,
+            stderr: StreamOutputPolicy::DiagnosticCapture {
+                max_bytes: DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum StreamOutputPolicy {
+    Discard,
+    DiagnosticCapture { max_bytes: usize },
+    SemanticCapture { max_bytes: usize },
+}
+
+impl StreamOutputPolicy {
+    fn capture_limit(self) -> Option<usize> {
+        match self {
+            Self::Discard => None,
+            Self::DiagnosticCapture { max_bytes } | Self::SemanticCapture { max_bytes } => {
+                Some(max_bytes)
+            }
+        }
+    }
+
+    fn is_semantic(self) -> bool {
+        matches!(self, Self::SemanticCapture { .. })
+    }
 }
 
 /// Format a human-readable display string for a command invocation.
@@ -87,10 +184,38 @@ pub async fn exec_with_timeout(
         })?;
 
     if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stdout = output.stdout.to_lossy_trimmed_string();
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = output.stderr.to_lossy_trimmed_string();
+        Err(CommandError {
+            command: cmd_display,
+            detail: stderr,
+        })
+    }
+}
+
+/// Execute a command with bounded runtime, discarding stdout.
+pub async fn exec_status_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(), CommandError> {
+    let cmd_display = format_command_display(program, args);
+    trace!(command = %cmd_display, timeout_ms = timeout.as_millis() as u64, "exec_status_with_timeout");
+
+    let output =
+        command_output_with_policy(program, args, timeout, CommandOutputPolicy::status_only())
+            .await
+            .map_err(|e| CommandError {
+                command: cmd_display.clone(),
+                detail: e.to_string(),
+            })?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = output.stderr.to_lossy_trimmed_string();
         Err(CommandError {
             command: cmd_display,
             detail: stderr,
@@ -107,11 +232,13 @@ pub async fn exec_ignore_errors_with_timeout(
     let cmd_display = format_command_display(program, args);
     trace!(command = %cmd_display, timeout_ms = timeout.as_millis() as u64, "exec_ignore_errors_with_timeout");
 
-    match command_output_with_timeout(program, args, timeout).await {
+    match command_output_with_policy(program, args, timeout, CommandOutputPolicy::status_only())
+        .await
+    {
         Ok(o) if o.status.success() => IgnoredCommandOutcome::Success,
         Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            trace!(command = %cmd_display, stderr = %stderr.trim(), "command failed (ignored)");
+            let stderr = o.stderr.to_lossy_trimmed_string();
+            trace!(command = %cmd_display, stderr = %stderr, "command failed (ignored)");
             IgnoredCommandOutcome::NonZero
         }
         Err(CommandRunError::Timeout(ms)) => {
@@ -134,6 +261,10 @@ pub async fn exec_ignore_errors_with_timeout(
             trace!(command = %cmd_display, pipe, "command pipe unavailable (ignored)");
             IgnoredCommandOutcome::PipeError
         }
+        Err(CommandRunError::OutputTooLarge { pipe, limit }) => {
+            trace!(command = %cmd_display, pipe, limit, "command output exceeded limit (ignored)");
+            IgnoredCommandOutcome::OutputTooLarge
+        }
         Err(CommandRunError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => {
             trace!(command = %cmd_display, error = %e, "command not found (ignored)");
             IgnoredCommandOutcome::NotFound
@@ -149,43 +280,80 @@ async fn command_output_with_timeout(
     program: &str,
     args: &[&str],
     timeout: Duration,
-) -> std::result::Result<std::process::Output, CommandRunError> {
-    command_output_with_timeout_with_exit_notifier(program, args, timeout, ChildExitNotifier::open)
-        .await
+) -> std::result::Result<CommandOutput, CommandRunError> {
+    command_output_with_policy(
+        program,
+        args,
+        timeout,
+        CommandOutputPolicy::capture_semantic_stdout(),
+    )
+    .await
 }
 
+async fn command_output_with_policy(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+    output_policy: CommandOutputPolicy,
+) -> std::result::Result<CommandOutput, CommandRunError> {
+    command_output_with_policy_and_exit_notifier(
+        program,
+        args,
+        timeout,
+        output_policy,
+        ChildExitNotifier::open,
+    )
+    .await
+}
+
+#[cfg(test)]
 async fn command_output_with_timeout_with_exit_notifier(
     program: &str,
     args: &[&str],
     timeout: Duration,
     open_exit_notifier: impl FnOnce(&Child) -> ChildExitNotifier,
-) -> std::result::Result<std::process::Output, CommandRunError> {
+) -> std::result::Result<CommandOutput, CommandRunError> {
+    command_output_with_policy_and_exit_notifier(
+        program,
+        args,
+        timeout,
+        CommandOutputPolicy::capture_semantic_stdout(),
+        open_exit_notifier,
+    )
+    .await
+}
+
+async fn command_output_with_policy_and_exit_notifier(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+    output_policy: CommandOutputPolicy,
+    open_exit_notifier: impl FnOnce(&Child) -> ChildExitNotifier,
+) -> std::result::Result<CommandOutput, CommandRunError> {
     let mut command = Command::new(program);
     command
         .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(stdio_for_policy(output_policy.stdout))
+        .stderr(stdio_for_policy(output_policy.stderr))
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
     let mut child = CommandChild::new(command.spawn().map_err(CommandRunError::Spawn)?);
     let exit_notifier = open_exit_notifier(child.as_child());
 
-    let stdout = child
-        .as_child_mut()
-        .stdout
-        .take()
-        .ok_or(CommandRunError::PipeUnavailable("stdout"))?;
-    let stderr = child
-        .as_child_mut()
-        .stderr
-        .take()
-        .ok_or(CommandRunError::PipeUnavailable("stderr"))?;
-
-    let mut pipe_tasks = PipeTasks::new(
-        tokio::spawn(read_pipe(stdout)),
-        tokio::spawn(read_pipe(stderr)),
-    );
+    let stdout_task =
+        spawn_pipe_task(child.as_child_mut(), PipeKind::Stdout, output_policy.stdout)?;
+    let stderr_task =
+        match spawn_pipe_task(child.as_child_mut(), PipeKind::Stderr, output_policy.stderr) {
+            Ok(task) => task,
+            Err(e) => {
+                if let Some(task) = stdout_task {
+                    abort_pipe_task(task).await;
+                }
+                return Err(e);
+            }
+        };
+    let mut pipe_tasks = PipeTasks::new(stdout_task, stderr_task);
     let deadline = tokio::time::Instant::now() + timeout;
 
     let child_exit = match wait_for_child_exit(&mut child, &exit_notifier, deadline, timeout).await
@@ -199,20 +367,92 @@ async fn command_output_with_timeout_with_exit_notifier(
 
     let (status, stdout, stderr) =
         collect_command_output(child_exit, &mut child, &mut pipe_tasks, deadline, timeout).await?;
-    Ok(std::process::Output {
+    Ok(CommandOutput {
         status,
         stdout,
         stderr,
     })
 }
 
-async fn read_pipe<R>(mut pipe: R) -> std::io::Result<Vec<u8>>
+fn stdio_for_policy(policy: StreamOutputPolicy) -> Stdio {
+    match policy {
+        StreamOutputPolicy::Discard => Stdio::null(),
+        StreamOutputPolicy::DiagnosticCapture { .. }
+        | StreamOutputPolicy::SemanticCapture { .. } => Stdio::piped(),
+    }
+}
+
+fn spawn_pipe_task(
+    child: &mut Child,
+    kind: PipeKind,
+    policy: StreamOutputPolicy,
+) -> std::result::Result<Option<PipeReadTask>, CommandRunError> {
+    let Some(limit) = policy.capture_limit() else {
+        return Ok(None);
+    };
+    match kind {
+        PipeKind::Stdout => {
+            let pipe = child
+                .stdout
+                .take()
+                .ok_or(CommandRunError::PipeUnavailable(kind.name()))?;
+            Ok(Some(tokio::spawn(read_pipe(pipe, policy, limit))))
+        }
+        PipeKind::Stderr => {
+            let pipe = child
+                .stderr
+                .take()
+                .ok_or(CommandRunError::PipeUnavailable(kind.name()))?;
+            Ok(Some(tokio::spawn(read_pipe(pipe, policy, limit))))
+        }
+    }
+}
+
+async fn read_pipe<R>(
+    mut pipe: R,
+    policy: StreamOutputPolicy,
+    limit: usize,
+) -> std::io::Result<PipeReadOutput>
 where
     R: tokio::io::AsyncRead + Unpin,
 {
-    let mut output = Vec::new();
-    pipe.read_to_end(&mut output).await?;
-    Ok(output)
+    let mut output = Vec::with_capacity(limit.min(PIPE_READ_CHUNK_BYTES));
+    let mut buffer = [0_u8; PIPE_READ_CHUNK_BYTES];
+    let mut truncated = false;
+    let mut overflow = None;
+
+    loop {
+        let read = pipe.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+
+        let remaining = limit.saturating_sub(output.len());
+        let keep = remaining.min(read);
+        if keep > 0 {
+            let Some(chunk) = buffer.get(..keep) else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "kept pipe bytes exceeded read buffer",
+                ));
+            };
+            output.extend_from_slice(chunk);
+        }
+        if keep < read {
+            truncated = true;
+            if policy.is_semantic() {
+                overflow = Some(limit);
+            }
+        }
+    }
+
+    Ok(PipeReadOutput {
+        output: CapturedPipeOutput {
+            bytes: output,
+            truncated,
+        },
+        overflow,
+    })
 }
 
 enum CommandChildExit {
@@ -274,18 +514,15 @@ impl PipeKind {
 }
 
 impl PipeTasks {
-    fn new(stdout: PipeReadTask, stderr: PipeReadTask) -> Self {
-        Self {
-            stdout: Some(stdout),
-            stderr: Some(stderr),
-        }
+    fn new(stdout: Option<PipeReadTask>, stderr: Option<PipeReadTask>) -> Self {
+        Self { stdout, stderr }
     }
 
     async fn collect_with_deadline(
         &mut self,
         deadline: tokio::time::Instant,
         timeout: Duration,
-    ) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
+    ) -> std::result::Result<(CapturedPipeOutput, CapturedPipeOutput), CommandRunError> {
         let stdout = self
             .collect_one(PipeKind::Stdout, deadline, timeout)
             .await?;
@@ -301,7 +538,11 @@ impl PipeTasks {
         kind: PipeKind,
         deadline: tokio::time::Instant,
         timeout: Duration,
-    ) -> std::result::Result<Vec<u8>, CommandRunError> {
+    ) -> std::result::Result<CapturedPipeOutput, CommandRunError> {
+        if self.pipe_mut(kind).is_none() {
+            return Ok(CapturedPipeOutput::discarded());
+        }
+
         let result = match tokio::time::timeout_at(
             deadline,
             self.pipe_mut(kind)
@@ -314,7 +555,7 @@ impl PipeTasks {
         };
 
         self.take_pipe(kind);
-        match collect_pipe_result(result) {
+        match collect_pipe_result(kind, result) {
             Ok(output) => Ok(output),
             Err(e) => {
                 self.abort_all().await;
@@ -367,11 +608,20 @@ impl Drop for PipeTasks {
 }
 
 fn collect_pipe_result(
-    result: std::result::Result<std::io::Result<Vec<u8>>, tokio::task::JoinError>,
-) -> std::result::Result<Vec<u8>, CommandRunError> {
-    result
+    kind: PipeKind,
+    result: std::result::Result<std::io::Result<PipeReadOutput>, tokio::task::JoinError>,
+) -> std::result::Result<CapturedPipeOutput, CommandRunError> {
+    let output = result
         .map_err(CommandRunError::PipeTask)?
-        .map_err(CommandRunError::PipeRead)
+        .map_err(CommandRunError::PipeRead)?;
+    if let Some(limit) = output.overflow {
+        Err(CommandRunError::OutputTooLarge {
+            pipe: kind.name(),
+            limit,
+        })
+    } else {
+        Ok(output.output)
+    }
 }
 
 async fn kill_child_tree(child: &mut Child) {
@@ -412,7 +662,14 @@ async fn collect_command_output(
     pipe_tasks: &mut PipeTasks,
     deadline: tokio::time::Instant,
     timeout: Duration,
-) -> std::result::Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>), CommandRunError> {
+) -> std::result::Result<
+    (
+        std::process::ExitStatus,
+        CapturedPipeOutput,
+        CapturedPipeOutput,
+    ),
+    CommandRunError,
+> {
     match child_exit {
         CommandChildExit::PreReap => {
             match pipe_tasks.collect_with_deadline(deadline, timeout).await {
@@ -572,6 +829,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn semantic_stdout_over_limit_returns_output_too_large() {
+        let result = command_output_with_policy_and_exit_notifier(
+            "sh",
+            &["-c", "printf abcdef"],
+            Duration::from_secs(1),
+            CommandOutputPolicy {
+                stdout: StreamOutputPolicy::SemanticCapture { max_bytes: 3 },
+                stderr: StreamOutputPolicy::DiagnosticCapture { max_bytes: 16 },
+            },
+            ChildExitNotifier::open,
+        )
+        .await;
+
+        match result {
+            Err(CommandRunError::OutputTooLarge { pipe, limit }) => {
+                assert_eq!(pipe, "stdout");
+                assert_eq!(limit, 3);
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn diagnostic_stderr_over_limit_truncates_without_failing_success() {
+        let output = command_output_with_policy_and_exit_notifier(
+            "sh",
+            &["-c", "printf abcdef >&2"],
+            Duration::from_secs(1),
+            CommandOutputPolicy {
+                stdout: StreamOutputPolicy::Discard,
+                stderr: StreamOutputPolicy::DiagnosticCapture { max_bytes: 3 },
+            },
+            ChildExitNotifier::open,
+        )
+        .await
+        .unwrap();
+
+        assert!(output.status.success());
+        assert!(output.stdout.bytes.is_empty());
+        assert!(!output.stdout.truncated);
+        assert_eq!(output.stderr.bytes, b"abc");
+        assert!(output.stderr.truncated);
+        assert_eq!(
+            output.stderr.to_lossy_trimmed_string(),
+            "abc\n[output truncated]"
+        );
+    }
+
+    #[tokio::test]
+    async fn exec_status_with_timeout_reports_failure_stderr() {
+        let err = exec_status_with_timeout(
+            "sh",
+            &["-c", "printf ignored; printf status-failed >&2; exit 7"],
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.detail.contains("status-failed"), "err was: {err}");
+    }
+
+    #[test]
+    fn output_too_large_ignored_outcome_is_not_trusted() {
+        assert!(!IgnoredCommandOutcome::OutputTooLarge.completed_without_timeout());
+    }
+
+    #[tokio::test]
     async fn exec_with_timeout_kills_child_process_group() {
         assert_timeout_kills_grandchild("(sleep 5; touch \"$2\") & echo $! > \"$1\"; wait").await;
     }
@@ -717,8 +1041,12 @@ mod tests {
         let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
         let (dropped_tx, mut dropped_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut pipe_tasks = PipeTasks::new(
-            pending_pipe_task("stdout", started_tx.clone(), dropped_tx.clone()),
-            pending_pipe_task("stderr", started_tx, dropped_tx),
+            Some(pending_pipe_task(
+                "stdout",
+                started_tx.clone(),
+                dropped_tx.clone(),
+            )),
+            Some(pending_pipe_task("stderr", started_tx, dropped_tx)),
         );
 
         let mut started = [
@@ -769,7 +1097,7 @@ mod tests {
         tokio::spawn(async move {
             let _notify = PipeDropNotify { name, dropped };
             let _ = started.send(name);
-            std::future::pending::<std::io::Result<Vec<u8>>>().await
+            std::future::pending::<std::io::Result<PipeReadOutput>>().await
         })
     }
 

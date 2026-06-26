@@ -764,6 +764,15 @@ const GMAIL_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/gmail/extra",
   "/api/webhooks",
 ] as const;
+const WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE =
+  "/api/webhooks/workflow-triggers/:token";
+const WORKFLOW_TRIGGER_WEBHOOK_PATH =
+  "/api/webhooks/workflow-triggers/whk_test";
+const WORKFLOW_TRIGGER_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/workflow-triggers",
+  "/api/webhooks/workflow-triggers/whk_test/extra",
+  "/api/webhooks",
+] as const;
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
 const STRIPE_WEBHOOK_PATH = "/api/webhooks/stripe";
 const STRIPE_WEBHOOK_NEXT_NEGATIVE_PATHS = [
@@ -2289,6 +2298,11 @@ describe("API backend rewrites", () => {
         {
           source: GMAIL_WEBHOOK_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/gmail",
+        },
+        {
+          source: WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/workflow-triggers/:token",
         },
         {
           source: STRIPE_WEBHOOK_REWRITE_SOURCE,
@@ -4676,6 +4690,32 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GMAIL_WEBHOOK_PATH)).toStrictEqual({});
     for (const pathname of GMAIL_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the workflow trigger webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/workflow-triggers/:token",
+    });
+
+    const matcher = getPathMatch(WORKFLOW_TRIGGER_WEBHOOK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(WORKFLOW_TRIGGER_WEBHOOK_PATH)).toStrictEqual({
+      token: "whk_test",
+    });
+    for (const pathname of WORKFLOW_TRIGGER_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

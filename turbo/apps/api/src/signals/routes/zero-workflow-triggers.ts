@@ -132,26 +132,41 @@ const createTriggerInner$ = command(
       return bodyResult.response;
     }
 
-    const result = await set(
-      createWorkflowTrigger$,
+    const triggerInputBase = {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      workflowId: params.workflowId,
+      enabled: bodyResult.data.enabled ?? true,
+    };
+    const result =
       "schedule" in bodyResult.data
-        ? {
-            orgId: auth.orgId,
-            member: memberFromAuth(auth),
-            workflowId: params.workflowId,
-            schedule: bodyResult.data.schedule,
-            enabled: bodyResult.data.enabled ?? true,
-          }
-        : {
-            orgId: auth.orgId,
-            member: memberFromAuth(auth),
-            workflowId: params.workflowId,
-            eventType: bodyResult.data.eventType,
-            eventConfig: bodyResult.data.eventConfig,
-            enabled: bodyResult.data.enabled ?? true,
-          },
-      signal,
-    );
+        ? await set(
+            createWorkflowTrigger$,
+            {
+              ...triggerInputBase,
+              schedule: bodyResult.data.schedule,
+            },
+            signal,
+          )
+        : bodyResult.data.eventType === "webhook-received"
+          ? await set(
+              createWorkflowTrigger$,
+              {
+                ...triggerInputBase,
+                eventType: bodyResult.data.eventType,
+                eventConfig: bodyResult.data.eventConfig,
+              },
+              signal,
+            )
+          : await set(
+              createWorkflowTrigger$,
+              {
+                ...triggerInputBase,
+                eventType: bodyResult.data.eventType,
+                eventConfig: bodyResult.data.eventConfig,
+              },
+              signal,
+            );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };

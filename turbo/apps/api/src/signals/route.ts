@@ -57,6 +57,7 @@ import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-gene
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
+import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
@@ -152,6 +153,7 @@ import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
+import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
@@ -210,6 +212,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksGmailRoutes,
+  ...webhooksWorkflowTriggersRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
@@ -346,6 +349,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
   ...storagesCommitRoutes,

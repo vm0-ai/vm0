@@ -44,14 +44,17 @@
 //! | 0x0F | H→G       | exec_cancel    | (empty) |
 //! | 0x10 | H→G       | exec_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
 //! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
+//! | 0x12 | H→G       | write_files       | `[2B file_count][file_entry]...`, where each file entry is `[2B path_len][path][4B content_len][content]` |
+//! | 0x13 | G→H       | write_files_result | `[1B success][2B error_len][error]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
-//! covers `write_file`, `exec_start`, `exec_cancel`, and `exec_control`; guest
-//! exec lifecycle frames reuse the original non-zero request sequence.
-//! `exec_output.output_seq` is per exec operation and starts at 0,
-//! incrementing by 1 for each output frame across stdout and stderr.
-//! `write_file_result.success` uses 0=false and 1=true.
+//! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`, and
+//! `exec_control`; guest exec lifecycle frames reuse the original non-zero
+//! request sequence. `exec_output.output_seq` is per exec operation and starts
+//! at 0, incrementing by 1 for each output frame across stdout and stderr.
+//! `write_file_result.success` / `write_files_result.success` use 0=false and
+//! 1=true.
 //! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
 //! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response
@@ -171,8 +174,9 @@ pub use payloads::exec_operation::{
     encode_exec_started,
 };
 pub use payloads::write_file::{
-    decode_write_file, decode_write_file_result, encode_private_write_file, encode_write_file,
-    encode_write_file_result,
+    WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
+    decode_write_files_result, encode_private_write_file, encode_write_file,
+    encode_write_file_result, encode_write_files, encode_write_files_result,
 };
 pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
@@ -180,6 +184,6 @@ pub use wire::{
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
-    WRITE_FILE_FLAG_SUDO,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
+    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };
