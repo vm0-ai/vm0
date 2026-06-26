@@ -122,6 +122,10 @@ async fn assert_stream_output_frames_poison_connection(
     request: ExecStreamRequest<'_>,
     frames: &[StreamOutputFrame<'_>],
 ) {
+    assert!(
+        !frames.is_empty(),
+        "stream poison helper requires at least one output frame",
+    );
     let (host, mut guest) = setup_host_and_guest().await;
     let label = request.label;
     let handle = match host.exec_operation_stream(request).await {
@@ -151,7 +155,10 @@ async fn assert_stream_output_frames_poison_connection(
         .unwrap_or_else(|err| {
             panic!("stream request {label:?} should close after poison frames: {err}")
         });
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    let err = match handle.wait(Duration::from_secs(5)).await {
+        Ok(_) => panic!("stream request {label:?} should fail after poison frames"),
+        Err(err) => err,
+    };
     assert_eq!(
         err.kind(),
         io::ErrorKind::ConnectionReset,
