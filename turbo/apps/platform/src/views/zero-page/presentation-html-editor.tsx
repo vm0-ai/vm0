@@ -10,7 +10,7 @@ import { cn } from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { accept } from "../../lib/accept.ts";
+import { ApiError, accept } from "../../lib/accept.ts";
 import {
   zeroClient$,
   type ZeroClientFactory,
@@ -143,7 +143,6 @@ async function redeployPresentationHtml(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   return completed.body.url;
 }
@@ -164,7 +163,6 @@ async function generatePresentationSpeakerNotes(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   return completed.body;
 }
@@ -782,7 +780,7 @@ async function ensurePresentationRedeployed(params: {
       params.markDirty();
     }),
     (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (!(error instanceof ApiError)) {
         toast.error(
           error instanceof Error ? error.message : "Presentation update failed",
         );
@@ -935,7 +933,7 @@ async function runFillEmptySpeakerNotes(ctx: {
       ctx.setPublishing(false);
     }),
     (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (!(error instanceof ApiError)) {
         toast.error(
           error instanceof Error
             ? error.message

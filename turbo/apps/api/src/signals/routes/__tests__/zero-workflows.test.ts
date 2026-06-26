@@ -736,6 +736,86 @@ describe("zero workflows", () => {
     });
   });
 
+  it("returns workflow audit metadata and records the last updating user", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Audit Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "audit-workflow",
+        visibility: "public",
+        displayName: "Audit Workflow",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const initial = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(initial.body).toMatchObject({
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+      displayName: "Audit Workflow",
+    });
+    expect(typeof initial.body.createdAt).toBe("string");
+    expect(typeof initial.body.updatedAt).toBe("string");
+
+    const updaterId = `user_${randomUUID()}`;
+    mocks.clerk.session(updaterId, fixture.orgId, "org:admin");
+
+    const updated = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { displayName: "Updated Audit Workflow" },
+      }),
+      [200],
+    );
+    expect(updated.body).toMatchObject({
+      createdByUserId: fixture.userId,
+      updatedByUserId: updaterId,
+      displayName: "Updated Audit Workflow",
+    });
+
+    const demoted = await accept(
+      visibilityClient().demote({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(demoted.body.visibility).toBe("private");
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const afterDemote = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(afterDemote.body.updatedByUserId).toBe(updaterId);
+  });
+
   it("deletes workflow storage using a slash-bounded prefix", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),

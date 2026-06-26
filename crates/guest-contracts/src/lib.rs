@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 //! Shared contracts between the runner and guest binaries.
 //!
 //! Keep guest-only runtime helpers in `guest-common`. This crate is for names,

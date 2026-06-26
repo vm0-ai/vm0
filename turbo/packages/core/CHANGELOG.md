@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.371.1](https://github.com/vm0-ai/vm0/compare/core-v8.371.0...core-v8.371.1) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.117.0
+    * @vm0/connectors bumped to 1.109.1
+
+## [8.371.0](https://github.com/vm0-ai/vm0/compare/core-v8.370.9...core-v8.371.0) (2026-06-26)
+
+
+### Features
+
+* add connector access management ([#19035](https://github.com/vm0-ai/vm0/issues/19035)) ([8e78fe6](https://github.com/vm0-ai/vm0/commit/8e78fe6f5f7e141a93555f40f00cabe179eb4a06))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.116.0
+    * @vm0/connectors bumped to 1.109.0
+
 ## [8.370.9](https://github.com/vm0-ai/vm0/compare/core-v8.370.8...core-v8.370.9) (2026-06-26)
 
 

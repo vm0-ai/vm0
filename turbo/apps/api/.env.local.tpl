@@ -12,7 +12,7 @@ APP_URL=https://app.vm7.ai:8443
 PAID_ONBOARDING_URL=https://so.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
-ATOM_URL=https://atom.vm7.ai:8442/
+ATOM_URL=https://tunnel-yuma-atom-api.vm7.ai
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/VM0_MACHINE_SECRET_KEY
 
 # Required: API deploy stage tag

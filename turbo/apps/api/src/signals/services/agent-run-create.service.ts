@@ -114,7 +114,6 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { writeDb$, type Db } from "../external/db";
-import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   publishOrgSignal,
@@ -189,8 +188,22 @@ type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_resolve_model_provider"
   | "api_dispatch_prepare_context_load_connector_contexts"
   | "api_dispatch_prepare_context_load_stored_connectors"
+  | "api_dispatch_prepare_context_load_stored_connector_rows"
+  | "api_dispatch_prepare_context_filter_stored_connector_rows"
+  | "api_dispatch_prepare_context_load_stored_connector_secret_rows"
+  | "api_dispatch_prepare_context_decrypt_stored_connector_secrets"
+  | "api_dispatch_prepare_context_load_stored_connector_variable_rows"
+  | "api_dispatch_prepare_context_build_stored_connector_state"
   | "api_dispatch_prepare_context_load_custom_connectors"
+  | "api_dispatch_prepare_context_load_custom_connector_rows"
+  | "api_dispatch_prepare_context_load_custom_connector_value_rows"
+  | "api_dispatch_prepare_context_build_custom_connector_firewalls"
   | "api_dispatch_prepare_context_build_permission_manifest"
+  | "api_dispatch_prepare_context_load_builtin_permission_indexes"
+  | "api_dispatch_prepare_context_apply_builtin_permission_policies"
+  | "api_dispatch_prepare_context_apply_custom_permission_policies"
+  | "api_dispatch_prepare_context_apply_model_provider_permission_policy"
+  | "api_dispatch_prepare_context_merge_permission_manifest"
   | "api_dispatch_prepare_context_validate_environment"
   | "api_dispatch_prepare_context_load_user_timezone"
   | "api_dispatch_prepare_context_prepare_output_metadata"
@@ -2040,33 +2053,48 @@ async function loadStoredConnectorSecrets(
     readonly names: ReadonlySet<string>;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
+  timing?: ApiDispatchTimingCollector,
 ): Promise<Record<string, string>> {
   if (args.names.size === 0) {
     return {};
   }
 
-  const rows = await db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "connector"),
-        inArray(secretsTable.name, [...args.names]),
-      ),
-    );
-  const values: Record<string, string> = {};
-  for (const row of rows) {
-    values[row.name] = await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    );
-  }
-  return values;
+  const rows = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          name: secretsTable.name,
+          encryptedValue: secretsTable.encryptedValue,
+        })
+        .from(secretsTable)
+        .where(
+          and(
+            eq(secretsTable.orgId, args.orgId),
+            eq(secretsTable.userId, args.userId),
+            eq(secretsTable.type, "connector"),
+            inArray(secretsTable.name, [...args.names]),
+          ),
+        );
+    },
+  );
+  return await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    "nested",
+    async () => {
+      const values: Record<string, string> = {};
+      for (const row of rows) {
+        values[row.name] = await decryptStoredSecretValue(
+          row.encryptedValue,
+          args.featureSwitchContext,
+        );
+      }
+      return values;
+    },
+  );
 }
 
 async function loadStoredConnectorVariables(
@@ -2076,25 +2104,33 @@ async function loadStoredConnectorVariables(
     readonly userId: string;
     readonly names: ReadonlySet<string>;
   },
+  timing?: ApiDispatchTimingCollector,
 ): Promise<Record<string, string>> {
   if (args.names.size === 0) {
     return {};
   }
 
-  const rows = await db
-    .select({
-      name: variables.name,
-      value: variables.value,
-    })
-    .from(variables)
-    .where(
-      and(
-        eq(variables.orgId, args.orgId),
-        eq(variables.userId, args.userId),
-        eq(variables.type, "connector"),
-        inArray(variables.name, [...args.names]),
-      ),
-    );
+  const rows = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_load_stored_connector_variable_rows",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          name: variables.name,
+          value: variables.value,
+        })
+        .from(variables)
+        .where(
+          and(
+            eq(variables.orgId, args.orgId),
+            eq(variables.userId, args.userId),
+            eq(variables.type, "connector"),
+            inArray(variables.name, [...args.names]),
+          ),
+        );
+    },
+  );
   return Object.fromEntries(
     rows.map((row) => {
       return [row.name, row.value];
@@ -2173,6 +2209,7 @@ async function loadStoredConnectorContext(
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
+  timing?: ApiDispatchTimingCollector,
 ): Promise<ConnectorRuntimeContext> {
   if (args.allowedConnectorTypes?.length === 0) {
     return emptyConnectorRuntimeContext();
@@ -2183,91 +2220,121 @@ async function loadStoredConnectorContext(
     : undefined;
 
   return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
+    const connectorRows = await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_prepare_context_load_stored_connector_rows",
+      "nested",
+      async () => {
+        await tx.execute(
+          sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
+        );
+        return await tx
+          .select({
+            type: connectors.type,
+            authMethod: connectors.authMethod,
+            needsReconnect: connectors.needsReconnect,
+            tokenExpiresAt: connectors.tokenExpiresAt,
+          })
+          .from(connectors)
+          .where(
+            and(
+              eq(connectors.orgId, args.orgId),
+              eq(connectors.userId, args.userId),
+              allowedConnectorTypes
+                ? inArray(connectors.type, allowedConnectorTypes)
+                : undefined,
+            ),
+          );
+      },
     );
-    const connectorRows = await tx
-      .select({
-        type: connectors.type,
-        authMethod: connectors.authMethod,
-        needsReconnect: connectors.needsReconnect,
-        tokenExpiresAt: connectors.tokenExpiresAt,
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          allowedConnectorTypes
-            ? inArray(connectors.type, allowedConnectorTypes)
-            : undefined,
-        ),
-      );
     if (connectorRows.length === 0) {
       return emptyConnectorRuntimeContext();
     }
 
-    const allowedConnectorRows = allowedStoredConnectorRows(
-      connectorRows,
-      allowedConnectorTypes,
-      nowDate(),
+    const storedConnectorPlan = await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_prepare_context_filter_stored_connector_rows",
+      "nested",
+      () => {
+        const allowedConnectorRows = allowedStoredConnectorRows(
+          connectorRows,
+          allowedConnectorTypes,
+          nowDate(),
+        );
+        if (allowedConnectorRows.length === 0) {
+          return Promise.resolve(null);
+        }
+
+        const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
+        return Promise.resolve({
+          allowedConnectorRows,
+          bindingSets,
+          requirements: collectStoredConnectorRequirements(bindingSets),
+        });
+      },
     );
-    if (allowedConnectorRows.length === 0) {
+    if (!storedConnectorPlan) {
       return emptyConnectorRuntimeContext();
     }
 
-    const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
-    const requirements = collectStoredConnectorRequirements(bindingSets);
-    const connectorSecrets = await loadStoredConnectorSecrets(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      names: requirements.secretNames,
-      featureSwitchContext: args.featureSwitchContext,
-    });
-    const connectorVariables = await loadStoredConnectorVariables(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      names: requirements.variableNames,
-    });
-    const resolved = resolveStoredConnectorState(
-      bindingSets,
-      connectorSecrets,
-      connectorVariables,
+    const connectorSecrets = await loadStoredConnectorSecrets(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        names: storedConnectorPlan.requirements.secretNames,
+        featureSwitchContext: args.featureSwitchContext,
+      },
+      timing,
+    );
+    const connectorVariables = await loadStoredConnectorVariables(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        names: storedConnectorPlan.requirements.variableNames,
+      },
+      timing,
     );
 
-    return {
-      secrets: compactRecord(resolved.secrets),
-      vars: compactRecord(resolved.vars),
-      secretConnectorMap: compactRecord(resolved.secretConnectorMap),
-      connectorTypes: allowedConnectorRows.map((row) => {
-        return row.connectorType;
-      }),
-      storedEnvironment: compactRecord(resolved.environment),
-    };
+    return await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_prepare_context_build_stored_connector_state",
+      "nested",
+      () => {
+        const resolved = resolveStoredConnectorState(
+          storedConnectorPlan.bindingSets,
+          connectorSecrets,
+          connectorVariables,
+        );
+
+        return Promise.resolve({
+          secrets: compactRecord(resolved.secrets),
+          vars: compactRecord(resolved.vars),
+          secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+          connectorTypes: storedConnectorPlan.allowedConnectorRows.map(
+            (row) => {
+              return row.connectorType;
+            },
+          ),
+          storedEnvironment: compactRecord(resolved.environment),
+        });
+      },
+    );
   });
 }
 
-async function loadCustomConnectorContext(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly allowedCustomConnectorIds: readonly string[] | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Promise<CustomConnectorRuntimeContext> {
-  if (args.allowedCustomConnectorIds?.length === 0) {
-    return { firewalls: [], secrets: undefined };
-  }
+type CustomConnectorRuntimeDataRows = Awaited<
+  ReturnType<typeof loadCustomConnectorRuntimeData>
+>;
 
-  const rows = await loadCustomConnectorRuntimeData(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorIds: args.allowedCustomConnectorIds,
-  });
+async function buildCustomConnectorRuntimeContext(args: {
+  readonly rows: CustomConnectorRuntimeDataRows;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
   const secrets: Record<string, string> = {};
-  for (const row of rows) {
+  for (const row of args.rows) {
     const valueMarkers = new Set(
       row.values.map((value) => {
         return `${value.kind}:${value.key}`;
@@ -2352,6 +2419,54 @@ async function loadCustomConnectorContext(
   }
 
   return { firewalls, secrets: compactRecord(secrets) };
+}
+
+async function loadCustomConnectorContext(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedCustomConnectorIds: readonly string[] | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<CustomConnectorRuntimeContext> {
+  if (args.allowedCustomConnectorIds?.length === 0) {
+    return { firewalls: [], secrets: undefined };
+  }
+
+  const rows = await loadCustomConnectorRuntimeData(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorIds: args.allowedCustomConnectorIds,
+    measure: async (step, operation) => {
+      const actionType =
+        step === "connectorRows"
+          ? "api_dispatch_prepare_context_load_custom_connector_rows"
+          : "api_dispatch_prepare_context_load_custom_connector_value_rows";
+      return await measureApiDispatchTiming(
+        timing,
+        actionType,
+        "nested",
+        operation,
+      );
+    },
+  });
+  if (rows.length === 0) {
+    return { firewalls: [], secrets: undefined };
+  }
+
+  return await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_build_custom_connector_firewalls",
+    "nested",
+    async () => {
+      return await buildCustomConnectorRuntimeContext({
+        rows,
+        featureSwitchContext: args.featureSwitchContext,
+      });
+    },
+  );
 }
 
 function collectPermissionNames(
@@ -2676,6 +2791,7 @@ async function buildPermissionManifest(args: {
   readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
+  readonly timing?: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {
   const connectorTypes =
     args.connectorTypes ??
@@ -2687,62 +2803,104 @@ async function buildPermissionManifest(args: {
     isFirewallExecutionMetadataConnectorType,
   );
 
-  const builtinSources = await Promise.all(
-    builtinConnectorTypes.map(async (type) => {
-      const metadata = getRequiredFirewallExecutionMetadata(type);
-      const permissionIndex = await loadRequiredFirewallPermissionIndex(type);
-      return { metadata, permissionIndex };
-    }),
-  );
-
-  const connectorManifest = applyBuiltinConnectorMetadataPolicies(
-    builtinSources,
-    args.permissionPolicies,
-    connectorBaseUrlVars,
-  );
-  const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
-    (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
-    args.vars,
-  );
-  const customConnectorManifest = applyConnectorPolicies(
-    resolvedCustomConnectorFirewalls,
-    args.permissionPolicies,
-    inlineFirewallEntry,
-    (_firewall, permissionNames) => {
-      return allAllowPolicyForPermissions(permissionNames);
+  const builtinSources = await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_context_load_builtin_permission_indexes",
+    "nested",
+    async () => {
+      return await Promise.all(
+        builtinConnectorTypes.map(async (type) => {
+          const metadata = getRequiredFirewallExecutionMetadata(type);
+          const permissionIndex =
+            await loadRequiredFirewallPermissionIndex(type);
+          return { metadata, permissionIndex };
+        }),
+      );
     },
   );
-  const providerManifest = modelProviderPermissionManifest(
-    args.modelProvider,
-    args.vars,
-  );
-  const firewalls = [
-    ...(providerManifest?.firewalls ?? []),
-    ...connectorManifest.firewalls,
-    ...customConnectorManifest.firewalls,
-  ];
 
-  if (firewalls.length === 0) {
-    return undefined;
-  }
-
-  return {
-    firewalls,
-    environmentSecretPlaceholders: mergeRecords(
-      providerManifest?.environmentSecretPlaceholders,
-      connectorManifest.environmentSecretPlaceholders,
-      firewallSecretPlaceholdersFromFirewalls(args.customConnectorFirewalls),
-    ),
-    billableFirewalls: [
-      ...(providerManifest?.billableFirewalls ?? []),
-      ...connectorManifest.billableFirewalls,
-    ],
-    networkPolicies: {
-      ...providerManifest?.networkPolicies,
-      ...connectorManifest.networkPolicies,
-      ...customConnectorManifest.networkPolicies,
+  const connectorManifest = await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_context_apply_builtin_permission_policies",
+    "nested",
+    () => {
+      return Promise.resolve(
+        applyBuiltinConnectorMetadataPolicies(
+          builtinSources,
+          args.permissionPolicies,
+          connectorBaseUrlVars,
+        ),
+      );
     },
-  };
+  );
+  const customConnectorManifest = await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_context_apply_custom_permission_policies",
+    "nested",
+    () => {
+      const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
+        (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
+        args.vars,
+      );
+      return Promise.resolve(
+        applyConnectorPolicies(
+          resolvedCustomConnectorFirewalls,
+          args.permissionPolicies,
+          inlineFirewallEntry,
+          (_firewall, permissionNames) => {
+            return allAllowPolicyForPermissions(permissionNames);
+          },
+        ),
+      );
+    },
+  );
+  const providerManifest = await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_context_apply_model_provider_permission_policy",
+    "nested",
+    () => {
+      return Promise.resolve(
+        modelProviderPermissionManifest(args.modelProvider, args.vars),
+      );
+    },
+  );
+
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_context_merge_permission_manifest",
+    "nested",
+    () => {
+      const firewalls = [
+        ...(providerManifest?.firewalls ?? []),
+        ...connectorManifest.firewalls,
+        ...customConnectorManifest.firewalls,
+      ];
+
+      if (firewalls.length === 0) {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve({
+        firewalls,
+        environmentSecretPlaceholders: mergeRecords(
+          providerManifest?.environmentSecretPlaceholders,
+          connectorManifest.environmentSecretPlaceholders,
+          firewallSecretPlaceholdersFromFirewalls(
+            args.customConnectorFirewalls,
+          ),
+        ),
+        billableFirewalls: [
+          ...(providerManifest?.billableFirewalls ?? []),
+          ...connectorManifest.billableFirewalls,
+        ],
+        networkPolicies: {
+          ...providerManifest?.networkPolicies,
+          ...connectorManifest.networkPolicies,
+          ...customConnectorManifest.networkPolicies,
+        },
+      });
+    },
+  );
 }
 
 function parseVolumeVersionsSnapshot(
@@ -3171,9 +3329,7 @@ function loadResumeSession(
   timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
   return computed(
-    async (
-      get,
-    ): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
+    async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
           cliAgentSessionId: conversations.cliAgentSessionId,
@@ -3188,61 +3344,40 @@ function loadResumeSession(
         return undefined;
       }
 
-      const sessionHistory = await measureApiDispatchTiming(
+      const resumeSession = await measureApiDispatchTiming(
         timing,
         "api_dispatch_resolve_compose_resolve_session_history",
         "nested",
-        async () => {
-          return await get(
-            resolveConversationSessionHistory({
-              hash: conversation.cliAgentSessionHistoryHash,
-              legacyText: conversation.cliAgentSessionHistory,
-            }),
-          );
+        (): Promise<StoredExecutionContext["resumeSession"] | null> => {
+          const cliAgentSessionId = conversation.cliAgentSessionId;
+          const hash = conversation.cliAgentSessionHistoryHash;
+          if (hash) {
+            return Promise.resolve({
+              sessionId: cliAgentSessionId,
+              historyRef: {
+                kind: "blob",
+                hash,
+              },
+            });
+          }
+          const sessionHistory = conversation.cliAgentSessionHistory;
+          if (sessionHistory) {
+            return Promise.resolve({
+              sessionId: cliAgentSessionId,
+              sessionHistory,
+            });
+          }
+          return Promise.resolve(null);
         },
       );
 
-      if (sessionHistory === null) {
+      if (resumeSession === null) {
         return undefined;
       }
 
-      const cliAgentSessionId = conversation.cliAgentSessionId;
-      return {
-        sessionId: cliAgentSessionId,
-        sessionHistory,
-      };
+      return resumeSession;
     },
   );
-}
-
-function resolveConversationSessionHistory(args: {
-  readonly hash: string | null;
-  readonly legacyText: string | null;
-}): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    const { hash, legacyText } = args;
-    if (hash) {
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const result = await settle(
-        get(downloadS3Buffer(bucket, `blobs/${hash}.blob`)),
-      );
-      if (result.ok) {
-        return result.value.toString("utf8");
-      }
-      if (legacyText) {
-        L.warn(
-          "session history R2 retrieval failed; falling back to legacy TEXT",
-          { hash, error: result.error },
-        );
-        return legacyText;
-      }
-      throw result.error;
-    }
-    if (legacyText) {
-      return legacyText;
-    }
-    return null;
-  });
 }
 
 function resolveCompose(
@@ -4469,12 +4604,16 @@ async function loadRunConnectorContexts(
       "api_dispatch_prepare_context_load_stored_connectors",
       "nested",
       async () => {
-        return await loadStoredConnectorContext(db, {
-          orgId: args.orgId,
-          userId: args.userId,
-          allowedConnectorTypes: args.allowedConnectorTypes,
-          featureSwitchContext,
-        });
+        return await loadStoredConnectorContext(
+          db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            allowedConnectorTypes: args.allowedConnectorTypes,
+            featureSwitchContext,
+          },
+          timing,
+        );
       },
     ),
     measureApiDispatchTiming(
@@ -4482,12 +4621,16 @@ async function loadRunConnectorContexts(
       "api_dispatch_prepare_context_load_custom_connectors",
       "nested",
       async () => {
-        return await loadCustomConnectorContext(db, {
-          orgId: args.orgId,
-          userId: args.userId,
-          allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-          featureSwitchContext,
-        });
+        return await loadCustomConnectorContext(
+          db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+            featureSwitchContext,
+          },
+          timing,
+        );
       },
     ),
   ]);
@@ -4570,6 +4713,7 @@ async function buildPreparedPermissionManifest(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {
   return await buildPermissionManifest({
     modelProvider: args.modelProvider,
@@ -4578,6 +4722,7 @@ async function buildPreparedPermissionManifest(args: {
     connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
+    timing: args.timing,
   });
 }
 
@@ -4763,6 +4908,7 @@ async function prepareRunRuntimeContext(args: {
         modelProvider,
         connectorContext,
         customConnectorContext,
+        timing: args.timing,
       });
     },
   );

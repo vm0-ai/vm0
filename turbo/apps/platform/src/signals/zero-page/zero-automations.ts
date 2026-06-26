@@ -383,8 +383,12 @@ export const runAutomationNow$ = command(
       runId = await runAutomationNowApi(get(zeroClient$), automationId);
       signal.throwIfAborted();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Run failed";
-      toast.error(message, { id: toastId });
+      toast.dismiss(toastId);
+      throwIfAbort(error);
+      if (!(error instanceof ApiError)) {
+        const message = error instanceof Error ? error.message : "Run failed";
+        toast.error(message);
+      }
       throw error;
     }
     signal.throwIfAborted();

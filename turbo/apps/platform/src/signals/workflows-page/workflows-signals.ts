@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
+  type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -27,6 +28,16 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+type WorkflowTriggerCreateDialog =
+  | "schedule"
+  | "gmail"
+  | "gmail-label"
+  | "webhook"
+  | null;
+type WorkflowWebhookTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "webhook-received" }
+>;
 const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
 const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 
@@ -57,12 +68,6 @@ const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
-type WorkflowTriggerCreateDialog = "schedule" | "gmail" | "webhook" | null;
-type WorkflowWebhookTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
-  { readonly kind: "event"; readonly eventType: "webhook-received" }
->;
-
 const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
@@ -228,9 +233,7 @@ function createAgentWorkflowsFactory(): (
     const atom$ = computed(async (get) => {
       get(internalWorkflowReload$);
       const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-      const result = await accept(client.list({ query: { agentId } }), [200], {
-        toast: false,
-      });
+      const result = await accept(client.list({ query: { agentId } }), [200]);
       return result.body;
     });
     cache.set(agentId, atom$);
@@ -276,7 +279,6 @@ function createWorkflowDetailFactory(): (
       const result = await accept(
         client.get({ params: { workflowId } }),
         [200, 404],
-        { toast: false },
       );
       if (result.status === 404) {
         return null;
@@ -444,12 +446,39 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
+export const createWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowWebhookTrigger$ = command(
   async (
     { get },
     input: { readonly workflowId: string },
     signal: AbortSignal,
-  ): Promise<ZeroWorkflowTriggerSummary> => {
+  ): Promise<WorkflowWebhookTriggerSummary> => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     const result = await accept(
       client.create({
@@ -468,6 +497,12 @@ export const createWorkflowWebhookTrigger$ = command(
       [201],
     );
     signal.throwIfAborted();
+    if (
+      result.body.kind !== "event" ||
+      result.body.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected webhook workflow trigger summary");
+    }
     return result.body;
   },
 );
@@ -478,6 +513,29 @@ export const updateWorkflowGmailNewMessageTrigger$ = command(
     input: {
       readonly triggerId: string;
       readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {

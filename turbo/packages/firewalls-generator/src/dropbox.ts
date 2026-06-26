@@ -45,6 +45,11 @@ const SCOPELESS_ROUTES = new Set([
   "check/app",
 ]);
 
+const ROUTE_PERMISSION_OVERRIDES: Readonly<Record<string, string>> = {
+  // Dropbox labels this mutating admin route as members.read in Stone.
+  "team/member_space_limits/set_custom_quota": "members.write",
+};
+
 function parseStoneRoutes(content: string): StoneRoute[] {
   const routes: StoneRoute[] = [];
   const lines = content.split("\n");
@@ -139,11 +144,12 @@ function buildGroups(routes: StoneRoute[]): Map<DropboxHost, HostPermissions> {
     }
 
     const rule = `POST /2/${fullName}`;
+    const permissionName = ROUTE_PERMISSION_OVERRIDES[fullName] ?? route.scope;
 
-    let hostMap = groups.get(route.scope);
+    let hostMap = groups.get(permissionName);
     if (!hostMap) {
       hostMap = new Map();
-      groups.set(route.scope, hostMap);
+      groups.set(permissionName, hostMap);
     }
     let ruleSet = hostMap.get(route.host);
     if (!ruleSet) {

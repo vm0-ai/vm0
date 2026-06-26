@@ -7,7 +7,6 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
-import { settle } from "../utils.ts";
 
 interface ExtraPage {
   readonly threads: readonly ChatThreadListItem[];
@@ -26,13 +25,7 @@ interface PaginationKey {
   readonly reloadKey: number;
 }
 
-interface LoadMoreErrorState extends PaginationKey {
-  readonly message: string;
-}
-
 const extraPagesState$ = state<PaginationState | null>(null);
-const loadingMoreState$ = state<PaginationKey | null>(null);
-const loadMoreErrorState$ = state<LoadMoreErrorState | null>(null);
 
 function matchesKey<T extends PaginationKey>(
   state: T | null,
@@ -47,19 +40,6 @@ function matchesKey<T extends PaginationKey>(
   );
 }
 
-export const sidebarChatThreadsLoadingMore$ = computed(async (get) => {
-  const agentId = await get(currentChatAgentId$);
-  const reloadKey = get(reloadChatThreadsCounter$);
-  return matchesKey(get(loadingMoreState$), agentId, reloadKey);
-});
-
-export const sidebarChatThreadsLoadMoreError$ = computed(async (get) => {
-  const agentId = await get(currentChatAgentId$);
-  const reloadKey = get(reloadChatThreadsCounter$);
-  const error = get(loadMoreErrorState$);
-  return matchesKey(error, agentId, reloadKey) ? error.message : null;
-});
-
 export const loadMoreSidebarChatThreads$ = command(
   async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
     const agentId = await get(currentChatAgentId$);
@@ -68,40 +48,18 @@ export const loadMoreSidebarChatThreads$ = command(
     if (!agentId) {
       return;
     }
-    if (matchesKey(get(loadingMoreState$), agentId, reloadKey)) {
-      return;
-    }
 
     const key = { agentId, reloadKey };
-    set(loadingMoreState$, key);
-    set(loadMoreErrorState$, null);
 
     const client = get(zeroClient$)(chatThreadsContract);
-    const settled = await settle(
-      accept(
-        client.list({
-          query: { agentId, cursor },
-          fetchOptions: { signal },
-        }),
-        [200],
-      ),
-      signal,
+    const result = await accept(
+      client.list({
+        query: { agentId, cursor },
+        fetchOptions: { signal },
+      }),
+      [200],
     );
-
-    set(loadingMoreState$, (current) => {
-      return matchesKey(current, agentId, reloadKey) ? null : current;
-    });
-
-    if (!settled.ok) {
-      set(loadMoreErrorState$, {
-        ...key,
-        message:
-          settled.error instanceof Error
-            ? settled.error.message
-            : "Failed to load more chats",
-      });
-      return;
-    }
+    signal.throwIfAborted();
 
     const latestAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
@@ -117,9 +75,9 @@ export const loadMoreSidebarChatThreads$ = command(
         pages: [
           ...pages,
           {
-            threads: settled.value.body.threads,
-            hasMore: settled.value.body.hasMore,
-            nextCursor: settled.value.body.nextCursor,
+            threads: result.body.threads,
+            hasMore: result.body.hasMore,
+            nextCursor: result.body.nextCursor,
           },
         ],
       };

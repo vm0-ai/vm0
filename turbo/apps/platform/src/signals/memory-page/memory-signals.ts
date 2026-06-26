@@ -12,10 +12,10 @@ import {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { settle, withCleanup } from "../utils.ts";
 
 export type MemoryTab = "updates" | "raw";
 
@@ -41,21 +41,7 @@ export const setMemoryTab$ = command(({ set }, tab: MemoryTab) => {
   set(internalMemoryTab$, tab);
 });
 
-type MemoryDevRefreshState =
-  | { readonly status: "idle" }
-  | { readonly status: "refreshing" }
-  | { readonly status: "success"; readonly message: string }
-  | { readonly status: "error"; readonly message: string };
-
 const memoryActivityReload$ = state(0);
-
-const internalMemoryDevRefreshState$ = state<MemoryDevRefreshState>({
-  status: "idle",
-});
-
-export const memoryDevRefreshState$ = computed((get) => {
-  return get(internalMemoryDevRefreshState$);
-});
 
 // Per-entry and per-item expand state for the Updates timeline, keyed by stable
 // activity keys. Mirrors the keyed-record ephemeral UI state pattern used
@@ -86,7 +72,7 @@ export const toggleMemoryItemExpanded$ = command(({ set }, key: string) => {
 export const memoryDetail$ = computed(
   async (get): Promise<MemoryDetailResponse> => {
     const client = get(zeroClient$)(zeroMemoryContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );
@@ -95,7 +81,7 @@ export const memoryActivity$ = computed(
   async (get): Promise<MemoryActivityResponse> => {
     get(memoryActivityReload$);
     const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );
@@ -110,11 +96,6 @@ interface MemoryActivityExtraPage {
 interface MemoryActivityPaginationState {
   readonly key: string;
   readonly pages: readonly MemoryActivityExtraPage[];
-}
-
-interface MemoryActivityLoadMoreErrorState {
-  readonly key: string;
-  readonly message: string;
 }
 
 function paginationKey(page: MemoryActivityResponse): string {
@@ -133,9 +114,6 @@ function matchesPaginationKey<T extends { readonly key: string }>(
 const extraMemoryActivityPages$ = state<MemoryActivityPaginationState | null>(
   null,
 );
-const loadingMoreMemoryActivity$ = state<string | null>(null);
-const loadMoreMemoryActivityError$ =
-  state<MemoryActivityLoadMoreErrorState | null>(null);
 
 function memoryDevRefreshMessage(body: MemoryDevRefreshResponse): string {
   if ("skipped" in body) {
@@ -149,7 +127,6 @@ function memoryDevRefreshMessage(body: MemoryDevRefreshResponse): string {
 
 const reloadMemoryActivity$ = command(({ set }): void => {
   set(extraMemoryActivityPages$, null);
-  set(loadMoreMemoryActivityError$, null);
   set(memoryActivityReload$, (current) => {
     return current + 1;
   });
@@ -157,45 +134,13 @@ const reloadMemoryActivity$ = command(({ set }): void => {
 
 export const refreshMemoryDevSummaries$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (get(internalMemoryDevRefreshState$).status === "refreshing") {
-      return;
-    }
-
-    set(internalMemoryDevRefreshState$, { status: "refreshing" });
-
     const client = get(zeroClient$)(zeroMemoryDevRefreshContract);
-    const settled = await withCleanup(
-      settle(
-        accept(client.refresh({ fetchOptions: { signal } }), [200], {
-          toast: false,
-        }),
-        signal,
-      ),
-      () => {
-        set(internalMemoryDevRefreshState$, (current) => {
-          return current.status === "refreshing"
-            ? ({ status: "idle" } satisfies MemoryDevRefreshState)
-            : current;
-        });
-      },
+    const result = await accept(
+      client.refresh({ fetchOptions: { signal } }),
+      [200],
     );
     signal.throwIfAborted();
-
-    if (!settled.ok) {
-      set(internalMemoryDevRefreshState$, {
-        status: "error",
-        message:
-          settled.error instanceof Error
-            ? settled.error.message
-            : "Memory refresh failed",
-      });
-      return;
-    }
-
-    set(internalMemoryDevRefreshState$, {
-      status: "success",
-      message: memoryDevRefreshMessage(settled.value.body),
-    });
+    toast.success(memoryDevRefreshMessage(result.body));
     set(reloadMemoryActivity$);
   },
 );
@@ -238,64 +183,24 @@ export const memoryActivityLatestCursor$ = computed(async (get) => {
   return state.pages[state.pages.length - 1]!.nextCursor;
 });
 
-export const memoryActivityLoadingMore$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  return get(loadingMoreMemoryActivity$) === paginationKey(firstPage);
-});
-
-export const memoryActivityLoadMoreError$ = computed(async (get) => {
-  const firstPage = await get(memoryActivity$);
-  const key = paginationKey(firstPage);
-  const error = get(loadMoreMemoryActivityError$);
-  return matchesPaginationKey(error, key) ? error.message : null;
-});
-
 export const loadMoreMemoryActivity$ = command(
   async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
     const firstPage = await get(memoryActivity$);
     signal.throwIfAborted();
     const key = paginationKey(firstPage);
-    if (get(loadingMoreMemoryActivity$) === key) {
-      return;
-    }
-
-    set(loadingMoreMemoryActivity$, key);
-    set(loadMoreMemoryActivityError$, null);
 
     const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const settled = await withCleanup(
-      settle(
-        accept(
-          client.get({
-            query: {
-              cursor,
-              limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
-            },
-            fetchOptions: { signal },
-          }),
-          [200],
-          { toast: false },
-        ),
-        signal,
-      ),
-      () => {
-        set(loadingMoreMemoryActivity$, (current) => {
-          return current === key ? null : current;
-        });
-      },
+    const result = await accept(
+      client.get({
+        query: {
+          cursor,
+          limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
     );
     signal.throwIfAborted();
-
-    if (!settled.ok) {
-      set(loadMoreMemoryActivityError$, {
-        key,
-        message:
-          settled.error instanceof Error
-            ? settled.error.message
-            : "Failed to load more updates",
-      });
-      return;
-    }
 
     set(extraMemoryActivityPages$, (current) => {
       const pages = matchesPaginationKey(current, key) ? current.pages : [];
@@ -304,8 +209,8 @@ export const loadMoreMemoryActivity$ = command(
         pages: [
           ...pages,
           {
-            entries: settled.value.body.entries,
-            nextCursor: settled.value.body.nextCursor,
+            entries: result.body.entries,
+            nextCursor: result.body.nextCursor,
           },
         ],
       };

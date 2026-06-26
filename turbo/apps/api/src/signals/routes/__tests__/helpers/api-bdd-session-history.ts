@@ -1,0 +1,51 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+
+import type { TestContext } from "../../../../__tests__/test-helpers";
+
+function knownSessionHistoryBodies(runId: string): readonly string[] {
+  return [
+    `bdd agentphone history ${runId}`,
+    `bdd chat session history ${runId}`,
+    `bdd chat thread history ${runId}`,
+    `bdd github session history ${runId}`,
+    `bdd run reads history ${runId}`,
+    `bdd schedule history ${runId}`,
+    `bdd session history ${runId}`,
+    `bdd slack history ${runId}`,
+    `bdd snapshot history ${runId}`,
+    `bdd cleanup-first session history ${runId}`,
+  ];
+}
+
+function hashText(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+export function registerKnownSessionHistoryBlob(
+  context: TestContext,
+  runId: string,
+  hash: string,
+): void {
+  for (const body of knownSessionHistoryBodies(runId)) {
+    if (hashText(body) === hash) {
+      context.sessionHistoryBlobs.set(hash, Buffer.from(body, "utf8"));
+      return;
+    }
+  }
+}
+
+export function sessionHistoryBlobBodyForKey(
+  context: TestContext,
+  key: string,
+): Uint8Array | undefined {
+  const match = /^blobs\/([a-f0-9]{64})\.blob$/.exec(key);
+  if (!match) {
+    return undefined;
+  }
+  const hash = match[1];
+  if (!hash) {
+    return undefined;
+  }
+  return context.sessionHistoryBlobs.get(hash);
+}

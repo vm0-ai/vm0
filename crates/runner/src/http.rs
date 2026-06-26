@@ -86,6 +86,10 @@ impl HttpClient {
         )
     }
 
+    pub fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.inner.client.get(url)
+    }
+
     fn authenticated_request(
         &self,
         method: reqwest::Method,

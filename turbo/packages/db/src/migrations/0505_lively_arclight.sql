@@ -39,7 +39,7 @@ ALTER TABLE "zero_workflow_triggers" ADD CONSTRAINT "zero_workflow_triggers_sche
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL

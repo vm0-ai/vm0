@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.129.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.29...runner-rs-v0.129.30) (2026-06-26)
+
+
+### Bug Fixes
+
+* correct dropbox custom quota permission ([#19070](https://github.com/vm0-ai/vm0/issues/19070)) ([140f635](https://github.com/vm0-ai/vm0/commit/140f63556682d8e93aeadae3ab3bf24d087053fa))
+
+## [0.129.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.28...runner-rs-v0.129.29) (2026-06-26)
+
+
+### Bug Fixes
+
+* add agent exit 126 diagnostics ([#19032](https://github.com/vm0-ai/vm0/issues/19032)) ([b894039](https://github.com/vm0-ai/vm0/commit/b894039c617722da0ab4a9dd1fa2f188e552c7c7))
+
+
+### Performance Improvements
+
+* move resume history download to runner ([#19025](https://github.com/vm0-ai/vm0/issues/19025)) ([7296964](https://github.com/vm0-ai/vm0/commit/729696498963ef377697681f49c597fc28180e02))
+
 ## [0.129.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.27...runner-rs-v0.129.28) (2026-06-26)
 
 

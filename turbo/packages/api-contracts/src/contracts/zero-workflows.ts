@@ -101,6 +101,7 @@ export type ZeroWorkflowTriggerKind = z.infer<
 
 export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
+  "gmail-label-applied",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -143,6 +144,26 @@ export const gmailNewMessageEventConfigSchema = z
   .strict();
 export type GmailNewMessageEventConfig = z.infer<
   typeof gmailNewMessageEventConfigSchema
+>;
+
+export const gmailLabelAppliedEventConfigSchema = z
+  .object({
+    provider: z.literal("gmail"),
+    event: z.literal("label_applied"),
+    labelName: z.string().trim().min(1).max(225),
+    resolvedLabelId: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+export type GmailLabelAppliedEventConfig = z.infer<
+  typeof gmailLabelAppliedEventConfigSchema
+>;
+
+export const gmailWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+  gmailNewMessageEventConfigSchema,
+  gmailLabelAppliedEventConfigSchema,
+]);
+export type GmailWorkflowEventConfig = z.infer<
+  typeof gmailWorkflowEventConfigSchema
 >;
 
 export const webhookReceivedEventConfigSchema = z
@@ -278,6 +299,15 @@ export const zeroWorkflowGmailNewMessageTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -291,10 +321,18 @@ export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
     webhookSecret: z.string().min(1).optional(),
   });
 
+export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
+  "eventType",
+  [
+    zeroWorkflowGmailNewMessageTriggerSummarySchema,
+    zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
+    zeroWorkflowWebhookReceivedTriggerSummarySchema,
+  ],
+);
+
 export const zeroWorkflowTriggerSummarySchema = z.union([
   zeroWorkflowScheduleTriggerSummarySchema,
-  zeroWorkflowGmailNewMessageTriggerSummarySchema,
-  zeroWorkflowWebhookReceivedTriggerSummarySchema,
+  zeroWorkflowEventTriggerSummarySchema,
 ]);
 export type ZeroWorkflowTriggerSummary = z.infer<
   typeof zeroWorkflowTriggerSummarySchema
@@ -333,6 +371,15 @@ export const zeroWorkflowGmailNewMessageTriggerCreateRequestSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+export const zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema = z.object(
+  {
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  },
+);
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -343,6 +390,7 @@ export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
 export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerCreateRequestSchema,
   zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
+  zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<
@@ -353,13 +401,13 @@ export const zeroWorkflowScheduleTriggerUpdateRequestSchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
 });
 
-export const zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema = z.object({
-  eventConfig: gmailNewMessageEventConfigSchema,
+export const zeroWorkflowGmailEventTriggerUpdateRequestSchema = z.object({
+  eventConfig: gmailWorkflowEventConfigSchema,
 });
 
 export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerUpdateRequestSchema,
-  zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema,
+  zeroWorkflowGmailEventTriggerUpdateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerUpdateRequest = z.infer<
   typeof zeroWorkflowTriggerUpdateRequestSchema
@@ -382,6 +430,8 @@ export const zeroWorkflowSummarySchema = z.object({
   visibility: zeroWorkflowVisibilitySchema,
   requestToPublish: z.boolean(),
   ownerUserId: z.string(),
+  ownerUserDisplayName: z.string().nullable().optional(),
+  ownerUserImageUrl: z.string().nullable().optional(),
   canManage: z.boolean(),
   shadowedBy: z
     .object({
@@ -395,6 +445,10 @@ export const zeroWorkflowSummarySchema = z.object({
 
 export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowSummarySchema.extend({
+    createdByUserId: z.string(),
+    updatedByUserId: z.string(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
     fileContents: z.array(workflowFileEntrySchema).nullable(),

@@ -179,6 +179,16 @@ function configureGmailWatchMock(historyId = "100"): void {
   );
 }
 
+function configureGmailLabelsMock(
+  labels: readonly { readonly id: string; readonly name: string }[],
+): void {
+  server.use(
+    http.get("https://gmail.googleapis.com/gmail/v1/users/me/labels", () => {
+      return HttpResponse.json({ labels });
+    }),
+  );
+}
+
 describe("zero workflow triggers", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
     const db = store.set(writeDb$);
@@ -783,11 +793,85 @@ describe("zero workflow triggers", () => {
       [200],
     );
     expect(updated.body.kind).toBe("event");
-    if (updated.body.kind !== "event") {
+    if (
+      updated.body.kind !== "event" ||
+      updated.body.eventType !== "gmail-new-message"
+    ) {
       throw new Error("Expected a Gmail event trigger");
     }
     expect(updated.body.eventConfig.match).toStrictEqual({
       from: { contains: "billing@example.com" },
+    });
+  });
+
+  it("creates and updates Gmail label applied triggers by label name", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableGmailWorkflowTriggers(fixture);
+    await seedGmailConnector(fixture);
+    configureGmailLabelsMock([{ id: "Label_support", name: "Support" }]);
+    configureGmailWatchMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Support",
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: {
+        provider: "gmail",
+        event: "label_applied",
+        labelName: "Support",
+        resolvedLabelId: "Label_support",
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+      unattendedConnectorRefs: ["gmail"],
+    });
+
+    configureGmailLabelsMock([{ id: "Label_escalated", name: "Escalated" }]);
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Escalated",
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.kind).toBe("event");
+    if (
+      updated.body.kind !== "event" ||
+      updated.body.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected a Gmail label applied trigger");
+    }
+    expect(updated.body.eventConfig).toStrictEqual({
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Escalated",
+      resolvedLabelId: "Label_escalated",
     });
   });
 

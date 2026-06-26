@@ -38,6 +38,12 @@ pub(super) async fn restore_session(
         return Err(RunnerError::Internal("invalid session_id".into()));
     }
 
+    if session.session_history().is_none() {
+        return Err(RunnerError::Internal(
+            "resume session history was not materialized".into(),
+        ));
+    }
+
     match effective_cli_framework(&context.cli_agent_type) {
         EffectiveCliFramework::ClaudeCode => {
             if !matches!(context.cli_agent_type.as_str(), "" | "claude-code") {
@@ -61,6 +67,9 @@ pub(super) async fn restore_claude_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
+    let session_history = session.session_history().ok_or_else(|| {
+        RunnerError::Internal("resume session history was not materialized".into())
+    })?;
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
@@ -71,13 +80,13 @@ pub(super) async fn restore_claude_session(
         sandbox,
         &session_path,
         &[&session.cli_agent_session_id],
-        &session.session_history,
+        session_history,
     )
     .await?;
     let diagnostics = SessionRestoreDiagnostics {
         framework: "claude-code",
         session_fingerprint: diagnostic_session_fingerprint(&session.cli_agent_session_id),
-        bytes_in: session.session_history.len(),
+        bytes_in: session_history.len(),
     };
     info!(
         run_id = %context.run_id,

@@ -1,21 +1,56 @@
-// Read-only workflow lists. Rows link into the agent-scoped detail page; there
+// Read-only workflow lists. Cards link into the agent-scoped detail page; there
 // are no write actions here.
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { IconChevronRight } from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
 
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
-import {
-  agentLabel,
-  VisibilityBadge,
-  workflowTitle,
-} from "./workflow-shared.tsx";
+import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
-const WORKFLOW_LIST_GRID_WITH_AGENT =
-  "grid grid-cols-[minmax(11rem,1.05fr)_minmax(16rem,1.55fr)_9rem_7rem_2.5rem] gap-x-5 items-center";
-const WORKFLOW_LIST_GRID_AGENT_SCOPED =
-  "grid grid-cols-[minmax(11rem,1.05fr)_minmax(16rem,1.65fr)_7rem_2.5rem] gap-x-5 items-center";
+type WorkflowGroupKey = "pending" | "public" | "private";
+
+const WORKFLOW_GROUPS: readonly {
+  readonly key: WorkflowGroupKey;
+  readonly label: string;
+}[] = [
+  { key: "pending", label: "Pending review" },
+  { key: "public", label: "Public" },
+  { key: "private", label: "Private" },
+];
+
+function workflowGroupKey(workflow: ZeroWorkflowSummary): WorkflowGroupKey {
+  if (workflow.visibility === "private" && workflow.requestToPublish) {
+    return "pending";
+  }
+  return workflow.visibility;
+}
+
+function groupWorkflows(
+  workflows: readonly ZeroWorkflowSummary[],
+): Record<WorkflowGroupKey, ZeroWorkflowSummary[]> {
+  return workflows.reduce<Record<WorkflowGroupKey, ZeroWorkflowSummary[]>>(
+    (groups, workflow) => {
+      groups[workflowGroupKey(workflow)].push(workflow);
+      return groups;
+    },
+    { pending: [], public: [], private: [] },
+  );
+}
+
+function pluralizeWorkflow(count: number): string {
+  return `${count} workflow${count === 1 ? "" : "s"}`;
+}
+
+function ownerLabel(workflow: ZeroWorkflowSummary): string {
+  return workflow.ownerUserDisplayName?.trim() || workflow.ownerUserId;
+}
+
+function ownerInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "??").toUpperCase();
+}
 
 export function WorkflowListPanel({
   workflows,
@@ -28,69 +63,113 @@ export function WorkflowListPanel({
   readonly showAgentColumn: boolean;
   readonly emptyDescription: string;
 }) {
-  const gridClass = showAgentColumn
-    ? WORKFLOW_LIST_GRID_WITH_AGENT
-    : WORKFLOW_LIST_GRID_AGENT_SCOPED;
+  return (
+    <section className="min-h-[520px]">
+      {loading ? (
+        <WorkflowIndexSkeleton />
+      ) : workflows && workflows.length > 0 ? (
+        <WorkflowGroups
+          workflows={workflows}
+          showAgentColumn={showAgentColumn}
+        />
+      ) : (
+        <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+          <p className="text-sm font-medium text-foreground">No workflows</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {emptyDescription}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function WorkflowGroups({
+  workflows,
+  showAgentColumn,
+}: {
+  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly showAgentColumn: boolean;
+}) {
+  const groups = groupWorkflows(workflows);
 
   return (
-    <section className="zero-card min-h-[520px] overflow-hidden pb-3">
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: showAgentColumn ? "940px" : "760px" }}>
-          {(loading || (workflows && workflows.length > 0)) && (
-            <div
-              className={cn(
-                gridClass,
-                "sticky top-0 z-10 border-b border-border/40 bg-card px-5 py-3 text-sm font-medium text-muted-foreground",
-              )}
-            >
-              <div className="text-left">Workflow</div>
-              <div className="text-left">Description</div>
-              {showAgentColumn && <div className="text-left">Agent</div>}
-              <div className="text-left">Visibility</div>
-              <div />
+    <div className="flex flex-col gap-4">
+      {WORKFLOW_GROUPS.map((group) => {
+        const groupWorkflows = groups[group.key];
+        if (groupWorkflows.length === 0) {
+          return null;
+        }
+
+        return (
+          <section key={group.key} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between px-0.5">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                {group.label}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {pluralizeWorkflow(groupWorkflows.length)}
+              </span>
             </div>
-          )}
-          {loading ? (
-            <WorkflowIndexSkeleton
-              gridClass={gridClass}
-              showAgentColumn={showAgentColumn}
-            />
-          ) : workflows && workflows.length > 0 ? (
-            <div>
-              {workflows.map((workflow) => {
+            <div className="flex flex-col gap-2.5">
+              {groupWorkflows.map((workflow) => {
                 return (
-                  <WorkflowIndexRow
+                  <WorkflowIndexCard
                     key={workflow.id}
                     workflow={workflow}
-                    gridClass={gridClass}
                     showAgentColumn={showAgentColumn}
                   />
                 );
               })}
             </div>
-          ) : (
-            <div className="flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
-              <p className="text-sm font-medium text-foreground">
-                No workflows
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {emptyDescription}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
-function WorkflowIndexRow({
+function WorkflowOwner({
   workflow,
-  gridClass,
+}: {
+  readonly workflow: ZeroWorkflowSummary;
+}) {
+  const label = ownerLabel(workflow);
+  const imageUrl = workflow.ownerUserImageUrl;
+
+  return (
+    <span className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
+      {imageUrl ? (
+        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50">
+          <img
+            src={imageUrl}
+            alt={label}
+            className="h-full w-full object-cover"
+          />
+        </span>
+      ) : (
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
+          {ownerInitials(label)}
+        </span>
+      )}
+      <span className="max-w-[8rem] truncate">{label}</span>
+    </span>
+  );
+}
+
+function WorkflowSlug({ name }: { readonly name: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center truncate rounded-full bg-gray-50 px-2 py-0.5 text-xs font-normal text-muted-foreground">
+      {name}
+    </span>
+  );
+}
+
+function WorkflowIndexCard({
+  workflow,
   showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
-  readonly gridClass: string;
   readonly showAgentColumn: boolean;
 }) {
   return (
@@ -102,56 +181,49 @@ function WorkflowIndexRow({
           workflowId: workflow.id,
         },
       }}
-      className="block w-full border-b border-border/40 px-5 py-3 text-left text-foreground transition-colors last:border-b-0 hover:bg-muted/50"
+      className="zero-card block px-5 py-4 text-left text-foreground no-underline transition-colors hover:bg-gray-50"
     >
-      <div className={cn(gridClass)}>
-        <div className="min-w-0 text-left">
-          <span className="block truncate text-sm font-medium text-foreground">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {workflowTitle(workflow)}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {workflow.name}
-          </span>
+          <WorkflowSlug name={workflow.name} />
+          {showAgentColumn && <WorkflowSlug name={agentLabel(workflow)} />}
         </div>
-        <span className="line-clamp-2 min-w-0 text-left text-sm leading-5 text-muted-foreground">
-          {workflow.description ?? workflow.name}
-        </span>
-        {showAgentColumn && (
-          <span className="min-w-0 truncate text-left text-sm text-muted-foreground">
-            {agentLabel(workflow)}
-          </span>
-        )}
-        <VisibilityBadge
-          visibility={workflow.visibility}
-          requestToPublish={workflow.requestToPublish}
-        />
-        <span className="justify-self-start rounded p-1 text-muted-foreground">
-          <IconChevronRight size={14} stroke={1.5} />
-        </span>
+        <WorkflowOwner workflow={workflow} />
+      </div>
+      <div className="mt-3 text-sm leading-6 text-muted-foreground">
+        {workflow.description ?? workflow.name}
       </div>
     </Link>
   );
 }
 
-function WorkflowIndexSkeleton({
-  gridClass,
-  showAgentColumn,
-}: {
-  readonly gridClass: string;
-  readonly showAgentColumn: boolean;
-}) {
+function WorkflowIndexSkeleton() {
   return (
-    <div className="divide-y divide-border/40" data-testid="workflows-loading">
-      {[0, 1, 2, 3].map((index) => {
+    <div className="flex flex-col gap-4" data-testid="workflows-loading">
+      {[0, 1, 2].map((groupIndex) => {
         return (
-          <div key={index} className={cn(gridClass, "px-5 py-3")}>
-            <div className="h-9 w-44 rounded bg-muted/50" />
-            <div className="h-4 w-full rounded bg-muted/50" />
-            {showAgentColumn && (
+          <div key={groupIndex} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between px-0.5">
               <div className="h-4 w-24 rounded bg-muted/50" />
-            )}
-            <div className="h-6 w-16 rounded-full bg-muted/50" />
-            <div className="h-4 w-4 rounded bg-muted/50" />
+              <div className="h-3 w-16 rounded bg-muted/40" />
+            </div>
+            <div className="zero-card px-5 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <div className="h-4 w-40 rounded bg-muted/50" />
+                  <div className="h-5 w-28 rounded-full bg-muted/40" />
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="h-6 w-6 rounded-full bg-muted/40" />
+                  <div className="h-4 w-16 rounded bg-muted/40" />
+                </div>
+              </div>
+              <div className="mt-3 h-4 w-full rounded bg-muted/40" />
+              <div className="mt-2 h-4 w-3/4 rounded bg-muted/30" />
+            </div>
           </div>
         );
       })}

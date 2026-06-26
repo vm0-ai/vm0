@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.496.0](https://github.com/vm0-ai/vm0/compare/app-v0.495.0...app-v0.496.0) (2026-06-26)
+
+
+### Features
+
+* add onboarding template params and scrollable org switcher ([#19067](https://github.com/vm0-ai/vm0/issues/19067)) ([cef7cbd](https://github.com/vm0-ai/vm0/commit/cef7cbd4f8f6af4f7e17702a09a9417c908cd8e2))
+* show workflow audit metadata in actions menu ([#19058](https://github.com/vm0-ai/vm0/issues/19058)) ([a631f04](https://github.com/vm0-ai/vm0/commit/a631f049970f7de34b6f21932a4e5cda7b01f124))
+
+
+### Bug Fixes
+
+* scope computer use authorization state to host ([#19072](https://github.com/vm0-ai/vm0/issues/19072)) ([ba5240d](https://github.com/vm0-ai/vm0/commit/ba5240d98bc76ad127919f98ee2ddcbb7274c66b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.117.0
+    * @vm0/connectors bumped to 1.109.1
+    * @vm0/core bumped to 8.371.1
+
+## [0.495.0](https://github.com/vm0-ai/vm0/compare/app-v0.494.0...app-v0.495.0) (2026-06-26)
+
+
+### Features
+
+* add connector access management ([#19035](https://github.com/vm0-ai/vm0/issues/19035)) ([8e78fe6](https://github.com/vm0-ai/vm0/commit/8e78fe6f5f7e141a93555f40f00cabe179eb4a06))
+* add Gmail label-applied workflow trigger ([#19045](https://github.com/vm0-ai/vm0/issues/19045)) ([6565e75](https://github.com/vm0-ai/vm0/commit/6565e75562c82e907449ffb8919011d680cdfd77))
+
+
+### Bug Fixes
+
+* align workflow breadcrumb style ([#19043](https://github.com/vm0-ai/vm0/issues/19043)) ([12fe49c](https://github.com/vm0-ai/vm0/commit/12fe49c88e034b63036b643b08820b2f69d140a0))
+* align workflow detail skeleton ([#19047](https://github.com/vm0-ai/vm0/issues/19047)) ([4dd1920](https://github.com/vm0-ai/vm0/commit/4dd19200702df5931aa6a9c1a9f283d596cc50ab))
+* close artifact sidebar on new chat ([#19039](https://github.com/vm0-ai/vm0/issues/19039)) ([1da34f1](https://github.com/vm0-ai/vm0/commit/1da34f14a0115c28970d6126711cbc4c8d0b1135))
+* remove agent workflows search ([#19042](https://github.com/vm0-ai/vm0/issues/19042)) ([43e3915](https://github.com/vm0-ai/vm0/commit/43e3915293b129980510104650e0136f3db0ccf2))
+* update workflows tab icon ([#19044](https://github.com/vm0-ai/vm0/issues/19044)) ([1606272](https://github.com/vm0-ai/vm0/commit/160627201a9e94a6926d7610f3940172e06eb280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.116.0
+    * @vm0/connectors bumped to 1.109.0
+    * @vm0/core bumped to 8.371.0
+
 ## [0.494.0](https://github.com/vm0-ai/vm0/compare/app-v0.493.3...app-v0.494.0) (2026-06-26)
 
 

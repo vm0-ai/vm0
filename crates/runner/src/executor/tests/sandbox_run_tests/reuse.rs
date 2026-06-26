@@ -118,10 +118,7 @@ async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image
         make_reusable_idle_sandbox(sandbox, source_ip, "bad-session").await;
     let raw_session_id = "../bad-session";
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: "{}".into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(raw_session_id.into(), "{}".into()));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -179,10 +176,10 @@ async fn execute_job_reuse_with_session_context() {
 
     // First turn: execute with resume_session
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "test-session-abc".into(),
-        session_history: r#"{"type":"human","text":"hello"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "test-session-abc".into(),
+        r#"{"type":"human","text":"hello"}"#.into(),
+    ));
     assert_eq!(ctx.cli_agent_session_id(), Some("test-session-abc"));
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -203,13 +200,13 @@ async fn execute_job_reuse_with_session_context() {
 
     // Second turn: reuse with new session history
     let mut ctx2 = minimal_context();
-    ctx2.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "test-session-abc".into(),
-        session_history: r#"{"type":"human","text":"hello"}
+    ctx2.resume_session = Some(ResumeSession::inline(
+        "test-session-abc".into(),
+        r#"{"type":"human","text":"hello"}
 {"type":"assistant","text":"hi"}
 {"type":"human","text":"do something"}"#
             .into(),
-    });
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (idle_sandbox, _lease) =
@@ -345,10 +342,10 @@ async fn execute_job_reuse_session_restore_failure_returns_sandbox() {
     sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-abc".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-abc".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (idle_sandbox, _lease) =

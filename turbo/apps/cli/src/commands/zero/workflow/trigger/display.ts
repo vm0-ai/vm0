@@ -81,6 +81,9 @@ function formatWorkflowTriggerEntry(
   if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     return `Gmail new message: ${formatGmailMatchSummary(trigger.eventConfig)}`;
   }
+  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
+    return `Gmail label applied: ${quote(trigger.eventConfig.labelName)}`;
+  }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
   }
@@ -175,7 +178,9 @@ export function printWorkflowTriggerDetails(
       trigger.kind === "event"
         ? trigger.eventType === "gmail-new-message"
           ? "Gmail new message"
-          : "Webhook"
+          : trigger.eventType === "gmail-label-applied"
+            ? "Gmail label applied"
+            : "Webhook"
         : formatWorkflowTriggerEntry(trigger)
     }`,
   );
@@ -183,6 +188,9 @@ export function printWorkflowTriggerDetails(
     console.log(
       `${"Match:".padEnd(14)}${formatGmailMatchSummary(trigger.eventConfig)}`,
     );
+  }
+  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
+    console.log(`${"Label:".padEnd(14)}${trigger.eventConfig.labelName}`);
   }
   if (isWebhookTrigger(trigger)) {
     console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);

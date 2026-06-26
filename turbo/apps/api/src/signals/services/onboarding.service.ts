@@ -29,7 +29,6 @@ import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 const L = logger("onboarding.service");
 const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
-const ONBOARDING_CREDIT_AMOUNT = 1000;
 const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
 
 interface DefaultAgentInfo {
@@ -93,6 +92,12 @@ type CompleteLimitedFreeOnboardingResponse =
       };
     };
 
+interface CompleteLimitedFreeOnboardingArgs {
+  readonly orgId: string;
+  readonly credits: number;
+  readonly expiresAt: string | null;
+}
+
 async function grantOrgCredits(
   tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
   orgId: string,
@@ -109,6 +114,8 @@ async function grantOrgCredits(
 async function grantOnboardingCredits(
   tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
   orgId: string,
+  amount: number,
+  expiresAt: Date,
 ): Promise<void> {
   const rows = await tx
     .insert(creditExpiresRecord)
@@ -116,9 +123,9 @@ async function grantOnboardingCredits(
       orgId,
       source: ONBOARDING_CREDIT_SOURCE,
       stripeInvoiceId: ONBOARDING_CREDIT_IDEMPOTENCY_KEY,
-      amount: ONBOARDING_CREDIT_AMOUNT,
-      remaining: ONBOARDING_CREDIT_AMOUNT,
-      expiresAt: new Date(ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+      amount,
+      remaining: amount,
+      expiresAt,
     })
     .onConflictDoNothing()
     .returning({ id: creditExpiresRecord.id });
@@ -128,7 +135,7 @@ async function grantOnboardingCredits(
     return;
   }
 
-  await grantOrgCredits(tx, orgId, ONBOARDING_CREDIT_AMOUNT);
+  await grantOrgCredits(tx, orgId, amount);
 }
 
 function unavailableSelectedConnectorsError(
@@ -767,9 +774,7 @@ export const setupOnboarding$ = command(
 export const completeLimitedFreeOnboarding$ = command(
   async (
     { set },
-    args: {
-      readonly orgId: string;
-    },
+    args: CompleteLimitedFreeOnboardingArgs,
     signal: AbortSignal,
   ): Promise<CompleteLimitedFreeOnboardingResponse> => {
     const writeDb = set(writeDb$);
@@ -808,7 +813,12 @@ export const completeLimitedFreeOnboarding$ = command(
           },
         });
 
-      await grantOnboardingCredits(tx, args.orgId);
+      await grantOnboardingCredits(
+        tx,
+        args.orgId,
+        args.credits,
+        new Date(args.expiresAt ?? ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
+      );
     });
     signal.throwIfAborted();
 

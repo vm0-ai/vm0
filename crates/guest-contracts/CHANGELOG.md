@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.4...guest-contracts-v0.2.5) (2026-06-26)
+
+
+### Documentation
+
+* document guest contracts public api ([#19064](https://github.com/vm0-ai/vm0/issues/19064)) ([f3ba3d1](https://github.com/vm0-ai/vm0/commit/f3ba3d1dc215502eb38276246334d5260ac853ee))
+
 ## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.3...guest-contracts-v0.2.4) (2026-06-25)
 
 

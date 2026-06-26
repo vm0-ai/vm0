@@ -13,6 +13,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -227,10 +228,13 @@ export function createChatCallbacksApi(context: TestContext) {
         const input = commandInput(args[0]);
         const key = typeof input.Key === "string" ? input.Key : "";
         if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+          const body = sessionHistoryBlobBodyForKey(context, key);
           return Promise.resolve({
             Body: {
               async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-                yield Buffer.from(`bdd session history ${key}`, "utf8");
+                if (body) {
+                  yield body;
+                }
               },
             },
           });

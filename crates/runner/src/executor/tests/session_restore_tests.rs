@@ -67,10 +67,7 @@ fn restore_session_writes_history() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "sess-abc-123".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline("sess-abc-123".into(), r#"{"type":"init"}"#.into());
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 }
 
@@ -79,10 +76,7 @@ async fn restore_session_rejects_invalid_session_id() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
     let raw_session_id = "../../etc/passwd";
-    let session = ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: "data".into(),
-    };
+    let session = ResumeSession::inline(raw_session_id.into(), "data".into());
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     let message = err.to_string();
     assert!(message.contains("invalid session_id"));
@@ -98,10 +92,7 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
     let raw_session_id = "sess-sensitive-restore-17975";
-    let session = ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline(raw_session_id.into(), r#"{"type":"init"}"#.into());
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
@@ -111,7 +102,10 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
         diagnostics.session_fingerprint,
         diagnostic_session_fingerprint(raw_session_id)
     );
-    assert_eq!(diagnostics.bytes_in, session.session_history.len());
+    assert_eq!(
+        diagnostics.bytes_in,
+        session.session_history().unwrap().len()
+    );
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "restored session history");
     assert_eq!(
@@ -133,10 +127,7 @@ fn restore_session_unknown_framework_uses_claude_fallback() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "custom-agent".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "sess-1".into(),
-        session_history: "data".into(),
-    };
+    let session = ResumeSession::inline("sess-1".into(), "data".into());
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -154,10 +145,7 @@ fn restore_session_allows_empty_agent_type() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = String::new(); // empty defaults to claude-code
-    let session = ResumeSession {
-        cli_agent_session_id: "sess-1".into(),
-        session_history: "{}".into(),
-    };
+    let session = ResumeSession::inline("sess-1".into(), "{}".into());
     // Should proceed (empty agent type treated as claude-code).
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 }
@@ -168,9 +156,9 @@ fn restore_session_writes_codex_session() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -187,7 +175,7 @@ fn restore_session_writes_codex_session() {
                 },
             }),
         ),
-    };
+    );
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
@@ -201,7 +189,10 @@ fn restore_session_writes_codex_session() {
         "codex resume history must be restored as a canonical rollout jsonl, got {}",
         writes[0].path
     );
-    assert_eq!(writes[0].content, session.session_history.as_bytes());
+    assert_eq!(
+        writes[0].content,
+        session.session_history().unwrap().as_bytes()
+    );
 }
 
 #[test]
@@ -210,10 +201,7 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let raw_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: "{}\n".into(),
-    };
+    let session = ResumeSession::inline(raw_session_id.into(), "{}\n".into());
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
@@ -223,7 +211,10 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
         diagnostics.session_fingerprint,
         diagnostic_session_fingerprint(raw_session_id)
     );
-    assert_eq!(diagnostics.bytes_in, session.session_history.len());
+    assert_eq!(
+        diagnostics.bytes_in,
+        session.session_history().unwrap().len()
+    );
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let restore_event = captured_event(&events, "restored session history");
     assert_eq!(
@@ -248,10 +239,10 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
-        session_history: "{\"type\":\"thread.started\"}\n{not-json}\n".into(),
-    };
+    let session = ResumeSession::inline(
+        "019e9154-c304-70f0-adde-36efb1be1701".into(),
+        "{\"type\":\"thread.started\"}\n{not-json}\n".into(),
+    );
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -277,7 +268,10 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
         filename.ends_with("-019e9154-c304-70f0-adde-36efb1be1701.jsonl"),
         "codex resume history filename must include the thread id, got {filename}"
     );
-    assert_eq!(writes[0].content, session.session_history.as_bytes());
+    assert_eq!(
+        writes[0].content,
+        session.session_history().unwrap().as_bytes()
+    );
 }
 
 #[test]
@@ -285,10 +279,7 @@ fn restore_session_canonicalizes_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
-        session_history: "{}\n".into(),
-    };
+    let session = ResumeSession::inline("019E9154C30470F0ADDE36EFB1BE1701".into(), "{}\n".into());
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -312,10 +303,7 @@ async fn restore_session_rejects_invalid_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "../../etc/passwd".into(),
-        session_history: "{}".into(),
-    };
+    let session = ResumeSession::inline("../../etc/passwd".into(), "{}".into());
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     assert!(err.to_string().contains("invalid session_id"));
 }
@@ -325,10 +313,7 @@ async fn restore_session_rejects_short_codex_session_id_without_cleanup() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "abc".into(),
-        session_history: "{}".into(),
-    };
+    let session = ResumeSession::inline("abc".into(), "{}".into());
 
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
@@ -351,10 +336,7 @@ async fn restore_session_rejects_decorated_codex_session_id_without_cleanup() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "codex".into();
-        let session = ResumeSession {
-            cli_agent_session_id: raw_session_id.into(),
-            session_history: "{}".into(),
-        };
+        let session = ResumeSession::inline(raw_session_id.into(), "{}".into());
 
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
@@ -374,10 +356,8 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession {
-        cli_agent_session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
-        session_history: "{}\n".into(),
-    };
+    let session =
+        ResumeSession::inline("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         b"cleanup stdout".to_vec(),
@@ -403,9 +383,9 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -416,7 +396,7 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
                 },
             }),
         ),
-    };
+    );
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         format!("stdout includes {session_id_no_dashes}").into_bytes(),
@@ -452,9 +432,9 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -465,7 +445,7 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
                 },
             }),
         ),
-    };
+    );
     sandbox.push_exec_result(Ok(ExecResult {
         termination: sandbox::ExecTermination::WaitFailed,
         stdout: format!("stdout includes {session_id_no_dashes}").into_bytes(),
@@ -494,10 +474,7 @@ async fn restore_session_redacts_claude_write_file_error() {
     let session_id = "sess-sensitive-write-17975";
     let session_path =
         "/home/user/.claude/projects/-home-user-workspace/sess-sensitive-write-17975.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -525,9 +502,9 @@ async fn restore_session_redacts_codex_write_file_error() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -538,7 +515,7 @@ async fn restore_session_redacts_codex_write_file_error() {
                 },
             }),
         ),
-    };
+    );
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to rename temp file to {session_path}: thread {session_id_no_dashes}"
     ))));
@@ -570,9 +547,9 @@ async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
     let raw_session_id = "019E9154C30470F0ADDE36EFB1BE1701";
     let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        raw_session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -583,7 +560,7 @@ async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
                 },
             }),
         ),
-    };
+    );
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write original thread {raw_session_id} at {session_path}"
     ))));
@@ -614,9 +591,9 @@ async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
     ctx.cli_agent_type = "codex".into();
     let raw_session_id = "019e9154C30470f0ADDE36efB1be1701";
     let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: format!(
+    let session = ResumeSession::inline(
+        raw_session_id.into(),
+        format!(
             "{}\n",
             serde_json::json!({
                 "timestamp": "2026-06-04T07:18:08.001Z",
@@ -627,7 +604,7 @@ async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
                 },
             }),
         ),
-    };
+    );
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write original thread {raw_session_id} with canonical {canonical_session_id}"
     ))));
@@ -654,10 +631,7 @@ async fn restore_session_redacts_write_file_invalid_state() {
     let session_id = "sess-invalid-state-17975";
     let session_path =
         "/home/user/.claude/projects/-home-user-workspace/sess-invalid-state-17975.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(SandboxError::InvalidState {
         context: SandboxInvalidStateContext::Operation(SandboxOperation::WriteFile),
         state: format!("blocked for {session_path}"),
@@ -686,10 +660,7 @@ async fn restore_session_redaction_does_not_rewrite_markers() {
     ctx.cli_agent_type = "claude-code".into();
     let session_id = "session";
     let session_path = "/home/user/.claude/projects/-home-user-workspace/session.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -718,10 +689,7 @@ async fn restore_session_redaction_preserves_words_for_short_ids() {
     ctx.cli_agent_type = "claude-code".into();
     let session_id = "a";
     let session_path = "/home/user/.claude/projects/-home-user-workspace/a.jsonl";
-    let session = ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -747,10 +715,7 @@ async fn restore_session_redaction_preserves_words_for_short_ids() {
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
-    let session = ResumeSession {
-        cli_agent_session_id: "sess-abc".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    };
+    let session = ResumeSession::inline("sess-abc".into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     assert!(err.to_string().contains("disk full"), "got: {err}");

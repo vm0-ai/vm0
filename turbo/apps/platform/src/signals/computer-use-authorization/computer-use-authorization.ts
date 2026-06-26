@@ -23,9 +23,7 @@ export const computerUseAuthorizationRequest$ = computed(async (get) => {
   }
 
   const client = get(zeroClient$)(zeroComputerUseAuthorizationRequestsContract);
-  const result = await accept(client.get({ params: { requestToken } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.get({ params: { requestToken } }), [200]);
   return result.body;
 });
 

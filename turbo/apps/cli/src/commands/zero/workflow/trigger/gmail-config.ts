@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
-import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import type {
+  GmailLabelAppliedEventConfig,
+  GmailNewMessageEventConfig,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
@@ -7,6 +10,7 @@ type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 
 export interface GmailTriggerOptions {
   readonly config?: string;
+  readonly label?: string;
   readonly fromContains?: string;
   readonly fromNotContains?: string;
   readonly subjectContains?: string;
@@ -219,6 +223,10 @@ export function hasGmailTriggerOptions(options: GmailTriggerOptions): boolean {
   );
 }
 
+export function hasGmailLabelOption(options: GmailTriggerOptions): boolean {
+  return options.label !== undefined;
+}
+
 function buildMatchFromFlags(
   options: GmailTriggerOptions,
 ): GmailMatchRules | undefined {
@@ -271,4 +279,16 @@ export function buildGmailNewMessageEventConfig(
   return match
     ? { provider: "gmail", event: "new_message", match }
     : { provider: "gmail", event: "new_message" };
+}
+
+export function buildGmailLabelAppliedEventConfig(
+  options: GmailTriggerOptions,
+): GmailLabelAppliedEventConfig {
+  const labelName = options.label?.trim();
+  if (!labelName) {
+    throw new Error(
+      'gmail-label-applied triggers require --label "Label name"',
+    );
+  }
+  return { provider: "gmail", event: "label_applied", labelName };
 }

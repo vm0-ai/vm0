@@ -64,6 +64,7 @@ export const zeroWorkflows = pgTable(
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -99,7 +100,10 @@ export const zeroWorkflows = pgTable(
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";
-export type ZeroWorkflowEventType = "gmail-new-message" | "webhook-received";
+export type ZeroWorkflowEventType =
+  | "gmail-new-message"
+  | "gmail-label-applied"
+  | "webhook-received";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
 /**
@@ -198,7 +202,7 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL

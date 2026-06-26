@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.37.66](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.65...sandbox-fc-v0.37.66) (2026-06-26)
+
+## [0.37.65](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.64...sandbox-fc-v0.37.65) (2026-06-26)
+
+
+### Bug Fixes
+
+* add agent exit 126 diagnostics ([#19032](https://github.com/vm0-ai/vm0/issues/19032)) ([b894039](https://github.com/vm0-ai/vm0/commit/b894039c617722da0ab4a9dd1fa2f188e552c7c7))
+
 ## [0.37.64](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.63...sandbox-fc-v0.37.64) (2026-06-26)
 
 ## [0.37.63](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.62...sandbox-fc-v0.37.63) (2026-06-25)

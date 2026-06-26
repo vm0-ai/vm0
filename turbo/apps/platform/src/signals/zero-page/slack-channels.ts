@@ -12,7 +12,7 @@ const slackChannelsLoaded$ = state(false);
 export const fetchSlackChannels$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroSlackChannelsContract);
-    const result = await accept(client.list(), [200], { toast: false });
+    const result = await accept(client.list(), [200]);
     set(slackChannelsState$, result.body.channels);
     set(slackChannelsLoaded$, true);
   },

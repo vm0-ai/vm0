@@ -17,6 +17,7 @@ import type { WorkflowRow } from "./zero-workflow-data.service";
 interface UpdateZeroWorkflowInput {
   readonly workflow: WorkflowRow;
   readonly body: ZeroWorkflowUpdateRequest;
+  readonly updatedByUserId: string;
 }
 
 export const updateZeroWorkflow$ = command(
@@ -46,6 +47,7 @@ export const updateZeroWorkflow$ = command(
         ...(body.instruction !== undefined && {
           instruction: body.instruction,
         }),
+        updatedBy: args.updatedByUserId,
         updatedAt: nowDate(),
       })
       .where(eq(zeroWorkflows.id, workflow.id));

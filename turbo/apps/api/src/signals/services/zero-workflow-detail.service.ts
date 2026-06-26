@@ -78,6 +78,10 @@ export function zeroWorkflowDetail(args: {
 
     return {
       ...summary,
+      createdByUserId: workflow.createdBy,
+      updatedByUserId: workflow.updatedBy,
+      createdAt: workflow.createdAt.toISOString(),
+      updatedAt: workflow.updatedAt.toISOString(),
       instruction: workflow.instruction,
       files,
       fileContents,

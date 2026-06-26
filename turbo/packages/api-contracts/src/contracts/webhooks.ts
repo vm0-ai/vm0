@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -14,6 +15,15 @@ import {
 } from "./storages";
 
 const c = initContract();
+
+// Hash-backed resume history is keyed and verified as lowercase SHA-256 hex.
+// Accepting other 64-character strings would defer bad input until runner claim.
+const sha256HexSchema = z
+  .string()
+  .regex(
+    /^[a-f0-9]{64}$/,
+    "hash must be a lowercase 64-character SHA-256 hex string",
+  );
 
 const thirdPartyWebhookErrorSchema = z.object({ error: z.string() });
 const thirdPartyWebhookOkSchema = z.union([
@@ -395,12 +405,7 @@ export const webhookCheckpointsContract = c.router({
         runId: z.string().min(1, "runId is required"),
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-        cliAgentSessionHistoryHash: z
-          .string()
-          .length(
-            64,
-            "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
-          ),
+        cliAgentSessionHistoryHash: sha256HexSchema,
         // Multi-artifact snapshot payload. Canonical
         // `Array<{name, version, mountPath}>` form persisted verbatim to
         // checkpoints.artifact_snapshots.
@@ -437,10 +442,12 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
-      hash: z
-        .string()
-        .length(64, "hash must be a 64-character SHA-256 hex string"),
-      size: z.number().int().positive("size must be a positive integer"),
+      hash: sha256HexSchema,
+      size: z
+        .number()
+        .int()
+        .positive("size must be a positive integer")
+        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
     }),
     responses: {
       200: z.object({

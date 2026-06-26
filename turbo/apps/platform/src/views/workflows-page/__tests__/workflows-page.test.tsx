@@ -26,12 +26,15 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
+const UPDATED_USER_ID = "test-user-456";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000101";
 const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
+const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
+const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 
 type WorkflowScheduleTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
@@ -44,6 +47,10 @@ type WorkflowGmailNewMessageTriggerSummary = Extract<
 type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "webhook-received" }
+>;
+type WorkflowGmailLabelAppliedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "gmail-label-applied" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -95,6 +102,29 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
   };
 }
 
+function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
+  return {
+    id: GMAIL_LABEL_TRIGGER_ID,
+    kind: "event",
+    eventType: "gmail-label-applied",
+    eventConfig: {
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Support",
+      resolvedLabelId: "Label_support",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_gmail_label_applied",
+    nextRunAt: null,
+    lastRunAt: null,
+    unattendedConnectorRefs: ["gmail"],
+    unattendedPermissionPolicy: null,
+  };
+}
+
 function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
   return {
     id: "workflow-trigger-webhook",
@@ -133,6 +163,10 @@ function salesResearch(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: UPDATED_USER_ID,
+    createdAt: "2026-06-17T13:52:00.000Z",
+    updatedAt: "2026-06-20T14:16:00.000Z",
     instruction: "Gather CRM context before outreach.",
     files: [
       { path: "examples/prompt.md", size: 1536 },
@@ -165,6 +199,34 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-15T12:00:00.000Z",
+    updatedAt: "2026-06-15T12:00:00.000Z",
+    instruction: null,
+    files: [],
+    fileContents: [],
+    triggers: [],
+  };
+}
+
+function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
+  return {
+    id: PENDING_WORKFLOW_ID,
+    agentId: AGENT_ID,
+    agentName: "research-bot",
+    agentDisplayName: "Research Bot",
+    name: "launch-checklist",
+    displayName: "Launch Checklist",
+    description: "Prepares release approvals.",
+    visibility: "private",
+    requestToPublish: true,
+    ownerUserId: CURRENT_USER_ID,
+    canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-18T12:00:00.000Z",
+    updatedAt: "2026-06-18T12:00:00.000Z",
     instruction: null,
     files: [],
     fileContents: [],
@@ -185,6 +247,10 @@ function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-16T12:00:00.000Z",
+    updatedAt: "2026-06-16T12:00:00.000Z",
     instruction: null,
     files: [],
     fileContents: [],
@@ -218,6 +284,8 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     visibility: workflow.visibility,
     requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
     canManage: workflow.canManage,
   };
 }
@@ -245,6 +313,31 @@ function mockAgentPageApis(): void {
   });
 }
 
+function mockWorkflowAuditMembers(): void {
+  context.mocks.data.orgMembers({
+    members: [
+      {
+        userId: CURRENT_USER_ID,
+        email: "ethan@example.com",
+        firstName: "Ethan",
+        lastName: "Zhang",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        userId: UPDATED_USER_ID,
+        email: "lancy@example.com",
+        firstName: "Lancy",
+        lastName: "Lan",
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2024-01-01T00:00:00Z",
+      },
+    ],
+  });
+}
+
 function applyWorkflowUpdate(
   workflow: ZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
@@ -268,6 +361,8 @@ function applyWorkflowUpdate(
           fileContents: body.files,
         }
       : {}),
+    updatedByUserId: CURRENT_USER_ID,
+    updatedAt: "2026-06-21T12:00:00.000Z",
   };
 }
 
@@ -333,6 +428,12 @@ function mockCreateWorkflowTrigger(
           webhookSecret: "webhook-secret",
         });
       }
+      if (body.eventType === "gmail-label-applied") {
+        return respond(201, {
+          ...gmailLabelWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
       return respond(201, {
         ...gmailWorkflowTrigger(),
         eventConfig: body.eventConfig,
@@ -349,6 +450,13 @@ function mockUpdateWorkflowTrigger(
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
+        if (body.eventConfig.event === "label_applied") {
+          return respond(200, {
+            ...gmailLabelWorkflowTrigger(),
+            id: params.id,
+            eventConfig: body.eventConfig,
+          });
+        }
         return respond(200, {
           ...gmailWorkflowTrigger(),
           id: params.id,
@@ -424,7 +532,12 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
 describe("agent workflows tab", () => {
   it("shows the agent's workflows and links into the detail page", async () => {
     mockAgentPageApis();
-    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
+    mockWorkflowApis([
+      salesResearch(),
+      opsPlaybook(),
+      pendingReviewWorkflow(),
+      otherAgentWorkflow(),
+    ]);
 
     detachedSetupPage({
       context,
@@ -435,10 +548,40 @@ describe("agent workflows tab", () => {
     await waitFor(() => {
       expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
+    expect(screen.getByText("Launch Checklist")).toBeInTheDocument();
     expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
-    expect(screen.getByText("private")).toBeInTheDocument();
     expect(screen.queryByLabelText("Search workflows")).not.toBeInTheDocument();
+
+    for (const title of [
+      "Sales Research",
+      "Launch Checklist",
+      "Ops Playbook",
+    ]) {
+      const cardLink = screen.getByText(title).closest("a");
+      if (!cardLink) {
+        throw new Error(`${title} workflow card link not found`);
+      }
+      expect(within(cardLink).getByText("Test User")).toBeInTheDocument();
+    }
+
+    const pendingHeading = screen.getByRole("heading", {
+      name: "Pending review",
+    });
+    const publicHeading = screen.getByRole("heading", { name: "Public" });
+    const privateHeading = screen.getByRole("heading", { name: "Private" });
+    expect(
+      Boolean(
+        pendingHeading.compareDocumentPosition(publicHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBeTruthy();
+    expect(
+      Boolean(
+        publicHeading.compareDocumentPosition(privateHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBeTruthy();
 
     const opsLink = screen.getByText("Ops Playbook").closest("a");
     expect(opsLink).toHaveAttribute(
@@ -503,6 +646,42 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("orders workflow actions menu sections with audit metadata last", async () => {
+    mockWorkflowAuditMembers();
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Workflow actions"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(textFor(menu)).toContain("Created by Ethan Zhang");
+    });
+    const menuText = textFor(menu);
+    expect(menuText).toContain("Created by Ethan Zhang");
+    expect(menuText).toContain("Last updated by Lancy Lan");
+    expect(menuText).toContain("Jun 17, 2026");
+    expect(menuText).toContain("Jun 20, 2026");
+    expect(menuText.indexOf("Visibility")).toBeLessThan(
+      menuText.indexOf("Edit"),
+    );
+    expect(menuText.indexOf("Edit")).toBeLessThan(menuText.indexOf("Copy"));
+    expect(menuText.indexOf("Copy")).toBeLessThan(menuText.indexOf("Delete"));
+    expect(menuText.indexOf("Delete")).toBeLessThan(
+      menuText.indexOf("Created by"),
+    );
   });
 
   it("derives the trigger sidebar from workflow detail search params", async () => {
@@ -618,6 +797,65 @@ describe("workflow detail page", () => {
             from: { contains: "@acme.com" },
             subject: { doesNotContain: "newsletter" },
           },
+        },
+      });
+    });
+  });
+
+  it("creates a Gmail label applied trigger with a label name", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Add trigger";
+    });
+    expect(addTriggerButton).toBeDefined();
+    click(addTriggerButton!);
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((item) => {
+          return item.textContent?.includes("Gmail label applied");
+        }),
+      ).toBeTruthy();
+    });
+    const gmailLabelMenuItem = queryAllByRoleFast("menuitem").find((item) => {
+      return item.textContent?.includes("Gmail label applied");
+    });
+    expect(gmailLabelMenuItem).toBeDefined();
+    click(gmailLabelMenuItem!);
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Gmail label trigger",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("Label name"),
+      "Support",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
         },
       });
     });
@@ -751,6 +989,60 @@ describe("workflow detail page", () => {
               subject: { doesNotContain: "newsletter" },
               body: { contains: "invoice" },
             },
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail label applied trigger with a label name", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const workflow = {
+      ...salesResearch(),
+      triggers: [gmailLabelWorkflowTrigger()],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
+    });
+    click(screen.getByText("Edit label"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update Gmail label trigger",
+    });
+    await fill(
+      within(updateTriggerForm).getByLabelText("Label name"),
+      "Escalated",
+    );
+    fireEvent.submit(updateTriggerForm);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: GMAIL_LABEL_TRIGGER_ID,
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Escalated",
           },
         },
       });
