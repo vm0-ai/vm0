@@ -540,26 +540,6 @@ function shouldShowAssistantConnector(params: {
   return { showConnector, isDashed };
 }
 
-function countLiteralMatches(text: string, searchTerm: string): number {
-  if (!searchTerm.trim()) {
-    return 0;
-  }
-
-  const lowered = text.toLowerCase();
-  const target = searchTerm.toLowerCase();
-  let count = 0;
-  let cursor = 0;
-
-  for (;;) {
-    const idx = lowered.indexOf(target, cursor);
-    if (idx === -1) {
-      return count;
-    }
-    count += 1;
-    cursor = idx + target.length;
-  }
-}
-
 /**
  * Render a connector line between elements.
  */
