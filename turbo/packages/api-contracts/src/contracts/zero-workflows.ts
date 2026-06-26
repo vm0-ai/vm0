@@ -433,6 +433,7 @@ export const zeroWorkflowCreateRequestSchema = z.object({
 
 export const zeroWorkflowUpdateRequestSchema = z
   .object({
+    name: zeroWorkflowNameSchema.optional(),
     instruction: workflowInstructionSchema.nullable().optional(),
     files: workflowFilesSchema.optional(),
     displayName: z.string().max(256).nullable().optional(),
@@ -441,6 +442,7 @@ export const zeroWorkflowUpdateRequestSchema = z
   .refine(
     (body) => {
       return (
+        body.name !== undefined ||
         body.instruction !== undefined ||
         body.files !== undefined ||
         body.displayName !== undefined ||
@@ -517,6 +519,7 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Update a workflow's instruction, files, or metadata",
   },

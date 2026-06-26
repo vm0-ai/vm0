@@ -316,6 +316,7 @@ function applyWorkflowUpdate(
 ): ZeroWorkflowDetailResponse {
   return {
     ...workflow,
+    ...(body.name !== undefined ? { name: body.name } : {}),
     ...(body.instruction !== undefined
       ? { instruction: body.instruction }
       : {}),
@@ -672,6 +673,58 @@ describe("workflow detail page", () => {
     expect(menuText.indexOf("Delete")).toBeLessThan(
       menuText.indexOf("Created by"),
     );
+  });
+
+  it("prefills and updates workflow metadata from the actions menu", async () => {
+    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    mockWorkflowApis([salesResearch()], (body) => {
+      updateBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Workflow actions"));
+    click(menuItemByText("Edit"));
+
+    const form = await screen.findByRole("form", {
+      name: "Workflow metadata",
+    });
+    expect(within(form).getByLabelText("Name")).toHaveValue("Sales Research");
+    expect(within(form).getByLabelText("Slug")).toHaveValue("sales-research");
+    expect(within(form).getByLabelText("Description")).toHaveValue(
+      "Collects account context before outreach.",
+    );
+    expect(
+      within(form).getByText(/Lowercase letters, numbers, and - only/),
+    ).toBeInTheDocument();
+    expect(
+      within(form).getByText(/Tell the agent when to use this workflow/),
+    ).toBeInTheDocument();
+
+    await fill(within(form).getByLabelText("Name"), "Account Brief");
+    await fill(within(form).getByLabelText("Slug"), "account-brief");
+    await fill(
+      within(form).getByLabelText("Description"),
+      "Use when an account needs a fresh research brief.",
+    );
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        name: "account-brief",
+        displayName: "Account Brief",
+        description: "Use when an account needs a fresh research brief.",
+      });
+    });
   });
 
   it("derives the trigger sidebar from workflow detail search params", async () => {

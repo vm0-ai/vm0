@@ -173,6 +173,7 @@ export const apiWorkflowsHandlers = [
       ...existing,
       updatedByUserId: "test-user-123",
       updatedAt: now,
+      name: body.name === undefined ? existing.name : body.name,
       instruction:
         body.instruction === undefined
           ? existing.instruction
