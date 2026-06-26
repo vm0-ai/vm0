@@ -6,8 +6,10 @@ import {
   generatedFirewallExportName,
   generatedConnectorMetadataFileName,
   loadConnectorFirewallSourceSet,
+  loadGeneratedConnectorFirewallSource,
   type ConnectorFirewallSource,
 } from "../connector-firewall-sources";
+import { getGeneratedFirewallOutput, writeOutput } from "../codegen";
 import {
   BILLABLE_FIREWALL_CONNECTOR_TYPES,
   FIREWALL_CONNECTOR_TYPES,
@@ -31,6 +33,10 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
 const GENERATOR_RENDERER_BOUNDARY_FILES = [
   "../python-builtin-firewall-catalog.ts",
 ] as const;
+const ALLOWED_GENERATOR_CONNECTOR_VALIDATOR_IMPORTS = new Set([
+  "../../connectors/src/firewall-expander",
+  "../../connectors/src/firewall-types",
+]);
 
 function staticValueImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -140,6 +146,9 @@ describe("firewall metadata generator", () => {
         "../../connectors/src" + "/firewalls",
       );
       for (const specifier of staticValueModuleSpecifiers(source)) {
+        if (ALLOWED_GENERATOR_CONNECTOR_VALIDATOR_IMPORTS.has(specifier)) {
+          continue;
+        }
         expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
       }
       expect(dynamicImportSpecifiers(source), file).not.toContain(
@@ -235,6 +244,50 @@ describe("firewall metadata generator", () => {
       expect(
         sourceSet.sources.find((source) => source.type === "slack")?.label,
       ).toBe("Slack");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "validates generated firewall config shape before deriving metadata",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          '        header: { Authorization: "Bearer token" },',
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Generated firewall config contains unknown keys at github.apis[0].auth: header",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );

@@ -3,9 +3,11 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import type {
-  FirewallConfig,
-  FirewallPolicyValue,
+import { collectAndValidatePermissions } from "../../connectors/src/firewall-expander";
+import {
+  firewallConfigSchema,
+  type FirewallConfig,
+  type FirewallPolicyValue,
 } from "../../connectors/src/firewall-types";
 import {
   BILLABLE_FIREWALL_CONNECTOR_TYPES,
@@ -15,6 +17,20 @@ import {
 import { getGeneratedFirewallOutput } from "./codegen";
 
 const GENERATED_METADATA_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const FIREWALL_CONFIG_KEYS = new Set([
+  "name",
+  "description",
+  "apis",
+  "placeholders",
+]);
+const FIREWALL_API_KEYS = new Set(["base", "auth", "permissions"]);
+const FIREWALL_AUTH_KEYS = new Set(["headers", "base", "query", "awsSigv4"]);
+const FIREWALL_AWS_SIGV4_AUTH_KEYS = new Set([
+  "accessKeyId",
+  "secretAccessKey",
+  "sessionToken",
+]);
+const FIREWALL_PERMISSION_KEYS = new Set(["name", "description", "rules"]);
 
 export interface ConnectorCategories {
   readonly categories: Record<string, string>;
@@ -87,12 +103,98 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   });
 }
 
-function isFirewallConfig(value: unknown): value is FirewallConfig {
-  return isRecord(value) && Array.isArray(value.apis);
-}
-
 function isPolicyValue(value: unknown): value is FirewallPolicyValue {
   return value === "allow" || value === "deny" || value === "ask";
+}
+
+function unknownObjectKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowedKeys: ReadonlySet<string>,
+): string[] {
+  return Object.keys(value)
+    .filter((key) => {
+      return !allowedKeys.has(key);
+    })
+    .sort(compareStrings);
+}
+
+function assertOnlyObjectKeys(
+  value: unknown,
+  location: string,
+  allowedKeys: ReadonlySet<string>,
+): void {
+  if (!isRecord(value)) {
+    return;
+  }
+  const unknownKeys = unknownObjectKeys(value, allowedKeys);
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `Generated firewall config contains unknown keys at ${location}: ${unknownKeys.join(", ")}`,
+    );
+  }
+}
+
+function validateGeneratedFirewallConfigKeys(
+  type: FirewallConnectorType,
+  value: unknown,
+): void {
+  assertOnlyObjectKeys(value, type, FIREWALL_CONFIG_KEYS);
+  if (!isRecord(value) || !Array.isArray(value.apis)) {
+    return;
+  }
+
+  for (const [apiIndex, api] of value.apis.entries()) {
+    const apiLocation = `${type}.apis[${apiIndex}]`;
+    assertOnlyObjectKeys(api, apiLocation, FIREWALL_API_KEYS);
+    if (!isRecord(api)) {
+      continue;
+    }
+    assertOnlyObjectKeys(api.auth, `${apiLocation}.auth`, FIREWALL_AUTH_KEYS);
+    if (isRecord(api.auth)) {
+      assertOnlyObjectKeys(
+        api.auth.awsSigv4,
+        `${apiLocation}.auth.awsSigv4`,
+        FIREWALL_AWS_SIGV4_AUTH_KEYS,
+      );
+    }
+    if (!Array.isArray(api.permissions)) {
+      continue;
+    }
+    for (const [permissionIndex, permission] of api.permissions.entries()) {
+      assertOnlyObjectKeys(
+        permission,
+        `${apiLocation}.permissions[${permissionIndex}]`,
+        FIREWALL_PERMISSION_KEYS,
+      );
+    }
+  }
+}
+
+function formatZodIssuePath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) {
+    return "<root>";
+  }
+  return path.map((segment) => String(segment)).join(".");
+}
+
+function parseGeneratedFirewallConfig(
+  type: FirewallConnectorType,
+  exportName: string,
+  value: unknown,
+): FirewallConfig {
+  validateGeneratedFirewallConfigKeys(type, value);
+  const result = firewallConfigSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(
+      `Unexpected ${exportName} export shape for firewall metadata: ${type}: ${result.error.issues
+        .map((issue) => {
+          return `${formatZodIssuePath(issue.path)} ${issue.message}`;
+        })
+        .join("; ")}`,
+    );
+  }
+  collectAndValidatePermissions(result.data);
+  return result.data;
 }
 
 function firewallPermissionNames(firewall: FirewallConfig): Set<string> {
@@ -580,11 +682,10 @@ async function loadGeneratedFirewallSource(
   const firewallExportName = generatedFirewallExportName(type);
   const connectorMetadata = loadConnectorMetadata(connectorsDir, type);
   const moduleExports = await loadGeneratedConnectorFirewallModuleExports(type);
-  const firewall = getRequiredGeneratedExportByName(
-    moduleExports,
+  const firewall = parseGeneratedFirewallConfig(
     type,
     firewallExportName,
-    isFirewallConfig,
+    moduleExports[firewallExportName],
   );
   const categories = getOptionalGeneratedExport(
     moduleExports,
