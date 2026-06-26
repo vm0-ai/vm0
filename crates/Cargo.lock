@@ -1364,6 +1364,7 @@ dependencies = [
  "guest-contracts",
  "libc",
  "tempfile",
+ "vsock-proto",
 ]
 
 [[package]]

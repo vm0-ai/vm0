@@ -39,7 +39,7 @@ use async_trait::async_trait;
 use crate::error::Result;
 use crate::types::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    StartProcessRequest,
+    StartProcessRequest, WriteFileEntry,
 };
 
 /// A process-isolation environment that runs guest workloads for the runner.
@@ -246,6 +246,21 @@ pub trait Sandbox: Send + Sync + Any {
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
+
+    /// Write multiple ordinary files inside the guest.
+    ///
+    /// Each entry has the same semantics as [`write_file`](Self::write_file):
+    /// create parent directories, create or truncate the target file, and write
+    /// the provided content without sudo or private runtime-file semantics.
+    /// Callers are responsible for bounding the number of files and total
+    /// content size. The default implementation preserves compatibility by
+    /// writing entries sequentially with [`write_file`](Self::write_file).
+    async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> Result<()> {
+        for file in files {
+            self.write_file(file.path, file.content).await?;
+        }
+        Ok(())
+    }
 
     /// Write `content` to a private runtime file inside the guest.
     ///

@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
-use sandbox::Sandbox;
+use sandbox::{Sandbox, WriteFileEntry};
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tracing::{info, warn};
@@ -49,6 +49,12 @@ const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
 
 /// Parallel (probe GET / full GET / flock / vsock) operations per `populate_cache` call.
 const CONCURRENCY: usize = 4;
+
+/// Maximum number of warm cache-hit archives staged in one guest batch write.
+const GUEST_STAGE_BATCH_MAX_FILES: usize = 64;
+
+/// Maximum total warm cache-hit bytes staged in one guest batch write.
+const GUEST_STAGE_BATCH_MAX_BYTES: usize = 15 * 1024 * 1024;
 
 /// Guest stage directory for `file://` archives.
 const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
@@ -89,6 +95,27 @@ enum GroupOutcome {
         outcome: TargetOutcome,
     },
     PerTarget(Vec<TargetOutcome>),
+}
+
+struct ProcessedGroup {
+    outcome: GroupOutcome,
+    stage_write: Option<GuestStageWrite>,
+}
+
+struct ProcessedTarget {
+    outcome: TargetOutcome,
+    stage_write: Option<GuestStageWrite>,
+}
+
+struct GuestStageWrite {
+    guest_path: String,
+    bytes: Bytes,
+}
+
+#[derive(Default)]
+struct GuestStageBatch {
+    writes: Vec<GuestStageWrite>,
+    content_bytes: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -157,6 +184,78 @@ impl GuestWriteLocks {
     }
 }
 
+impl GuestStageBatch {
+    fn should_flush_before(&self, write: &GuestStageWrite) -> bool {
+        !self.writes.is_empty()
+            && (self.writes.len() >= GUEST_STAGE_BATCH_MAX_FILES
+                || self.content_bytes.saturating_add(write.bytes.len())
+                    > GUEST_STAGE_BATCH_MAX_BYTES)
+    }
+
+    fn push(&mut self, write: GuestStageWrite) {
+        self.content_bytes += write.bytes.len();
+        self.writes.push(write);
+    }
+
+    fn should_flush_after_push(&self) -> bool {
+        self.writes.len() >= GUEST_STAGE_BATCH_MAX_FILES
+            || self.content_bytes >= GUEST_STAGE_BATCH_MAX_BYTES
+    }
+}
+
+async fn flush_guest_stage_batch(
+    batch: &mut GuestStageBatch,
+    sandbox: &dyn Sandbox,
+) -> RunnerResult<()> {
+    if batch.writes.is_empty() {
+        return Ok(());
+    }
+    write_guest_stage_files(sandbox, &batch.writes).await?;
+    batch.writes.clear();
+    batch.content_bytes = 0;
+    Ok(())
+}
+
+async fn write_guest_stage_files(
+    sandbox: &dyn Sandbox,
+    writes: &[GuestStageWrite],
+) -> RunnerResult<()> {
+    if writes.is_empty() {
+        return Ok(());
+    }
+    let entries = writes
+        .iter()
+        .map(|write| WriteFileEntry {
+            path: write.guest_path.as_str(),
+            content: write.bytes.as_ref(),
+        })
+        .collect::<Vec<_>>();
+    sandbox.write_files(&entries).await?;
+    Ok(())
+}
+
+async fn push_guest_stage_write(
+    batch: &mut GuestStageBatch,
+    write: GuestStageWrite,
+    sandbox: &dyn Sandbox,
+    guest_writes: &GuestWriteLocks,
+) -> RunnerResult<()> {
+    if write.bytes.len() > GUEST_STAGE_BATCH_MAX_BYTES {
+        guest_writes
+            .write_file(sandbox, &write.guest_path, &write.bytes)
+            .await?;
+        return Ok(());
+    }
+    if batch.should_flush_before(&write) {
+        flush_guest_stage_batch(batch, sandbox).await?;
+    }
+    batch.push(write);
+    if batch.should_flush_after_push() {
+        flush_guest_stage_batch(batch, sandbox).await?;
+    }
+    Ok(())
+}
+
 /// Populate the runner-side cache for eligible entries in `manifest`.
 ///
 /// Mutates `manifest.storages[i].archive_url` / `manifest.artifacts[i].archive_url`
@@ -188,7 +287,7 @@ pub async fn populate_cache(
     // keeping their borrows alive on the caller's stack. Unlike
     // `tokio::task::JoinSet`, it does not require `'static` futures — which
     // matters because our `sandbox: &dyn Sandbox` is a borrow, not an Arc.
-    let outcomes: Vec<(CacheTargetGroup, RunnerResult<GroupOutcome>)> = stream::iter(target_groups)
+    let mut groups = stream::iter(target_groups)
         .map(|group| {
             let http = http.clone();
             let guest_writes = &guest_writes;
@@ -197,12 +296,20 @@ pub async fn populate_cache(
                 (group, res)
             }
         })
-        .buffer_unordered(CONCURRENCY)
-        .collect()
-        .await;
+        .buffer_unordered(CONCURRENCY);
+
+    let mut outcomes = Vec::new();
+    let mut stage_batch = GuestStageBatch::default();
+    while let Some((group, outcome)) = groups.next().await {
+        let outcome = outcome?;
+        if let Some(stage_write) = outcome.stage_write {
+            push_guest_stage_write(&mut stage_batch, stage_write, sandbox, &guest_writes).await?;
+        }
+        outcomes.push((group, outcome.outcome));
+    }
+    flush_guest_stage_batch(&mut stage_batch, sandbox).await?;
 
     for (group, outcome) in outcomes {
-        let outcome = outcome?;
         apply_group_outcome(manifest, &group, &outcome, telemetry);
     }
     Ok(())
@@ -296,32 +403,44 @@ async fn process_group(
     home: &HomePaths,
     sandbox: &dyn Sandbox,
     guest_writes: &GuestWriteLocks,
-) -> RunnerResult<GroupOutcome> {
+) -> RunnerResult<ProcessedGroup> {
     // Same-key targets are expected to refer to the same archive content, so a
     // definitive cache outcome can be shared across the group. Probe and full
     // download passthrough failures are the exception: they are URL/request
     // level decisions, so try the next duplicate before giving up per target.
     let mut retryable_passthrough_outcomes = Vec::new();
     for (index, target) in group.targets.iter().enumerate() {
-        let outcome = process_one(target, http, home, sandbox, guest_writes).await?;
+        let ProcessedTarget {
+            outcome,
+            stage_write,
+        } = process_one(target, http, home, sandbox, guest_writes).await?;
         match outcome {
             TargetOutcome::SkippedHeadFailed { .. }
             | TargetOutcome::SkippedInvalidDownload { .. } => {
                 retryable_passthrough_outcomes.push(outcome);
                 if retryable_passthrough_outcomes.len() == group.targets.len() {
-                    return Ok(GroupOutcome::PerTarget(retryable_passthrough_outcomes));
+                    return Ok(ProcessedGroup {
+                        outcome: GroupOutcome::PerTarget(retryable_passthrough_outcomes),
+                        stage_write: None,
+                    });
                 }
             }
             outcome => {
-                return Ok(GroupOutcome::Shared {
-                    outcome_target_index: index,
-                    outcome,
+                return Ok(ProcessedGroup {
+                    outcome: GroupOutcome::Shared {
+                        outcome_target_index: index,
+                        outcome,
+                    },
+                    stage_write,
                 });
             }
         }
     }
 
-    Ok(GroupOutcome::PerTarget(retryable_passthrough_outcomes))
+    Ok(ProcessedGroup {
+        outcome: GroupOutcome::PerTarget(retryable_passthrough_outcomes),
+        stage_write: None,
+    })
 }
 
 async fn process_one(
@@ -330,7 +449,7 @@ async fn process_one(
     home: &HomePaths,
     sandbox: &dyn Sandbox,
     guest_writes: &GuestWriteLocks,
-) -> RunnerResult<TargetOutcome> {
+) -> RunnerResult<ProcessedTarget> {
     let lock_path = home.storage_lock(&target.name, &target.version);
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
@@ -342,10 +461,10 @@ async fn process_one(
         if let CachedArchive::Hit(bytes) = read_cache_entry(&cache_dir, &archive_path).await? {
             let guest_path = guest_archive_path(&target.name, &target.version);
             drop(reader);
-            guest_writes
-                .write_file(sandbox, &guest_path, &bytes)
-                .await?;
-            return Ok(TargetOutcome::Hit);
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::Hit,
+                stage_write: Some(GuestStageWrite { guest_path, bytes }),
+            });
         }
     }
 
@@ -356,10 +475,10 @@ async fn process_one(
         CachedArchive::Hit(bytes) => {
             let guest_path = guest_archive_path(&target.name, &target.version);
             drop(writer);
-            guest_writes
-                .write_file(sandbox, &guest_path, &bytes)
-                .await?;
-            return Ok(TargetOutcome::Hit);
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::Hit,
+                stage_write: Some(GuestStageWrite { guest_path, bytes }),
+            });
         }
         CachedArchive::Missing => {}
         CachedArchive::Empty => {
@@ -388,8 +507,11 @@ async fn process_one(
                 reason,
                 "storage_cache: probe returned no usable size header, passthrough"
             );
-            return Ok(TargetOutcome::SkippedHeadFailed {
-                reason: reason.to_string(),
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::SkippedHeadFailed {
+                    reason: reason.to_string(),
+                },
+                stage_write: None,
             });
         }
         Err(e) => {
@@ -400,7 +522,10 @@ async fn process_one(
                 error = %reason,
                 "storage_cache: probe failed, passthrough"
             );
-            return Ok(TargetOutcome::SkippedHeadFailed { reason });
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::SkippedHeadFailed { reason },
+                stage_write: None,
+            });
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -410,7 +535,10 @@ async fn process_one(
             size,
             "storage_cache: entry over size limit, passthrough"
         );
-        return Ok(TargetOutcome::SkippedOverSize);
+        return Ok(ProcessedTarget {
+            outcome: TargetOutcome::SkippedOverSize,
+            stage_write: None,
+        });
     }
 
     // Download, stage, fsync, atomic rename, then release cache ownership before
@@ -424,8 +552,11 @@ async fn process_one(
                 version = %target.version,
                 "storage_cache: full download returned empty archive, passthrough"
             );
-            return Ok(TargetOutcome::SkippedInvalidDownload {
-                reason: "empty-download".to_string(),
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::SkippedInvalidDownload {
+                    reason: "empty-download".to_string(),
+                },
+                stage_write: None,
             });
         }
         DownloadBody::OverSize { observed_size } => {
@@ -453,8 +584,11 @@ async fn process_one(
             observed_size,
             "storage_cache: full download size differed from probe, passthrough"
         );
-        return Ok(TargetOutcome::SkippedInvalidDownload {
-            reason: "size-mismatch".to_string(),
+        return Ok(ProcessedTarget {
+            outcome: TargetOutcome::SkippedInvalidDownload {
+                reason: "size-mismatch".to_string(),
+            },
+            stage_write: None,
         });
     }
     if let Err(reason) = validate_tar_gz_archive(bytes.clone()).await? {
@@ -464,8 +598,11 @@ async fn process_one(
             error = %reason,
             "storage_cache: full download returned invalid archive, passthrough"
         );
-        return Ok(TargetOutcome::SkippedInvalidDownload {
-            reason: "invalid-archive".to_string(),
+        return Ok(ProcessedTarget {
+            outcome: TargetOutcome::SkippedInvalidDownload {
+                reason: "invalid-archive".to_string(),
+            },
+            stage_write: None,
         });
     }
     write_to_cache(&cache_dir, &bytes).await?;
@@ -475,8 +612,11 @@ async fn process_one(
         .write_file(sandbox, &guest_path, &bytes)
         .await?;
 
-    Ok(TargetOutcome::Miss {
-        download_duration: t.elapsed(),
+    Ok(ProcessedTarget {
+        outcome: TargetOutcome::Miss {
+            download_duration: t.elapsed(),
+        },
+        stage_write: None,
     })
 }
 
@@ -1414,6 +1554,68 @@ mod tests {
             ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
             "expected storage_cache_hit in {ops:?}"
         );
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 1);
+        assert_eq!(batches[0].files[0].path, guest_archive_path(name, version));
+    }
+
+    #[tokio::test]
+    async fn warm_hits_are_staged_in_one_guest_batch() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let body = tarball_bytes();
+        let first_name = "warm-batch-a";
+        let second_name = "warm-batch-b";
+        let version = "v1";
+        write_cached_archive(&home, first_name, version, &body);
+        write_cached_archive(&home, second_name, version, &body);
+
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/a".into(),
+                    archive_url: Some("https://r2.example.com/a.tar.gz".into()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: first_name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/b".into(),
+                    archive_url: Some("https://r2.example.com/b.tar.gz".into()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: second_name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+            ],
+            artifacts: Vec::new(),
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 2);
+        let staged_paths = batches[0]
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            staged_paths,
+            HashSet::from([
+                guest_archive_path(first_name, version),
+                guest_archive_path(second_name, version),
+            ])
+        );
+        assert_eq!(sandbox.write_file_calls().len(), 2);
     }
 
     #[tokio::test]
