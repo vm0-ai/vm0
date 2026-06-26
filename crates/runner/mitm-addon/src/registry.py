@@ -40,6 +40,13 @@ _PATH_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "\\"))
 _PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
 _DEFAULT_HTTPS_PORT = 443
 _MAX_PATH_VAR_PERCENT_DECODE_PASSES = 5
+_HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
+    {
+        "\u3002": ".",
+        "\uff0e": ".",
+        "\uff61": ".",
+    }
+)
 
 
 class _RegistryFormatError(ValueError):
@@ -641,7 +648,7 @@ def _validate_credentialed_builtin_base(
 
 
 def _normalize_host_policy_hostname(hostname: str) -> str:
-    normalized = hostname.lower()
+    normalized = hostname.translate(_HOST_DOT_EQUIVALENT_TRANSLATION).lower()
     if normalized.endswith("."):
         return normalized[:-1]
     return normalized

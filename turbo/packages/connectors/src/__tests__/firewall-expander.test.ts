@@ -1388,6 +1388,13 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net.");
   });
 
+  it("accepts provider-owned whole authority template values with IDNA dot equivalents", () => {
+    const result = resolveFirewallBaseUrlVars([jiraFirewall], {
+      JIRA_DOMAIN: "acme。atlassian。net",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://acme。atlassian。net");
+  });
+
   it("rejects provider-owned whole authority template values outside allowed hosts", () => {
     for (const JIRA_DOMAIN of [
       "attacker.example",
