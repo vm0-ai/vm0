@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
-import { groupEventsIntoMessages } from "./log-detail-utils.ts";
+import {
+  groupEventsIntoMessages,
+  groupedMessageKey,
+} from "./log-detail-utils.ts";
 
 describe("groupEventsIntoMessages progress events", () => {
   it("filters Claude Code thinking token progress events", () => {
@@ -110,6 +113,13 @@ describe("groupEventsIntoMessages event dedupe", () => {
       new Set(
         messages.map((message) => {
           return message.sequenceNumber;
+        }),
+      ).size,
+    ).toBe(2);
+    expect(
+      new Set(
+        messages.map((message) => {
+          return groupedMessageKey(message);
         }),
       ).size,
     ).toBe(2);

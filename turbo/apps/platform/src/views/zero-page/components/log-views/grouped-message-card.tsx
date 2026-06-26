@@ -1,6 +1,7 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import {
+  groupedMessageKey,
   isTaskEventData,
   type GroupedMessage,
   type ToolOperation,
@@ -290,7 +291,7 @@ function TaskMessageCard({
           {children.map((child, i) => {
             return (
               <GroupedMessageCard
-                key={child.sequenceNumber}
+                key={groupedMessageKey(child)}
                 message={child}
                 searchTerm={searchTerm}
                 showConnector={i < children.length - 1}

@@ -55,6 +55,7 @@ import {
 } from "../../signals/activity-page/activity-signals.ts";
 import {
   groupEventsIntoMessages,
+  groupedMessageKey,
   groupedMessageMatchesSearch,
   type GroupedMessage,
 } from "./components/log-views/log-detail-utils.ts";
@@ -919,7 +920,7 @@ export function StepsList({
         messages.map((message, index) => {
           return (
             <GroupedMessageCard
-              key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
+              key={groupedMessageKey(message)}
               message={message}
               searchTerm={stepSearch}
               showConnector={index < messages.length - 1}

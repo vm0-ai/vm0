@@ -63,6 +63,31 @@ export interface GroupedMessage {
   childMessages?: GroupedMessage[];
 }
 
+export function groupedMessageKey(message: GroupedMessage): string {
+  const parts = [
+    message.type,
+    String(message.sequenceNumber),
+    message.createdAt,
+    message.thinkingBlocks?.join("\n"),
+    message.textBefore,
+    message.textAfter,
+    message.toolOperations
+      ?.map((operation) => {
+        return operation.toolUseId;
+      })
+      .join("|"),
+    message.todoState
+      ?.map((todo) => {
+        return `${todo.status}:${todo.content}`;
+      })
+      .join("|"),
+  ].filter((part): part is string => {
+    return typeof part === "string" && part.length > 0;
+  });
+
+  return parts.join("\u001f");
+}
+
 interface GroupEventsIntoMessagesOptions {
   framework?: string | null;
 }
