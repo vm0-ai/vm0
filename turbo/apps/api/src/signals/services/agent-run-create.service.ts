@@ -4225,7 +4225,7 @@ function dispatchRun(
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
       });
-      args.timing?.flush({
+      args.timing.flush({
         runId: args.run.id,
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
