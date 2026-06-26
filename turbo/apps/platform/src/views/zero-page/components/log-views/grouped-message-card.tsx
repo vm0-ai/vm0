@@ -37,6 +37,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function nextOccurrenceKey(counts: Map<string, number>, base: string): string {
+  const occurrence = counts.get(base) ?? 0;
+  counts.set(base, occurrence + 1);
+  return occurrence === 0 ? base : `${base}:${occurrence}`;
+}
+
 function CollapsibleText({ text }: { text: string }) {
   // Check if text is long (more than ~100 characters or contains newlines)
   const isLong = text.length > 100 || text.includes("\n");
@@ -431,6 +437,7 @@ function getTodoOperationErrors(message: GroupedMessage): {
   content: string;
   key: string;
 }[] {
+  const keyCounts = new Map<string, number>();
   return (message.toolOperations ?? []).flatMap((operation) => {
     if (!operation.result?.isError) {
       return [];
@@ -438,7 +445,12 @@ function getTodoOperationErrors(message: GroupedMessage): {
 
     const content =
       operation.result.content.trim() || `${operation.toolName} failed`;
-    return [{ content, key: operation.toolUseId }];
+    return [
+      {
+        content,
+        key: nextOccurrenceKey(keyCounts, `todo-error-${operation.toolUseId}`),
+      },
+    ];
   });
 }
 
@@ -661,6 +673,7 @@ function CollapsedToolGroup({
       : group.toolName === "Grep"
         ? `${count} searches`
         : `${count} calls`;
+  const operationKeyCounts = new Map<string, number>();
 
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
@@ -687,7 +700,10 @@ function CollapsedToolGroup({
             {group.operations.map((op) => {
               return (
                 <ToolSummary
-                  key={op.toolUseId}
+                  key={nextOccurrenceKey(
+                    operationKeyCounts,
+                    `tool-${op.toolUseId}`,
+                  )}
                   operation={op}
                   searchTerm={searchTerm}
                   currentMatchIndex={currentMatchIndex}
@@ -722,6 +738,7 @@ function renderToolElements(params: {
   } = params;
   const elements: React.ReactNode[] = [];
   const toolGroups = groupConsecutiveTools(toolOperations);
+  const elementKeyCounts = new Map<string, number>();
 
   for (let gi = 0; gi < toolGroups.length; gi++) {
     const group = toolGroups[gi]!;
@@ -737,7 +754,10 @@ function renderToolElements(params: {
     if (group.operations.length === 1) {
       const op = group.operations[0]!;
       elements.push(
-        <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
+        <div
+          key={nextOccurrenceKey(elementKeyCounts, `tool-${op.toolUseId}`)}
+          className={`${MESSAGE_SPACING} relative`}
+        >
           {showConnectorHere && <Connector isDashed={isDashed} />}
           <div className="relative">
             <ToolSummary
@@ -753,7 +773,10 @@ function renderToolElements(params: {
     } else {
       elements.push(
         <CollapsedToolGroup
-          key={`group-${group.operations[0]!.toolUseId}`}
+          key={nextOccurrenceKey(
+            elementKeyCounts,
+            `group-${group.operations[0]!.toolUseId}`,
+          )}
           group={group}
           searchTerm={searchTerm}
           currentMatchIndex={currentMatchIndex}
