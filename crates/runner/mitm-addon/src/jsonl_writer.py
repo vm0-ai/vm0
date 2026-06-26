@@ -44,7 +44,6 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
     dropped = False
     with _condition:
         if _shutdown:
-            _warn(f"Skipping {log_name} log write after JSONL writer shutdown")
             return
         line_size = len(line)
         if _pending_bytes + line_size > MAX_PENDING_JSONL_BYTES:
