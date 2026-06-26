@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.493.1](https://github.com/vm0-ai/vm0/compare/app-v0.493.0...app-v0.493.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* stabilize image lightbox max zoom ([#18992](https://github.com/vm0-ai/vm0/issues/18992)) ([fa537f8](https://github.com/vm0-ai/vm0/commit/fa537f806684fa8f2313cc70e5f5b06201e77664))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.2
+    * @vm0/connectors bumped to 1.108.4
+    * @vm0/core bumped to 8.370.6
+
 ## [0.493.0](https://github.com/vm0-ai/vm0/compare/app-v0.492.1...app-v0.493.0) (2026-06-25)
 
 
