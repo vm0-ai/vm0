@@ -16,7 +16,7 @@ pub(super) enum SessionHistoryMaterializer {
     Ready(Option<ResumeSession>),
     Downloading {
         started_at: Instant,
-        task: Option<JoinHandle<RunnerResult<ResumeSession>>>,
+        task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
     },
 }
 
@@ -33,6 +33,11 @@ pub(super) enum SessionHistoryMaterialization {
     },
 }
 
+pub(super) struct SessionHistoryDownloadTaskResult {
+    elapsed: Duration,
+    result: RunnerResult<ResumeSession>,
+}
+
 impl SessionHistoryMaterializer {
     pub(super) fn start(http: &HttpClient, session: Option<&ResumeSession>) -> Self {
         let Some(session) = session else {
@@ -47,7 +52,7 @@ impl SessionHistoryMaterializer {
         Self::Downloading {
             started_at: Instant::now(),
             task: Some(tokio::spawn(async move {
-                download_resume_session_history(http, session).await
+                download_resume_session_history_timed(http, session).await
             })),
         }
     }
@@ -83,20 +88,33 @@ impl SessionHistoryMaterializer {
                     _ = cancel.cancelled() => {
                         task.abort();
                         let _ = task.await;
-                        Err(RunnerError::Internal("session history download cancelled".into()))
+                        SessionHistoryDownloadTaskResult {
+                            elapsed: started_at.elapsed(),
+                            result: Err(RunnerError::Internal(
+                                "session history download cancelled".into(),
+                            )),
+                        }
                     }
                     joined = &mut task => {
                         joined.unwrap_or_else(|error| {
-                            Err(RunnerError::Internal(format!(
-                                "session history download task failed: {error}"
-                            )))
+                            SessionHistoryDownloadTaskResult {
+                                elapsed: started_at.elapsed(),
+                                result: Err(RunnerError::Internal(format!(
+                                    "session history download task failed: {error}"
+                                ))),
+                            }
                         })
                     }
                 };
-                let elapsed = started_at.elapsed();
-                match result {
-                    Ok(session) => SessionHistoryMaterialization::Downloaded { session, elapsed },
-                    Err(error) => SessionHistoryMaterialization::Failed { elapsed, error },
+                match result.result {
+                    Ok(session) => SessionHistoryMaterialization::Downloaded {
+                        session,
+                        elapsed: result.elapsed,
+                    },
+                    Err(error) => SessionHistoryMaterialization::Failed {
+                        elapsed: result.elapsed,
+                        error,
+                    },
                 }
             }
         }
@@ -111,6 +129,18 @@ impl Drop for SessionHistoryMaterializer {
         {
             task.abort();
         }
+    }
+}
+
+async fn download_resume_session_history_timed(
+    http: HttpClient,
+    session: ResumeSession,
+) -> SessionHistoryDownloadTaskResult {
+    let started_at = Instant::now();
+    let result = download_resume_session_history(http, session).await;
+    SessionHistoryDownloadTaskResult {
+        elapsed: started_at.elapsed(),
+        result,
     }
 }
 
