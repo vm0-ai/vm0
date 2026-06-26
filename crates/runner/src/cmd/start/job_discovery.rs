@@ -122,11 +122,6 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     } = admission;
     let pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
-    let session_history_materializer = start_session_history_materializer_after_claim(
-        &ctx.spawn_ctx.exec_config.http,
-        claimed.context(),
-        resume_session_valid,
-    );
     let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
         ctx.spawn_ctx.active_cli_agent_sessions.clone(),
         if resume_session_valid {
@@ -134,6 +129,11 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         } else {
             None
         },
+    );
+    let session_history_materializer = start_session_history_materializer_after_claim(
+        &ctx.spawn_ctx.exec_config.http,
+        claimed.context(),
+        resume_session_valid,
     );
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
