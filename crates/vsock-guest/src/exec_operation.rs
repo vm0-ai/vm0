@@ -1055,7 +1055,15 @@ where
                     if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
                         return false;
                     }
-                    let mut writer = stream_writer.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut writer = match stream_writer.lock() {
+                        Ok(writer) => writer,
+                        Err(_) => {
+                            log("ERROR", "exec operation: stream writer mutex poisoned");
+                            exec_cancel.store(true, Ordering::Release);
+                            drain_cancel.store(true, Ordering::Release);
+                            return false;
+                        }
+                    };
                     if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
                         return false;
                     }
