@@ -7,6 +7,7 @@ packages/connectors/src/firewalls/*.generated.ts
 packages/connectors/src/firewall-metadata/*.generated.ts
 packages/connectors/src/firewall-metadata/.metadata-*
 packages/connectors/src/firewall-metadata/.*.previous-*
+packages/connectors/src/firewall-metadata/permission-details/*.generated.ts
 packages/connectors/src/firewall-metadata/details/*.generated.ts
 packages/connectors/src/firewall-metadata/routing-details/*.generated.ts
 packages/connectors/src/firewall-execution-metadata/*.generated.ts
