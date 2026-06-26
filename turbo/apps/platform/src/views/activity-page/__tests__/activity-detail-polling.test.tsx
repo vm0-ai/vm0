@@ -971,7 +971,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         item: {
           id: "write-fallback",
           type: "file_write",
-          path: "src/generated.ts",
+          file_path: "src/generated.ts",
         },
       },
       createdAt: "2026-03-10T15:30:04Z",
@@ -996,7 +996,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         item: {
           id: "read-fallback",
           type: "file_read",
-          path: "src/edge.ts",
+          filePath: "src/edge.ts",
         },
       },
       createdAt: "2026-03-10T15:30:06Z",
@@ -1047,7 +1047,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
             ...Array.from({ length: 20 }, () => {
               return {};
             }),
-            { kind: "modify", path: "src/late-valid.ts" },
+            { kind: "modify", filePath: "src/late-valid.ts" },
           ],
         },
       },
@@ -1218,13 +1218,13 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           status: "completed",
           server: "codex-app-server",
           details: { nested: "bounded detail" },
-          output: LONG_GENERIC_CODEX_OUTPUT,
+          aggregatedOutput: LONG_GENERIC_CODEX_OUTPUT,
         },
       },
       createdAt: "2026-03-10T16:00:11Z",
     },
     {
-      sequenceNumber: 20,
+      sequenceNumber: 11,
       eventType: "item.started",
       eventData: {
         type: "item.started",
@@ -1233,36 +1233,6 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           id: "cmd-camel-exit",
           type: "command_execution",
           command: "node scripts/fail-with-camel-exit.js",
-        },
-      },
-      createdAt: "2026-03-10T16:00:21Z",
-    },
-    {
-      sequenceNumber: 21,
-      eventType: "item.completed",
-      eventData: {
-        type: "item.completed",
-        turn_id: "turn-1",
-        item: {
-          id: "cmd-camel-exit",
-          type: "command_execution",
-          exitCode: 7,
-          output: "camel exit failure",
-        },
-      },
-      createdAt: "2026-03-10T16:00:22Z",
-    },
-    {
-      sequenceNumber: 11,
-      eventType: "error",
-      eventData: {
-        type: "error",
-        thread_id: "codex-thread-adapter",
-        turn_id: "turn-1",
-        message: "Adapter transport failed",
-        error: {
-          message: "Adapter transport failed",
-          additional_details: "socket closed",
         },
       },
       createdAt: "2026-03-10T16:00:12Z",
@@ -1274,16 +1244,46 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         type: "item.completed",
         turn_id: "turn-1",
         item: {
-          id: "msg-after-error",
-          type: "agent_message",
-          status: "completed",
-          text: "Visible Codex assistant text after top-level error.",
+          id: "cmd-camel-exit",
+          type: "command_execution",
+          exitCode: 7,
+          output: "camel exit failure",
         },
       },
       createdAt: "2026-03-10T16:00:13Z",
     },
     {
       sequenceNumber: 13,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-1",
+        message: "Adapter transport failed",
+        error: {
+          message: "Adapter transport failed",
+          additional_details: "socket closed",
+        },
+      },
+      createdAt: "2026-03-10T16:00:14Z",
+    },
+    {
+      sequenceNumber: 14,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "msg-after-error",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text after top-level error.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:15Z",
+    },
+    {
+      sequenceNumber: 15,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1302,10 +1302,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           output_tokens: 45,
         },
       },
-      createdAt: "2026-03-10T16:00:14Z",
+      createdAt: "2026-03-10T16:00:16Z",
     },
     {
-      sequenceNumber: 14,
+      sequenceNumber: 16,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1313,10 +1313,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         turn_id: "turn-2",
         message: "Different turn top-level failure",
       },
-      createdAt: "2026-03-10T16:00:15Z",
+      createdAt: "2026-03-10T16:00:17Z",
     },
     {
-      sequenceNumber: 15,
+      sequenceNumber: 17,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1330,10 +1330,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           },
         },
       },
-      createdAt: "2026-03-10T16:00:16Z",
+      createdAt: "2026-03-10T16:00:18Z",
     },
     {
-      sequenceNumber: 16,
+      sequenceNumber: 18,
       eventType: "error",
       eventData: {
         type: "error",
@@ -1341,10 +1341,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         turn_id: "turn-4",
         message: "Recoverable adapter error",
       },
-      createdAt: "2026-03-10T16:00:17Z",
+      createdAt: "2026-03-10T16:00:19Z",
     },
     {
-      sequenceNumber: 17,
+      sequenceNumber: 19,
       eventType: "item.completed",
       eventData: {
         type: "item.completed",
@@ -1356,10 +1356,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           text: "Visible Codex assistant text after recoverable error.",
         },
       },
-      createdAt: "2026-03-10T16:00:18Z",
+      createdAt: "2026-03-10T16:00:20Z",
     },
     {
-      sequenceNumber: 18,
+      sequenceNumber: 20,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1374,10 +1374,10 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           output_tokens: 3,
         },
       },
-      createdAt: "2026-03-10T16:00:19Z",
+      createdAt: "2026-03-10T16:00:21Z",
     },
     {
-      sequenceNumber: 19,
+      sequenceNumber: 21,
       eventType: "turn.completed",
       eventData: {
         type: "turn.completed",
@@ -1401,7 +1401,7 @@ function codexAdapterActivityEvents(): AgentEvent[] {
           },
         },
       },
-      createdAt: "2026-03-10T16:00:20Z",
+      createdAt: "2026-03-10T16:00:22Z",
     },
     {
       sequenceNumber: 22,
@@ -2914,6 +2914,7 @@ describe("activity detail polling", () => {
       screen.getByText(/details: \{nested=bounded detail\}/u),
     ).toBeInTheDocument();
     expect(document.body.textContent).toContain("verbose adapter output");
+    expect(document.body.textContent).not.toContain("aggregatedOutput:");
     expect(document.body.textContent).not.toContain(LONG_GENERIC_CODEX_OUTPUT);
     expect(
       screen.getAllByText(/Adapter transport failed \(socket closed\)/u),

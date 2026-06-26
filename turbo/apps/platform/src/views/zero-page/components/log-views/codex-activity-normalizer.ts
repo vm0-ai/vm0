@@ -508,6 +508,10 @@ function getItemStatus(item: Record<string, unknown>): string | undefined {
   return getFirstString(item, ["status"]);
 }
 
+function getPath(item: Record<string, unknown>): string | undefined {
+  return getFirstString(item, ["path", "file_path", "filePath"]);
+}
+
 function getItemErrorMessage(
   item: Record<string, unknown>,
 ): string | undefined {
@@ -532,7 +536,7 @@ function parseCodexChanges(value: unknown): ParsedCodexFileChanges {
   const parsedChanges = value.filter(isRecord).flatMap((change) => {
     const parsed = {
       kind: getFirstString(change, ["kind"]),
-      path: getFirstString(change, ["path"]),
+      path: getPath(change),
       diff: getFirstNonBlankString(change, ["diff"]),
     };
     if (!parsed.path && !parsed.diff) {
@@ -808,9 +812,12 @@ function formatGenericCodexItem(
       "query",
       "url",
       "path",
+      "file_path",
+      "filePath",
       "diff",
       "output",
       "aggregated_output",
+      "aggregatedOutput",
     ]) ?? getItemErrorMessage(item);
   const readable = rawReadable ? truncate(rawReadable.trim()) : undefined;
   const extraFields: string[] = [];
@@ -831,9 +838,12 @@ function formatGenericCodexItem(
         "query",
         "url",
         "path",
+        "file_path",
+        "filePath",
         "diff",
         "output",
         "aggregated_output",
+        "aggregatedOutput",
         "error",
       ].includes(key)
     ) {
@@ -1023,7 +1033,7 @@ function normalizeCodexFileMutationEvent(
   }
   const itemType = getItemType(item);
   const toolName = itemType === "file_edit" ? "Edit" : "Write";
-  const path = getFirstString(item, ["path"]);
+  const path = getPath(item);
 
   if (codexType === "item.started" && path) {
     return makeCodexToolUseEvent({
@@ -1065,7 +1075,7 @@ function normalizeCodexFileReadEvent(
   if (!itemId) {
     return null;
   }
-  const path = getFirstString(item, ["path"]);
+  const path = getPath(item);
 
   if (codexType === "item.started" && path) {
     return makeCodexToolUseEvent({
