@@ -68,6 +68,7 @@ interface GroupEventsIntoMessagesOptions {
 }
 
 const CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
+const EVENT_SEQUENCE_OFFSET_SCALE = 1000;
 
 // ============ EVENT GROUPING ============
 
@@ -180,6 +181,38 @@ function eventDedupeKey(event: AgentEvent): string {
 interface SeenSequenceEvents {
   events: AgentEvent[];
   keys?: Set<string>;
+}
+
+function disambiguateDuplicateSequenceNumbers(
+  events: readonly AgentEvent[],
+): AgentEvent[] {
+  const usedSequenceNumbers = new Set<number>();
+  const nextDuplicateOffsetBySequence = new Map<number, number>();
+
+  return events.map((event) => {
+    if (!usedSequenceNumbers.has(event.sequenceNumber)) {
+      usedSequenceNumbers.add(event.sequenceNumber);
+      return event;
+    }
+
+    let nextOffset =
+      nextDuplicateOffsetBySequence.get(event.sequenceNumber) ?? 1;
+    let sequenceNumber =
+      event.sequenceNumber + nextOffset / EVENT_SEQUENCE_OFFSET_SCALE;
+    while (usedSequenceNumbers.has(sequenceNumber)) {
+      nextOffset += 1;
+      sequenceNumber =
+        event.sequenceNumber + nextOffset / EVENT_SEQUENCE_OFFSET_SCALE;
+    }
+
+    nextDuplicateOffsetBySequence.set(event.sequenceNumber, nextOffset + 1);
+    usedSequenceNumbers.add(sequenceNumber);
+
+    return {
+      ...event,
+      sequenceNumber,
+    };
+  });
 }
 
 /**
@@ -786,6 +819,8 @@ export function groupEventsIntoMessages(
     return true;
   });
 
+  const disambiguatedEvents = disambiguateDuplicateSequenceNumbers(deduped);
+
   const ctx: GroupingContext = {
     grouped: [],
     pendingToolUses: new Map(),
@@ -794,7 +829,10 @@ export function groupEventsIntoMessages(
     taskByToolUseId: new Map(),
   };
 
-  const normalizedEvents = normalizeCodexEventsForGrouping(deduped, options);
+  const normalizedEvents = normalizeCodexEventsForGrouping(
+    disambiguatedEvents,
+    options,
+  );
 
   for (const event of normalizedEvents) {
     const eventData = toGroupingEventData(event.eventData);

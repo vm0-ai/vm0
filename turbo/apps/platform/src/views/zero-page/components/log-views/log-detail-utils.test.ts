@@ -106,6 +106,13 @@ describe("groupEventsIntoMessages event dedupe", () => {
         return message.textBefore;
       }),
     ).toEqual(["First same-sequence event.", "Second same-sequence event."]);
+    expect(
+      new Set(
+        messages.map((message) => {
+          return message.sequenceNumber;
+        }),
+      ).size,
+    ).toBe(2);
   });
 
   it("dedupes exact repeated events", () => {
@@ -127,6 +134,53 @@ describe("groupEventsIntoMessages event dedupe", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.textBefore).toBe("Repeated boundary event.");
+  });
+
+  it("keeps fallback tool ids unique for same-sequence events", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 5,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "Bash",
+                input: { command: "echo first" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 5,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "Bash",
+                input: { command: "echo second" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+    ]);
+
+    const toolUseIds = messages.flatMap((message) => {
+      return (
+        message.toolOperations?.map((operation) => {
+          return operation.toolUseId;
+        }) ?? []
+      );
+    });
+
+    expect(new Set(toolUseIds).size).toBe(2);
   });
 });
 
