@@ -264,7 +264,7 @@ interface ZeroChatComposerProps {
   className?: string;
   /** Auto-focus the textarea when mounted. */
   autoFocus?: boolean;
-  /** Allows the MobileSingleLineComposer switch to reduce this instance on mobile. */
+  /** When set, reduces this instance to a single-line resting height on mobile. */
   enableMobileSingleLine?: boolean;
   /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
   draft?: DraftSignals;
@@ -5806,9 +5806,7 @@ function ComposerInputSlot({
   const features = useLastResolved(featureSwitch$);
   const slashWorkflowCommandsEnabled =
     features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
-  const singleLineOnMobile =
-    enableMobileSingleLine &&
-    (features?.[FeatureSwitchKey.MobileSingleLineComposer] ?? false);
+  const singleLineOnMobile = enableMobileSingleLine;
 
   if (slashWorkflowCommandsEnabled) {
     return (

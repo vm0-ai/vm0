@@ -1830,10 +1830,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorProposals]: true,
-    });
-
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
         operation: "create",

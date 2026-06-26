@@ -48,6 +48,88 @@ function CollapsibleText({ text }: { text: string }) {
   );
 }
 
+function ThinkingSummary({
+  text,
+  searchTerm,
+  timestamp,
+  showConnector,
+  isDashed,
+}: {
+  text: string;
+  searchTerm?: string;
+  timestamp: string;
+  showConnector: boolean;
+  isDashed: boolean;
+}) {
+  const hasSearchMatch = Boolean(
+    searchTerm &&
+    searchTerm.trim() &&
+    text.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  return (
+    <div className={`${MESSAGE_SPACING} relative`}>
+      {showConnector && <Connector isDashed={isDashed} />}
+      <details className="group" open={hasSearchMatch}>
+        <summary className="cursor-pointer list-none w-full text-left">
+          <div className="flex items-center gap-2">
+            <StatusDot variant="success" />
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Thinking
+            </span>
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+
+        <div className="mt-1 flex items-start gap-1.5 ml-[18px] overflow-hidden">
+          <span className="text-muted-foreground text-xs shrink-0">└</span>
+          <div className="flex-1 min-w-0 text-sm text-foreground">
+            <MarkdownContent text={text} />
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function AssistantSection({
+  children,
+  timestamp,
+  showConnector,
+  isDashed,
+}: {
+  children: React.ReactNode;
+  timestamp?: string;
+  showConnector: boolean;
+  isDashed: boolean;
+}) {
+  return (
+    <div className={`${MESSAGE_SPACING} relative`}>
+      {showConnector && <Connector isDashed={isDashed} />}
+      <div className="flex gap-2 items-start relative">
+        <StatusDot variant="neutral" className="mt-1.5" />
+        <div className="flex-1 min-w-0">{children}</div>
+        {timestamp && (
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        )}
+      </div>
+      {timestamp && (
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GroupedMessageCard({
   message,
   searchTerm,
@@ -471,6 +553,27 @@ function Connector({ isDashed }: { isDashed: boolean }) {
   );
 }
 
+function countMatches(text: string | undefined, searchTerm?: string): number {
+  if (!searchTerm || !text) {
+    return 0;
+  }
+
+  const normalizedText = text.toLowerCase();
+  const normalizedSearch = searchTerm.toLowerCase();
+  let count = 0;
+  let index = normalizedText.indexOf(normalizedSearch);
+
+  while (index !== -1) {
+    count++;
+    index = normalizedText.indexOf(
+      normalizedSearch,
+      index + normalizedSearch.length,
+    );
+  }
+
+  return count;
+}
+
 interface ToolGroup {
   toolName: string;
   operations: ToolOperation[];
@@ -558,6 +661,73 @@ function CollapsedToolGroup({
   );
 }
 
+function renderToolElements(params: {
+  toolOperations: ToolOperation[];
+  textAfter?: string;
+  toolMatchStart: number;
+  currentMatchIndex?: number;
+  searchTerm?: string;
+  showConnector: boolean;
+  timestamp: string;
+}): React.ReactNode[] {
+  const {
+    toolOperations,
+    textAfter,
+    toolMatchStart,
+    currentMatchIndex,
+    searchTerm,
+    showConnector,
+    timestamp,
+  } = params;
+  const elements: React.ReactNode[] = [];
+  const toolGroups = groupConsecutiveTools(toolOperations);
+
+  for (let gi = 0; gi < toolGroups.length; gi++) {
+    const group = toolGroups[gi]!;
+    const isLastGroup = gi === toolGroups.length - 1;
+    const isLastElement = isLastGroup && !textAfter;
+    const { showConnector: showConnectorHere } = shouldShowAssistantConnector({
+      isLastElementInMessage: isLastElement,
+      showConnectorToNextMessage: showConnector,
+    });
+    const nextGroup = toolGroups[gi + 1];
+    const isDashed = nextGroup ? nextGroup.toolName === group.toolName : false;
+
+    if (group.operations.length === 1) {
+      const op = group.operations[0]!;
+      elements.push(
+        <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
+          {showConnectorHere && <Connector isDashed={isDashed} />}
+          <div className="relative">
+            <ToolSummary
+              operation={op}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={toolMatchStart}
+              timestamp={timestamp}
+            />
+          </div>
+        </div>,
+      );
+    } else {
+      elements.push(
+        <CollapsedToolGroup
+          key={`group-${group.operations[0]!.toolUseId}`}
+          group={group}
+          searchTerm={searchTerm}
+          currentMatchIndex={currentMatchIndex}
+          matchStartIndex={toolMatchStart}
+          timestamp={timestamp}
+          showConnector={showConnectorHere}
+          isDashed={isDashed}
+        />,
+      );
+    }
+  }
+
+  return elements;
+}
+
 function AssistantMessageCard({
   message,
   searchTerm,
@@ -571,27 +741,35 @@ function AssistantMessageCard({
   matchStartIndex?: number;
   showConnector?: boolean;
 }) {
-  const { textBefore, textAfter, toolOperations } = message;
+  const { thinkingBlocks, textBefore, textAfter, toolOperations } = message;
+  const thinkingText = thinkingBlocks?.join("\n\n");
   const hasTools = toolOperations && toolOperations.length > 0;
-
-  // Calculate match offset for text sections
   const currentOffset = matchStartIndex ?? 0;
-
-  // Count matches in textBefore for offset calculation
-  const textBeforeMatches =
-    searchTerm && textBefore
-      ? (
-          textBefore
-            .toLowerCase()
-            .match(new RegExp(searchTerm.toLowerCase(), "g")) ?? []
-        ).length
-      : 0;
-
-  // Build array of elements to render independently
+  const textBeforeMatches = countMatches(textBefore, searchTerm);
+  const thinkingMatches = countMatches(thinkingText, searchTerm);
   const elements: React.ReactNode[] = [];
-
-  // Text before tools with timestamp
   const timestamp = formatEventTime(message.createdAt);
+
+  if (thinkingText) {
+    const isLastElement = !textBefore && !hasTools && !textAfter;
+    const { showConnector: showConnectorHere, isDashed } =
+      shouldShowAssistantConnector({
+        isLastElementInMessage: isLastElement,
+        showConnectorToNextMessage: showConnector,
+      });
+
+    elements.push(
+      <ThinkingSummary
+        key="thinking"
+        text={thinkingText}
+        searchTerm={searchTerm}
+        timestamp={timestamp}
+        showConnector={showConnectorHere}
+        isDashed={isDashed}
+      />,
+    );
+  }
+
   if (textBefore) {
     const isLastElement = !hasTools && !textAfter;
     const { showConnector: showConnectorHere, isDashed } =
@@ -601,83 +779,32 @@ function AssistantMessageCard({
       });
 
     elements.push(
-      <div key="text-before" className={`${MESSAGE_SPACING} relative`}>
-        {showConnectorHere && <Connector isDashed={isDashed} />}
-        <div className="flex gap-2 items-start relative">
-          <StatusDot variant="neutral" className="mt-1.5" />
-          <div className="flex-1 min-w-0">
-            <CollapsibleText text={textBefore} />
-          </div>
-          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
-            {timestamp}
-          </span>
-        </div>
-        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
-          {timestamp}
-        </div>
-      </div>,
+      <AssistantSection
+        key="text-before"
+        timestamp={timestamp}
+        showConnector={showConnectorHere}
+        isDashed={isDashed}
+      >
+        <CollapsibleText text={textBefore} />
+      </AssistantSection>,
     );
   }
 
-  // Tool operations - group consecutive same-type tools
   if (hasTools) {
-    const toolGroups = groupConsecutiveTools(toolOperations);
-    const toolMatchStart = currentOffset + textBeforeMatches;
-
-    for (let gi = 0; gi < toolGroups.length; gi++) {
-      const group = toolGroups[gi]!;
-      const isLastGroup = gi === toolGroups.length - 1;
-      const isLastElement = isLastGroup && !textAfter;
-
-      const { showConnector: showConnectorHere } = shouldShowAssistantConnector(
-        {
-          isLastElementInMessage: isLastElement,
-          showConnectorToNextMessage: showConnector,
-        },
-      );
-
-      // Dashed line if next group is the same tool type
-      const nextGroup = toolGroups[gi + 1];
-      const isDashed = nextGroup
-        ? nextGroup.toolName === group.toolName
-        : false;
-
-      if (group.operations.length === 1) {
-        // Single operation: render as before
-        const op = group.operations[0]!;
-        elements.push(
-          <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
-            {showConnectorHere && <Connector isDashed={isDashed} />}
-            <div className="relative">
-              <ToolSummary
-                operation={op}
-                searchTerm={searchTerm}
-                currentMatchIndex={currentMatchIndex}
-                matchStartIndex={toolMatchStart}
-                timestamp={formatEventTime(message.createdAt)}
-              />
-            </div>
-          </div>,
-        );
-      } else {
-        // Multiple consecutive same-type operations: render collapsed group
-        elements.push(
-          <CollapsedToolGroup
-            key={`group-${group.operations[0]!.toolUseId}`}
-            group={group}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIndex}
-            matchStartIndex={toolMatchStart}
-            timestamp={formatEventTime(message.createdAt)}
-            showConnector={showConnectorHere}
-            isDashed={isDashed}
-          />,
-        );
-      }
-    }
+    const toolMatchStart = currentOffset + thinkingMatches + textBeforeMatches;
+    elements.push(
+      ...renderToolElements({
+        toolOperations,
+        textAfter,
+        toolMatchStart,
+        currentMatchIndex,
+        searchTerm,
+        showConnector,
+        timestamp,
+      }),
+    );
   }
 
-  // Text after tools
   if (textAfter) {
     const isLastElement = true;
     const { showConnector: showConnectorHere, isDashed } =
@@ -687,15 +814,13 @@ function AssistantMessageCard({
       });
 
     elements.push(
-      <div key="text-after" className={`${MESSAGE_SPACING} relative`}>
-        {showConnectorHere && <Connector isDashed={isDashed} />}
-        <div className="flex gap-2 items-start relative w-full">
-          <StatusDot variant="neutral" className="mt-1.5" />
-          <div className="flex-1 min-w-0">
-            <CollapsibleText text={textAfter} />
-          </div>
-        </div>
-      </div>,
+      <AssistantSection
+        key="text-after"
+        showConnector={showConnectorHere}
+        isDashed={isDashed}
+      >
+        <CollapsibleText text={textAfter} />
+      </AssistantSection>,
     );
   }
 

@@ -96,6 +96,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    expect(states[FeatureSwitchKey.ChatRunGroupFolding]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -129,7 +130,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -146,7 +146,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
       true,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatRunGroupFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
