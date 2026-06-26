@@ -74,10 +74,6 @@ firecracker:
     fn yaml_with_profile(&self, name: &str, profile: ProfileConfig, extra: &str) -> String {
         let mut profiles = BTreeMap::new();
         profiles.insert(name.to_string(), profile);
-        self.yaml_with_profiles(profiles, extra)
-    }
-
-    fn yaml_with_profiles(&self, profiles: BTreeMap<String, ProfileConfig>, extra: &str) -> String {
         let profiles_yaml = serde_yaml_ng::to_string(&profiles).unwrap();
         let profiles_yaml = profiles_yaml
             .strip_prefix("---\n")
