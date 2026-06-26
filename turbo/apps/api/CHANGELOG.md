@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.182.0](https://github.com/vm0-ai/vm0/compare/api-v1.181.0...api-v1.182.0) (2026-06-26)
+
+
+### Features
+
+* group workflow cards by visibility ([#19059](https://github.com/vm0-ai/vm0/issues/19059)) ([4726706](https://github.com/vm0-ai/vm0/commit/4726706d354eae71db054ef2a93763971291a073))
+
+
+### Performance Improvements
+
+* split create-run connector context timing ([#19075](https://github.com/vm0-ai/vm0/issues/19075)) ([bf6c299](https://github.com/vm0-ai/vm0/commit/bf6c2994f4bb607c2609ff2244b88ad1c80ae211))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.118.0
+    * @vm0/core bumped to 8.371.2
+    * @vm0/db bumped to 1.74.1
+
 ## [1.181.0](https://github.com/vm0-ai/vm0/compare/api-v1.180.0...api-v1.181.0) (2026-06-26)
 
 
