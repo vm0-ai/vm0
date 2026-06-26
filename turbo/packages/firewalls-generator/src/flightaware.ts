@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating FlightAware AeroAPI firewall config...");
   const ts = generateTypeScript();
-  writeOutput("flightaware", ts, import.meta.dirname);
+  writeOutput("flightaware", ts);
 }

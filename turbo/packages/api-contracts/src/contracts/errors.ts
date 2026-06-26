@@ -90,6 +90,13 @@ export const RUN_ERROR_GUIDANCE: Record<
   string,
   { title: string; guidance: string; cliHint?: string }
 > = {
+  COMPUTER_USE_AUTHORIZATION_REQUIRED: {
+    title: "Computer Use authorization required",
+    guidance:
+      "Request a delegated Computer Use authorization link, ask the user to select a Zero Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
+    cliHint:
+      "zero doctor permission-change computer-use --permission computer-use:write --enable",
+  },
   NO_MODEL_PROVIDER: {
     title: "No model provider configured",
     guidance: "Configure a model provider to start running agents.",

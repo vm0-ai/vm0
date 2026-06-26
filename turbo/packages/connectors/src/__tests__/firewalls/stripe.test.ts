@@ -6,15 +6,13 @@ import {
   type FirewallConfig,
 } from "../../firewall-types";
 import {
+  isNumberOrStringRecord,
+  isStringArray,
+  isStringRecord,
   loadDefaultFirewallPolicies,
+  loadRequiredGeneratedConnectorFirewallExport,
   loadRequiredConnectorFirewall,
 } from "../firewall-test-helpers";
-import {
-  stripeCategories,
-  stripeCategoryOrder,
-  stripeDefaultAllowed,
-  stripeGenerationStats,
-} from "../../firewalls/stripe.generated";
 
 const RUNTIME_METHODS = [
   "GET",
@@ -27,6 +25,10 @@ const RUNTIME_METHODS = [
 ] as const;
 
 let firewall: FirewallConfig;
+let stripeCategories: Record<string, string>;
+let stripeCategoryOrder: readonly string[];
+let stripeDefaultAllowed: readonly string[];
+let stripeGenerationStats: Record<string, number | string>;
 
 function getStripePermission(name: string) {
   const permission = firewall.apis
@@ -70,6 +72,26 @@ function expandRuntimeRules(rule: string): string[] {
 describe("stripe firewall", () => {
   beforeAll(async () => {
     firewall = await loadRequiredConnectorFirewall("stripe");
+    stripeCategories = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeCategories",
+      isStringRecord,
+    );
+    stripeCategoryOrder = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeCategoryOrder",
+      isStringArray,
+    );
+    stripeDefaultAllowed = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeDefaultAllowed",
+      isStringArray,
+    );
+    stripeGenerationStats = await loadRequiredGeneratedConnectorFirewallExport(
+      "stripe",
+      "stripeGenerationStats",
+      isNumberOrStringRecord,
+    );
   });
 
   it("registers the Stripe firewall with API token auth", () => {

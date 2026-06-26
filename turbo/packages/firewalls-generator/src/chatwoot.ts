@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Chatwoot firewall config...");
   const ts = generateTypeScript();
-  writeOutput("chatwoot", ts, import.meta.dirname);
+  writeOutput("chatwoot", ts);
 }

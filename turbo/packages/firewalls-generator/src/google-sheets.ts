@@ -268,5 +268,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-sheets", ts, import.meta.dirname);
+  writeOutput("google-sheets", ts);
 }

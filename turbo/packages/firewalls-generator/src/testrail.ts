@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating TestRail firewall config...");
   const ts = generateTypeScript();
-  writeOutput("testrail", ts, import.meta.dirname);
+  writeOutput("testrail", ts);
 }

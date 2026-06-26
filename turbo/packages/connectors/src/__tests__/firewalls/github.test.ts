@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import { extractSecretNamesFromApis } from "../../firewall-types";
-import { githubFirewall } from "../../firewalls/github.generated";
+import {
+  extractSecretNamesFromApis,
+  type FirewallConfig,
+} from "../../firewall-types";
+import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
+
+let githubFirewall: FirewallConfig;
 
 /**
  * Structural sanity tests for the generated GitHub firewall config.
@@ -12,6 +17,10 @@ import { githubFirewall } from "../../firewalls/github.generated";
  * single-secret contract (all auth headers reference GITHUB_TOKEN only).
  */
 describe("githubFirewall", () => {
+  beforeAll(async () => {
+    githubFirewall = await loadRequiredConnectorFirewall("github");
+  });
+
   it("covers every host the GitHub connector is expected to authenticate", () => {
     const bases = githubFirewall.apis.map((a) => {
       return a.base;

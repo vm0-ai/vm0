@@ -338,5 +338,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-calendar", ts, import.meta.dirname);
+  writeOutput("google-calendar", ts);
 }

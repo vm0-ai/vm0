@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Bubblemaps firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bubblemaps", ts, import.meta.dirname);
+  writeOutput("bubblemaps", ts);
 }

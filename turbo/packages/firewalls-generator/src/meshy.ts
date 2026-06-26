@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Meshy firewall config...");
   const ts = generateTypeScript();
-  writeOutput("meshy", ts, import.meta.dirname);
+  writeOutput("meshy", ts);
 }

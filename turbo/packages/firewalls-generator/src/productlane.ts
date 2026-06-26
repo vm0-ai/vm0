@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Productlane firewall config...");
   const ts = generateTypeScript();
-  writeOutput("productlane", ts, import.meta.dirname);
+  writeOutput("productlane", ts);
 }

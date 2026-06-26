@@ -54,10 +54,18 @@ function hiddenCommandNames(prog: Command): string[] {
 }
 
 describe("computer-use command visibility", () => {
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
 
   beforeEach(() => {
+    mockExit.mockClear();
     mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
     vi.stubEnv("ZERO_TOKEN", "");
   });
 
@@ -178,6 +186,42 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
+  });
+
+  it("should guide missing computer-use capability errors to delegated authorization", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "zero-run-token-without-computer-use");
+
+    server.use(
+      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Missing required capability: computer-use:write",
+              code: "FORBIDDEN",
+            },
+          },
+          { status: 403 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+    }).rejects.toThrow("process.exit called");
+
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain("Computer Use authorization required");
+    expect(errorOutput).toContain(
+      "zero doctor permission-change computer-use --permission computer-use:write --enable",
+    );
+    expect(errorOutput).toContain(
+      "Existing run tokens cannot be upgraded in place",
+    );
+    expect(errorOutput).not.toContain(
+      "403: Missing required capability: computer-use:write",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {

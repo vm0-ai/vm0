@@ -45,5 +45,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Supabase firewall config...");
   const ts = generateTypeScript();
-  writeOutput("supabase", ts, import.meta.dirname);
+  writeOutput("supabase", ts);
 }

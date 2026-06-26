@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Plausible Analytics firewall config...");
   const ts = generateTypeScript();
-  writeOutput("plausible", ts, import.meta.dirname);
+  writeOutput("plausible", ts);
 }

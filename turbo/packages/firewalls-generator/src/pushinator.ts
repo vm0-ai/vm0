@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Pushinator firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pushinator", ts, import.meta.dirname);
+  writeOutput("pushinator", ts);
 }

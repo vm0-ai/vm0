@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Zendesk firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zendesk", ts, import.meta.dirname);
+  writeOutput("zendesk", ts);
 }

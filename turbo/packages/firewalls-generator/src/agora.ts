@@ -63,5 +63,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Agora firewall config...");
   const ts = generateTypeScript();
-  writeOutput("agora", ts, import.meta.dirname);
+  writeOutput("agora", ts);
 }

@@ -1486,5 +1486,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions, categories, stats);
 
   logStats(permissions);
-  writeOutput("stripe", ts, import.meta.dirname);
+  writeOutput("stripe", ts);
 }

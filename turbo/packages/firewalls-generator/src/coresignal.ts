@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Coresignal firewall config...");
   const ts = generateTypeScript();
-  writeOutput("coresignal", ts, import.meta.dirname);
+  writeOutput("coresignal", ts);
 }

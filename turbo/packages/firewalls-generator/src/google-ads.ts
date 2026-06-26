@@ -42,5 +42,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Google Ads firewall config...");
   const ts = generateTypeScript();
-  writeOutput("google-ads", ts, import.meta.dirname);
+  writeOutput("google-ads", ts);
 }

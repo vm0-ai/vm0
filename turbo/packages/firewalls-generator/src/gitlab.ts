@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating GitLab firewall config...");
   const ts = generateTypeScript();
-  writeOutput("gitlab", ts, import.meta.dirname);
+  writeOutput("gitlab", ts);
 }

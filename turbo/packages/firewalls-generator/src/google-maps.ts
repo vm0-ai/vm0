@@ -57,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Google Maps firewall config...");
   const ts = generateTypeScript();
-  writeOutput("google-maps", ts, import.meta.dirname);
+  writeOutput("google-maps", ts);
 }

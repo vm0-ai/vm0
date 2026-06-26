@@ -71,5 +71,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Langfuse firewall config...");
   const ts = generateTypeScript();
-  writeOutput("langfuse", ts, import.meta.dirname);
+  writeOutput("langfuse", ts);
 }

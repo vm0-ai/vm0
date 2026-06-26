@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Pinecone firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pinecone", ts, import.meta.dirname);
+  writeOutput("pinecone", ts);
 }

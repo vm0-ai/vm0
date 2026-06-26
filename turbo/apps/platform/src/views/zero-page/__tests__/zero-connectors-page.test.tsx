@@ -417,6 +417,41 @@ describe("connectors page", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
+  it("filters connectors by connected status when access management is enabled", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+
+    const connectionFilter = screen.getByRole("group", {
+      name: "Connector connection filter",
+    });
+    click(buttonByText("Connected", connectionFilter));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("?connection=connected");
+
+    click(buttonByText("All", connectionFilter));
+
+    await waitFor(() => {
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+    expect(search()).toBe("");
+  });
+
   it("hydrates connector search from URL keywords", async () => {
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
@@ -478,6 +513,14 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByRole("group", {
+        name: "Connector connection filter",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Manage GitHub access"),
+    ).not.toBeInTheDocument();
     click(
       within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
     );
@@ -528,12 +571,10 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     click(
-      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
     );
-    await waitFor(() => {
-      expect(menuItemByText("Manage")).toBeInTheDocument();
-    });
-    click(menuItemByText("Manage"));
 
     const dialog = await screen.findByRole("dialog", {
       name: "Manage GitHub access",

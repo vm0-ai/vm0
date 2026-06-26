@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Exa firewall config...");
   const ts = generateTypeScript();
-  writeOutput("exa", ts, import.meta.dirname);
+  writeOutput("exa", ts);
 }

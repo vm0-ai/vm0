@@ -72,6 +72,8 @@ _CLIENT_CREDENTIAL_HEADER_NAMES: frozenset[str] = frozenset(
         "x-key",
         "x-luma-api-key",
         "x-manus-api-key",
+        "x-modal-token-id",
+        "x-modal-token-secret",
         "x-moss-project-id",
         "x-n8n-api-key",
         "x-rapidapi-key",

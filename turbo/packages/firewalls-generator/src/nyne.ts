@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Nyne firewall config...");
   const ts = generateTypeScript();
-  writeOutput("nyne", ts, import.meta.dirname);
+  writeOutput("nyne", ts);
 }

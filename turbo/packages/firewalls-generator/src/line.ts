@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating LINE firewall config...");
   const ts = generateTypeScript();
-  writeOutput("line", ts, import.meta.dirname);
+  writeOutput("line", ts);
 }

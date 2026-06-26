@@ -185,7 +185,6 @@ jobs:
               turbo/packages/connectors/src/firewall-rule-matcher.ts | \
               turbo/packages/connectors/src/firewall-types.ts | \
               turbo/packages/connectors/src/firewall-url-utils.ts | \
-              turbo/packages/connectors/src/firewalls/* | \
               turbo/packages/connectors/src/github-url.ts | \
               turbo/packages/connectors/src/segment-parser.ts | \
               turbo/packages/firewalls-generator/* | \

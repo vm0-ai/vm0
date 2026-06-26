@@ -109,5 +109,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Twilio firewall config...");
   const ts = generateTypeScript();
-  writeOutput("twilio", ts, import.meta.dirname);
+  writeOutput("twilio", ts);
 }

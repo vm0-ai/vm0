@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating OpenAI firewall config...");
   const ts = generateTypeScript();
-  writeOutput("openai", ts, import.meta.dirname);
+  writeOutput("openai", ts);
 }

@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Stability AI firewall config...");
   const ts = generateTypeScript();
-  writeOutput("stability-ai", ts, import.meta.dirname);
+  writeOutput("stability-ai", ts);
 }

@@ -43,5 +43,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating WorkOS firewall config...");
   const ts = generateTypeScript();
-  writeOutput("workos", ts, import.meta.dirname);
+  writeOutput("workos", ts);
 }

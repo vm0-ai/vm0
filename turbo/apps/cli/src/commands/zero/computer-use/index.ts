@@ -7,6 +7,7 @@ import type {
   ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
+  ApiRequestError,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
   fetchComputerUseScreenshot,
@@ -66,6 +67,10 @@ interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
 
 const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
+const COMPUTER_USE_REQUIRED_CAPABILITY_MESSAGE =
+  "Missing required capability: computer-use:write";
+const COMPUTER_USE_AUTHORIZATION_REQUIRED_ERROR =
+  "COMPUTER_USE_AUTHORIZATION_REQUIRED";
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
   1. Start the Zero Desktop app and make sure Computer Use is online.
@@ -124,6 +129,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function throwComputerUseAuthorizationGuidanceError(error: unknown): never {
+  if (
+    error instanceof ApiRequestError &&
+    error.status === 403 &&
+    error.code === "FORBIDDEN" &&
+    error.message === COMPUTER_USE_REQUIRED_CAPABILITY_MESSAGE
+  ) {
+    throw new ApiRequestError(
+      "Computer Use authorization required",
+      COMPUTER_USE_AUTHORIZATION_REQUIRED_ERROR,
+      403,
+    );
+  }
+
+  throw error;
 }
 
 function parseTimeoutSeconds(value: string | undefined): number {
@@ -414,12 +436,16 @@ async function runReadCommand(
   payload: { readonly app?: string } = {},
 ): Promise<void> {
   const timeoutSeconds = parseTimeoutSeconds(options.timeout);
-  const created = await createComputerUseReadCommand({
-    kind,
-    timeoutMs: timeoutSeconds * 1000,
-    ...payload,
-  });
-  await waitForCommand(created.commandId, timeoutSeconds);
+  try {
+    const created = await createComputerUseReadCommand({
+      kind,
+      timeoutMs: timeoutSeconds * 1000,
+      ...payload,
+    });
+    await waitForCommand(created.commandId, timeoutSeconds);
+  } catch (error) {
+    throwComputerUseAuthorizationGuidanceError(error);
+  }
 }
 
 async function runWriteCommand(
@@ -443,12 +469,16 @@ async function runWriteCommand(
   },
 ): Promise<void> {
   const timeoutSeconds = parseTimeoutSeconds(options.timeout);
-  const created = await createComputerUseWriteCommand({
-    kind,
-    timeoutMs: timeoutSeconds * 1000,
-    ...payload,
-  });
-  await waitForCommand(created.commandId, timeoutSeconds);
+  try {
+    const created = await createComputerUseWriteCommand({
+      kind,
+      timeoutMs: timeoutSeconds * 1000,
+      ...payload,
+    });
+    await waitForCommand(created.commandId, timeoutSeconds);
+  } catch (error) {
+    throwComputerUseAuthorizationGuidanceError(error);
+  }
 }
 
 function addTargetOptions(command: Command): Command {

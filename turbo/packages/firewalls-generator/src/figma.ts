@@ -245,5 +245,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("figma", ts, import.meta.dirname);
+  writeOutput("figma", ts);
 }

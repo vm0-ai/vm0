@@ -199,6 +199,9 @@ describe("zero org switcher", () => {
   });
 
   it("bounds long workspace lists inside a scrollable menu region", async () => {
+    const longWorkspaceName =
+      "Workspace-with-a-very-long-name-that-should-not-create-horizontal-scroll";
+
     context.mocks.data.org({
       id: "org_current",
       name: "Current",
@@ -232,6 +235,13 @@ describe("zero org switcher", () => {
               },
             };
           }),
+          {
+            id: "membership_long",
+            organization: {
+              id: "org_long",
+              name: longWorkspaceName,
+            },
+          },
         ],
       },
     });
@@ -252,7 +262,9 @@ describe("zero org switcher", () => {
     );
 
     expect(scrollRegion).toHaveClass("max-h-72");
+    expect(scrollRegion).toHaveClass("overflow-x-hidden");
     expect(scrollRegion).toHaveClass("overflow-y-auto");
     expect(screen.getByText("Workspace 12")).toBeInTheDocument();
+    expect(screen.getByText(longWorkspaceName)).toBeInTheDocument();
   });
 });

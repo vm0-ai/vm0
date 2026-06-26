@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Reducto firewall config...");
   const ts = generateTypeScript();
-  writeOutput("reducto", ts, import.meta.dirname);
+  writeOutput("reducto", ts);
 }

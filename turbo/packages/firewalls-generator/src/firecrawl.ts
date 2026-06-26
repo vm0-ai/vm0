@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Firecrawl firewall config...");
   const ts = generateTypeScript();
-  writeOutput("firecrawl", ts, import.meta.dirname);
+  writeOutput("firecrawl", ts);
 }
