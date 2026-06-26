@@ -601,7 +601,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let failure_exit_code = process_failure_exit_code(&exit);
         let stderr = process_failure_stderr(&exit);
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
-        let guest_error = if stderr.is_empty() {
+        let should_read_guest_error = stderr.is_empty()
+            || (failure_diagnostic.is_none()
+                && matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0));
+        let guest_error = if should_read_guest_error {
             read_guest_error_file(sandbox, context.run_id).await
         } else {
             None

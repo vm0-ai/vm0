@@ -751,6 +751,42 @@ async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
 }
 
 #[tokio::test]
+async fn execute_inner_nonzero_with_stderr_and_guest_error_skips_bootstrap_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 7, Vec::new(), b"guest stderr".to_vec()));
+    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(Some(b"guest checkpoint error".to_vec())));
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let (result, events) = capture_async_events(run_new_sandbox_status(
+        &factory,
+        &minimal_context(),
+        &config,
+        &default_params(),
+    ))
+    .await;
+    let (exit_code, error) = result.unwrap();
+
+    assert_eq!(exit_code, 7);
+    assert_eq!(error.as_deref(), Some("guest stderr"));
+    assert!(
+        events.iter().all(|event| {
+            event.fields.get("message").map(String::as_str)
+                != Some("agent bootstrap abnormal exit diagnostics")
+        }),
+        "guest error file should suppress bootstrap diagnostics: {events:#?}"
+    );
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_nonzero_with_process_diagnostic_skips_abnormal_exit_diagnostics() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
