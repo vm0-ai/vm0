@@ -22,7 +22,7 @@ DEFAULT_BODY_DECODE_LIMIT = _SMALL_BODY_LIMIT_BYTES
 # Cap for connector request-body billing inspection. This is intentionally tied
 # to STREAM_BUFFER_LIMIT while stream-buffered billing refinement reads complete
 # bodies from request stream buffers.
-REQUEST_BODY_BILLING_INSPECTION_LIMIT = _SMALL_BODY_LIMIT_BYTES
+REQUEST_BODY_BILLING_INSPECTION_LIMIT = STREAM_BUFFER_LIMIT
 
 # Maximum decoded chunk size fed to incremental usage parsers. This bounds
 # transient decompressor output without truncating the total response scanned by
