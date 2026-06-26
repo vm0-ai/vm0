@@ -297,6 +297,10 @@ async fn process_group(
     sandbox: &dyn Sandbox,
     guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<GroupOutcome> {
+    // Same-key targets are expected to refer to the same archive content, so a
+    // definitive cache outcome can be shared across the group. Probe failures
+    // are the exception: they are URL/request-level passthrough decisions, so
+    // try the next duplicate before giving up per target.
     let mut head_failed_outcomes = Vec::new();
     for (index, target) in group.targets.iter().enumerate() {
         let outcome = process_one(target, http, home, sandbox, guest_writes).await?;
@@ -945,6 +949,9 @@ fn apply_group_outcome(
                 }
             }
             TargetOutcome::Miss { .. } => {
+                // The representative miss already staged the group archive in
+                // the guest. Other same-key entries are equivalent to cache
+                // hits for both rewrite behavior and entry-level telemetry.
                 let hit = TargetOutcome::Hit;
                 for (index, target) in group.targets.iter().enumerate() {
                     if index == *outcome_target_index {
@@ -2915,6 +2922,92 @@ mod tests {
             !ops.iter()
                 .any(|(key, _, _)| key == "storage_cache_skipped_head_failed"),
             "transient representative probe failure should not be the final group outcome: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_same_key_all_probe_failures_stay_per_target_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let failed_probe_a = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails-a.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(500);
+            })
+            .await;
+        let failed_full_a = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails-a.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+        let failed_probe_b = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails-b.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(503);
+            })
+            .await;
+        let failed_full_b = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails-b.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "probe-all-fail";
+        let version = "v1";
+        let original_a = server.url("/probe-fails-a.tar.gz");
+        let original_b = server.url("/probe-fails-b.tar.gz");
+        let mut manifest =
+            manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        failed_probe_a.assert_async().await;
+        failed_probe_b.assert_async().await;
+        failed_full_a.assert_calls_async(0).await;
+        failed_full_b.assert_calls_async(0).await;
+        assert!(
+            sandbox.write_file_calls().is_empty(),
+            "all probe failures should not stage a guest archive"
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original_a.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(original_b.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_skipped_head_failed")
+                .count(),
+            2,
+            "expected each failed duplicate probe to retain its passthrough telemetry in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(key, _, _)| key == "storage_cache_miss"
+                || key == "storage_cache_download"
+                || key == "storage_cache_hit"),
+            "all probe failures should not record cache hit/miss/download telemetry: {ops:?}"
         );
     }
 
