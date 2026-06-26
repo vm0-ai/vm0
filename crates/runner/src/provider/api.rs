@@ -169,21 +169,30 @@ impl ApiProvider {
         })
     }
 
-    async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
+    async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
+        let mut targeted_direct_candidate_rx = self.targeted_direct_candidate_rx.lock().await;
+        match targeted_direct_candidate_rx.try_recv() {
+            Ok(candidate) => return Some(candidate),
+            Err(mpsc::error::TryRecvError::Empty) => {}
+            Err(mpsc::error::TryRecvError::Disconnected) => {}
+        }
+
+        let mut broadcast_direct_candidate_rx = self.broadcast_direct_candidate_rx.lock().await;
+        match broadcast_direct_candidate_rx.try_recv() {
+            Ok(candidate) => Some(candidate),
+            Err(mpsc::error::TryRecvError::Empty) => None,
+            Err(mpsc::error::TryRecvError::Disconnected) => None,
+        }
+    }
+
+    async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
         loop {
-            let mut targeted_direct_candidate_rx = self.targeted_direct_candidate_rx.lock().await;
-            match targeted_direct_candidate_rx.try_recv() {
-                Ok(candidate) => return Some(DiscoveryWakeup::Direct(candidate)),
-                Err(mpsc::error::TryRecvError::Empty) => {}
-                Err(mpsc::error::TryRecvError::Disconnected) => {}
+            if let Some(candidate) = self.try_recv_direct_candidate().await {
+                return Some(candidate);
             }
 
+            let mut targeted_direct_candidate_rx = self.targeted_direct_candidate_rx.lock().await;
             let mut broadcast_direct_candidate_rx = self.broadcast_direct_candidate_rx.lock().await;
-            match broadcast_direct_candidate_rx.try_recv() {
-                Ok(candidate) => return Some(DiscoveryWakeup::Direct(candidate)),
-                Err(mpsc::error::TryRecvError::Empty) => {}
-                Err(mpsc::error::TryRecvError::Disconnected) => {}
-            }
 
             tokio::select! {
                 biased;
@@ -192,10 +201,30 @@ impl ApiProvider {
                 }
                 candidate = targeted_direct_candidate_rx.recv() => {
                     if let Some(candidate) = candidate {
-                        return Some(DiscoveryWakeup::Direct(candidate));
+                        return Some(candidate);
                     }
                 }
                 candidate = broadcast_direct_candidate_rx.recv() => {
+                    if let Some(candidate) = candidate {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
+        loop {
+            if let Some(candidate) = self.try_recv_direct_candidate().await {
+                return Some(DiscoveryWakeup::Direct(candidate));
+            }
+
+            tokio::select! {
+                biased;
+                () = self.cancel.cancelled() => {
+                    return None;
+                }
+                candidate = self.wait_for_direct_candidate() => {
                     if let Some(candidate) = candidate {
                         return Some(DiscoveryWakeup::Direct(candidate));
                     }
@@ -235,6 +264,23 @@ impl JobProvider for ApiProvider {
             let poll_result = tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
+                    return None;
+                }
+                direct = self.wait_for_direct_candidate() => {
+                    if let Some(direct) = direct {
+                        self.poll_wakeups.request_immediate_poll().await;
+                        let run_id = direct.run_id();
+                        let profile = direct.profile_name().to_owned();
+                        let targeted = direct.targeted();
+                        info!(
+                            run_id = %run_id,
+                            profile = %profile,
+                            targeted,
+                            poll_reason = ?reason,
+                            "ably: direct job candidate interrupted poll"
+                        );
+                        return Some(direct.into_job_candidate());
+                    }
                     return None;
                 }
                 result = self.api.poll(&self.group, &self.profiles, &held_session_states, reason) => result,
@@ -1328,6 +1374,70 @@ mod tests {
         );
         claim_mock.assert_async().await;
         poll_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_returns_direct_candidate_that_arrives_during_poll() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let direct_run_id: RunId = "00000000-0000-0000-0000-00000000000a".parse().unwrap();
+        let poll_run_id: RunId = "00000000-0000-0000-0000-00000000000b".parse().unwrap();
+        let (poll_accepted_tx, poll_accepted_rx) = tokio::sync::oneshot::channel();
+        let (release_first_poll_tx, release_first_poll_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let (mut first_socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut first_socket).await;
+            let _ = poll_accepted_tx.send(());
+            release_first_poll_rx.await.unwrap();
+            drop(first_socket);
+
+            let (mut second_socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut second_socket).await;
+            write_poll_job_response(&mut second_socket, poll_run_id).await;
+        });
+        let provider = api_provider_for_test(
+            api_url,
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let provider_for_discover = Arc::clone(&provider);
+        let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
+
+        tokio::time::timeout(Duration::from_secs(1), poll_accepted_rx)
+            .await
+            .expect("poll should reach the server")
+            .unwrap();
+        provider
+            ._targeted_direct_candidate_tx
+            .try_send(DirectJobCandidate::new(
+                direct_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                true,
+            ))
+            .unwrap();
+
+        let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
+            .await
+            .expect("direct candidate should interrupt poll")
+            .unwrap()
+            .unwrap();
+        assert_eq!(discovered.run_id(), direct_run_id);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Ably)
+        );
+
+        release_first_poll_tx.send(()).unwrap();
+        let rediscovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("interrupted poll should be rearmed")
+            .unwrap();
+        assert_eq!(rediscovered.run_id(), poll_run_id);
+        assert_eq!(
+            rediscovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
+        server_task.await.unwrap();
     }
 
     #[tokio::test]
