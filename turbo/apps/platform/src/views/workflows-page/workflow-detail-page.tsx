@@ -1,7 +1,12 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type {
+  CSSProperties,
+  FormEvent,
+  InputHTMLAttributes,
+  ReactNode,
+} from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -48,6 +53,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -69,6 +75,8 @@ import {
   deleteWorkflow$,
   deleteWorkflowTrigger$,
   editingGmailTriggerId$,
+  openWorkflowEditDialog$,
+  patchWorkflowEditDraft$,
   reloadWorkflows$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
@@ -91,6 +99,7 @@ import {
   workflowFileDraft$,
   workflowDetail,
   workflowTriggerPermissionsDrawerTriggerId$,
+  workflowEditDraft$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -123,6 +132,8 @@ const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
 const TRIGGER_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
+const WORKFLOW_EDIT_TEXTAREA_CLASS =
+  "min-h-24 w-full resize-y rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50";
 const TRIGGER_TIMEZONE = "UTC";
 const WORKFLOW_SIDEBAR_WIDTH = "min(520px, 42vw)";
 
@@ -539,6 +550,7 @@ function WorkflowActionsMenu({
 }) {
   const actionDialog = useGet(workflowActionDialog$);
   const setActionDialog = useSet(setWorkflowActionDialog$);
+  const openEditDialog = useSet(openWorkflowEditDialog$);
 
   return (
     <>
@@ -561,7 +573,7 @@ function WorkflowActionsMenu({
             disabled={!detail.canManage}
             className="gap-2"
             onSelect={() => {
-              setActionDialog("edit");
+              openEditDialog(detail);
             }}
           >
             <IconPencil size={15} stroke={1.5} />
@@ -595,7 +607,11 @@ function WorkflowActionsMenu({
         detail={detail}
         open={actionDialog === "edit"}
         onOpenChange={(open) => {
-          setActionDialog(open ? "edit" : null);
+          if (open) {
+            openEditDialog(detail);
+            return;
+          }
+          setActionDialog(null);
         }}
       />
       <WorkflowCopyDialog
@@ -686,9 +702,23 @@ function WorkflowEditDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const draft = useGet(workflowEditDraft$);
+  const patchDraft = useSet(patchWorkflowEditDraft$);
   const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
   const saving = saveLoadable.state === "loading";
   const disabled = !detail.canManage || saving;
+  const values =
+    draft?.workflowId === detail.id
+      ? draft
+      : {
+          displayName: detail.displayName ?? "",
+          name: detail.name,
+          description: detail.description ?? "",
+        };
+  const patchValues = (patch: Partial<WorkflowEditValues>) => {
+    patchDraft({ workflowId: detail.id, patch });
+  };
+  const slugCommand = `/${values.name.trim() || "slug"}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -696,28 +726,35 @@ function WorkflowEditDialog({
         <DialogHeader>
           <DialogTitle>Edit workflow</DialogTitle>
           <DialogDescription>
-            Update the workflow name and description.
+            Update the workflow name, slug, and description.
           </DialogDescription>
         </DialogHeader>
         <form
           aria-label="Workflow metadata"
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-5"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
+            if (!event.currentTarget.checkValidity()) {
+              return;
+            }
             if (!detail.canManage) {
               return;
             }
-            const form = new FormData(event.currentTarget);
-            const displayName = String(form.get("displayName") ?? "").trim();
-            const description = String(form.get("description") ?? "").trim();
+            const nextDisplayName = values.displayName.trim();
+            const nextName = values.name.trim();
+            const nextDescription = values.description.trim();
+            if (!nextName) {
+              return;
+            }
             detach(
               (async () => {
                 await updateWorkflow(
                   {
                     workflowId: detail.id,
                     body: {
-                      displayName: displayName || null,
-                      description: description || null,
+                      name: nextName,
+                      displayName: nextDisplayName || null,
+                      description: nextDescription || null,
                     },
                   },
                   pageSignal,
@@ -728,27 +765,12 @@ function WorkflowEditDialog({
             );
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Name
-            <input
-              name="displayName"
-              aria-label="Name"
-              defaultValue={detail.displayName ?? ""}
-              disabled={disabled}
-              className={FIELD_CLASS}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Description
-            <textarea
-              name="description"
-              aria-label="Description"
-              defaultValue={detail.description ?? ""}
-              disabled={disabled}
-              rows={3}
-              className="w-full rounded-md border border-border/60 bg-background px-2.5 py-2 text-sm outline-none focus:border-primary"
-            />
-          </label>
+          <WorkflowEditFields
+            disabled={disabled}
+            slugCommand={slugCommand}
+            values={values}
+            onChange={patchValues}
+          />
           <DialogFooter>
             <Button
               type="button"
@@ -760,7 +782,10 @@ function WorkflowEditDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={disabled}>
+            <Button
+              type="submit"
+              disabled={disabled || values.name.trim().length === 0}
+            >
               {saving ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
@@ -770,6 +795,173 @@ function WorkflowEditDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface WorkflowEditValues {
+  readonly displayName: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+type WorkflowEditTextInputProps = Pick<
+  InputHTMLAttributes<HTMLInputElement>,
+  | "required"
+  | "minLength"
+  | "pattern"
+  | "title"
+  | "autoCapitalize"
+  | "autoComplete"
+  | "spellCheck"
+>;
+
+function WorkflowEditFields({
+  values,
+  slugCommand,
+  disabled,
+  onChange,
+}: {
+  readonly values: WorkflowEditValues;
+  readonly slugCommand: string;
+  readonly disabled: boolean;
+  readonly onChange: (patch: Partial<WorkflowEditValues>) => void;
+}) {
+  return (
+    <>
+      <WorkflowEditTextField
+        id="workflow-edit-display-name"
+        name="displayName"
+        label="Name"
+        value={values.displayName}
+        disabled={disabled}
+        placeholder="Workflow name"
+        maxLength={256}
+        onValueChange={(value) => {
+          onChange({ displayName: value });
+        }}
+      />
+      <WorkflowEditTextField
+        id="workflow-edit-slug"
+        name="name"
+        label="Slug"
+        value={values.name}
+        disabled={disabled}
+        placeholder="workflow-slug"
+        maxLength={64}
+        helperText={`Lowercase letters, numbers, and - only. Use ${slugCommand} in chat to use this workflow.`}
+        onValueChange={(value) => {
+          onChange({ name: value });
+        }}
+        inputProps={{
+          required: true,
+          minLength: 2,
+          pattern: "[a-z0-9][a-z0-9-]*[a-z0-9]",
+          title: "Use lowercase letters, numbers, and hyphens only",
+          autoCapitalize: "none",
+          autoComplete: "off",
+          spellCheck: false,
+        }}
+      />
+      <WorkflowEditTextareaField
+        id="workflow-edit-description"
+        name="description"
+        label="Description"
+        value={values.description}
+        disabled={disabled}
+        helperText="Tell the agent when to use this workflow."
+        onValueChange={(value) => {
+          onChange({ description: value });
+        }}
+      />
+    </>
+  );
+}
+
+function WorkflowEditTextField({
+  id,
+  name,
+  label,
+  value,
+  disabled,
+  placeholder,
+  maxLength,
+  helperText,
+  inputProps,
+  onValueChange,
+}: {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  readonly value: string;
+  readonly disabled: boolean;
+  readonly placeholder: string;
+  readonly maxLength: number;
+  readonly helperText?: string;
+  readonly inputProps?: WorkflowEditTextInputProps;
+  readonly onValueChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
+        name={name}
+        aria-label={label}
+        value={value}
+        onChange={(event) => {
+          onValueChange(event.currentTarget.value);
+        }}
+        disabled={disabled}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        {...inputProps}
+      />
+      {helperText ? (
+        <p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkflowEditTextareaField({
+  id,
+  name,
+  label,
+  value,
+  disabled,
+  helperText,
+  onValueChange,
+}: {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  readonly value: string;
+  readonly disabled: boolean;
+  readonly helperText: string;
+  readonly onValueChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}
+      </label>
+      <textarea
+        id={id}
+        name={name}
+        aria-label={label}
+        value={value}
+        onChange={(event) => {
+          onValueChange(event.currentTarget.value);
+        }}
+        disabled={disabled}
+        rows={3}
+        maxLength={1024}
+        className={WORKFLOW_EDIT_TEXTAREA_CLASS}
+      />
+      <p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
+    </div>
   );
 }
 
