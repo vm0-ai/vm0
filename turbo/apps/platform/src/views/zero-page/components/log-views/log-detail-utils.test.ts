@@ -121,6 +121,64 @@ describe("groupEventsIntoMessages Codex plan events", () => {
       "[plan]\nReview edge cases\n- in progress: Check empty plans",
     );
   });
+
+  it("bounds Codex plan updates with many visible steps", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "turn.plan.updated",
+          eventData: {
+            type: "turn.plan.updated",
+            plan: Array.from({ length: 25 }, (_, index) => {
+              return {
+                status: "pending",
+                step: `Step ${index}`,
+              };
+            }),
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages[0]?.textBefore).toContain("- pending: Step 19");
+    expect(messages[0]?.textBefore).not.toContain("- pending: Step 20");
+    expect(messages[0]?.textBefore).toContain("- ... +5 more steps");
+  });
+});
+
+describe("groupEventsIntoMessages Codex file changes", () => {
+  it("bounds Codex file change output with many changes", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "item.completed",
+          eventData: {
+            type: "item.completed",
+            item: {
+              id: "files-many",
+              type: "file_change",
+              changes: Array.from({ length: 25 }, (_, index) => {
+                return {
+                  kind: "modify",
+                  path: `src/file-${index}.ts`,
+                };
+              }),
+            },
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages[0]?.textBefore).toContain("- modify src/file-19.ts");
+    expect(messages[0]?.textBefore).not.toContain("- modify src/file-20.ts");
+    expect(messages[0]?.textBefore).toContain("- ... +5 more changes");
+  });
 });
 
 describe("groupEventsIntoMessages unserializable event data", () => {

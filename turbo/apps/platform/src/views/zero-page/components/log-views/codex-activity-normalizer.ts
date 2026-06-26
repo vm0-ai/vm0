@@ -533,21 +533,26 @@ function parseCodexChanges(value: unknown): ParsedCodexFileChanges {
   if (!Array.isArray(value)) {
     return { changes: [], totalChangeCount: 0 };
   }
-  const parsedChanges = value.filter(isRecord).flatMap((change) => {
+  const changes: CodexFileChange[] = [];
+  let totalChangeCount = 0;
+  for (const change of value) {
+    if (!isRecord(change)) {
+      continue;
+    }
     const parsed = {
       kind: getFirstString(change, ["kind"]),
       path: getPath(change),
       diff: getFirstNonBlankString(change, ["diff"]),
     };
     if (!parsed.path && !parsed.diff) {
-      return [];
+      continue;
     }
-    return [parsed];
-  });
-  return {
-    changes: parsedChanges.slice(0, MAX_FORMATTED_FILE_CHANGES),
-    totalChangeCount: parsedChanges.length,
-  };
+    totalChangeCount += 1;
+    if (changes.length < MAX_FORMATTED_FILE_CHANGES) {
+      changes.push(parsed);
+    }
+  }
+  return { changes, totalChangeCount };
 }
 
 function isUnambiguousCodexType(eventType: string): boolean {
@@ -765,19 +770,23 @@ function formatPlanLines(plan: unknown): string[] {
   if (!Array.isArray(plan)) {
     return [];
   }
-  const parsedLines = plan.flatMap((step) => {
+  const lines: string[] = [];
+  let totalLineCount = 0;
+  for (const step of plan) {
     if (!isRecord(step)) {
-      return [];
+      continue;
     }
     const text = trimmedStringValue(step.step);
     if (!text) {
-      return [];
+      continue;
     }
     const status = formatPlanStatus(trimmedStringValue(step.status));
-    return [`- ${status}: ${text}`];
-  });
-  const lines = parsedLines.slice(0, MAX_FORMATTED_PLAN_STEPS);
-  const remaining = parsedLines.length - MAX_FORMATTED_PLAN_STEPS;
+    totalLineCount += 1;
+    if (lines.length < MAX_FORMATTED_PLAN_STEPS) {
+      lines.push(`- ${status}: ${text}`);
+    }
+  }
+  const remaining = totalLineCount - MAX_FORMATTED_PLAN_STEPS;
   if (remaining > 0) {
     lines.push(`- ... +${remaining} more steps`);
   }
