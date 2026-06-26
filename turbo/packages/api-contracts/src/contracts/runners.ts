@@ -201,7 +201,9 @@ export const resumeSessionSchema = z.union([
   resumeSessionRefSchema,
 ]);
 
-export const runnerClaimCapabilitySchema = z.enum(["resumeSessionHistoryRef"]);
+// Capability names are intentionally open-ended so a newer runner can claim
+// jobs through an older API; the API ignores capabilities it does not know.
+export const runnerClaimCapabilitySchema = z.string().min(1);
 
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider"]),
@@ -421,4 +423,4 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;
+export type RunnerClaimCapability = "resumeSessionHistoryRef";

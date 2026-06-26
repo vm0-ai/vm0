@@ -1350,6 +1350,19 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     expectApiError(malformedCheckpoint.body);
     expect(malformedCheckpoint.body.error.code).toBe("BAD_REQUEST");
 
+    const uppercaseCheckpointHash = await api.requestAgentCheckpointUnchecked(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: "A".repeat(64),
+      },
+      headers,
+      [400],
+    );
+    expectApiError(uppercaseCheckpointHash.body);
+    expect(uppercaseCheckpointHash.body.error.code).toBe("BAD_REQUEST");
+
     const missingCheckpointRun = await api.requestAgentCheckpoint(
       {
         runId,
@@ -1393,6 +1406,15 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
       );
     expectApiError(malformedHistoryPrepare.body);
     expect(malformedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const uppercaseHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash: "A".repeat(64), size: 128 },
+        headers,
+        [400],
+      );
+    expectApiError(uppercaseHistoryPrepare.body);
+    expect(uppercaseHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
 
     const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
       {

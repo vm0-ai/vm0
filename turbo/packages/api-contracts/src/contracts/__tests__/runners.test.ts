@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   elapsedSinceApiStartMs,
   executionContextSchema,
+  resumeSessionSchema,
+  runnersJobClaimContract,
   storageManifestSchema,
   storedExecutionContextSchema,
+  storedResumeSessionSchema,
 } from "../runners";
 
 describe("runner storage manifest contract", () => {
@@ -156,6 +159,86 @@ describe("runner storage manifest contract", () => {
       ],
       artifacts: [],
     });
+  });
+});
+
+describe("runner resume session contract", () => {
+  const historyHash =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  it("accepts inline stored and claim resume sessions", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      sessionHistory: '{"type":"init"}\n',
+    };
+
+    expect(storedResumeSessionSchema.safeParse(resumeSession).success).toBe(
+      true,
+    );
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(true);
+  });
+
+  it("accepts hash-backed stored resume sessions without URLs", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: { kind: "blob", hash: historyHash },
+    };
+
+    expect(storedResumeSessionSchema.parse(resumeSession)).toEqual(
+      resumeSession,
+    );
+    expect(
+      storedExecutionContextSchema.shape.resumeSession.safeParse(resumeSession)
+        .success,
+    ).toBe(true);
+  });
+
+  it("requires a URL for hash-backed claim resume sessions", () => {
+    const storedResumeSession = {
+      sessionId: "sess-123",
+      historyRef: { kind: "blob", hash: historyHash },
+    };
+    const claimResumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob?sig=secret",
+      },
+    };
+
+    expect(resumeSessionSchema.safeParse(storedResumeSession).success).toBe(
+      false,
+    );
+    expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
+      claimResumeSession,
+    );
+    expect(
+      executionContextSchema.shape.resumeSession.safeParse(claimResumeSession)
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects non-lowercase session history hashes", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: { kind: "blob", hash: "A".repeat(64) },
+    };
+
+    expect(storedResumeSessionSchema.safeParse(resumeSession).success).toBe(
+      false,
+    );
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
+  });
+});
+
+describe("runner claim capability contract", () => {
+  it("accepts unknown capabilities for forward compatibility", () => {
+    const result = runnersJobClaimContract.claim.body.safeParse({
+      capabilities: ["resumeSessionHistoryRef", "futureCapability"],
+    });
+
+    expect(result.success).toBe(true);
   });
 });
 

@@ -880,7 +880,7 @@ function hasResumeSessionHistoryRef(
 }
 
 function runnerSupportsResumeSessionHistoryRef(
-  capabilities: readonly RunnerClaimCapability[] | undefined,
+  capabilities: readonly string[] | undefined,
 ): boolean {
   return capabilities?.includes(RESUME_SESSION_HISTORY_REF_CAPABILITY) ?? false;
 }
