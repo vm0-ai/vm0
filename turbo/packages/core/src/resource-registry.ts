@@ -139,7 +139,7 @@ const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
   businessData:
     "47b08d200c334d669ca3595906218797d75f2a1b8ec12abee3372163f8f7d4e7",
   presentationDeckTools:
-    "5d31cb02f1beb2533a13161222a6a24e1fa07621755970623ab2b44a9380fda2",
+    "00897f9278c014d2d7fcb95f3d03ee954c3d9c281cdef280fb92597be6609b38",
   designSystemCrayon:
     "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
   templateCrayon:
