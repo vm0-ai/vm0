@@ -42,6 +42,7 @@ function isFailedTaskStatus(status: string | undefined): boolean {
     case "aborted":
     case "cancelled":
     case "canceled":
+    case "declined":
     case "error":
     case "failed":
     case "interrupted":

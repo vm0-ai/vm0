@@ -2614,7 +2614,7 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Raw result failed")).not.toHaveLength(0);
   });
 
-  it("marks cancelled task notifications as failed task rows", async () => {
+  it("marks failed task notification statuses as failed task rows", async () => {
     const runId = "a0000000-0000-4000-a000-000000000304";
 
     context.mocks.data.composesList([]);
@@ -2656,6 +2656,26 @@ describe("activity detail polling", () => {
               },
               createdAt: "2026-03-10T16:15:02Z",
             },
+            {
+              sequenceNumber: 2,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "declined-task",
+              },
+              createdAt: "2026-03-10T16:15:03Z",
+            },
+            {
+              sequenceNumber: 3,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "declined-task",
+                status: "declined",
+                summary: "Task was declined",
+              },
+              createdAt: "2026-03-10T16:15:04Z",
+            },
           ],
           hasMore: false,
           framework: "claude-code",
@@ -2677,6 +2697,12 @@ describe("activity detail polling", () => {
     const taskSummary = screen.getByText("Task was cancelled");
     expect(
       taskSummary.parentElement?.querySelector('[data-variant="error"]'),
+    ).toBeTruthy();
+    const declinedTaskSummary = screen.getByText("Task was declined");
+    expect(
+      declinedTaskSummary.parentElement?.querySelector(
+        '[data-variant="error"]',
+      ),
     ).toBeTruthy();
   });
 
