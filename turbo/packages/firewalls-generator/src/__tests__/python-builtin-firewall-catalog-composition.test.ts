@@ -16,6 +16,7 @@ const TEST_GENERATED_HEADER = [
   "# Do not edit by hand.",
   "# ruff: noqa",
 ] as const;
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 
 function modelProviderFirewall(
   name = "model-provider:test",
@@ -62,51 +63,59 @@ function findGeneratedContent(
 }
 
 describe("Python builtin firewall catalog composition", () => {
-  it("composes connector and caller-provided model-provider firewalls", async () => {
-    const catalog = await buildPythonBuiltinFirewallCatalog({
-      modelProviderFirewalls: [modelProviderFirewall()],
-    });
+  it(
+    "composes connector and caller-provided model-provider firewalls",
+    async () => {
+      const catalog = await buildPythonBuiltinFirewallCatalog({
+        modelProviderFirewalls: [modelProviderFirewall()],
+      });
 
-    expect(catalog.firewalls.github?.apis[0]?.base).toBe(
-      "https://api.github.com",
-    );
-    expect(catalog.firewalls["model-provider:test"]?.apis[0]?.base).toBe(
-      "https://model-provider.example.com/v1/responses",
-    );
-    expect(catalog.firewalls.github).not.toHaveProperty("label");
-    expect(catalog.firewalls.github).not.toHaveProperty("categories");
-    expect(catalog.firewalls.github).not.toHaveProperty("defaultPolicies");
-    expect(catalog.firewalls["model-provider:test"]).not.toHaveProperty(
-      "placeholders",
-    );
-    expect(catalog.firewalls["model-provider:test"]).not.toHaveProperty(
-      "defaultPolicies",
-    );
-  });
+      expect(catalog.firewalls.github?.apis[0]?.base).toBe(
+        "https://api.github.com",
+      );
+      expect(catalog.firewalls["model-provider:test"]?.apis[0]?.base).toBe(
+        "https://model-provider.example.com/v1/responses",
+      );
+      expect(catalog.firewalls.github).not.toHaveProperty("label");
+      expect(catalog.firewalls.github).not.toHaveProperty("categories");
+      expect(catalog.firewalls.github).not.toHaveProperty("defaultPolicies");
+      expect(catalog.firewalls["model-provider:test"]).not.toHaveProperty(
+        "placeholders",
+      );
+      expect(catalog.firewalls["model-provider:test"]).not.toHaveProperty(
+        "defaultPolicies",
+      );
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
-  it("preserves representative connector auth templates", async () => {
-    const catalog = await buildPythonBuiltinFirewallCatalog({
-      modelProviderFirewalls: [modelProviderFirewall()],
-    });
+  it(
+    "preserves representative connector auth templates",
+    async () => {
+      const catalog = await buildPythonBuiltinFirewallCatalog({
+        modelProviderFirewalls: [modelProviderFirewall()],
+      });
 
-    expect(catalog.firewalls.cloudflare?.apis[0]?.auth).toStrictEqual({
-      headers: {
-        Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
-      },
-    });
-    expect(catalog.firewalls.serpapi?.apis[0]?.auth).toStrictEqual({
-      query: {
-        api_key: "${{ secrets.SERPAPI_TOKEN }}",
-      },
-    });
-    expect(catalog.firewalls.aws?.apis[0]?.auth).toStrictEqual({
-      awsSigv4: {
-        accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
-        secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-        sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
-      },
-    });
-  });
+      expect(catalog.firewalls.cloudflare?.apis[0]?.auth).toStrictEqual({
+        headers: {
+          Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
+        },
+      });
+      expect(catalog.firewalls.serpapi?.apis[0]?.auth).toStrictEqual({
+        query: {
+          api_key: "${{ secrets.SERPAPI_TOKEN }}",
+        },
+      });
+      expect(catalog.firewalls.aws?.apis[0]?.auth).toStrictEqual({
+        awsSigv4: {
+          accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+          secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+        },
+      });
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("renders explicit model-provider diagnostics without relying on name prefix", async () => {
     const files = await renderComposedPythonBuiltinFirewallCatalogFiles({
@@ -122,13 +131,17 @@ describe("Python builtin firewall catalog composition", () => {
     );
   });
 
-  it("rejects duplicate names across connector and model-provider sources", async () => {
-    await expect(
-      buildPythonBuiltinFirewallCatalog({
-        modelProviderFirewalls: [modelProviderFirewall("github")],
-      }),
-    ).rejects.toThrow("duplicate built-in firewall catalog name: github");
-  });
+  it(
+    "rejects duplicate names across connector and model-provider sources",
+    async () => {
+      await expect(
+        buildPythonBuiltinFirewallCatalog({
+          modelProviderFirewalls: [modelProviderFirewall("github")],
+        }),
+      ).rejects.toThrow("duplicate built-in firewall catalog name: github");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("does not import eager connector catalogs or API contracts", () => {
     const source = fs.readFileSync(

@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Semrush firewall config...");
   const ts = generateTypeScript();
-  writeOutput("semrush", ts, import.meta.dirname);
+  writeOutput("semrush", ts);
 }

@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Clado firewall config...");
   const ts = generateTypeScript();
-  writeOutput("clado", ts, import.meta.dirname);
+  writeOutput("clado", ts);
 }

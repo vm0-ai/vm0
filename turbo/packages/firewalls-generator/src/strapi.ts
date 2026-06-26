@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Strapi firewall config...");
   const ts = generateTypeScript();
-  writeOutput("strapi", ts, import.meta.dirname);
+  writeOutput("strapi", ts);
 }

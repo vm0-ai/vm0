@@ -70,5 +70,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Hugging Face firewall config...");
   const ts = generateTypeScript();
-  writeOutput("hugging-face", ts, import.meta.dirname);
+  writeOutput("hugging-face", ts);
 }

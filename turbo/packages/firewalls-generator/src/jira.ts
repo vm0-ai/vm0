@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Jira firewall config...");
   const ts = generateTypeScript();
-  writeOutput("jira", ts, import.meta.dirname);
+  writeOutput("jira", ts);
 }

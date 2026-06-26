@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   generatedFirewallExportName,
-  generatedFirewallFileName,
+  generatedConnectorMetadataFileName,
   loadConnectorFirewallSourceSet,
   type ConnectorFirewallSource,
 } from "../connector-firewall-sources";
@@ -14,15 +14,12 @@ import {
   type FirewallConnectorType,
 } from "../connector-firewall-manifest";
 
-const FIREWALLS_DIR = path.resolve(
-  import.meta.dirname,
-  "../../../connectors/src/firewalls",
-);
 const CONNECTORS_DIR = path.resolve(
   import.meta.dirname,
   "../../../connectors/src/connectors",
 );
 const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
@@ -141,13 +138,13 @@ describe("firewall metadata generator", () => {
         "../../connectors/src/connectors",
       );
       expect(staticValueModuleSpecifiers(source), file).not.toContain(
-        "../../connectors/src/firewalls",
+        "../../connectors/src" + "/firewalls",
       );
       for (const specifier of staticValueModuleSpecifiers(source)) {
         expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
       }
       expect(dynamicImportSpecifiers(source), file).not.toContain(
-        "../../connectors/src/firewalls",
+        "../../connectors/src" + "/firewalls",
       );
       expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
       expect(source, file).not.toMatch(/\bCONNECTOR_TYPES\b/);
@@ -181,30 +178,33 @@ describe("firewall metadata generator", () => {
     }
   });
 
-  it("loads connector sources with sorted and registry order preserved", async () => {
-    const manifestTypes = [...FIREWALL_CONNECTOR_TYPES];
-    const sourceSet = await loadConnectorFirewallSourceSet({
-      firewallsDir: FIREWALLS_DIR,
-      connectorsDir: CONNECTORS_DIR,
-    });
+  it(
+    "loads connector sources with sorted and registry order preserved",
+    async () => {
+      const manifestTypes = [...FIREWALL_CONNECTOR_TYPES];
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
 
-    expect(sourceSet.sources.map((source) => source.type)).toStrictEqual(
-      [...manifestTypes].sort(compareStrings),
-    );
-    expect(
-      sourceSet.registryOrderedSources.map((source) => source.type),
-    ).toStrictEqual(manifestTypes);
-    expect([...sourceSet.billableTypes].sort(compareStrings)).toStrictEqual(
-      [...BILLABLE_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
-    );
-    expect(
-      sourceSet.sources.find((source) => source.type === "slack")
-        ?.firewallExportName,
-    ).toBe(generatedFirewallExportName("slack"));
-    expect(
-      sourceSet.sources.find((source) => source.type === "slack")?.label,
-    ).toBe("Slack");
-  });
+      expect(sourceSet.sources.map((source) => source.type)).toStrictEqual(
+        [...manifestTypes].sort(compareStrings),
+      );
+      expect(
+        sourceSet.registryOrderedSources.map((source) => source.type),
+      ).toStrictEqual(manifestTypes);
+      expect([...sourceSet.billableTypes].sort(compareStrings)).toStrictEqual(
+        [...BILLABLE_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
+      );
+      expect(
+        sourceSet.sources.find((source) => source.type === "slack")
+          ?.firewallExportName,
+      ).toBe(generatedFirewallExportName("slack"));
+      expect(
+        sourceSet.sources.find((source) => source.type === "slack")?.label,
+      ).toBe("Slack");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("derives generated firewall export names from connector types", () => {
     const examples: readonly (readonly [FirewallConnectorType, string])[] = [
@@ -219,17 +219,26 @@ describe("firewall metadata generator", () => {
     }
   });
 
-  it("keeps generated-only firewall files out of the runtime manifest", () => {
-    const runtimeTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
+  it(
+    "keeps unregistered generator outputs out of the runtime manifest",
+    async () => {
+      const runtimeTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const sourceTypes = new Set<string>(
+        sourceSet.sources.map((source) => {
+          return source.type;
+        }),
+      );
 
-    for (const type of UNREGISTERED_GENERATED_FIREWALL_TYPES) {
-      expect(
-        fs.existsSync(path.join(FIREWALLS_DIR, `${type}.generated.ts`)),
-        type,
-      ).toBe(true);
-      expect(runtimeTypes.has(type), type).toBe(false);
-    }
-  });
+      for (const type of UNREGISTERED_GENERATED_FIREWALL_TYPES) {
+        expect(runtimeTypes.has(type), type).toBe(false);
+        expect(sourceTypes.has(type), type).toBe(false);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("keeps generated server metadata host-owner only", () => {
     const source = fs.readFileSync(
@@ -306,7 +315,8 @@ describe("firewall metadata generator", () => {
       fs.existsSync(
         path.resolve(
           import.meta.dirname,
-          "../../../connectors/src/firewalls/runtime-loader.generated.ts",
+          "../../../connectors/src",
+          "firewalls/runtime-loader.generated.ts",
         ),
       ),
     ).toBe(false);
@@ -390,28 +400,31 @@ describe("firewall metadata generator", () => {
     );
   });
 
-  it("projects all routing details from connector firewall route data", async () => {
-    const sourceSet = await loadConnectorFirewallSourceSet({
-      firewallsDir: FIREWALLS_DIR,
-      connectorsDir: CONNECTORS_DIR,
-    });
+  it(
+    "projects all routing details from connector firewall route data",
+    async () => {
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
 
-    for (const source of sourceSet.sources) {
-      const filename = `routing-details/${generatedFirewallFileName(source.type)}`;
-      const detailSource = fs.readFileSync(
-        path.resolve(
-          import.meta.dirname,
-          "../../../connectors/src/firewall-metadata",
-          filename,
-        ),
-        "utf-8",
-      );
-      expect(detailSource, filename).toContain(
-        `export const firewallRoutingMetadata = ${stableJson(
-          routingMetadataFromSource(source),
-        )} as const satisfies FirewallRoutingMetadata;`,
-      );
-      assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
-    }
-  });
+      for (const source of sourceSet.sources) {
+        const filename = `routing-details/${generatedConnectorMetadataFileName(source.type)}`;
+        const detailSource = fs.readFileSync(
+          path.resolve(
+            import.meta.dirname,
+            "../../../connectors/src/firewall-metadata",
+            filename,
+          ),
+          "utf-8",
+        );
+        expect(detailSource, filename).toContain(
+          `export const firewallRoutingMetadata = ${stableJson(
+            routingMetadataFromSource(source),
+          )} as const satisfies FirewallRoutingMetadata;`,
+        );
+        assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 });

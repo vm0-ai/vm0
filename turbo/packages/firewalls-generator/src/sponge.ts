@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Sponge firewall config...");
   const ts = generateTypeScript();
-  writeOutput("sponge", ts, import.meta.dirname);
+  writeOutput("sponge", ts);
 }

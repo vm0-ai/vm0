@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Doppler firewall config...");
   const ts = generateTypeScript();
-  writeOutput("doppler", ts, import.meta.dirname);
+  writeOutput("doppler", ts);
 }

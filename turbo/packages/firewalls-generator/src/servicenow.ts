@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ServiceNow firewall config...");
   const ts = generateTypeScript();
-  writeOutput("servicenow", ts, import.meta.dirname);
+  writeOutput("servicenow", ts);
 }

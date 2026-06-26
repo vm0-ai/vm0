@@ -12,8 +12,9 @@ import {
   FIREWALL_CONNECTOR_TYPES,
   type FirewallConnectorType,
 } from "./connector-firewall-manifest";
+import { getGeneratedFirewallOutput } from "./codegen";
 
-const GENERATED_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const GENERATED_METADATA_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export interface ConnectorCategories {
   readonly categories: Record<string, string>;
@@ -41,9 +42,8 @@ export interface ConnectorFirewallSource {
   readonly defaultUnknownPolicy: FirewallPolicyValue;
 }
 
-export interface ConnectorFirewallSourceSetOptions {
-  readonly firewallsDir: string;
-  readonly connectorsDir: string;
+interface ConnectorFirewallSourceSetOptions {
+  readonly connectorsDir?: string;
 }
 
 interface ConnectorFirewallSourceSet {
@@ -51,6 +51,19 @@ interface ConnectorFirewallSourceSet {
   readonly registryOrderedSources: readonly ConnectorFirewallSource[];
   readonly billableTypes: ReadonlySet<FirewallConnectorType>;
 }
+
+interface ConnectorFirewallGeneratorModule {
+  readonly generate: () => Promise<void>;
+}
+
+const generatedModuleCache = new Map<
+  FirewallConnectorType,
+  {
+    readonly source: string;
+    readonly moduleExports: Promise<Record<string, unknown>>;
+  }
+>();
+const generatedOutputPromises = new Map<FirewallConnectorType, Promise<void>>();
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null;
@@ -129,16 +142,6 @@ function getOptionalGeneratedExport<T>(
     );
   }
   return value;
-}
-
-async function importModule(
-  filePath: string,
-): Promise<Record<string, unknown>> {
-  const moduleExports: unknown = await import(pathToFileURL(filePath).href);
-  if (!isRecord(moduleExports)) {
-    throw new Error(`Expected module exports object: ${filePath}`);
-  }
-  return moduleExports;
 }
 
 function propertyNameText(name: ts.PropertyName): string | null {
@@ -315,8 +318,10 @@ function loadConnectorMetadata(
   throw new Error(`Firewall connector is missing connector metadata: ${type}`);
 }
 
-export function generatedFirewallFileName(type: FirewallConnectorType): string {
-  if (!GENERATED_FILE_STEM_PATTERN.test(type)) {
+export function generatedConnectorMetadataFileName(
+  type: FirewallConnectorType,
+): string {
+  if (!GENERATED_METADATA_FILE_STEM_PATTERN.test(type)) {
     throw new Error(
       `Unsupported firewall metadata generated file name: ${type}`,
     );
@@ -338,16 +343,125 @@ export function generatedFirewallExportName(
     .join("")}Firewall`;
 }
 
+function defaultConnectorsDir(): string {
+  return path.resolve(import.meta.dirname, "../../connectors/src/connectors");
+}
+
+function isConnectorFirewallGeneratorModule(
+  value: unknown,
+): value is ConnectorFirewallGeneratorModule {
+  return isRecord(value) && typeof value.generate === "function";
+}
+
+async function importGeneratorModule(
+  type: FirewallConnectorType,
+): Promise<ConnectorFirewallGeneratorModule> {
+  const filePath = path.resolve(import.meta.dirname, `${type}.ts`);
+  const moduleExports: unknown = await import(pathToFileURL(filePath).href);
+  if (!isConnectorFirewallGeneratorModule(moduleExports)) {
+    throw new Error(`Expected connector firewall generator module: ${type}`);
+  }
+  return moduleExports;
+}
+
+async function generateConnectorFirewallOutput(
+  type: FirewallConnectorType,
+): Promise<void> {
+  const generatorModule = await importGeneratorModule(type);
+  await generatorModule.generate();
+  if (getGeneratedFirewallOutput(type) === null) {
+    throw new Error(`Generator did not produce firewall source: ${type}`);
+  }
+}
+
+async function ensureGeneratedFirewallOutput(
+  type: FirewallConnectorType,
+): Promise<string> {
+  const existing = getGeneratedFirewallOutput(type);
+  if (existing !== null) {
+    return existing;
+  }
+
+  let generatedOutputPromise = generatedOutputPromises.get(type);
+  if (!generatedOutputPromise) {
+    generatedOutputPromise = generateConnectorFirewallOutput(type).catch(
+      (error: unknown) => {
+        generatedOutputPromises.delete(type);
+        throw error;
+      },
+    );
+    generatedOutputPromises.set(type, generatedOutputPromise);
+  }
+  await generatedOutputPromise;
+  const generated = getGeneratedFirewallOutput(type);
+  if (generated === null) {
+    throw new Error(`Missing generated firewall source: ${type}`);
+  }
+  return generated;
+}
+
+function diagnosticText(diagnostic: ts.Diagnostic): string {
+  return ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+}
+
+async function loadGeneratedModuleExports(
+  type: FirewallConnectorType,
+  source: string,
+): Promise<Record<string, unknown>> {
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    reportDiagnostics: true,
+  });
+  const diagnostics =
+    transpiled.diagnostics?.filter((diagnostic) => {
+      return diagnostic.category === ts.DiagnosticCategory.Error;
+    }) ?? [];
+  if (diagnostics.length > 0) {
+    throw new Error(
+      `Failed to transpile generated firewall source for ${type}: ${diagnostics
+        .map(diagnosticText)
+        .join("; ")}`,
+    );
+  }
+
+  const moduleSource = `${transpiled.outputText}\n//# sourceURL=vm0-firewall:${type}.generated.js\n`;
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`;
+  const moduleExports: unknown = await import(moduleUrl);
+  if (!isRecord(moduleExports)) {
+    throw new Error(`Expected generated firewall module exports: ${type}`);
+  }
+  return moduleExports;
+}
+
+export async function loadGeneratedConnectorFirewallModuleExports(
+  type: FirewallConnectorType,
+): Promise<Record<string, unknown>> {
+  const source = await ensureGeneratedFirewallOutput(type);
+  const cached = generatedModuleCache.get(type);
+  if (cached && cached.source === source) {
+    return await cached.moduleExports;
+  }
+
+  const moduleExports = loadGeneratedModuleExports(type, source).catch(
+    (error: unknown) => {
+      generatedModuleCache.delete(type);
+      throw error;
+    },
+  );
+  generatedModuleCache.set(type, { source, moduleExports });
+  return await moduleExports;
+}
+
 async function loadGeneratedFirewallSource(
-  firewallsDir: string,
   connectorsDir: string,
   type: FirewallConnectorType,
 ): Promise<ConnectorFirewallSource> {
   const firewallExportName = generatedFirewallExportName(type);
   const connectorMetadata = loadConnectorMetadata(connectorsDir, type);
-  const moduleExports = await importModule(
-    path.join(firewallsDir, generatedFirewallFileName(type)),
-  );
+  const moduleExports = await loadGeneratedConnectorFirewallModuleExports(type);
   const firewall = getRequiredGeneratedExportByName(
     moduleExports,
     type,
@@ -396,17 +510,29 @@ async function loadGeneratedFirewallSource(
   };
 }
 
+export async function loadGeneratedConnectorFirewallSource(
+  type: FirewallConnectorType,
+  {
+    connectorsDir = defaultConnectorsDir(),
+  }: ConnectorFirewallSourceSetOptions = {},
+): Promise<ConnectorFirewallSource> {
+  return await loadGeneratedFirewallSource(connectorsDir, type);
+}
+
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export async function loadConnectorFirewallSourceSet({
-  firewallsDir,
-  connectorsDir,
-}: ConnectorFirewallSourceSetOptions): Promise<ConnectorFirewallSourceSet> {
+  connectorsDir = defaultConnectorsDir(),
+}: ConnectorFirewallSourceSetOptions = {}): Promise<ConnectorFirewallSourceSet> {
+  for (const type of FIREWALL_CONNECTOR_TYPES) {
+    await ensureGeneratedFirewallOutput(type);
+  }
+
   const sources = await Promise.all(
     [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings).map((type) => {
-      return loadGeneratedFirewallSource(firewallsDir, connectorsDir, type);
+      return loadGeneratedFirewallSource(connectorsDir, type);
     }),
   );
   const sourceByType = new Map<FirewallConnectorType, ConnectorFirewallSource>(

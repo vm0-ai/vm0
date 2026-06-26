@@ -58,5 +58,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Browserless firewall config...");
   const ts = generateTypeScript();
-  writeOutput("browserless", ts, import.meta.dirname);
+  writeOutput("browserless", ts);
 }

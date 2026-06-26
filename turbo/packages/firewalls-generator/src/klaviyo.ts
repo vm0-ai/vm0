@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Klaviyo firewall config...");
   const ts = generateTypeScript();
-  writeOutput("klaviyo", ts, import.meta.dirname);
+  writeOutput("klaviyo", ts);
 }

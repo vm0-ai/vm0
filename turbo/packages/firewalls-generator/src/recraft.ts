@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Recraft firewall config...");
   const ts = generateTypeScript();
-  writeOutput("recraft", ts, import.meta.dirname);
+  writeOutput("recraft", ts);
 }

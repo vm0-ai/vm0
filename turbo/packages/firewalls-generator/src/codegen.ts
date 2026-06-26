@@ -269,32 +269,27 @@ export function renderCategories(
 
 // ── File I/O ─────────────────────────────────────────────────────────────
 
-/**
- * Write generated content to the output file and validate it's non-empty.
- *
- * @param serviceName - Used to derive the output filename
- *   (e.g. "figma" → "figma.generated.ts")
- * @param content - Generated TypeScript source
- * @param dirname - `import.meta.dirname` of the calling module
- */
-export function writeOutput(
-  serviceName: string,
-  content: string,
-  dirname: string,
-): void {
-  const outPath = path.resolve(
-    dirname,
-    `../../connectors/src/firewalls/${serviceName}.generated.ts`,
-  );
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, content);
-  console.error(`  Written to ${outPath}`);
+const GENERATED_FIREWALL_OUTPUTS = new Map<string, string>();
 
-  const stat = fs.statSync(outPath);
-  if (stat.size === 0) {
+export function getGeneratedFirewallOutput(serviceName: string): string | null {
+  return GENERATED_FIREWALL_OUTPUTS.get(serviceName) ?? null;
+}
+
+/**
+ * Capture generated content and validate it's non-empty.
+ *
+ * @param serviceName - Connector firewall name
+ * @param content - Generated TypeScript source
+ */
+export function writeOutput(serviceName: string, content: string): void {
+  if (content.length === 0) {
     throw new Error("Generated file is empty");
   }
-  console.error(`  Validated (${(stat.size / 1024).toFixed(1)} KB)`);
+
+  GENERATED_FIREWALL_OUTPUTS.set(serviceName, content);
+  console.error(
+    `  Captured ${serviceName} firewall (${(content.length / 1024).toFixed(1)} KB)`,
+  );
 }
 
 // ── Logging ──────────────────────────────────────────────────────────────

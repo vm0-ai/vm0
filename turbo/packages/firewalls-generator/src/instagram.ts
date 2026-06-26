@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Instagram firewall config...");
   const ts = generateTypeScript();
-  writeOutput("instagram", ts, import.meta.dirname);
+  writeOutput("instagram", ts);
 }

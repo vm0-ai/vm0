@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Diffbot firewall config...");
   const ts = generateTypeScript();
-  writeOutput("diffbot", ts, import.meta.dirname);
+  writeOutput("diffbot", ts);
 }

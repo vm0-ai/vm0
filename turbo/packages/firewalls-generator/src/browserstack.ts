@@ -76,5 +76,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating BrowserStack firewall config...");
   const ts = generateTypeScript();
-  writeOutput("browserstack", ts, import.meta.dirname);
+  writeOutput("browserstack", ts);
 }

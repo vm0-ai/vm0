@@ -60,5 +60,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Daytona firewall config...");
   const ts = generateTypeScript();
-  writeOutput("daytona", ts, import.meta.dirname);
+  writeOutput("daytona", ts);
 }

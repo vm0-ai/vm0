@@ -581,5 +581,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("sentry", ts, import.meta.dirname);
+  writeOutput("sentry", ts);
 }

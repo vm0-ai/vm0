@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Buffer firewall config...");
   const ts = generateTypeScript();
-  writeOutput("buffer", ts, import.meta.dirname);
+  writeOutput("buffer", ts);
 }

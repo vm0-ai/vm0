@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Customer.io firewall config...");
   const ts = generateTypeScript();
-  writeOutput("customer-io", ts, import.meta.dirname);
+  writeOutput("customer-io", ts);
 }

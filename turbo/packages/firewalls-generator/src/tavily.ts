@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Tavily firewall config...");
   const ts = generateTypeScript();
-  writeOutput("tavily", ts, import.meta.dirname);
+  writeOutput("tavily", ts);
 }

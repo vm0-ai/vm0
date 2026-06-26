@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Ahrefs firewall config...");
   const ts = generateTypeScript();
-  writeOutput("ahrefs", ts, import.meta.dirname);
+  writeOutput("ahrefs", ts);
 }

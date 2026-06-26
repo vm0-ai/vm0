@@ -65,5 +65,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Black Forest Labs firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bfl", ts, import.meta.dirname);
+  writeOutput("bfl", ts);
 }

@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Spotify firewall config...");
   const ts = generateTypeScript();
-  writeOutput("spotify", ts, import.meta.dirname);
+  writeOutput("spotify", ts);
 }

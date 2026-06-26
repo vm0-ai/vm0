@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Mailsac firewall config...");
   const ts = generateTypeScript();
-  writeOutput("mailsac", ts, import.meta.dirname);
+  writeOutput("mailsac", ts);
 }

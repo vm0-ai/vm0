@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Qdrant firewall config...");
   const ts = generateTypeScript();
-  writeOutput("qdrant", ts, import.meta.dirname);
+  writeOutput("qdrant", ts);
 }

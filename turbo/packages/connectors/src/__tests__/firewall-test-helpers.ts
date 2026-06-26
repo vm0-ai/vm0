@@ -7,6 +7,11 @@ import {
 } from "../firewall-metadata";
 import { expandFirewallPlaceholders } from "../firewall-placeholder-expansion";
 import type { FirewallConfig, FirewallPolicy } from "../firewall-types";
+import {
+  loadConnectorFirewallSourceSet,
+  loadGeneratedConnectorFirewallModuleExports,
+  loadGeneratedConnectorFirewallSource,
+} from "../../../firewalls-generator/src/connector-firewall-sources";
 
 type TestFirewallConnectorType = Extract<
   FirewallMetadataConnectorType,
@@ -17,42 +22,57 @@ const generatedFirewallCache = new Map<
   TestFirewallConnectorType,
   Promise<FirewallConfig>
 >();
-
-interface ImportMetaWithGlob extends ImportMeta {
-  glob<T>(
-    pattern: string,
-    options?: { readonly import?: string },
-  ): Record<string, () => Promise<T>>;
-}
-
-type GeneratedFirewallModule = Readonly<Record<string, unknown>>;
-
-const generatedFirewallModules = (
-  import.meta as ImportMetaWithGlob
-).glob<GeneratedFirewallModule>("../firewalls/*.generated.ts");
+let runtimeFirewallEntriesPromise: Promise<
+  readonly (readonly [TestFirewallConnectorType, FirewallConfig])[]
+> | null = null;
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null;
-}
-
-function isFirewallConfig(value: unknown): value is FirewallConfig {
-  return isRecord(value) && Array.isArray(value.apis);
-}
-
-function generatedFirewallExportName(type: TestFirewallConnectorType): string {
-  return `${type
-    .split("-")
-    .map((segment, index) => {
-      if (index === 0) {
-        return segment;
-      }
-      return `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`;
+export function isStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => {
+      return typeof item === "string";
     })
-    .join("")}Firewall`;
+  );
+}
+
+export function isStringRecord(
+  value: unknown,
+): value is Record<string, string> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every((item) => {
+      return typeof item === "string";
+    })
+  );
+}
+
+export function isNumberRecord(
+  value: unknown,
+): value is Record<string, number> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every((item) => {
+      return typeof item === "number";
+    })
+  );
+}
+
+export function isNumberOrStringRecord(
+  value: unknown,
+): value is Record<string, number | string> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every((item) => {
+      return typeof item === "number" || typeof item === "string";
+    })
+  );
 }
 
 function isTestFirewallConnectorType(
@@ -64,28 +84,11 @@ function isTestFirewallConnectorType(
   );
 }
 
-const TEST_FIREWALL_CONNECTOR_TYPES = Object.keys(
-  FIREWALL_PERMISSION_METADATA_SUMMARIES,
-)
-  .filter(isTestFirewallConnectorType)
-  .sort(compareStrings);
-
 async function loadGeneratedConnectorFirewall(
   type: TestFirewallConnectorType,
 ): Promise<FirewallConfig> {
-  const moduleLoader =
-    generatedFirewallModules[`../firewalls/${type}.generated.ts`];
-  if (!moduleLoader) {
-    throw new Error(`Missing generated connector firewall module: ${type}`);
-  }
-  const generatedModule = await moduleLoader();
-  const exportName = generatedFirewallExportName(type);
-  const firewall = generatedModule[exportName];
-  if (!isFirewallConfig(firewall)) {
-    throw new Error(`Missing generated connector firewall: ${type}`);
-  }
-
-  return expandFirewallPlaceholders(firewall, type);
+  const source = await loadGeneratedConnectorFirewallSource(type);
+  return expandFirewallPlaceholders(source.firewall, type);
 }
 
 async function loadTestConnectorFirewall(
@@ -122,11 +125,25 @@ export async function loadRequiredConnectorFirewall(
 export async function loadRuntimeFirewallEntries(): Promise<
   readonly (readonly [TestFirewallConnectorType, FirewallConfig])[]
 > {
-  const firewalls = await Promise.all(
-    TEST_FIREWALL_CONNECTOR_TYPES.map(async (type) => {
-      return [type, await loadTestConnectorFirewall(type)] as const;
-    }),
-  );
+  runtimeFirewallEntriesPromise ??= loadRuntimeFirewallEntriesUncached();
+  return await runtimeFirewallEntriesPromise;
+}
+
+async function loadRuntimeFirewallEntriesUncached(): Promise<
+  readonly (readonly [TestFirewallConnectorType, FirewallConfig])[]
+> {
+  const sourceSet = await loadConnectorFirewallSourceSet();
+  const firewalls: (readonly [TestFirewallConnectorType, FirewallConfig])[] =
+    [];
+  for (const source of sourceSet.sources) {
+    if (!isTestFirewallConnectorType(source.type)) {
+      throw new Error(`Missing generated connector firewall: ${source.type}`);
+    }
+    firewalls.push([
+      source.type,
+      expandFirewallPlaceholders(source.firewall, source.type),
+    ]);
+  }
   return firewalls.sort(([a], [b]) => {
     return compareStrings(a, b);
   });
@@ -146,4 +163,20 @@ export async function loadDefaultFirewallPolicies(
     throw new Error(`Missing firewall permission metadata: ${type}`);
   }
   return expandFirewallMetadataDefaultPolicy(metadata);
+}
+
+export async function loadRequiredGeneratedConnectorFirewallExport<T>(
+  type: TestFirewallConnectorType,
+  exportName: string,
+  isExpected: (value: unknown) => value is T,
+): Promise<T> {
+  const generatedModule =
+    await loadGeneratedConnectorFirewallModuleExports(type);
+  const value = generatedModule[exportName];
+  if (!isExpected(value)) {
+    throw new Error(
+      `Missing generated connector firewall export: ${exportName}`,
+    );
+  }
+  return value;
 }

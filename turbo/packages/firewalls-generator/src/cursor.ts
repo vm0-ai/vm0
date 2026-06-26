@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Cursor firewall config...");
   const ts = generateTypeScript();
-  writeOutput("cursor", ts, import.meta.dirname);
+  writeOutput("cursor", ts);
 }

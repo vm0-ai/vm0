@@ -18,7 +18,7 @@ import type {
 } from "../../connectors/src/firewall-metadata/types";
 import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
-  generatedFirewallFileName,
+  generatedConnectorMetadataFileName,
   loadConnectorFirewallSourceSet,
   type ConnectorEnvBindingEntry,
   type ConnectorFirewallSource,
@@ -84,13 +84,13 @@ function writeGeneratedFile(filePath: string, content: string): void {
 }
 
 function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
-  return `./details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+  return `./details/${generatedConnectorMetadataFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function generatedRoutingDetailModuleSpecifier(
   type: FirewallConnectorType,
 ): string {
-  return `./routing-details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+  return `./routing-details/${generatedConnectorMetadataFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function replaceGeneratedPath(
@@ -631,10 +631,6 @@ export async function loadGeneratedFirewallRoutingMetadata(
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
-  const firewallsDir = path.resolve(
-    import.meta.dirname,
-    "../../connectors/src/firewalls",
-  );
   const connectorsDir = path.resolve(
     import.meta.dirname,
     "../../connectors/src/connectors",
@@ -655,14 +651,9 @@ export async function generateFirewallMetadata(): Promise<void> {
   );
   const detailsDir = path.join(outputDir, "details");
   const routingDetailsDir = path.join(outputDir, "routing-details");
-  const obsoleteRuntimeLoaderFile = path.join(
-    firewallsDir,
-    "runtime-loader.generated.ts",
-  );
 
   const { sources, registryOrderedSources, billableTypes } =
     await loadConnectorFirewallSourceSet({
-      firewallsDir,
       connectorsDir,
     });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
@@ -699,13 +690,19 @@ export async function generateFirewallMetadata(): Promise<void> {
 
   for (const detail of permissionDetails) {
     writeGeneratedFile(
-      path.join(nextDetailsDir, generatedFirewallFileName(detail.type)),
+      path.join(
+        nextDetailsDir,
+        generatedConnectorMetadataFileName(detail.type),
+      ),
       detail.content,
     );
   }
   for (const detail of routingDetails) {
     writeGeneratedFile(
-      path.join(nextRoutingDetailsDir, generatedFirewallFileName(detail.type)),
+      path.join(
+        nextRoutingDetailsDir,
+        generatedConnectorMetadataFileName(detail.type),
+      ),
       detail.content,
     );
   }
@@ -794,7 +791,6 @@ export async function generateFirewallMetadata(): Promise<void> {
     replacement.commit();
   }
   fs.rmSync(obsoleteRoutingFile, { force: true });
-  fs.rmSync(obsoleteRuntimeLoaderFile, { force: true });
 
   console.error(`  Written ${sources.length} metadata detail files`);
 }

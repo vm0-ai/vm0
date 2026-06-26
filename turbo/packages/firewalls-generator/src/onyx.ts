@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Onyx firewall config...");
   const ts = generateTypeScript();
-  writeOutput("onyx", ts, import.meta.dirname);
+  writeOutput("onyx", ts);
 }

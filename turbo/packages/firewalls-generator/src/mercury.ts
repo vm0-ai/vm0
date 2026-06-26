@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Mercury firewall config...");
   const ts = generateTypeScript();
-  writeOutput("mercury", ts, import.meta.dirname);
+  writeOutput("mercury", ts);
 }

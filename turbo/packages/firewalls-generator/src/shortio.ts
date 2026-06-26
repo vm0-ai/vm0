@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Short.io firewall config...");
   const ts = generateTypeScript();
-  writeOutput("shortio", ts, import.meta.dirname);
+  writeOutput("shortio", ts);
 }

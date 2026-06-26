@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Dropbox Sign firewall config...");
   const ts = generateTypeScript();
-  writeOutput("dropbox-sign", ts, import.meta.dirname);
+  writeOutput("dropbox-sign", ts);
 }
