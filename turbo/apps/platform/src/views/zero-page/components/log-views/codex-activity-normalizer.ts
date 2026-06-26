@@ -761,23 +761,19 @@ function formatPlanLines(plan: unknown): string[] {
   if (!Array.isArray(plan)) {
     return [];
   }
-  const lines = plan
-    .slice(0, MAX_FORMATTED_PLAN_STEPS)
-    .map((step) => {
-      if (!isRecord(step)) {
-        return undefined;
-      }
-      const text = trimmedStringValue(step.step);
-      if (!text) {
-        return undefined;
-      }
-      const status = formatPlanStatus(trimmedStringValue(step.status));
-      return `- ${status}: ${text}`;
-    })
-    .filter((line): line is string => {
-      return line !== undefined;
-    });
-  const remaining = plan.length - MAX_FORMATTED_PLAN_STEPS;
+  const parsedLines = plan.flatMap((step) => {
+    if (!isRecord(step)) {
+      return [];
+    }
+    const text = trimmedStringValue(step.step);
+    if (!text) {
+      return [];
+    }
+    const status = formatPlanStatus(trimmedStringValue(step.status));
+    return [`- ${status}: ${text}`];
+  });
+  const lines = parsedLines.slice(0, MAX_FORMATTED_PLAN_STEPS);
+  const remaining = parsedLines.length - MAX_FORMATTED_PLAN_STEPS;
   if (remaining > 0) {
     lines.push(`- ... +${remaining} more steps`);
   }

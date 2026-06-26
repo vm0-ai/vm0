@@ -1086,6 +1086,9 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         turn_id: "turn-plan",
         explanation: "Refresh adapter event plan",
         plan: [
+          ...Array.from({ length: 20 }, () => {
+            return {};
+          }),
           { step: "Collect app-server events", status: "completed" },
           { step: "Normalize Platform rows", status: "in_progress" },
         ],
@@ -2855,6 +2858,8 @@ describe("activity detail polling", () => {
         );
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/Collect app-server events/u)).toBeInTheDocument();
+    expect(screen.queryByText(/\+2 more steps/u)).not.toBeInTheDocument();
     expect(
       screen.getByText(/Ship Platform normalizer coverage\./u),
     ).toBeInTheDocument();
