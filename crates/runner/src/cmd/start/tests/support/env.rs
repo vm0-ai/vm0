@@ -41,8 +41,8 @@ pub(in super::super) struct MockRunEnv {
 
 impl MockRunEnv {
     /// Simulate SIGUSR1 by driving the real `handle_drain_signal` so
-    /// tests exercise the same state-guard path production does
-    /// (ignored unless current mode is Running).
+    /// tests exercise the same state-guard path production does:
+    /// Running enters Draining, Draining is idempotent, teardown modes ignore it.
     pub(in super::super) fn drain(&self) {
         handle_drain_signal(&self.lifecycle);
     }
