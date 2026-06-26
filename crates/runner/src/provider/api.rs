@@ -312,6 +312,7 @@ impl JobProvider for ApiProvider {
             }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "claim failed");
+                self.poll_wakeups.request_immediate_poll().await;
                 None
             }
         }
@@ -1255,6 +1256,78 @@ mod tests {
             Some(JobDiscoverySource::Ably)
         );
         poll_mock.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn claim_failure_after_ably_direct_candidate_wakes_poll_fallback() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-0000-0000-000000000009".parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(503).body("claim unavailable");
+            })
+            .await;
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "profiles": [],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+        provider
+            ._broadcast_direct_candidate_tx
+            .try_send(DirectJobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                false,
+            ))
+            .unwrap();
+
+        let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should receive direct candidate")
+            .unwrap();
+        assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
+        assert!(provider.claim(direct).await.is_none());
+        let rediscovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("claim failure should wake immediate poll")
+            .unwrap();
+
+        assert_eq!(rediscovered.run_id(), run_id);
+        assert_eq!(
+            rediscovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
+        claim_mock.assert_async().await;
+        poll_mock.assert_async().await;
     }
 
     #[tokio::test]

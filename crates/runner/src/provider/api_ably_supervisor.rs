@@ -186,7 +186,7 @@ impl PollWakeups {
         self.notify.notify_waiters();
     }
 
-    async fn request_immediate_poll(&self) {
+    pub(super) async fn request_immediate_poll(&self) {
         let mut inner = self.inner.lock().await;
         inner.poll_now = true;
         inner.bump_generation();
