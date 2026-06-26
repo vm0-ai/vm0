@@ -415,19 +415,23 @@ async fn create_checkpoint_impl_with_artifacts(
             }
         };
 
-    let session_history = match String::from_utf8(history_bytes) {
-        Ok(s) => s,
+    let session_history_text = match std::str::from_utf8(&history_bytes) {
+        Ok(s) => Some(s),
         Err(e) => {
-            return Err(fail(
-                mode,
-                "session_history_read",
-                history_read_start,
-                format!("Session history is not valid UTF-8: {e}"),
-            ));
+            let msg = format!("Session history is not valid UTF-8: {e}");
+            if mode.validate_history() {
+                return Err(fail(mode, "session_history_read", history_read_start, msg));
+            }
+            log_warn!(LOG_TAG, "{msg}; preserving raw bytes for checkpoint");
+            None
         }
     };
 
-    if session_history.trim().is_empty() {
+    let history_is_empty = session_history_text.map_or_else(
+        || history_bytes.iter().all(|byte| byte.is_ascii_whitespace()),
+        |session_history| session_history.trim().is_empty(),
+    );
+    if history_is_empty {
         return Err(fail(
             mode,
             "session_history_read",
@@ -436,13 +440,21 @@ async fn create_checkpoint_impl_with_artifacts(
         ));
     }
 
-    if mode.validate_history() {
-        validate_recoverable_session_history(&session_history)
-            .map_err(|msg| fail(mode, "session_history_validate", history_read_start, msg))?;
-    }
+    if let Some(session_history) = session_history_text {
+        if mode.validate_history() {
+            validate_recoverable_session_history(session_history)
+                .map_err(|msg| fail(mode, "session_history_validate", history_read_start, msg))?;
+        }
 
-    let line_count = session_history.lines().count();
-    log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
+        let line_count = session_history.lines().count();
+        log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
+    } else {
+        log_info!(
+            LOG_TAG,
+            "Session history loaded ({} raw bytes, invalid UTF-8)",
+            history_bytes.len()
+        );
+    }
     record_sandbox_op(
         "session_history_read",
         history_read_start.elapsed(),
@@ -451,8 +463,8 @@ async fn create_checkpoint_impl_with_artifacts(
     );
 
     // Compute SHA-256 hash of session history for presigned URL upload
-    let history_hash = hex::encode(Sha256::digest(session_history.as_bytes()));
-    let history_size = session_history.len() as u64;
+    let history_hash = hex::encode(Sha256::digest(&history_bytes));
+    let history_size = history_bytes.len() as u64;
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
@@ -465,12 +477,7 @@ async fn create_checkpoint_impl_with_artifacts(
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
     let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(
-            http,
-            &history_hash,
-            history_size,
-            session_history.into_bytes()
-        ),
+        upload_session_history(http, &history_hash, history_size, history_bytes),
         snapshot_artifact_entries(http, artifact_entries),
     )?;
 
