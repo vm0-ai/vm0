@@ -167,6 +167,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import { loadZeroBackedComposeConnectorScope } from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -290,6 +291,17 @@ interface ResolvedCompose {
   readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+}
+
+type EffectiveConnectorScopeSource =
+  | "create-args"
+  | "zero-backed-direct"
+  | "legacy-direct";
+
+interface EffectiveConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly allowedCustomConnectorIds: readonly string[] | undefined;
+  readonly source: EffectiveConnectorScopeSource;
 }
 
 // Session naming in this service:
@@ -597,7 +609,10 @@ function buildWorkflowSkillVolumes(
 }
 
 function buildInjectedSkillVolumes(
-  args: CreateAgentRunArgs,
+  args: {
+    readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  },
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] | undefined {
@@ -4746,6 +4761,7 @@ async function buildPreparedPermissionManifest(args: {
 
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4753,7 +4769,10 @@ function preparedRunAdditionalVolumes(args: {
 }): readonly AdditionalVolume[] | undefined {
   return mergeAdditionalVolumes({
     prepend: buildInjectedSkillVolumes(
-      args.createArgs,
+      {
+        injectSkillVolumes: args.createArgs.injectSkillVolumes,
+        allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+      },
       args.framework,
       isFeatureEnabled(
         FeatureSwitchKey.GoalWorkflows,
@@ -4781,6 +4800,54 @@ interface PreparedRuntimeContext {
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
+}
+
+function connectorScopeFromCreateArgs(
+  args: CreateAgentRunArgs,
+): EffectiveConnectorScope | null {
+  if (
+    args.allowedConnectorTypes === undefined &&
+    args.allowedCustomConnectorIds === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    allowedConnectorTypes: args.allowedConnectorTypes ?? [],
+    allowedCustomConnectorIds: args.allowedCustomConnectorIds ?? [],
+    source: "create-args",
+  };
+}
+
+async function resolveEffectiveConnectorScope(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly resolved: ResolvedCompose;
+  readonly signal: AbortSignal;
+}): Promise<EffectiveConnectorScope> {
+  const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
+  if (createArgsScope) {
+    return createArgsScope;
+  }
+
+  const zeroBackedScope = await loadZeroBackedComposeConnectorScope(args.db, {
+    userId: args.createArgs.userId,
+    orgId: args.createArgs.orgId,
+    composeId: args.resolved.composeId,
+  });
+  args.signal.throwIfAborted();
+  if (zeroBackedScope) {
+    return {
+      ...zeroBackedScope,
+      source: "zero-backed-direct",
+    };
+  }
+
+  return {
+    allowedConnectorTypes: undefined,
+    allowedCustomConnectorIds: undefined,
+    source: "legacy-direct",
+  };
 }
 
 async function prepareRunBodyContext(args: {
@@ -4878,6 +4945,7 @@ async function prepareRunBodyContext(args: {
 async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly bodyContext: PreparedRunBodyContext;
@@ -4909,7 +4977,13 @@ async function prepareRunRuntimeContext(args: {
       async () => {
         return await loadRunConnectorContexts(
           args.db,
-          args.createArgs,
+          {
+            orgId: args.createArgs.orgId,
+            userId: args.createArgs.userId,
+            allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+            allowedCustomConnectorIds:
+              args.connectorScope.allowedCustomConnectorIds,
+          },
           featureSwitchContext,
           args.timing,
         );
@@ -4955,6 +5029,7 @@ async function prepareRunRuntimeContext(args: {
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4965,6 +5040,7 @@ function prepareRunOutputMetadata(args: {
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
+    connectorScope: args.connectorScope,
     framework: args.framework,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
@@ -5009,9 +5085,24 @@ function prepareRunContext(
         return bodyContext;
       }
 
+      const connectorScope = await timing.measure(
+        "api_dispatch_prepare_context_resolve_connector_scope",
+        "nested",
+        async () => {
+          return await resolveEffectiveConnectorScope({
+            db,
+            createArgs: args,
+            resolved: bodyContext.resolved,
+            signal,
+          });
+        },
+      );
+      signal.throwIfAborted();
+
       const runtimeContext = await prepareRunRuntimeContext({
         db,
         createArgs: args,
+        connectorScope,
         timing,
         signal,
         bodyContext,
@@ -5057,6 +5148,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
+              connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body: bodyContext.body,
