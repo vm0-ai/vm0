@@ -459,6 +459,7 @@ function TodoCard({
   );
 
   const timestamp = formatEventTime(message.createdAt);
+  const todoKeyCounts = new Map<string, number>();
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
@@ -500,9 +501,12 @@ function TodoCard({
         </summary>
         <div className="mt-2 space-y-1.5 ml-[18px]">
           {todoItems.map((item) => {
+            const keyPrefix = `${item.status}:${item.content}`;
+            const occurrence = todoKeyCounts.get(keyPrefix) ?? 0;
+            todoKeyCounts.set(keyPrefix, occurrence + 1);
             return (
               <div
-                key={item.content}
+                key={`${keyPrefix}:${occurrence}`}
                 className="flex items-center gap-2 text-sm"
               >
                 <span className="shrink-0">

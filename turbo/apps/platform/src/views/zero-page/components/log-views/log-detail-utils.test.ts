@@ -327,6 +327,47 @@ describe("groupedMessageMatchesSearch", () => {
       false,
     );
   });
+
+  it("matches todo item content", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-1",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    {
+                      content: "Investigate sandbox retry",
+                      status: "in_progress",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+    ]);
+
+    const todoMessage = messages[0];
+    if (!todoMessage) {
+      throw new Error("expected todo message");
+    }
+
+    expect(groupedMessageMatchesSearch(todoMessage, "sandbox retry")).toBe(
+      true,
+    );
+    expect(groupedMessageMatchesSearch(todoMessage, "missing text")).toBe(
+      false,
+    );
+  });
 });
 
 describe("groupEventsIntoMessages thinking content", () => {
@@ -504,6 +545,68 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
     expect(messages[1]?.todoState).toEqual([
       { content: "First task", status: "completed" },
       { content: "Second task", status: "in_progress" },
+    ]);
+  });
+});
+
+describe("groupEventsIntoMessages TodoWrite snapshots", () => {
+  it("treats TodoWrite input as the latest ordered todo snapshot", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-1",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "Duplicate task", status: "pending" },
+                    { content: "Duplicate task", status: "in_progress" },
+                    { content: "Removed task", status: "pending" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 8,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-2",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "Duplicate task", status: "completed" },
+                    { content: "Duplicate task", status: "in_progress" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages[0]?.todoState).toEqual([
+      { content: "Duplicate task", status: "pending" },
+      { content: "Duplicate task", status: "in_progress" },
+      { content: "Removed task", status: "pending" },
+    ]);
+    expect(messages[1]?.todoState).toEqual([
+      { content: "Duplicate task", status: "completed" },
+      { content: "Duplicate task", status: "in_progress" },
     ]);
   });
 });

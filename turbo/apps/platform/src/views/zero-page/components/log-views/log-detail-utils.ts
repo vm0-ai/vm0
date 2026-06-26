@@ -478,10 +478,7 @@ function appendToolsToMessage(
  * Process TodoWrite operation and update todo state.
  * Returns the new in_progress task content if any.
  */
-function processTodoWrite(
-  op: ToolOperation,
-  todoState: Map<string, { content: string; status: string }>,
-): string | null {
+function processTodoWrite(op: ToolOperation): TodoItem[] | null {
   if (op.toolName.toLowerCase() !== "todowrite") {
     return null;
   }
@@ -489,18 +486,14 @@ function processTodoWrite(
   if (!Array.isArray(todos)) {
     return null;
   }
-  let newInProgressTask: string | null = null;
-  for (const todo of todos) {
+
+  return todos.map((todo) => {
     const item = isRecord(todo) ? todo : {};
     const content =
       typeof item.content === "string" ? item.content : String(todo);
     const status = typeof item.status === "string" ? item.status : "pending";
-    todoState.set(content, { content, status });
-    if (status === "in_progress") {
-      newInProgressTask = content;
-    }
-  }
-  return newInProgressTask;
+    return { content, status };
+  });
 }
 
 interface GroupingContext {
@@ -509,7 +502,7 @@ interface GroupingContext {
     string,
     { operation: ToolOperation; message: GroupedMessage }
   >;
-  todoState: Map<string, { content: string; status: string }>;
+  todoState: TodoItem[];
   pendingTasks: Map<string, GroupedMessage>;
   // Map from tool_use_id (that spawned the task) → task GroupedMessage
   // Used to route child events via parent_tool_use_id
@@ -720,10 +713,13 @@ function processAssistantEvent(
 
   for (const op of toolOperations) {
     if (op.toolName.toLowerCase() === "todowrite") {
-      processTodoWrite(op, ctx.todoState);
+      const nextTodoState = processTodoWrite(op);
+      if (nextTodoState) {
+        ctx.todoState = nextTodoState;
+      }
       todoWriteSnapshots.push({
         operation: op,
-        todoState: Array.from(ctx.todoState.values()),
+        todoState: ctx.todoState,
       });
     } else {
       otherToolOps.push(op);
@@ -872,7 +868,7 @@ export function groupEventsIntoMessages(
   const ctx: GroupingContext = {
     grouped: [],
     pendingToolUses: new Map(),
-    todoState: new Map(),
+    todoState: [],
     pendingTasks: new Map(),
     taskByToolUseId: new Map(),
   };
@@ -902,6 +898,66 @@ export function groupEventsIntoMessages(
 /**
  * Extract visible/searchable text from a grouped message.
  */
+function getToolSearchText(operations: ToolOperation[] | undefined): string[] {
+  const parts: string[] = [];
+  for (const op of operations ?? []) {
+    parts.push(op.toolName);
+    if (op.keyParam) {
+      parts.push(op.keyParam);
+    }
+    if (op.result?.content) {
+      parts.push(op.result.content);
+    }
+  }
+  return parts;
+}
+
+function getTodoSearchText(todos: TodoItem[] | undefined): string[] {
+  return (
+    todos?.flatMap((todo) => {
+      return [todo.content, todo.status];
+    }) ?? []
+  );
+}
+
+function getChildMessageSearchText(
+  childMessages: GroupedMessage[] | undefined,
+): string[] {
+  return (
+    childMessages?.map((childMessage) => {
+      return getVisibleGroupedMessageText(childMessage);
+    }) ?? []
+  );
+}
+
+function getSystemMessageSearchText(
+  message: GroupedMessage,
+  eventData: GroupingEventData,
+): string[] {
+  const parts: string[] = [];
+  if (typeof eventData.subtype === "string" && eventData.subtype) {
+    parts.push(eventData.subtype);
+  }
+  if (isTaskEventData(message.eventData)) {
+    const description = stringValue(message.eventData.description);
+    const taskSummary = stringValue(message.eventData.task_summary);
+    if (description) {
+      parts.push(description);
+    }
+    if (taskSummary) {
+      parts.push(taskSummary);
+    }
+  }
+  parts.push(...toStringList(eventData.tools));
+  parts.push(...toStringList(eventData.agents));
+  parts.push(
+    ...toStringList(eventData.slash_commands).map((cmd) => {
+      return `/${cmd}`;
+    }),
+  );
+  return parts;
+}
+
 function getVisibleGroupedMessageText(message: GroupedMessage): string {
   const parts: string[] = [];
 
@@ -915,56 +971,20 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
     parts.push(message.textBefore);
   }
 
-  if (message.toolOperations) {
-    for (const op of message.toolOperations) {
-      parts.push(op.toolName);
-      if (op.keyParam) {
-        parts.push(op.keyParam);
-      }
-      if (op.result?.content) {
-        parts.push(op.result.content);
-      }
-    }
-  }
+  parts.push(...getToolSearchText(message.toolOperations));
 
   if (message.textAfter) {
     parts.push(message.textAfter);
   }
 
-  if (message.childMessages) {
-    for (const childMessage of message.childMessages) {
-      parts.push(getVisibleGroupedMessageText(childMessage));
-    }
-  }
+  parts.push(...getTodoSearchText(message.todoState));
+  parts.push(...getChildMessageSearchText(message.childMessages));
 
   // For system/result events, also extract from eventData
   const eventData = toGroupingEventData(message.eventData);
 
   if (message.type === "system") {
-    if (typeof eventData.subtype === "string" && eventData.subtype) {
-      parts.push(eventData.subtype);
-    }
-    // Include task description/summary for search
-    if (isTaskEventData(message.eventData)) {
-      const description = stringValue(message.eventData.description);
-      const taskSummary = stringValue(message.eventData.task_summary);
-      if (description) {
-        parts.push(description);
-      }
-      if (taskSummary) {
-        parts.push(taskSummary);
-      }
-    }
-    parts.push(...toStringList(eventData.tools));
-    parts.push(...toStringList(eventData.agents));
-    const slashCommands = toStringList(eventData.slash_commands);
-    if (slashCommands.length > 0) {
-      parts.push(
-        ...slashCommands.map((cmd) => {
-          return `/${cmd}`;
-        }),
-      );
-    }
+    parts.push(...getSystemMessageSearchText(message, eventData));
   }
 
   if (message.type === "result" && typeof eventData.result === "string") {
