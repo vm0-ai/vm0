@@ -67,6 +67,24 @@ impl DirectJobCandidate {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct DirectCandidateSenders {
+    targeted: mpsc::Sender<DirectJobCandidate>,
+    broadcast: mpsc::Sender<DirectJobCandidate>,
+}
+
+impl DirectCandidateSenders {
+    pub(super) fn new(
+        targeted: mpsc::Sender<DirectJobCandidate>,
+        broadcast: mpsc::Sender<DirectJobCandidate>,
+    ) -> Self {
+        Self {
+            targeted,
+            broadcast,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PollReason {
     Immediate,
@@ -425,7 +443,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) runner_id: String,
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
-    pub(super) direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
+    pub(super) direct_candidate_senders: DirectCandidateSenders,
     pub(super) cancel_tokens: SharedRunCancellationMap,
     pub(super) provider_cancel: CancellationToken,
 }
@@ -436,7 +454,7 @@ struct SupervisorTaskConfig {
     runner_id: String,
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
-    direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
+    direct_candidate_senders: DirectCandidateSenders,
     cancel_tokens: SharedRunCancellationMap,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
@@ -452,7 +470,7 @@ impl AblySupervisor {
             runner_id: config.runner_id,
             profiles: config.profiles,
             poll_wakeups: config.poll_wakeups,
-            direct_candidate_tx: config.direct_candidate_tx,
+            direct_candidate_senders: config.direct_candidate_senders,
             cancel_tokens: config.cancel_tokens,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
@@ -524,7 +542,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                             &config.runner_id,
                             &config.profiles,
                             &config.poll_wakeups,
-                            &config.direct_candidate_tx,
+                            &config.direct_candidate_senders,
                             &config.cancel_tokens,
                         )
                         .await;
@@ -596,7 +614,7 @@ async fn handle_ably_message(
     runner_id: &str,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
-    direct_candidate_tx: &mpsc::Sender<DirectJobCandidate>,
+    direct_candidate_senders: &DirectCandidateSenders,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
     if let Some(run_id) = parse_cancel_notification(msg) {
@@ -669,7 +687,7 @@ async fn handle_ably_message(
             poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidate_tx, poll_wakeups).await;
+            enqueue_direct_candidate(candidate, direct_candidate_senders, poll_wakeups).await;
         }
         JobNotificationAction::Ignore => {}
     }
@@ -694,15 +712,21 @@ fn supports_profile(profiles: &[String], profile: &str) -> bool {
 
 async fn enqueue_direct_candidate(
     candidate: DirectJobCandidate,
-    direct_candidate_tx: &mpsc::Sender<DirectJobCandidate>,
+    direct_candidate_senders: &DirectCandidateSenders,
     poll_wakeups: &PollWakeups,
 ) {
+    let (queue, direct_candidate_tx) = if candidate.targeted() {
+        ("targeted", &direct_candidate_senders.targeted)
+    } else {
+        ("broadcast", &direct_candidate_senders.broadcast)
+    };
     match direct_candidate_tx.try_send(candidate) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(candidate)) => {
             warn!(
                 run_id = %candidate.run_id(),
                 profile = %candidate.profile_name(),
+                queue,
                 "ably: direct candidate queue full, waking poll"
             );
             poll_wakeups.request_immediate_poll().await;
@@ -711,6 +735,7 @@ async fn enqueue_direct_candidate(
             warn!(
                 run_id = %candidate.run_id(),
                 profile = %candidate.profile_name(),
+                queue,
                 "ably: direct candidate queue closed, waking poll"
             );
             poll_wakeups.request_immediate_poll().await;
@@ -926,11 +951,28 @@ mod tests {
         due.map(PollDue::reason)
     }
 
-    fn direct_candidate_channel() -> (
-        mpsc::Sender<DirectJobCandidate>,
-        mpsc::Receiver<DirectJobCandidate>,
-    ) {
-        mpsc::channel(4)
+    struct DirectCandidateReceivers {
+        targeted: mpsc::Receiver<DirectJobCandidate>,
+        broadcast: mpsc::Receiver<DirectJobCandidate>,
+    }
+
+    fn direct_candidate_channels() -> (DirectCandidateSenders, DirectCandidateReceivers) {
+        direct_candidate_channels_with_capacity(4, 4)
+    }
+
+    fn direct_candidate_channels_with_capacity(
+        targeted_capacity: usize,
+        broadcast_capacity: usize,
+    ) -> (DirectCandidateSenders, DirectCandidateReceivers) {
+        let (targeted_tx, targeted_rx) = mpsc::channel(targeted_capacity);
+        let (broadcast_tx, broadcast_rx) = mpsc::channel(broadcast_capacity);
+        (
+            DirectCandidateSenders::new(targeted_tx, broadcast_tx),
+            DirectCandidateReceivers {
+                targeted: targeted_rx,
+                broadcast: broadcast_rx,
+            },
+        )
     }
 
     fn default_profiles() -> Vec<String> {
@@ -1457,21 +1499,30 @@ mod tests {
         let token = handle.token();
         let tokens = Mutex::new(HashMap::from([(run_id, handle)]));
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         assert!(token.is_cancelled());
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
     }
 
     #[tokio::test]
     async fn broadcast_supported_job_notification_enqueues_direct_candidate() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1488,15 +1539,24 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        let candidate = direct_rx.try_recv().expect("direct candidate");
+        let candidate = direct_rx.broadcast.try_recv().expect("direct candidate");
         assert_eq!(
             candidate.run_id().to_string(),
             "00000000-0000-0000-0000-000000000001"
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(!candidate.targeted());
+        assert!(direct_rx.targeted.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
@@ -1504,7 +1564,7 @@ mod tests {
     async fn matching_targeted_job_notification_enqueues_direct_candidate() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1522,11 +1582,20 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        let candidate = direct_rx.try_recv().expect("direct candidate");
+        let candidate = direct_rx.targeted.try_recv().expect("direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(candidate.targeted());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
@@ -1534,7 +1603,7 @@ mod tests {
     async fn unsupported_profile_job_notification_is_ignored() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1551,9 +1620,18 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         let snapshot = wakeups.snapshot().await;
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
@@ -1563,7 +1641,7 @@ mod tests {
     async fn missing_profile_job_notification_wakes_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1579,9 +1657,18 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
     }
 
@@ -1589,7 +1676,7 @@ mod tests {
     async fn empty_profile_job_notification_wakes_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1606,9 +1693,18 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(wakeups.snapshot().await.poll_now);
     }
 
@@ -1616,7 +1712,7 @@ mod tests {
     async fn full_direct_candidate_queue_wakes_poll_fallback() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = mpsc::channel(1);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels_with_capacity(1, 1);
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1633,10 +1729,29 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        let candidate = direct_rx.try_recv().expect("first direct candidate");
+        let candidate = direct_rx
+            .broadcast
+            .try_recv()
+            .expect("first direct candidate");
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(wakeups.snapshot().await.poll_now);
     }
@@ -1645,7 +1760,7 @@ mod tests {
     async fn target_other_runner_job_notification_defers_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1663,10 +1778,19 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         let snapshot = wakeups.snapshot().await;
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_some());
     }
@@ -1675,7 +1799,7 @@ mod tests {
     async fn invalid_job_notification_does_not_mutate_wakeup_state() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
-        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
         let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
@@ -1686,10 +1810,19 @@ mod tests {
             .await;
         let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
 
-        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         let snapshot = wakeups.snapshot().await;
-        assert!(direct_rx.try_recv().is_err());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
