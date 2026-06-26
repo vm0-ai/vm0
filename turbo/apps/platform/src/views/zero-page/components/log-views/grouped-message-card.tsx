@@ -558,9 +558,20 @@ function countMatches(text: string | undefined, searchTerm?: string): number {
     return 0;
   }
 
-  return (
-    text.toLowerCase().match(new RegExp(searchTerm.toLowerCase(), "g")) ?? []
-  ).length;
+  const normalizedText = text.toLowerCase();
+  const normalizedSearch = searchTerm.toLowerCase();
+  let count = 0;
+  let index = normalizedText.indexOf(normalizedSearch);
+
+  while (index !== -1) {
+    count++;
+    index = normalizedText.indexOf(
+      normalizedSearch,
+      index + normalizedSearch.length,
+    );
+  }
+
+  return count;
 }
 
 interface ToolGroup {
