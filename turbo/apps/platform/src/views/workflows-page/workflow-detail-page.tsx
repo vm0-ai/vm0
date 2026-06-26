@@ -2187,9 +2187,6 @@ function CreateWebhookTriggerDialog({
     createWorkflowWebhookTrigger$,
   );
   const creating = createLoadable.state === "loading";
-  const curlExample = createdTrigger
-    ? signedWebhookCurlExample(createdTrigger)
-    : "";
 
   return (
     <Dialog
@@ -2212,123 +2209,144 @@ function CreateWebhookTriggerDialog({
           </DialogDescription>
         </DialogHeader>
         {createdTrigger ? (
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Webhook URL
-              <div className="flex min-w-0 gap-2">
-                <input
-                  readOnly
-                  value={createdTrigger.webhookUrl}
-                  className={FIELD_CLASS}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    copyText(createdTrigger.webhookUrl);
-                  }}
-                >
-                  <IconCopy size={14} />
-                  Copy
-                </Button>
-              </div>
-            </label>
-            {createdTrigger.webhookSecret ? (
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                Signing secret
-                <div className="flex min-w-0 gap-2">
-                  <input
-                    readOnly
-                    value={createdTrigger.webhookSecret}
-                    className={FIELD_CLASS}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      copyText(createdTrigger.webhookSecret ?? "");
-                    }}
-                  >
-                    <IconCopy size={14} />
-                    Copy
-                  </Button>
-                </div>
-              </label>
-            ) : null}
-            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Signed curl
-              <div className="relative">
-                <pre className="max-h-56 overflow-auto rounded-md border border-border/60 bg-muted/40 p-3 text-xs leading-5 text-foreground">
-                  {curlExample}
-                </pre>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="absolute right-2 top-2 h-7 px-2 text-xs"
-                  onClick={() => {
-                    copyText(curlExample);
-                  }}
-                >
-                  <IconCopy size={13} />
-                  Copy
-                </Button>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                onClick={() => {
-                  reloadWorkflows();
-                  setCreatedTrigger(null);
-                  onOpenChange(false);
-                }}
-              >
-                Done
-              </Button>
-            </DialogFooter>
-          </div>
+          <CreatedWebhookTriggerView
+            trigger={createdTrigger}
+            onDone={() => {
+              reloadWorkflows();
+              setCreatedTrigger(null);
+              onOpenChange(false);
+            }}
+          />
         ) : (
-          <div className="flex flex-col gap-4">
-            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              The signing secret is shown only after creation.
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={creating}
-                onClick={() => {
-                  onOpenChange(false);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={creating}
-                onClick={() => {
-                  detach(
-                    (async () => {
-                      const trigger = await createWebhookTrigger(
-                        { workflowId },
-                        pageSignal,
-                      );
-                      setCreatedTrigger(trigger);
-                    })(),
-                    Reason.DomCallback,
+          <CreateWebhookTriggerView
+            creating={creating}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+            onCreate={() => {
+              detach(
+                (async () => {
+                  const trigger = await createWebhookTrigger(
+                    { workflowId },
+                    pageSignal,
                   );
-                }}
-              >
-                {creating ? (
-                  <IconLoader2 size={14} className="animate-spin" />
-                ) : null}
-                Create webhook
-              </Button>
-            </DialogFooter>
-          </div>
+                  setCreatedTrigger(trigger);
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          />
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CreatedWebhookTriggerView({
+  trigger,
+  onDone,
+}: {
+  readonly trigger: WebhookWorkflowTriggerSummary;
+  readonly onDone: () => void;
+}) {
+  const curlExample = signedWebhookCurlExample(trigger);
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Webhook URL
+        <WebhookReadonlyField
+          value={trigger.webhookUrl}
+          onCopy={() => {
+            copyText(trigger.webhookUrl);
+          }}
+        />
+      </label>
+      {trigger.webhookSecret ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Signing secret
+          <WebhookReadonlyField
+            value={trigger.webhookSecret}
+            onCopy={() => {
+              copyText(trigger.webhookSecret ?? "");
+            }}
+          />
+        </label>
+      ) : null}
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Signed curl
+        <div className="relative">
+          <pre className="max-h-56 overflow-auto rounded-md border border-border/60 bg-muted/40 p-3 text-xs leading-5 text-foreground">
+            {curlExample}
+          </pre>
+          <Button
+            type="button"
+            variant="outline"
+            className="absolute right-2 top-2 h-7 px-2 text-xs"
+            onClick={() => {
+              copyText(curlExample);
+            }}
+          >
+            <IconCopy size={13} />
+            Copy
+          </Button>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button type="button" onClick={onDone}>
+          Done
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+function WebhookReadonlyField({
+  value,
+  onCopy,
+}: {
+  readonly value: string;
+  readonly onCopy: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 gap-2">
+      <input readOnly value={value} className={FIELD_CLASS} />
+      <Button type="button" variant="outline" onClick={onCopy}>
+        <IconCopy size={14} />
+        Copy
+      </Button>
+    </div>
+  );
+}
+
+function CreateWebhookTriggerView({
+  creating,
+  onCancel,
+  onCreate,
+}: {
+  readonly creating: boolean;
+  readonly onCancel: () => void;
+  readonly onCreate: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        The signing secret is shown only after creation.
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={creating}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="button" disabled={creating} onClick={onCreate}>
+          {creating ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Create webhook
+        </Button>
+      </DialogFooter>
+    </div>
   );
 }
 

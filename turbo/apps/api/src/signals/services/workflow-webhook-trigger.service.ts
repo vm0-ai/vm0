@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
-import { command, computed, type Setter } from "ccstate";
+import { command, computed } from "ccstate";
 import { and, eq, gte, isNotNull } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -63,7 +63,7 @@ export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-export function workflowWebhookUrlForToken(token: string): string {
+function workflowWebhookUrlForToken(token: string): string {
   const baseUrl = env("VM0_API_URL").replace(/\/$/, "");
   return `${baseUrl}/api/webhooks/workflow-triggers/${encodeURIComponent(
     token,
@@ -461,58 +461,60 @@ async function acceptWebhookDelivery(
   return { id: delivery.id, deliveryKey, bodySha256 };
 }
 
-async function startWorkflowWebhookRun(
-  set: Setter,
-  args: {
-    readonly row: WorkflowWebhookTriggerDispatchRow;
-    readonly delivery: AcceptedWebhookDelivery;
-    readonly rawBody: string;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly currentTime: Date;
-    readonly apiStartTime: number;
-    readonly signal: AbortSignal;
-  },
-): Promise<RunWorkflowTriggerResult | "error"> {
-  const runStarterOverride = workflowWebhookRunStarterOverride.get();
-  if (runStarterOverride) {
-    return await runStarterOverride({
-      triggerId: args.row.trigger.id,
-      workflowName: args.row.workflowName,
-      deliveryKey: args.delivery.deliveryKey,
-      bodySha256: args.delivery.bodySha256,
-      contentType: headerValue(args.headers, "content-type"),
-    });
-  }
-
-  return await set(
-    runWorkflowTriggerNow$,
-    {
-      due: {
-        trigger: args.row.trigger,
-        agentId: args.row.agentId,
-        workflowName: args.row.workflowName,
-      },
-      apiStartTime: args.apiStartTime,
-      triggerSource: "workflow-event",
-      appendSystemPrompt: buildWorkflowWebhookEventSystemPrompt({
-        triggerId: args.row.trigger.id,
-        deliveryId: args.delivery.id,
-        deliveryKey: args.delivery.deliveryKey,
-        receivedAt: args.currentTime,
-        rawBody: args.rawBody,
-        bodySha256: args.delivery.bodySha256,
-        headers: args.headers,
-      }),
-      callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-        args.row.trigger,
-        args.row.agentId,
-      ),
-      recordLastRunAt: true,
-      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+const startWorkflowWebhookRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly row: WorkflowWebhookTriggerDispatchRow;
+      readonly delivery: AcceptedWebhookDelivery;
+      readonly rawBody: string;
+      readonly headers: Readonly<Record<string, string>>;
+      readonly currentTime: Date;
+      readonly apiStartTime: number;
     },
-    args.signal,
-  );
-}
+    signal: AbortSignal,
+  ): Promise<RunWorkflowTriggerResult | "error"> => {
+    const runStarterOverride = workflowWebhookRunStarterOverride.get();
+    if (runStarterOverride) {
+      return await runStarterOverride({
+        triggerId: args.row.trigger.id,
+        workflowName: args.row.workflowName,
+        deliveryKey: args.delivery.deliveryKey,
+        bodySha256: args.delivery.bodySha256,
+        contentType: headerValue(args.headers, "content-type"),
+      });
+    }
+
+    return await set(
+      runWorkflowTriggerNow$,
+      {
+        due: {
+          trigger: args.row.trigger,
+          agentId: args.row.agentId,
+          workflowName: args.row.workflowName,
+        },
+        apiStartTime: args.apiStartTime,
+        triggerSource: "workflow-event",
+        appendSystemPrompt: buildWorkflowWebhookEventSystemPrompt({
+          triggerId: args.row.trigger.id,
+          deliveryId: args.delivery.id,
+          deliveryKey: args.delivery.deliveryKey,
+          receivedAt: args.currentTime,
+          rawBody: args.rawBody,
+          bodySha256: args.delivery.bodySha256,
+          headers: args.headers,
+        }),
+        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+          args.row.trigger,
+          args.row.agentId,
+        ),
+        recordLastRunAt: true,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      },
+      signal,
+    );
+  },
+);
 
 export const dispatchWorkflowWebhook$ = command(
   async (
@@ -603,15 +605,18 @@ export const dispatchWorkflowWebhook$ = command(
       return { kind: "ok", duplicate: true };
     }
 
-    const startResult = await startWorkflowWebhookRun(set, {
-      row,
-      delivery,
-      rawBody: args.rawBody,
-      headers: args.headers,
-      currentTime,
-      apiStartTime: args.apiStartTime,
+    const startResult = await set(
+      startWorkflowWebhookRun$,
+      {
+        row,
+        delivery,
+        rawBody: args.rawBody,
+        headers: args.headers,
+        currentTime,
+        apiStartTime: args.apiStartTime,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (startResult === "error") {

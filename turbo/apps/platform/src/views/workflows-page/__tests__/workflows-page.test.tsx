@@ -889,7 +889,10 @@ describe("workflow detail page", () => {
       expect(menuItemByText(/^Webhook/)).toBeInTheDocument();
     });
     click(menuItemByText(/^Webhook/));
-    click(await screen.findByRole("button", { name: "Create webhook" }));
+    await waitFor(() => {
+      expect(buttonByText("Create webhook")).toBeInTheDocument();
+    });
+    click(buttonByText("Create webhook"));
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
