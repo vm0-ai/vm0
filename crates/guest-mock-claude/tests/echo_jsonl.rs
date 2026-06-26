@@ -730,7 +730,7 @@ fn stream_json_shell_escaped_child_does_not_hold_output_open()
 
 #[cfg(target_os = "linux")]
 #[test]
-fn stream_json_shell_escaped_stderr_writer_does_not_hold_output_open()
+fn stream_json_shell_truncated_escaped_stderr_writer_does_not_hold_output_open()
 -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
     let ready = home.path().join("escaped-stderr-ready");
@@ -738,7 +738,7 @@ fn stream_json_shell_escaped_stderr_writer_does_not_hold_output_open()
     let ready_path = ready.to_string_lossy();
     let pid_path = pid_file.to_string_lossy();
     let prompt = format!(
-        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; exec yes escaped-stderr >&2' & \
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; yes escaped-stderr | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; echo ready > \"{ready_path}\"; exec yes escaped-stderr >&2' & \
          while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
     );
 
