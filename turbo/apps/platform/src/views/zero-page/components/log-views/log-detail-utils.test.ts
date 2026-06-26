@@ -550,6 +550,56 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
 });
 
 describe("groupEventsIntoMessages TodoWrite snapshots", () => {
+  it("renders malformed TodoWrite calls as ordinary tools", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-bad",
+                name: "TodoWrite",
+                input: { todos: "not-an-array" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 8,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "todo-bad",
+                content: "invalid todo payload",
+                is_error: true,
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.type).toBe("assistant");
+    expect(messages[0]?.todoState).toBeUndefined();
+    expect(messages[0]?.toolOperations?.[0]).toMatchObject({
+      toolName: "TodoWrite",
+      result: {
+        content: "invalid todo payload",
+        isError: true,
+      },
+    });
+  });
+
   it("treats TodoWrite input as the latest ordered todo snapshot", () => {
     const messages = groupEventsIntoMessages([
       {

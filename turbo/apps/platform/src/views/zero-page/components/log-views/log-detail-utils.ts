@@ -475,8 +475,7 @@ function appendToolsToMessage(
 }
 
 /**
- * Process TodoWrite operation and update todo state.
- * Returns the new in_progress task content if any.
+ * Extract the latest todo snapshot from a TodoWrite operation.
  */
 function processTodoWrite(op: ToolOperation): TodoItem[] | null {
   if (op.toolName.toLowerCase() !== "todowrite") {
@@ -714,9 +713,11 @@ function processAssistantEvent(
   for (const op of toolOperations) {
     if (op.toolName.toLowerCase() === "todowrite") {
       const nextTodoState = processTodoWrite(op);
-      if (nextTodoState) {
-        ctx.todoState = nextTodoState;
+      if (!nextTodoState) {
+        otherToolOps.push(op);
+        continue;
       }
+      ctx.todoState = nextTodoState;
       todoWriteSnapshots.push({
         operation: op,
         todoState: ctx.todoState,
