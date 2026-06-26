@@ -13,7 +13,7 @@ const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(super) enum SessionHistoryMaterializer {
     Missing,
-    Ready(Option<ResumeSession>),
+    Ready,
     Downloading {
         started_at: Instant,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
@@ -22,7 +22,7 @@ pub(super) enum SessionHistoryMaterializer {
 
 pub(super) enum SessionHistoryMaterialization {
     Missing,
-    Ready(ResumeSession),
+    Ready,
     Downloaded {
         session: ResumeSession,
         elapsed: Duration,
@@ -44,7 +44,7 @@ impl SessionHistoryMaterializer {
             return Self::Missing;
         };
         if session.history_ref().is_none() {
-            return Self::Ready(Some(session.clone()));
+            return Self::Ready;
         }
 
         let http = http.clone();
@@ -63,17 +63,7 @@ impl SessionHistoryMaterializer {
     ) -> SessionHistoryMaterialization {
         match &mut self {
             Self::Missing => SessionHistoryMaterialization::Missing,
-            Self::Ready(session) => {
-                let Some(session) = session.take() else {
-                    return SessionHistoryMaterialization::Failed {
-                        elapsed: Duration::ZERO,
-                        error: RunnerError::Internal(
-                            "session history materializer lost ready session".into(),
-                        ),
-                    };
-                };
-                SessionHistoryMaterialization::Ready(session)
-            }
+            Self::Ready => SessionHistoryMaterialization::Ready,
             Self::Downloading { started_at, task } => {
                 let started_at = *started_at;
                 let Some(mut task) = task.take() else {

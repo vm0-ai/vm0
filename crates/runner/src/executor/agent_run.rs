@@ -339,9 +339,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 4. Restore session history. Hash-backed history downloads start before
     // guest prep/storage download, then materialize here right before restore.
-    let materialized_resume_session = match session_history_materializer.finish(&cancel).await {
+    let downloaded_resume_session = match session_history_materializer.finish(&cancel).await {
         SessionHistoryMaterialization::Missing => None,
-        SessionHistoryMaterialization::Ready(session) => Some(session),
+        SessionHistoryMaterialization::Ready => None,
         SessionHistoryMaterialization::Downloaded { session, elapsed } => {
             telemetry.record("session_history_download", elapsed, true, None);
             Some(session)
@@ -357,8 +357,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Err(error);
         }
     };
+    let resume_session = downloaded_resume_session
+        .as_ref()
+        .or(context.resume_session.as_ref());
     let mut session_restore_diagnostics = None;
-    if let Some(session) = &materialized_resume_session {
+    if let Some(session) = resume_session {
         let t = Instant::now();
         let result = restore_session(sandbox, context, session).await;
         let err = result.as_ref().err().map(|e| e.to_string());
