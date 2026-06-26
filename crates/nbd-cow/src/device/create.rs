@@ -1,5 +1,7 @@
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::error::{self, Result};
 use crate::{BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD, NUM_CONNECTIONS, cow, netlink, pool, server};
@@ -14,6 +16,10 @@ use super::connection::{
     disconnect_connected_if_owned_result_with_lease_critical_section,
     disconnect_device_with_lease_critical_section,
 };
+
+const MAX_SIZE_RETRIES: u32 = 5;
+const MAX_EBUSY_RETRIES: u32 = 16;
+const SIZE_RETRY_DELAY: Duration = Duration::from_millis(200);
 
 struct CreateAttemptGuard {
     pool: pool::DevicePoolHandle,
@@ -55,6 +61,180 @@ impl CreateDisconnectStatus {
 
     fn is_clean(self) -> bool {
         matches!(self, Self::Disconnected)
+    }
+}
+
+struct CreateContext<'a> {
+    device_pool: &'a pool::DevicePoolHandle,
+    cow_file: &'a Path,
+    cow_layer: Arc<RwLock<cow::CowLayer>>,
+    size: u64,
+}
+
+impl<'a> CreateContext<'a> {
+    fn new(
+        device_pool: &'a pool::DevicePoolHandle,
+        cow_file: &'a Path,
+        cow_layer: Arc<RwLock<cow::CowLayer>>,
+        size: u64,
+    ) -> Self {
+        Self {
+            device_pool,
+            cow_file,
+            cow_layer,
+            size,
+        }
+    }
+
+    async fn create_with_size_retries(&self) -> Result<(NbdCowDevice, pool::DeviceLease)> {
+        let mut last_err_idx: u32 = 0;
+
+        for size_attempt in 0..=MAX_SIZE_RETRIES {
+            let attempt = self.acquire_connected_attempt().await?;
+            let device_index = attempt.device_index();
+
+            if netlink::verify_device_size(device_index, self.size).await {
+                return attempt.into_device(self.cow_file, self.cow_layer.clone());
+            }
+
+            tracing::info!(
+                device_index,
+                attempt = size_attempt + 1,
+                "device size 0 after connect, disconnecting and retrying"
+            );
+            attempt.disconnect_and_release().await;
+            last_err_idx = device_index;
+
+            if size_attempt < MAX_SIZE_RETRIES {
+                tokio::time::sleep(SIZE_RETRY_DELAY).await;
+            }
+        }
+
+        Err(error::NbdCowError::Io(std::io::Error::other(format!(
+            "device size stuck at 0 after {MAX_SIZE_RETRIES} connect retries \
+             on nbd{last_err_idx} — kernel may not have finished releasing \
+             the previous connection",
+        ))))
+    }
+
+    async fn acquire_connected_attempt(&self) -> Result<CreateAttemptGuard> {
+        let mut ebusy_count: u32 = 0;
+
+        loop {
+            let lease = self.device_pool.acquire().await?;
+            let mut attempt = CreateAttemptGuard::new(self.device_pool.clone(), lease);
+            let device_index = attempt.device_index();
+
+            let client_fds = match self.setup_dispatch_servers(&mut attempt) {
+                Ok(client_fds) => client_fds,
+                Err(e) => {
+                    // Release device back — connect was never attempted, device
+                    // is still free in kernel. No cooldown needed but release()
+                    // adds one defensively.
+                    attempt.release_clean().await;
+                    return Err(e);
+                }
+            };
+
+            match self.connect_attempt(&mut attempt, client_fds).await {
+                Ok(connected) => {
+                    attempt.mark_connected(connected.connect_tid);
+                    return Ok(attempt);
+                }
+                Err(netlink::ConnectDeviceError::DefiniteAfterSend {
+                    source: error::NbdCowError::NetlinkErrno { errno, .. },
+                }) if errno == libc::EBUSY => {
+                    ebusy_count += 1;
+                    tracing::info!(
+                        device_index,
+                        ebusy_count,
+                        "EBUSY on connect, trying next device"
+                    );
+                    if ebusy_count > MAX_EBUSY_RETRIES {
+                        attempt.discard().await;
+                        return Err(error::NbdCowError::NoFreeDevice);
+                    }
+                    // Device is owned by another process or otherwise busy.
+                    // Stop tracking without cooldown; a future demand scan
+                    // will rediscover it once it frees.
+                    attempt.discard().await;
+                }
+                Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
+                    connect_tid,
+                    source,
+                }) => {
+                    // The kernel may have accepted NBD_CMD_CONNECT even
+                    // though userspace failed while observing completion.
+                    // Record a provisional candidate so cleanup can
+                    // disconnect only if sysfs still proves we own it.
+                    attempt.mark_connected(connect_tid);
+                    attempt.disconnect_owned_and_release().await;
+                    return Err(source);
+                }
+                Err(connect_error) => {
+                    // Connect failed with non-EBUSY error. Device may be in
+                    // an unknown kernel state — retire with cooldown so it
+                    // gets re-validated before reuse.
+                    attempt.retire_uncertain().await;
+                    return Err(connect_error.into_source());
+                }
+            }
+        }
+    }
+
+    fn setup_dispatch_servers(&self, attempt: &mut CreateAttemptGuard) -> Result<Vec<OwnedFd>> {
+        let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
+
+        for _ in 0..NUM_CONNECTIONS {
+            let (client_fd, server_fd) = netlink::create_socketpair()?;
+            client_fds.push(client_fd);
+
+            let cow = self.cow_layer.clone();
+            let token = attempt.shutdown_token();
+            let handle = tokio::spawn(async move {
+                if let Err(e) = server::dispatch(server_fd, cow, token).await {
+                    tracing::error!("NBD dispatch error: {e}");
+                }
+            });
+            attempt.push_server_handle(handle);
+        }
+
+        Ok(client_fds)
+    }
+
+    async fn connect_attempt(
+        &self,
+        attempt: &mut CreateAttemptGuard,
+        client_fds: Vec<OwnedFd>,
+    ) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+        let device_index = attempt.device_index();
+        let Some(lease) = attempt.take_lease() else {
+            return Err(netlink::ConnectDeviceError::NotSent {
+                source: error::NbdCowError::Io(std::io::Error::other(
+                    "pool lease missing during NBD connect",
+                )),
+            });
+        };
+
+        match connect_device_with_state_critical_section(
+            device_index,
+            client_fds,
+            self.size,
+            BLOCK_SIZE as u64,
+            self.device_pool.clone(),
+            lease,
+        )
+        .await
+        {
+            Ok(outcome) => match outcome.into_parts() {
+                Ok((lease, result)) => {
+                    attempt.restore_lease(lease);
+                    result
+                }
+                Err(e) => Err(e),
+            },
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -469,149 +649,9 @@ impl NbdCowDevice {
             DEFAULT_FLUSH_THRESHOLD,
         )?;
         let cow_layer = Arc::new(RwLock::new(cow_layer));
+        let context = CreateContext::new(device_pool, cow_file, cow_layer, size);
 
-        // Outer retry loop: handles "size stuck at 0" (kernel teardown timing).
-        // Inner retry loop: handles EBUSY (device grabbed by another process).
-        const MAX_SIZE_RETRIES: u32 = 5;
-        const MAX_EBUSY_RETRIES: u32 = 16;
-        let mut last_err_idx: u32 = 0;
-
-        for size_attempt in 0..=MAX_SIZE_RETRIES {
-            // Inner loop: acquire from pool and try to connect.
-            // EBUSY retries get a fresh device without consuming the outer budget.
-            let mut ebusy_count: u32 = 0;
-            let attempt = loop {
-                let lease = device_pool.acquire().await?;
-                let mut attempt = CreateAttemptGuard::new(device_pool.clone(), lease);
-                let device_index = attempt.device_index();
-
-                // Fresh shutdown token and socketpairs for each attempt
-                let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
-
-                let setup_err = (|| -> Result<()> {
-                    for _ in 0..NUM_CONNECTIONS {
-                        let (client_fd, server_fd) = netlink::create_socketpair()?;
-                        client_fds.push(client_fd);
-
-                        let cow = cow_layer.clone();
-                        let token = attempt.shutdown_token();
-                        let handle = tokio::spawn(async move {
-                            if let Err(e) = server::dispatch(server_fd, cow, token).await {
-                                tracing::error!("NBD dispatch error: {e}");
-                            }
-                        });
-                        attempt.push_server_handle(handle);
-                    }
-                    Ok(())
-                })();
-                if let Err(e) = setup_err {
-                    // Release device back — connect was never attempted, device
-                    // is still free in kernel. No cooldown needed but release()
-                    // adds one defensively.
-                    attempt.release_clean().await;
-                    return Err(e);
-                }
-
-                let connect_result = match attempt.take_lease() {
-                    Some(lease) => {
-                        match connect_device_with_state_critical_section(
-                            device_index,
-                            client_fds,
-                            size,
-                            BLOCK_SIZE as u64,
-                            device_pool.clone(),
-                            lease,
-                        )
-                        .await
-                        {
-                            Ok(outcome) => match outcome.into_parts() {
-                                Ok((lease, result)) => {
-                                    attempt.restore_lease(lease);
-                                    result
-                                }
-                                Err(e) => Err(e),
-                            },
-                            Err(e) => Err(e),
-                        }
-                    }
-                    None => Err(netlink::ConnectDeviceError::NotSent {
-                        source: error::NbdCowError::Io(std::io::Error::other(
-                            "pool lease missing during NBD connect",
-                        )),
-                    }),
-                };
-
-                match connect_result {
-                    Ok(connected) => {
-                        attempt.mark_connected(connected.connect_tid);
-                        break attempt;
-                    }
-                    Err(netlink::ConnectDeviceError::DefiniteAfterSend {
-                        source: error::NbdCowError::NetlinkErrno { errno, .. },
-                    }) if errno == libc::EBUSY => {
-                        ebusy_count += 1;
-                        tracing::info!(
-                            device_index,
-                            ebusy_count,
-                            "EBUSY on connect, trying next device"
-                        );
-                        if ebusy_count > MAX_EBUSY_RETRIES {
-                            attempt.discard().await;
-                            return Err(error::NbdCowError::NoFreeDevice);
-                        }
-                        // Device is owned by another process or otherwise busy.
-                        // Stop tracking without cooldown; a future demand scan
-                        // will rediscover it once it frees.
-                        attempt.discard().await;
-                        continue;
-                    }
-                    Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
-                        connect_tid,
-                        source,
-                    }) => {
-                        // The kernel may have accepted NBD_CMD_CONNECT even
-                        // though userspace failed while observing completion.
-                        // Record a provisional candidate so cleanup can
-                        // disconnect only if sysfs still proves we own it.
-                        attempt.mark_connected(connect_tid);
-                        attempt.disconnect_owned_and_release().await;
-                        return Err(source);
-                    }
-                    Err(connect_error) => {
-                        // Connect failed with non-EBUSY error. Device may be in
-                        // an unknown kernel state — retire with cooldown so it
-                        // gets re-validated before reuse.
-                        attempt.retire_uncertain().await;
-                        return Err(connect_error.into_source());
-                    }
-                }
-            };
-            let device_index = attempt.device_index();
-
-            // Verify the device got the correct size via sysfs.
-            if netlink::verify_device_size(device_index, size).await {
-                return attempt.into_device(cow_file, cow_layer);
-            }
-
-            // Size is wrong — disconnect, release with cooldown, and retry.
-            tracing::info!(
-                device_index,
-                attempt = size_attempt + 1,
-                "device size 0 after connect, disconnecting and retrying"
-            );
-            attempt.disconnect_and_release().await;
-            last_err_idx = device_index;
-
-            if size_attempt < MAX_SIZE_RETRIES {
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
-        }
-
-        Err(error::NbdCowError::Io(std::io::Error::other(format!(
-            "device size stuck at 0 after {MAX_SIZE_RETRIES} connect retries \
-             on nbd{last_err_idx} — kernel may not have finished releasing \
-             the previous connection",
-        ))))
+        context.create_with_size_retries().await
     }
 }
 
