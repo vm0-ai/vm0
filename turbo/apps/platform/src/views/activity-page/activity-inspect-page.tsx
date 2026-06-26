@@ -7,7 +7,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   LogStatus,
   TriggerSource,
-  AgentEvent,
 } from "../../signals/zero-page/log-types.ts";
 import {
   formatLogTime,
@@ -94,6 +93,10 @@ function logStatusValue(value: unknown): LogStatus {
 
 function triggerSourceValue(value: unknown): TriggerSource | null {
   return isTriggerSource(value) ? value : null;
+}
+
+function isInspectTab(value: string): value is InspectTab {
+  return value === "steps" || value === "context" || value === "network";
 }
 
 function InspectBreadcrumb({ title }: { title: string }) {
@@ -329,7 +332,7 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             detail={detail}
             duration={duration}
             time={time}
-            events={events as AgentEvent[]}
+            events={events}
             showModelDetail={Boolean(detail.selectedModel)}
           />
 
@@ -338,7 +341,9 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => {
-                  setActiveTab(v as InspectTab);
+                  if (isInspectTab(v)) {
+                    setActiveTab(v);
+                  }
                 }}
               >
                 <TabsList>
