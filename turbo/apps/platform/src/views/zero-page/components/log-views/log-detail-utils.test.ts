@@ -7,6 +7,10 @@ import {
   groupedMessageMatchesSearch,
 } from "./log-detail-utils.ts";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 describe("groupEventsIntoMessages progress events", () => {
   it("filters Claude Code thinking token progress events", () => {
     const events: AgentEvent[] = [
@@ -487,6 +491,31 @@ describe("groupEventsIntoMessages split sequence ordering", () => {
 });
 
 describe("groupedMessageMatchesSearch", () => {
+  it("keeps orphan task notification status and summary searchable", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_notification",
+          task_id: "orphan-task",
+          status: "completed",
+          summary: "Orphan task finished",
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+    ]);
+
+    const taskMessage = messages[0];
+    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+      throw new Error("expected task notification message");
+    }
+
+    expect(taskMessage.eventData.task_status).toBe("completed");
+    expect(taskMessage.eventData.task_summary).toBe("Orphan task finished");
+    expect(groupedMessageMatchesSearch(taskMessage, "orphan task")).toBe(true);
+  });
+
   it("matches text nested in task child messages", () => {
     const messages = groupEventsIntoMessages([
       {

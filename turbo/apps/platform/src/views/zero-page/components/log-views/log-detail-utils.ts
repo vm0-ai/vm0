@@ -282,15 +282,17 @@ export function isTaskEventData(data: unknown): data is TaskEventData {
 }
 
 function toTaskEventData(data: TaskEventData): TaskEventData {
+  const status = stringValue(data.status);
+  const summary = stringValue(data.summary);
   return {
     task_id: data.task_id,
     subtype: stringValue(data.subtype),
     tool_use_id: stringValue(data.tool_use_id),
     description: stringValue(data.description),
-    status: stringValue(data.status),
-    summary: stringValue(data.summary),
-    task_status: stringValue(data.task_status),
-    task_summary: stringValue(data.task_summary),
+    status,
+    summary,
+    task_status: stringValue(data.task_status) ?? status,
+    task_summary: stringValue(data.task_summary) ?? summary,
     task_completed_at: stringValue(data.task_completed_at),
   };
 }
