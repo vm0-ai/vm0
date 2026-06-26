@@ -1041,7 +1041,6 @@ const pollConnectorOAuthDeviceAuth$ = command(
               fetchOptions: { signal: sig },
             }),
             [200],
-            { toast: false },
           ),
           sig,
         );
@@ -1166,7 +1165,6 @@ const connectConnectorOAuthDeviceAuth$ = command(
               fetchOptions: { signal: flowSignal },
             }),
             [200],
-            { toast: false },
           ),
           flowSignal,
         );
@@ -1179,7 +1177,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
             status: "error",
             connectorType: type,
             authMethod,
-            message: oauthDeviceAuthErrorMessage(startSettled.error),
+            message: "Connection failed. Start again to retry.",
           });
         }
         flowSignal.throwIfAborted();
@@ -1413,7 +1411,6 @@ export const connectConnectorExternalCode$ = command(
               fetchOptions: { signal: flowSignal },
             }),
             [200],
-            { toast: false },
           ),
           flowSignal,
         );
@@ -1426,7 +1423,7 @@ export const connectConnectorExternalCode$ = command(
             status: "error",
             connectorType: type,
             authMethod,
-            message: externalCodeErrorMessage(startSettled.error),
+            message: "Connection failed. Start again to retry.",
           });
         }
         flowSignal.throwIfAborted();

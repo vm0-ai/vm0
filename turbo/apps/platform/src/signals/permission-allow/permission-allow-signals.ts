@@ -139,7 +139,6 @@ function createUserPermissionGrantsByAgentFactory(): (
         return accept(
           client.list({ query: { agentId: params.agentId } }),
           [200],
-          { toast: false },
         );
       });
       return result.body;

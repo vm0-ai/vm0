@@ -139,7 +139,6 @@ async function listAutomationResources(
   const result = await accept(
     client(automationsMainContract).list({ fetchOptions }),
     [200],
-    { toast: false },
   );
   return result.body.automations;
 }
@@ -191,7 +190,6 @@ export async function listThreadWorkflowTriggers(
       fetchOptions,
     }),
     [200],
-    { toast: false },
   );
   return result.body;
 }
@@ -374,7 +372,6 @@ export async function runAutomationNow(
       body: undefined,
     }),
     [201],
-    { toast: false },
   );
   return result.body.runId;
 }

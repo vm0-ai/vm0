@@ -196,9 +196,7 @@ export const networkInsightsData$ = computed(
   async (get): Promise<NetworkInsightsData> => {
     get(internalReloadInsights$);
     const client = get(zeroClient$)(zeroInsightsContract);
-    const result = await accept(client.get({ query: { days: 30 } }), [200], {
-      toast: false,
-    });
+    const result = await accept(client.get({ query: { days: 30 } }), [200]);
     return result.body;
   },
 );

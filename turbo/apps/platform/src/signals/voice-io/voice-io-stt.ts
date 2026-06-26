@@ -58,7 +58,7 @@ export const audioInputQuota$ = computed(
     get(audioInputQuotaReload$);
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceIoQuotaContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );

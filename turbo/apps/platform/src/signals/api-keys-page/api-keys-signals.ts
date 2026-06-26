@@ -15,7 +15,7 @@ export const apiKeys$ = computed(async (get) => {
   get(internalReloadApiKeys$);
   const createClient = get(zeroClient$);
   const client = createClient(apiKeysContract);
-  const result = await accept(client.list(), [200], { toast: false });
+  const result = await accept(client.list(), [200]);
   return result.body as ApiKeyListResponse;
 });
 

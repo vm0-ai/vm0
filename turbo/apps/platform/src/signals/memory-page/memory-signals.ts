@@ -72,7 +72,7 @@ export const toggleMemoryItemExpanded$ = command(({ set }, key: string) => {
 export const memoryDetail$ = computed(
   async (get): Promise<MemoryDetailResponse> => {
     const client = get(zeroClient$)(zeroMemoryContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );
@@ -81,7 +81,7 @@ export const memoryActivity$ = computed(
   async (get): Promise<MemoryActivityResponse> => {
     get(memoryActivityReload$);
     const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );

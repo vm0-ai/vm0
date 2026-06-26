@@ -351,7 +351,6 @@ export const loadOrgLogo$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     set(internalProfileLogoUrl$, result.body.logoUrl);

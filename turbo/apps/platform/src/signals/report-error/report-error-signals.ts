@@ -24,13 +24,7 @@ export const reportErrorRun$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(zeroRunsByIdContract);
-  const result = await accept(
-    client.getById({ params: { id: runId } }),
-    [200],
-    {
-      toast: false,
-    },
-  );
+  const result = await accept(client.getById({ params: { id: runId } }), [200]);
   return result.body;
 });
 
