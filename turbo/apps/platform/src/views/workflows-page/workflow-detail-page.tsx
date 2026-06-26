@@ -68,7 +68,6 @@ import {
   deleteWorkflowTrigger$,
   editingScheduleCronFields$,
   editingWorkflowTriggerId$,
-  runWorkflow$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
   setCreateScheduleCronFields$,
