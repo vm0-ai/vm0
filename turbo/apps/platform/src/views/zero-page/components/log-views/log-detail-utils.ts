@@ -6,6 +6,11 @@ interface TextContent {
   text: string;
 }
 
+interface ThinkingContent {
+  type: "thinking";
+  thinking?: string;
+}
+
 interface ToolUseContent {
   type: "tool_use";
   id?: string;
@@ -32,7 +37,11 @@ function normalizeToolResultContent(content: unknown): string {
   return String(content ?? "");
 }
 
-type MessageContent = TextContent | ToolUseContent | ToolResultContent;
+type MessageContent =
+  | TextContent
+  | ThinkingContent
+  | ToolUseContent
+  | ToolResultContent;
 
 // ============ GROUPED MESSAGE TYPES ============
 
@@ -60,6 +69,7 @@ export interface GroupedMessage {
   type: "system" | "assistant" | "result" | "todo";
   sequenceNumber: number;
   createdAt: string;
+  thinkingBlocks?: string[];
   textBefore?: string;
   textAfter?: string;
   toolOperations?: ToolOperation[];
@@ -687,16 +697,22 @@ function extractKeyParam(
  * Parse assistant event content into text parts and tool operations.
  */
 function parseAssistantContent(contents: MessageContent[]): {
+  thinkingParts: string[];
   textParts: string[];
   toolOperations: ToolOperation[];
   foundToolUse: boolean;
 } {
+  const thinkingParts: string[] = [];
   const textParts: string[] = [];
   const toolOperations: ToolOperation[] = [];
   let foundToolUse = false;
 
   for (const content of contents) {
-    if (content.type === "text") {
+    if (content.type === "thinking") {
+      if (content.thinking) {
+        thinkingParts.push(content.thinking);
+      }
+    } else if (content.type === "text") {
       const textContent = content as TextContent;
       if (textContent.text) {
         textParts.push(textContent.text);
@@ -714,7 +730,7 @@ function parseAssistantContent(contents: MessageContent[]): {
     }
   }
 
-  return { textParts, toolOperations, foundToolUse };
+  return { thinkingParts, textParts, toolOperations, foundToolUse };
 }
 
 /**
@@ -851,6 +867,10 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
   const eventData = event.eventData as GroupingEventData;
   const subtype = eventData.subtype;
 
+  if (subtype === "thinking_tokens") {
+    return;
+  }
+
   if (!isTaskEventData(event.eventData)) {
     ctx.grouped.push({
       type: "system",
@@ -975,11 +995,13 @@ function processChildAssistantEvent(
   ctx: GroupingContext,
 ): void {
   const contents = eventData.message?.content ?? [];
-  const { textParts, toolOperations } = parseAssistantContent(contents);
+  const { thinkingParts, textParts, toolOperations } =
+    parseAssistantContent(contents);
+  const hasThinking = thinkingParts.length > 0;
   const hasText = textParts.length > 0;
   const hasTools = toolOperations.length > 0;
 
-  if (!hasText && !hasTools) {
+  if (!hasThinking && !hasText && !hasTools) {
     return;
   }
 
@@ -996,6 +1018,7 @@ function processChildAssistantEvent(
     type: "assistant",
     sequenceNumber: event.sequenceNumber,
     createdAt: event.createdAt,
+    thinkingBlocks: hasThinking ? thinkingParts : undefined,
     textBefore: hasText ? textParts.join("\n\n") : undefined,
     toolOperations: hasTools ? toolOperations : undefined,
     eventData: event.eventData,
@@ -1019,7 +1042,9 @@ function processAssistantEvent(
   }
 
   const contents = eventData.message?.content ?? [];
-  const { textParts, toolOperations } = parseAssistantContent(contents);
+  const { thinkingParts, textParts, toolOperations } =
+    parseAssistantContent(contents);
+  const hasThinking = thinkingParts.length > 0;
   const hasText = textParts.length > 0;
 
   // Separate TodoWrite from other tools
@@ -1047,11 +1072,12 @@ function processAssistantEvent(
   }
 
   // Create assistant message for text and non-TodoWrite tools
-  if (hasText || hasOtherTools) {
+  if (hasThinking || hasText || hasOtherTools) {
     const message: GroupedMessage = {
       type: "assistant",
       sequenceNumber: event.sequenceNumber,
       createdAt: event.createdAt,
+      thinkingBlocks: hasThinking ? thinkingParts : undefined,
       textBefore: hasText ? textParts.join("\n\n") : undefined,
       toolOperations: hasOtherTools ? otherToolOps : undefined,
       eventData: event.eventData,
@@ -1163,6 +1189,10 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
   const parts: string[] = [];
 
   parts.push(message.type);
+
+  if (message.thinkingBlocks) {
+    parts.push(...message.thinkingBlocks);
+  }
 
   if (message.textBefore) {
     parts.push(message.textBefore);
