@@ -60,6 +60,7 @@ import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCrustdata } from "./crustdata";
 import { generate as generateCursor } from "./cursor";
 import { generate as generateCustomerIo } from "./customer-io";
+import { generate as generateDaytona } from "./daytona";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
 import { generate as generateDeel } from "./deel";
@@ -146,6 +147,7 @@ import { generate as generateMicrosoft365 } from "./microsoft-365";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
+import { generate as generateModal } from "./modal";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMoss } from "./moss";
 import { generate as generateMsg9 } from "./msg9";
@@ -339,6 +341,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   crustdata: generateCrustdata,
   cursor: generateCursor,
   "customer-io": generateCustomerIo,
+  daytona: generateDaytona,
   deel: generateDeel,
   defillama: generateDefillama,
   deepseek: generateDeepseek,
@@ -421,6 +424,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   minimax: generateMinimax,
   miro: generateMiro,
   mixpanel: generateMixpanel,
+  modal: generateModal,
   monday: generateMonday,
   moss: generateMoss,
   msg9: generateMsg9,

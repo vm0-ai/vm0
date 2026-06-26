@@ -315,8 +315,8 @@ describe("firewall metadata generator", () => {
     expect(source).toContain('"slack"');
     expect(source).toContain('"google-cloud"');
     expect(source).toContain('"stripe"');
-    expect(source).not.toContain('"daytona"');
-    expect(source).not.toContain('"modal"');
+    expect(source).toContain('"daytona"');
+    expect(source).toContain('"modal"');
     expect(sourceHasObjectKey(source, "base")).toBe(true);
     expect(sourceHasObjectKey(source, "routes")).toBe(false);
     expect(sourceHasObjectKey(source, "permissionName")).toBe(false);
