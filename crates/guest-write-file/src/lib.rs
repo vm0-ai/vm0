@@ -125,11 +125,10 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
 
 fn run_batch(mut stdin: impl Read) -> io::Result<()> {
     let mut payload = Vec::new();
-    let mut limited = stdin
-        .by_ref()
-        .take(vsock_proto::MAX_MESSAGE_SIZE as u64 + 1);
+    let max_payload_size = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
+    let mut limited = stdin.by_ref().take(max_payload_size as u64 + 1);
     limited.read_to_end(&mut payload)?;
-    if payload.len() > vsock_proto::MAX_MESSAGE_SIZE {
+    if payload.len() > max_payload_size {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "write_files payload exceeds maximum protocol message size",
