@@ -32,6 +32,7 @@ const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
+const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 
@@ -180,6 +181,30 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
+function pendingReviewWorkflow(): ZeroWorkflowDetailResponse {
+  return {
+    id: PENDING_WORKFLOW_ID,
+    agentId: AGENT_ID,
+    agentName: "research-bot",
+    agentDisplayName: "Research Bot",
+    name: "launch-checklist",
+    displayName: "Launch Checklist",
+    description: "Prepares release approvals.",
+    visibility: "private",
+    requestToPublish: true,
+    ownerUserId: CURRENT_USER_ID,
+    canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-18T12:00:00.000Z",
+    updatedAt: "2026-06-18T12:00:00.000Z",
+    instruction: null,
+    files: [],
+    fileContents: [],
+    triggers: [],
+  };
+}
+
 function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
   return {
     id: OTHER_WORKFLOW_ID,
@@ -230,6 +255,8 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     visibility: workflow.visibility,
     requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
     canManage: workflow.canManage,
   };
 }
@@ -469,7 +496,12 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
 describe("agent workflows tab", () => {
   it("shows the agent's workflows and links into the detail page", async () => {
     mockAgentPageApis();
-    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
+    mockWorkflowApis([
+      salesResearch(),
+      opsPlaybook(),
+      pendingReviewWorkflow(),
+      otherAgentWorkflow(),
+    ]);
 
     detachedSetupPage({
       context,
@@ -480,10 +512,40 @@ describe("agent workflows tab", () => {
     await waitFor(() => {
       expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
+    expect(screen.getByText("Launch Checklist")).toBeInTheDocument();
     expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
-    expect(screen.getByText("private")).toBeInTheDocument();
     expect(screen.queryByLabelText("Search workflows")).not.toBeInTheDocument();
+
+    for (const title of [
+      "Sales Research",
+      "Launch Checklist",
+      "Ops Playbook",
+    ]) {
+      const cardLink = screen.getByText(title).closest("a");
+      if (!cardLink) {
+        throw new Error(`${title} workflow card link not found`);
+      }
+      expect(within(cardLink).getByText("Test User")).toBeInTheDocument();
+    }
+
+    const pendingHeading = screen.getByRole("heading", {
+      name: "Pending review",
+    });
+    const publicHeading = screen.getByRole("heading", { name: "Public" });
+    const privateHeading = screen.getByRole("heading", { name: "Private" });
+    expect(
+      Boolean(
+        pendingHeading.compareDocumentPosition(publicHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBeTruthy();
+    expect(
+      Boolean(
+        publicHeading.compareDocumentPosition(privateHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBeTruthy();
 
     const opsLink = screen.getByText("Ops Playbook").closest("a");
     expect(opsLink).toHaveAttribute(
