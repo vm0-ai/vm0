@@ -216,6 +216,7 @@ pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
+    pub(super) session_history_materializer: Option<SessionHistoryMaterializer>,
 }
 
 impl RunControls {
@@ -227,11 +228,20 @@ impl RunControls {
             cancel,
             active_input_source,
             spawn_timing: None,
+            session_history_materializer: None,
         }
     }
 
     pub(super) fn with_spawn_timing(mut self, spawn_timing: RunnerSpawnTiming) -> Self {
         self.spawn_timing = Some(spawn_timing);
+        self
+    }
+
+    pub(super) fn with_session_history_materializer(
+        mut self,
+        materializer: Option<SessionHistoryMaterializer>,
+    ) -> Self {
+        self.session_history_materializer = materializer;
         self
     }
 }
@@ -269,9 +279,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         cancel,
         active_input_source,
         spawn_timing,
+        session_history_materializer,
     } = controls;
-    let session_history_materializer =
-        SessionHistoryMaterializer::start(&config.http, context.resume_session.as_ref());
+    let session_history_materializer = session_history_materializer.unwrap_or_else(|| {
+        SessionHistoryMaterializer::start(&config.http, context.resume_session.as_ref())
+    });
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -337,17 +349,37 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result?;
     }
 
-    // 4. Restore session history. Hash-backed history downloads start before
-    // guest prep/storage download, then materialize here right before restore.
-    let downloaded_resume_session = match session_history_materializer.finish(&cancel).await {
+    // 4. Restore session history. Hash-backed history downloads can start
+    // before sandbox preparation, then materialize here right before restore.
+    let should_record_materialization_wait = session_history_materializer.is_downloading();
+    let materialization_wait_started = Instant::now();
+    let materialization = session_history_materializer.finish(&cancel).await;
+    let materialization_wait = materialization_wait_started.elapsed();
+    let downloaded_resume_session = match materialization {
         SessionHistoryMaterialization::Missing => None,
         SessionHistoryMaterialization::Ready => None,
         SessionHistoryMaterialization::Downloaded { session, elapsed } => {
+            if should_record_materialization_wait {
+                telemetry.record(
+                    "session_history_materialization_wait",
+                    materialization_wait,
+                    true,
+                    None,
+                );
+            }
             telemetry.record("session_history_download", elapsed, true, None);
             Some(session)
         }
         SessionHistoryMaterialization::Failed { elapsed, error } => {
             let error_message = error.to_string();
+            if should_record_materialization_wait {
+                telemetry.record(
+                    "session_history_materialization_wait",
+                    materialization_wait,
+                    false,
+                    Some(&error_message),
+                );
+            }
             telemetry.record(
                 "session_history_download",
                 elapsed,

@@ -12,7 +12,7 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 // Must stay in sync with RESUME_SESSION_HISTORY_MAX_BYTES in the API contracts.
 const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
-pub(super) enum SessionHistoryMaterializer {
+pub(crate) enum SessionHistoryMaterializer {
     Missing,
     Ready,
     Downloading {
@@ -21,7 +21,7 @@ pub(super) enum SessionHistoryMaterializer {
     },
 }
 
-pub(super) enum SessionHistoryMaterialization {
+pub(crate) enum SessionHistoryMaterialization {
     Missing,
     Ready,
     Downloaded {
@@ -34,13 +34,13 @@ pub(super) enum SessionHistoryMaterialization {
     },
 }
 
-pub(super) struct SessionHistoryDownloadTaskResult {
+pub(crate) struct SessionHistoryDownloadTaskResult {
     elapsed: Duration,
     result: RunnerResult<ResumeSession>,
 }
 
 impl SessionHistoryMaterializer {
-    pub(super) fn start(http: &HttpClient, session: Option<&ResumeSession>) -> Self {
+    pub(crate) fn start(http: &HttpClient, session: Option<&ResumeSession>) -> Self {
         let Some(session) = session else {
             return Self::Missing;
         };
@@ -58,7 +58,11 @@ impl SessionHistoryMaterializer {
         }
     }
 
-    pub(super) async fn finish(
+    pub(crate) fn is_downloading(&self) -> bool {
+        matches!(self, Self::Downloading { .. })
+    }
+
+    pub(crate) async fn finish(
         mut self,
         cancel: &CancellationToken,
     ) -> SessionHistoryMaterialization {
@@ -266,6 +270,7 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
 
     use super::*;
     use crate::http::{HttpClient, HttpClientConfig};
@@ -436,5 +441,41 @@ mod tests {
             }
             _ => panic!("expected cancelled download"),
         }
+    }
+
+    #[tokio::test]
+    async fn dropping_materializer_aborts_pending_download() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_received_tx, request_received_rx) = oneshot::channel();
+        let (connection_closed_tx, connection_closed_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).await;
+            let _ = request_received_tx.send(());
+            let mut buf = [0u8; 1];
+            let closed = stream.read(&mut buf).await;
+            let _ = connection_closed_tx.send(closed);
+        });
+        let session = ref_session(
+            format!("http://{address}/history.blob?token=secret"),
+            hex::encode(Sha256::digest(b"")),
+            None,
+        );
+
+        let materializer = SessionHistoryMaterializer::start(&http_client(), Some(&session));
+        tokio::time::timeout(Duration::from_secs(5), request_received_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(materializer);
+
+        let closed = tokio::time::timeout(Duration::from_secs(5), connection_closed_rx)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(closed, 0);
     }
 }
