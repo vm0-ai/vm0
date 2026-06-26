@@ -129,6 +129,10 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
+                if cancel.is_cancelled() {
+                    return SessionHistoryDownloadTaskResult::cancelled(started_at)
+                        .into_materialization();
+                }
                 result.into_materialization()
             }
         }
@@ -633,6 +637,36 @@ mod tests {
         }
         let cancel = CancellationToken::new();
         cancel.cancel();
+        let materializer = SessionHistoryMaterializer {
+            state: SessionHistoryMaterializerState::Downloading {
+                started_at: Instant::now(),
+                task: Some(task),
+            },
+        };
+
+        let result = materializer.finish(&cancel).await;
+        match result {
+            SessionHistoryMaterialization::Failed { error, .. } => {
+                assert!(error.to_string().contains("cancelled"));
+            }
+            _ => panic!("expected cancelled download"),
+        }
+    }
+
+    #[tokio::test]
+    async fn finish_prefers_cancel_when_task_cancels_during_join() {
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let task = tokio::spawn(async move {
+            cancel_for_task.cancel();
+            SessionHistoryDownloadTaskResult {
+                elapsed: Duration::from_millis(1),
+                result: Ok(ResumeSession::inline(
+                    "sess-123".to_string(),
+                    r#"{"type":"init"}"#.to_string(),
+                )),
+            }
+        });
         let materializer = SessionHistoryMaterializer {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
