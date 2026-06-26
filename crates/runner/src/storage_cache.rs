@@ -298,17 +298,18 @@ async fn process_group(
     guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<GroupOutcome> {
     // Same-key targets are expected to refer to the same archive content, so a
-    // definitive cache outcome can be shared across the group. Probe failures
-    // are the exception: they are URL/request-level passthrough decisions, so
-    // try the next duplicate before giving up per target.
-    let mut head_failed_outcomes = Vec::new();
+    // definitive cache outcome can be shared across the group. Probe and full
+    // download passthrough failures are the exception: they are URL/request
+    // level decisions, so try the next duplicate before giving up per target.
+    let mut retryable_passthrough_outcomes = Vec::new();
     for (index, target) in group.targets.iter().enumerate() {
         let outcome = process_one(target, http, home, sandbox, guest_writes).await?;
         match outcome {
-            TargetOutcome::SkippedHeadFailed { .. } => {
-                head_failed_outcomes.push(outcome);
-                if head_failed_outcomes.len() == group.targets.len() {
-                    return Ok(GroupOutcome::PerTarget(head_failed_outcomes));
+            TargetOutcome::SkippedHeadFailed { .. }
+            | TargetOutcome::SkippedInvalidDownload { .. } => {
+                retryable_passthrough_outcomes.push(outcome);
+                if retryable_passthrough_outcomes.len() == group.targets.len() {
+                    return Ok(GroupOutcome::PerTarget(retryable_passthrough_outcomes));
                 }
             }
             outcome => {
@@ -320,7 +321,7 @@ async fn process_group(
         }
     }
 
-    Ok(GroupOutcome::PerTarget(head_failed_outcomes))
+    Ok(GroupOutcome::PerTarget(retryable_passthrough_outcomes))
 }
 
 async fn process_one(
@@ -2926,6 +2927,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn duplicate_same_key_invalid_download_falls_back_to_next_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let invalid_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-download.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let invalid_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/invalid-download.tar.gz")
+                    .header_missing("range");
+                then.status(200);
+            })
+            .await;
+        let successful_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/valid-download.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let successful_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/valid-download.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "download-fallback";
+        let version = "v1";
+        let mut manifest = manifest_duplicate_storages(
+            server.url("/invalid-download.tar.gz"),
+            server.url("/valid-download.tar.gz"),
+            name,
+            version,
+        );
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        invalid_probe.assert_async().await;
+        invalid_full.assert_async().await;
+        successful_probe.assert_async().await;
+        successful_full.assert_async().await;
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "fallback target should stage one guest archive for the whole group"
+        );
+
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_miss")
+                .count(),
+            1,
+            "expected one successful representative miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter()
+                .any(|(key, _, _)| key == "storage_cache_skipped_invalid_download"),
+            "transient representative invalid download should not be the final group outcome: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn duplicate_same_key_all_probe_failures_stay_per_target_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -3008,6 +3103,96 @@ mod tests {
                 || key == "storage_cache_download"
                 || key == "storage_cache_hit"),
             "all probe failures should not record cache hit/miss/download telemetry: {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_same_key_all_invalid_downloads_stay_per_target_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let empty_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-download.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let empty_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/empty-download.tar.gz")
+                    .header_missing("range");
+                then.status(200);
+            })
+            .await;
+        let mismatch_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/size-mismatch.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len() + 1))
+                    .body(b"x");
+            })
+            .await;
+        let mismatch_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/size-mismatch.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "download-all-invalid";
+        let version = "v1";
+        let original_a = server.url("/empty-download.tar.gz");
+        let original_b = server.url("/size-mismatch.tar.gz");
+        let mut manifest =
+            manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        empty_probe.assert_async().await;
+        empty_full.assert_async().await;
+        mismatch_probe.assert_async().await;
+        mismatch_full.assert_async().await;
+        assert!(
+            sandbox.write_file_calls().is_empty(),
+            "all invalid downloads should not stage a guest archive"
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original_a.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(original_b.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
+                .count(),
+            2,
+            "expected each failed duplicate download to retain its passthrough telemetry in {ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|(key, _, _)| key == "storage_cache_miss"
+                || key == "storage_cache_download"
+                || key == "storage_cache_hit"),
+            "all invalid downloads should not record cache hit/miss/download telemetry: {ops:?}"
         );
     }
 
