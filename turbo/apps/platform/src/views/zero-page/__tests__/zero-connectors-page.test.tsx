@@ -45,13 +45,22 @@ function buttonByText(
   text: string,
   container: ParentNode = document.body,
 ): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function queryButtonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 function queryMenuItemByText(text: string): HTMLElement | null {
@@ -597,6 +606,56 @@ describe("connectors page", () => {
         within(dialog).getByLabelText("Revoke GitHub access for Support Agent"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("hides permission controls for connectors without firewall rules", async () => {
+    const mediaAgentId = "c0000000-0000-4000-a000-000000000003";
+    mockConnectors([
+      {
+        type: "cloudinary",
+        authMethod: "api-token",
+        externalUsername: "demo-cloud",
+      },
+    ]);
+    context.mocks.data.team([teamAgent(mediaAgentId, "Media Agent")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: ["cloudinary"],
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Cloudinary")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("Cloudinary")).getByLabelText(
+        "Manage Cloudinary access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage Cloudinary access",
+    });
+    expect(within(dialog).getByText("Media Agent")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Revoke Cloudinary access for Media Agent"),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText("Allowed")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("No configurable permissions"),
+    ).not.toBeInTheDocument();
+    expect(queryButtonByText("Manage", dialog)).not.toBeInTheDocument();
   });
 
   it("shows Google Maps approval guidance before OAuth", async () => {
