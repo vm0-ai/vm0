@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.179.5](https://github.com/vm0-ai/vm0/compare/api-v1.179.4...api-v1.179.5) (2026-06-26)
+
+
+### Bug Fixes
+
+* restore presentation deck QA flow ([#19008](https://github.com/vm0-ai/vm0/issues/19008)) ([2a137bb](https://github.com/vm0-ai/vm0/commit/2a137bb3e5849bc5d9a569ed96d62285d2add574))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.7
+    * @vm0/db bumped to 1.72.4
+
 ## [1.179.4](https://github.com/vm0-ai/vm0/compare/api-v1.179.3...api-v1.179.4) (2026-06-26)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.493.2](https://github.com/vm0-ai/vm0/compare/app-v0.493.1...app-v0.493.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* pan image lightbox on ordinary wheel ([#19002](https://github.com/vm0-ai/vm0/issues/19002)) ([e51486f](https://github.com/vm0-ai/vm0/commit/e51486fc62ccb1bc75ecc85d7a410d1dfd48d70e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.7
+
 ## [0.493.1](https://github.com/vm0-ai/vm0/compare/app-v0.493.0...app-v0.493.1) (2026-06-26)
 
 
