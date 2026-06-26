@@ -1277,16 +1277,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       "Runner job missing resume session history",
     );
 
-    const [failedRun] = await store
-      .set(writeDb$)
-      .select({ status: agentRuns.status, error: agentRuns.error })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, resumed.runId))
-      .limit(1);
-    expect(failedRun).toStrictEqual({
-      status: "failed",
-      error: "Runner job missing resume session history",
-    });
+    const failedRun = await api.readRun(actor, resumed.runId);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe("Runner job missing resume session history");
     await api.requestClaimRunnerJob(true, resumed.runId, [404]);
   });
 
@@ -1312,16 +1305,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     );
     await api.requestClaimRunnerJob(true, resumed.runId, [500]);
 
-    const [pendingRun] = await store
-      .set(writeDb$)
-      .select({ status: agentRuns.status, error: agentRuns.error })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, resumed.runId))
-      .limit(1);
-    expect(pendingRun).toStrictEqual({
-      status: "pending",
-      error: null,
-    });
+    const pendingRun = await api.readRun(actor, resumed.runId);
+    expect(pendingRun.status).toBe("pending");
+    expect(pendingRun.error).toBeUndefined();
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 });
