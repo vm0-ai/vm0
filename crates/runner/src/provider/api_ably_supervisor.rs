@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant as StdInstant};
 
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use super::api::ApiClient;
+use super::{JobCandidate, JobDiscoverySource};
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -20,6 +21,69 @@ const TARGETED_RUNNER_DEFER_MAX: Duration = Duration::from_secs(10);
 
 type AblyConnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
+
+#[derive(Debug)]
+pub(super) struct DirectJobCandidate {
+    run_id: RunId,
+    profile_name: String,
+    targeted: bool,
+    discovered_at: StdInstant,
+}
+
+impl DirectJobCandidate {
+    pub(super) fn new(run_id: RunId, profile_name: String, targeted: bool) -> Self {
+        Self::new_with_discovered_at(run_id, profile_name, targeted, StdInstant::now())
+    }
+
+    pub(super) fn new_with_discovered_at(
+        run_id: RunId,
+        profile_name: String,
+        targeted: bool,
+        discovered_at: StdInstant,
+    ) -> Self {
+        Self {
+            run_id,
+            profile_name,
+            targeted,
+            discovered_at,
+        }
+    }
+
+    pub(super) fn run_id(&self) -> RunId {
+        self.run_id
+    }
+
+    pub(super) fn profile_name(&self) -> &str {
+        &self.profile_name
+    }
+
+    pub(super) fn targeted(&self) -> bool {
+        self.targeted
+    }
+
+    pub(super) fn into_job_candidate(self) -> JobCandidate {
+        JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
+            .with_discovery_source(JobDiscoverySource::Ably)
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct DirectCandidateSenders {
+    targeted: mpsc::Sender<DirectJobCandidate>,
+    broadcast: mpsc::Sender<DirectJobCandidate>,
+}
+
+impl DirectCandidateSenders {
+    pub(super) fn new(
+        targeted: mpsc::Sender<DirectJobCandidate>,
+        broadcast: mpsc::Sender<DirectJobCandidate>,
+    ) -> Self {
+        Self {
+            targeted,
+            broadcast,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PollReason {
@@ -122,7 +186,7 @@ impl PollWakeups {
         self.notify.notify_waiters();
     }
 
-    async fn request_immediate_poll(&self) {
+    pub(super) async fn request_immediate_poll(&self) {
         let mut inner = self.inner.lock().await;
         inner.poll_now = true;
         inner.bump_generation();
@@ -373,28 +437,46 @@ pub(super) struct AblySupervisor {
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
+pub(super) struct AblySupervisorConfig {
+    pub(super) api: ApiClient,
+    pub(super) group: String,
+    pub(super) runner_id: String,
+    pub(super) profiles: Vec<String>,
+    pub(super) poll_wakeups: Arc<PollWakeups>,
+    pub(super) direct_candidate_senders: DirectCandidateSenders,
+    pub(super) cancel_tokens: SharedRunCancellationMap,
+    pub(super) provider_cancel: CancellationToken,
+}
+
+struct SupervisorTaskConfig {
+    api: ApiClient,
+    group: String,
+    runner_id: String,
+    profiles: Vec<String>,
+    poll_wakeups: Arc<PollWakeups>,
+    direct_candidate_senders: DirectCandidateSenders,
+    cancel_tokens: SharedRunCancellationMap,
+    provider_cancel: CancellationToken,
+    shutdown: CancellationToken,
+}
+
 impl AblySupervisor {
-    pub(super) fn spawn(
-        api: ApiClient,
-        group: String,
-        runner_id: String,
-        poll_wakeups: Arc<PollWakeups>,
-        cancel_tokens: SharedRunCancellationMap,
-        provider_cancel: CancellationToken,
-    ) -> Self {
+    pub(super) fn spawn(config: AblySupervisorConfig) -> Self {
         let shutdown = CancellationToken::new();
         let task_shutdown = shutdown.clone();
+        let task_config = SupervisorTaskConfig {
+            api: config.api,
+            group: config.group,
+            runner_id: config.runner_id,
+            profiles: config.profiles,
+            poll_wakeups: config.poll_wakeups,
+            direct_candidate_senders: config.direct_candidate_senders,
+            cancel_tokens: config.cancel_tokens,
+            provider_cancel: config.provider_cancel,
+            shutdown: task_shutdown,
+        };
         let task = tokio::spawn(async move {
-            run_supervisor(
-                api,
-                group,
-                runner_id,
-                poll_wakeups,
-                cancel_tokens,
-                provider_cancel,
-                task_shutdown,
-            )
-            .await;
+            run_supervisor(task_config).await;
         });
         Self {
             shutdown,
@@ -434,15 +516,7 @@ impl AblySupervisor {
     }
 }
 
-async fn run_supervisor(
-    api: ApiClient,
-    group: String,
-    runner_id: String,
-    poll_wakeups: Arc<PollWakeups>,
-    cancel_tokens: SharedRunCancellationMap,
-    provider_cancel: CancellationToken,
-    shutdown: CancellationToken,
-) {
+async fn run_supervisor(config: SupervisorTaskConfig) {
     let mut ably: Option<ably_subscriber::Subscription> = None;
     let mut ably_retry: RetryState<AblyConnectHandle> =
         RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
@@ -450,45 +524,53 @@ async fn run_supervisor(
     let mut disconnect = AblyDisconnectState::disconnected("connecting".to_string());
 
     loop {
-        maybe_spawn_ably_connect(&mut ably, &api, &group, &mut ably_retry);
+        maybe_spawn_ably_connect(&mut ably, &config.api, &config.group, &mut ably_retry);
         let disconnect_error_at = disconnect.error_deadline();
 
         tokio::select! {
-            () = shutdown.cancelled() => {
+            () = config.shutdown.cancelled() => {
                 break;
             }
-            () = provider_cancel.cancelled() => {
+            () = config.provider_cancel.cancelled() => {
                 break;
             }
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        handle_ably_message(&msg, &runner_id, &poll_wakeups, &cancel_tokens).await;
+                        handle_ably_message(
+                            &msg,
+                            &config.runner_id,
+                            &config.profiles,
+                            &config.poll_wakeups,
+                            &config.direct_candidate_senders,
+                            &config.cancel_tokens,
+                        )
+                        .await;
                     }
                     Some(ably_subscriber::Event::Connected) => {
                         if !disconnect.is_connected() {
                             info!("ably reconnected");
                         }
                         disconnect.mark_connected();
-                        poll_wakeups.mark_ably_connected().await;
+                        config.poll_wakeups.mark_ably_connected().await;
                     }
                     Some(ably_subscriber::Event::Disconnected { reason }) => {
                         let reason = reason.unwrap_or_else(|| "unknown".to_string());
                         disconnect.record_disconnected(reason.clone());
-                        poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected().await;
                         info!(reason = %reason, "ably disconnected, switching to fast poll");
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
                         error!(code, message = %message, "ably fatal error, will reconnect");
                         disconnect.record_disconnected(message.clone());
-                        poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected().await;
                         ably = None;
                         ably_retry.schedule();
                     }
                     None => {
                         warn!("ably subscription closed, will reconnect");
                         disconnect.record_disconnected("subscription closed".to_string());
-                        poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected().await;
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -498,11 +580,11 @@ async fn run_supervisor(
                 match handle_ably_connect_result(result, &mut ably, &mut ably_retry) {
                     Ok(()) => {
                         disconnect.mark_connected();
-                        poll_wakeups.mark_ably_connected().await;
+                        config.poll_wakeups.mark_ably_connected().await;
                     }
                     Err(reason) => {
                         disconnect.record_disconnected(reason);
-                        poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected().await;
                     }
                 }
             }
@@ -530,7 +612,9 @@ async fn run_supervisor(
 async fn handle_ably_message(
     msg: &ably_subscriber::Message,
     runner_id: &str,
+    profiles: &[String],
     poll_wakeups: &PollWakeups,
+    direct_candidate_senders: &DirectCandidateSenders,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
     if let Some(run_id) = parse_cancel_notification(msg) {
@@ -556,15 +640,38 @@ async fn handle_ably_message(
                 "ably: job targeted to another runner, deferring poll"
             );
             JobNotificationAction::Defer
+        } else if let Some(profile) = notif.profile {
+            if supports_profile(profiles, profile) {
+                let targeted = notif
+                    .target_runner_id
+                    .is_some_and(|target| target == runner_id);
+                info!(
+                    run_id = %notif.run_id,
+                    profile = %profile,
+                    targeted,
+                    "ably: job notification, queueing direct candidate"
+                );
+                JobNotificationAction::Direct(DirectJobCandidate::new(
+                    notif.run_id,
+                    profile.to_owned(),
+                    targeted,
+                ))
+            } else {
+                info!(
+                    run_id = %notif.run_id,
+                    profile = %profile,
+                    "ably: job profile unsupported, ignoring direct notification"
+                );
+                JobNotificationAction::Ignore
+            }
         } else {
             let targeted = notif
                 .target_runner_id
                 .is_some_and(|target| target == runner_id);
             info!(
                 run_id = %notif.run_id,
-                profile = notif.profile.unwrap_or(""),
                 targeted,
-                "ably: job notification, waking poll"
+                "ably: job notification missing profile, waking poll"
             );
             JobNotificationAction::WakeNow
         }
@@ -579,11 +686,17 @@ async fn handle_ably_message(
         JobNotificationAction::WakeNow => {
             poll_wakeups.request_immediate_poll().await;
         }
+        JobNotificationAction::Direct(candidate) => {
+            enqueue_direct_candidate(candidate, direct_candidate_senders, poll_wakeups).await;
+        }
+        JobNotificationAction::Ignore => {}
     }
 }
 
 enum JobNotificationAction {
     Defer,
+    Direct(DirectJobCandidate),
+    Ignore,
     WakeNow,
 }
 
@@ -591,6 +704,43 @@ struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
     target_runner_id: Option<&'a str>,
+}
+
+fn supports_profile(profiles: &[String], profile: &str) -> bool {
+    profiles.is_empty() || profiles.iter().any(|candidate| candidate == profile)
+}
+
+async fn enqueue_direct_candidate(
+    candidate: DirectJobCandidate,
+    direct_candidate_senders: &DirectCandidateSenders,
+    poll_wakeups: &PollWakeups,
+) {
+    let (queue, direct_candidate_tx) = if candidate.targeted() {
+        ("targeted", &direct_candidate_senders.targeted)
+    } else {
+        ("broadcast", &direct_candidate_senders.broadcast)
+    };
+    match direct_candidate_tx.try_send(candidate) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(candidate)) => {
+            warn!(
+                run_id = %candidate.run_id(),
+                profile = %candidate.profile_name(),
+                queue,
+                "ably: direct candidate queue full, waking poll"
+            );
+            poll_wakeups.request_immediate_poll().await;
+        }
+        Err(mpsc::error::TrySendError::Closed(candidate)) => {
+            warn!(
+                run_id = %candidate.run_id(),
+                profile = %candidate.profile_name(),
+                queue,
+                "ably: direct candidate queue closed, waking poll"
+            );
+            poll_wakeups.request_immediate_poll().await;
+        }
+    }
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -625,8 +775,16 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             return None;
         }
     };
-    let profile = msg.data.get("profile").and_then(|v| v.as_str());
-    let target_runner_id = msg.data.get("targetRunnerId").and_then(|v| v.as_str());
+    let profile = msg
+        .data
+        .get("profile")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
+    let target_runner_id = msg
+        .data
+        .get("targetRunnerId")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     Some(JobNotification {
         run_id,
         profile,
@@ -791,6 +949,34 @@ mod tests {
 
     fn poll_reason(due: Option<PollDue>) -> Option<PollReason> {
         due.map(PollDue::reason)
+    }
+
+    struct DirectCandidateReceivers {
+        targeted: mpsc::Receiver<DirectJobCandidate>,
+        broadcast: mpsc::Receiver<DirectJobCandidate>,
+    }
+
+    fn direct_candidate_channels() -> (DirectCandidateSenders, DirectCandidateReceivers) {
+        direct_candidate_channels_with_capacity(4, 4)
+    }
+
+    fn direct_candidate_channels_with_capacity(
+        targeted_capacity: usize,
+        broadcast_capacity: usize,
+    ) -> (DirectCandidateSenders, DirectCandidateReceivers) {
+        let (targeted_tx, targeted_rx) = mpsc::channel(targeted_capacity);
+        let (broadcast_tx, broadcast_rx) = mpsc::channel(broadcast_capacity);
+        (
+            DirectCandidateSenders::new(targeted_tx, broadcast_tx),
+            DirectCandidateReceivers {
+                targeted: targeted_rx,
+                broadcast: broadcast_rx,
+            },
+        )
+    }
+
+    fn default_profiles() -> Vec<String> {
+        vec![crate::profile::DEFAULT_PROFILE.to_string()]
     }
 
     #[tokio::test(start_paused = true)]
@@ -1313,17 +1499,31 @@ mod tests {
         let token = handle.token();
         let tokens = Mutex::new(HashMap::from([(run_id, handle)]));
         let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
         let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
 
-        handle_ably_message(&msg, "runner-1", &wakeups, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         assert!(token.is_cancelled());
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
     }
 
     #[tokio::test]
-    async fn job_notifications_coalesce_into_poll_wakeup() {
+    async fn broadcast_supported_job_notification_enqueues_direct_candidate() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
@@ -1339,25 +1539,33 @@ mod tests {
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &wakeups, &tokens).await;
-        handle_ably_message(&msg, "runner-1", &wakeups, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
-        assert!(wakeups.snapshot().await.poll_now);
-        let reason = wakeups
-            .wait_for_poll_due(
-                &CancellationToken::new(),
-                Duration::from_secs(30),
-                Duration::from_secs(5),
-            )
-            .await;
-        assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
+        let candidate = direct_rx.broadcast.try_recv().expect("direct candidate");
+        assert_eq!(
+            candidate.run_id().to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(candidate.profile_name(), "vm0/default");
+        assert!(!candidate.targeted());
+        assert!(direct_rx.targeted.try_recv().is_err());
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
     #[tokio::test]
-    async fn target_other_runner_job_notification_defers_poll() {
+    async fn matching_targeted_job_notification_enqueues_direct_candidate() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
@@ -1369,13 +1577,220 @@ mod tests {
             Some("job"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "targetRunnerId": "runner-1"
+            }),
+        );
+
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+
+        let candidate = direct_rx.targeted.try_recv().expect("direct candidate");
+        assert_eq!(candidate.profile_name(), "vm0/default");
+        assert!(candidate.targeted());
+        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn unsupported_profile_job_notification_is_ignored() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/large"
+            }),
+        );
+
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
+        let snapshot = wakeups.snapshot().await;
+        assert!(!snapshot.poll_now);
+        assert!(snapshot.deferred_poll_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn missing_profile_job_notification_wakes_poll() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001"
+            }),
+        );
+
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn empty_profile_job_notification_wakes_poll() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": ""
+            }),
+        );
+
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
+        assert!(wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn full_direct_candidate_queue_wakes_poll_fallback() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels_with_capacity(1, 1);
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default"
+            }),
+        );
+
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
+
+        let candidate = direct_rx
+            .broadcast
+            .try_recv()
+            .expect("first direct candidate");
+        assert_eq!(candidate.profile_name(), "vm0/default");
+        assert!(wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn target_other_runner_job_notification_defers_poll() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
                 "targetRunnerId": "runner-2"
             }),
         );
 
-        handle_ably_message(&msg, "runner-1", &wakeups, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         let snapshot = wakeups.snapshot().await;
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_some());
     }
@@ -1384,6 +1799,8 @@ mod tests {
     async fn invalid_job_notification_does_not_mutate_wakeup_state() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
+        let (direct_senders, mut direct_rx) = direct_candidate_channels();
+        let profiles = default_profiles();
         let _ = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
@@ -1393,9 +1810,19 @@ mod tests {
             .await;
         let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
 
-        handle_ably_message(&msg, "runner-1", &wakeups, &tokens).await;
+        handle_ably_message(
+            &msg,
+            "runner-1",
+            &profiles,
+            &wakeups,
+            &direct_senders,
+            &tokens,
+        )
+        .await;
 
         let snapshot = wakeups.snapshot().await;
+        assert!(direct_rx.targeted.try_recv().is_err());
+        assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
