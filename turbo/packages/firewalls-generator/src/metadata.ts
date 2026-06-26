@@ -93,10 +93,6 @@ function generatedRoutingDetailModuleSpecifier(
   return `./routing-details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
 }
 
-function generatedRuntimeModuleSpecifier(type: FirewallConnectorType): string {
-  return `./${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
-}
-
 function replaceGeneratedPath(
   targetPath: string,
   nextPath: string,
@@ -632,57 +628,6 @@ export async function loadGeneratedFirewallRoutingMetadata(
 `;
 }
 
-function renderRuntimeLoaderFile(
-  sources: readonly ConnectorFirewallSource[],
-): string {
-  const connectorTypes = sources
-    .map((source) => {
-      return `  ${JSON.stringify(source.type)},`;
-    })
-    .join("\n");
-  const loaderEntries = sources.map((source): LazyLoaderEntry => {
-    return {
-      key: source.type,
-      moduleSpecifier: generatedRuntimeModuleSpecifier(source.type),
-      exportName: source.firewallExportName,
-    };
-  });
-
-  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-runtime/v1/.
-// Bump that URL version before shipping an incompatible runtime firewall module shape or import contract change.
-import type { FirewallConfig } from "../firewall-types";
-
-export const RUNTIME_FIREWALL_CONNECTOR_TYPES = [
-${connectorTypes}
-] as const;
-
-export type GeneratedRuntimeFirewallConnectorType =
-  (typeof RUNTIME_FIREWALL_CONNECTOR_TYPES)[number];
-
-${renderLazyLoaderRecord({
-  constName: "GENERATED_RUNTIME_FIREWALL_LOADERS",
-  recordType:
-    "Record<GeneratedRuntimeFirewallConnectorType, () => Promise<FirewallConfig>>",
-  entries: loaderEntries,
-})}
-
-export function hasGeneratedRuntimeFirewall(
-  type: string,
-): type is GeneratedRuntimeFirewallConnectorType {
-  return Object.prototype.hasOwnProperty.call(
-    GENERATED_RUNTIME_FIREWALL_LOADERS,
-    type,
-  );
-}
-
-export async function loadGeneratedRuntimeFirewall(
-  type: GeneratedRuntimeFirewallConnectorType,
-): Promise<FirewallConfig> {
-  return await GENERATED_RUNTIME_FIREWALL_LOADERS[type]();
-}
-`;
-}
-
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -710,7 +655,7 @@ export async function generateFirewallMetadata(): Promise<void> {
   );
   const detailsDir = path.join(outputDir, "details");
   const routingDetailsDir = path.join(outputDir, "routing-details");
-  const runtimeLoaderFile = path.join(
+  const obsoleteRuntimeLoaderFile = path.join(
     firewallsDir,
     "runtime-loader.generated.ts",
   );
@@ -796,11 +741,6 @@ export async function generateFirewallMetadata(): Promise<void> {
       }),
     ),
   );
-  writeGeneratedFile(
-    path.join(nextOutputDir, "runtime-loader.generated.ts"),
-    renderRuntimeLoaderFile(sources),
-  );
-
   const replacements: GeneratedPathReplacement[] = [];
   try {
     replacements.push(replaceGeneratedPath(detailsDir, nextDetailsDir));
@@ -843,12 +783,6 @@ export async function generateFirewallMetadata(): Promise<void> {
         path.join(nextOutputDir, "server-execution.generated.ts"),
       ),
     );
-    replacements.push(
-      replaceGeneratedPath(
-        runtimeLoaderFile,
-        path.join(nextOutputDir, "runtime-loader.generated.ts"),
-      ),
-    );
   } catch (error) {
     rollbackGeneratedReplacements(replacements);
     throw error;
@@ -860,6 +794,7 @@ export async function generateFirewallMetadata(): Promise<void> {
     replacement.commit();
   }
   fs.rmSync(obsoleteRoutingFile, { force: true });
+  fs.rmSync(obsoleteRuntimeLoaderFile, { force: true });
 
   console.error(`  Written ${sources.length} metadata detail files`);
 }

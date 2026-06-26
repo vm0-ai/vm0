@@ -39,6 +39,19 @@ function forbiddenFirewallImport(specifier: string): boolean {
 }
 
 describe("zero CLI firewall import boundary", () => {
+  it("matches forbidden connector firewall import forms", () => {
+    for (const specifier of [
+      "@vm0/connectors/firewalls",
+      "@vm0/connectors/firewalls/runtime",
+      "@vm0/connectors/firewalls/github.generated",
+    ]) {
+      expect(forbiddenFirewallImport(specifier)).toBe(true);
+    }
+    expect(forbiddenFirewallImport("@vm0/connectors/firewall-metadata")).toBe(
+      false,
+    );
+  });
+
   it("keeps zero command sources off the default eager firewall registry", () => {
     const violations = sourceFiles(ZERO_COMMAND_DIR).flatMap((file) => {
       return importSpecifiers(readFileSync(file, "utf8"))
