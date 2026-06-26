@@ -1777,11 +1777,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       resetSecretKmsClientForTests();
     });
 
-    const createRunPromise = api.createRun(actor, {
-      agentId,
-      prompt: "use agora credentials",
-      modelProvider: "vm0",
-    });
+    const createRunResultPromise = settle(
+      api.createRun(actor, {
+        agentId,
+        prompt: "use agora credentials",
+        modelProvider: "vm0",
+      }),
+    );
 
     const concurrencyResult = await settle(
       expect
@@ -1795,10 +1797,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     releaseDecrypts?.();
 
-    const run = await createRunPromise;
+    const createRunResult = await createRunResultPromise;
+    if (!createRunResult.ok) {
+      throw createRunResult.error;
+    }
     if (!concurrencyResult.ok) {
       throw concurrencyResult.error;
     }
+    const run = createRunResult.value;
     expect(kms.getMaxInFlightDecrypts()).toBeLessThanOrEqual(4);
     expect(
       kms.calls.filter((call) => {
