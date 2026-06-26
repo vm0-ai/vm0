@@ -790,7 +790,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation when enabled", async () => {
+  it("does not show workflows in the sidebar manage navigation when enabled", async () => {
     prepareDefaultAgent();
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse([]));
@@ -807,7 +807,7 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+    expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 
   it("hides workflows in the sidebar manage navigation when disabled", async () => {

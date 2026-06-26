@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.494.0](https://github.com/vm0-ai/vm0/compare/app-v0.493.3...app-v0.494.0) (2026-06-26)
+
+
+### Features
+
+* move workflows into agent detail ([#19031](https://github.com/vm0-ai/vm0/issues/19031)) ([9d49641](https://github.com/vm0-ai/vm0/commit/9d496411e92044dce94b6038b6bf26a363d076bd))
+
+
+### Refactoring
+
+* remove typescript firewall runtime loader ([#19027](https://github.com/vm0-ai/vm0/issues/19027)) ([a2c7b0e](https://github.com/vm0-ai/vm0/commit/a2c7b0e2cd7c484ccb13a0f85864305c086dc5af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.4
+    * @vm0/connectors bumped to 1.108.6
+    * @vm0/core bumped to 8.370.9
+
 ## [0.493.3](https://github.com/vm0-ai/vm0/compare/app-v0.493.2...app-v0.493.3) (2026-06-26)
 
 

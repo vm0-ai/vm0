@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.179.7](https://github.com/vm0-ai/vm0/compare/api-v1.179.6...api-v1.179.7) (2026-06-26)
+
+
+### Refactoring
+
+* remove typescript firewall runtime loader ([#19027](https://github.com/vm0-ai/vm0/issues/19027)) ([a2c7b0e](https://github.com/vm0-ai/vm0/commit/a2c7b0e2cd7c484ccb13a0f85864305c086dc5af))
+
+
+### Performance Improvements
+
+* **runner:** restore ably direct candidates ([#19028](https://github.com/vm0-ai/vm0/issues/19028)) ([b148317](https://github.com/vm0-ai/vm0/commit/b1483176ef8f1cb5b29347a4b13e4effb6fce1b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.4
+    * @vm0/connectors bumped to 1.108.6
+    * @vm0/core bumped to 8.370.9
+    * @vm0/db bumped to 1.72.6
+
 ## [1.179.6](https://github.com/vm0-ai/vm0/compare/api-v1.179.5...api-v1.179.6) (2026-06-26)
 
 

@@ -879,7 +879,7 @@ describe("chat composer models", () => {
     expect(editor.textContent).toContain("/");
   });
 
-  it("links to the workflows page from the slash workflow menu footer", async () => {
+  it("links to the agent workflows tab from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -911,7 +911,7 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     const link = linkByText("View all workflows");
-    expect(link).toHaveAttribute("href", "/workflows");
+    expect(link).toHaveAttribute("href", `/agents/${AGENT_ID}/workflows`);
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
   });
 

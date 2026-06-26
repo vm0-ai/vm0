@@ -1,12 +1,12 @@
 export const ROUTES = {
   home: "/",
   agents: "/agents",
-  workflows: "/workflows",
   memory: "/memory",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",
   agentPermissions: "/agents/:agentId/permissions",
+  agentWorkflows: "/agents/:agentId/workflows",
   agentWorkflowDetail: "/agents/:agentId/workflows/:workflowId",
   agentWorkflowTriggerPermissions:
     "/agents/:agentId/workflows/:workflowId/triggers/:triggerId/permissions",

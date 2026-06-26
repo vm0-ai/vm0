@@ -1,7 +1,7 @@
 import { computed } from "ccstate";
 import type { RoutePath } from "../../types/route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { pathParams$ } from "../route.ts";
+import { pathParams$, type RouterPathParams } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { agents$, defaultAgentId$ } from "../agent.ts";
 import {
@@ -19,6 +19,10 @@ import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 interface MobileBreadcrumb {
   section: string;
   sectionPath: RoutePath;
+  sectionOptions?: {
+    pathParams?: RouterPathParams;
+    searchParams?: URLSearchParams;
+  };
   name?: string;
   avatarAgentId?: string;
 }
@@ -103,18 +107,31 @@ const workflowsBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const section = "Workflows";
     const params = get(pathParams$) as Params;
+    const agentId = getStringParam(params, "agentId");
+    const sectionOptions = agentId
+      ? { pathParams: { agentId } as RouterPathParams }
+      : undefined;
     const workflowId = getStringParam(params, "workflowId");
     if (workflowId) {
       const detail = await get(workflowDetail(workflowId));
       if (detail) {
         return {
           section,
-          sectionPath: ROUTES.workflows,
+          sectionPath: ROUTES.agentWorkflows,
+          sectionOptions:
+            sectionOptions ??
+            ({
+              pathParams: { agentId: detail.agentId } as RouterPathParams,
+            } as const),
           name: detail.displayName ?? detail.name,
         };
       }
     }
-    return { section, sectionPath: ROUTES.workflows };
+    return {
+      section,
+      sectionPath: ROUTES.agentWorkflows,
+      sectionOptions,
+    };
   },
 );
 
@@ -162,7 +179,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(automationBreadcrumb$);
     }
 
-    if (route === "workflows" || route === "agentWorkflowDetail") {
+    if (route === "agentWorkflows" || route === "agentWorkflowDetail") {
       return await get(workflowsBreadcrumb$);
     }
 

@@ -194,6 +194,7 @@ function MobileTopBar() {
             <div className="text-sm font-medium text-foreground flex items-center gap-1 min-w-0">
               <Link
                 pathname={breadcrumb.sectionPath}
+                options={breadcrumb.sectionOptions}
                 className="hover:opacity-70 transition-opacity no-underline text-inherit"
               >
                 {breadcrumb.section}
