@@ -21,7 +21,7 @@ use super::idle_lifecycle::{
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
-use crate::executor::validate_resume_session_id;
+use crate::executor::{RunnerPreSpawnTiming, validate_resume_session_id};
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::paths::diagnostic_session_fingerprint;
@@ -117,6 +117,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         budget_lease: job_lease,
         cancel: job_cancel,
     } = admission;
+    let pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
     let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
         ctx.spawn_ctx.active_cli_agent_sessions.clone(),
@@ -180,6 +181,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             job_profile,
             reuse_entry,
             reuse_result,
+            pre_spawn_timing,
             active_cli_agent_session_guard,
         },
         ctx.spawn_ctx,
