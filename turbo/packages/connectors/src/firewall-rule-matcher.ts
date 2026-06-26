@@ -21,15 +21,38 @@ export interface FindMatchingPermissionsOptions {
   apiBase?: string;
 }
 
+export interface FindMatchingRoutingPermissionsOptions extends FindMatchingPermissionsOptions {
+  serviceName?: string;
+}
+
 export interface FirewallBaseUrlMatch {
   displayBase: string;
   relativePath: string;
   score: number;
 }
 
+export interface FirewallRoutingPermissionRoute {
+  readonly permissionName: string;
+  readonly rule: string;
+}
+
+export interface FirewallRoutingPermissionApi {
+  readonly base: string;
+  readonly routes: readonly FirewallRoutingPermissionRoute[];
+}
+
 interface ApiMatchState {
   bestSpecificity: PathSpecificity | null;
   matched: string[];
+}
+
+interface PermissionRuleSet {
+  readonly name: string;
+  readonly rules: readonly string[];
+}
+
+interface PermissionMatchApi {
+  readonly permissionRuleSets: readonly PermissionRuleSet[];
 }
 
 const VALID_RULE_METHODS = new Set([
@@ -316,16 +339,64 @@ function getPermissionRules(permission: unknown): string[] {
   return rules;
 }
 
-function getApiPermissionsForMatch(
+function getApiPermissionRuleSetsForMatch(
   api: FirewallConfig["apis"][number],
   serviceName: string,
   apiBase: string | null,
-): unknown[] | null {
+): PermissionRuleSet[] | null {
   if (!isValidApiEntry(api, serviceName)) return null;
   if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) return null;
   if (api.permissions === undefined) return null;
   if (!Array.isArray(api.permissions)) return null;
-  return api.permissions;
+
+  const permissionRuleSets: PermissionRuleSet[] = [];
+  const seenPermissionNames = new Set<string>();
+  for (const rawPermission of api.permissions) {
+    const permissionName = getPermissionName(rawPermission);
+    if (permissionName === null) continue;
+    if (seenPermissionNames.has(permissionName)) continue;
+    seenPermissionNames.add(permissionName);
+    permissionRuleSets.push({
+      name: permissionName,
+      rules: getPermissionRules(rawPermission),
+    });
+  }
+  return permissionRuleSets;
+}
+
+function getRoutingApiPermissionRuleSetsForMatch(
+  api: FirewallRoutingPermissionApi,
+  serviceName: string,
+  apiBase: string | null,
+): PermissionRuleSet[] | null {
+  if (!isObjectRecord(api)) return null;
+  if (typeof api.base !== "string") return null;
+  try {
+    validateBaseUrl(api.base, serviceName);
+  } catch {
+    return null;
+  }
+  if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) return null;
+  if (!Array.isArray(api.routes)) return null;
+
+  const rulesByPermission = new Map<string, string[]>();
+  for (const route of api.routes) {
+    if (!isObjectRecord(route)) continue;
+    if (typeof route.permissionName !== "string") continue;
+    if (!isValidPermissionName(route.permissionName)) continue;
+    if (typeof route.rule !== "string") continue;
+
+    const rules = rulesByPermission.get(route.permissionName);
+    if (rules) {
+      rules.push(route.rule);
+    } else {
+      rulesByPermission.set(route.permissionName, [route.rule]);
+    }
+  }
+
+  return [...rulesByPermission.entries()].map(([name, rules]) => {
+    return { name, rules };
+  });
 }
 
 function recordPermissionMatch(
@@ -896,30 +967,71 @@ export function findMatchingPermissions(
   if (typeof config.name !== "string" || config.name === "") return [];
   if (!Array.isArray(config.apis)) return [];
 
-  const upperMethod = method.toUpperCase();
   const apiBase =
     options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
-  const matched: string[] = [];
+  const matchApis: PermissionMatchApi[] = [];
 
   for (const api of config.apis) {
-    const permissions = getApiPermissionsForMatch(api, config.name, apiBase);
-    if (permissions === null) continue;
-    const state: ApiMatchState = { bestSpecificity: null, matched: [] };
-    const seenPermissionNames = new Set<string>();
+    const permissionRuleSets = getApiPermissionRuleSetsForMatch(
+      api,
+      config.name,
+      apiBase,
+    );
+    if (permissionRuleSets !== null) {
+      matchApis.push({ permissionRuleSets });
+    }
+  }
 
-    for (const rawPermission of permissions) {
-      const permissionName = getPermissionName(rawPermission);
-      if (permissionName === null) continue;
-      if (seenPermissionNames.has(permissionName)) continue;
-      seenPermissionNames.add(permissionName);
-      for (const rule of getPermissionRules(rawPermission)) {
+  return findMatchingPermissionRuleSets(method, path, matchApis);
+}
+
+export function findMatchingRoutingPermissions(
+  method: string,
+  path: string,
+  apis: readonly FirewallRoutingPermissionApi[],
+  options: FindMatchingRoutingPermissionsOptions = {},
+): string[] {
+  if (!Array.isArray(apis)) return [];
+
+  const serviceName = options.serviceName ?? "routing";
+  const apiBase =
+    options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
+  const matchApis: PermissionMatchApi[] = [];
+
+  for (const api of apis) {
+    const permissionRuleSets = getRoutingApiPermissionRuleSetsForMatch(
+      api,
+      serviceName,
+      apiBase,
+    );
+    if (permissionRuleSets !== null) {
+      matchApis.push({ permissionRuleSets });
+    }
+  }
+
+  return findMatchingPermissionRuleSets(method, path, matchApis);
+}
+
+function findMatchingPermissionRuleSets(
+  method: string,
+  path: string,
+  apis: readonly PermissionMatchApi[],
+): string[] {
+  const upperMethod = method.toUpperCase();
+  const matched: string[] = [];
+
+  for (const api of apis) {
+    const state: ApiMatchState = { bestSpecificity: null, matched: [] };
+
+    for (const permission of api.permissionRuleSets) {
+      for (const rule of permission.rules) {
         const rest = matchingRulePath(rule, upperMethod);
         if (rest === null) continue;
 
         if (matchFirewallPath(path, rest) !== null) {
           const specificity = pathSpecificity(rest);
           if (specificity === null) continue;
-          recordPermissionMatch(state, permissionName, specificity);
+          recordPermissionMatch(state, permission.name, specificity);
         }
       }
     }

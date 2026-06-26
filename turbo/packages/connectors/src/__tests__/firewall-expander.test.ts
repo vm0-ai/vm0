@@ -4,6 +4,7 @@ import {
   validateBaseUrl,
   hasBaseUrlParams,
   hasBaseUrlVars,
+  resolveFirewallBaseUrlTemplate,
   resolveFirewallBaseUrlVars,
 } from "../firewall-types";
 import {
@@ -1098,6 +1099,51 @@ describe("hasBaseUrlVars", () => {
     expect(
       hasBaseUrlVars("https://${{ vars.A }}.${{ vars.B }}.example.com"),
     ).toBe(true);
+  });
+});
+
+describe("resolveFirewallBaseUrlTemplate", () => {
+  it("resolves host template variables without requiring a firewall API auth object", () => {
+    expect(
+      resolveFirewallBaseUrlTemplate({
+        serviceName: "zendesk",
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        vars: { ZENDESK_SUBDOMAIN: "acme" },
+        credentialed: true,
+      }),
+    ).toBe("https://acme.zendesk.com");
+  });
+
+  it("throws when required template variables are missing", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlTemplate({
+        serviceName: "zendesk",
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        vars: {},
+        credentialed: true,
+      });
+    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  });
+
+  it("enforces https for credentialed resolved template bases", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlTemplate({
+        serviceName: "strapi",
+        base: "${{ vars.STRAPI_BASE_URL }}",
+        vars: { STRAPI_BASE_URL: "http://strapi.example.test" },
+        credentialed: true,
+      });
+    }).toThrow("credentialed base URL must use https");
+  });
+
+  it("keeps non-credentialed http template bases valid", () => {
+    expect(
+      resolveFirewallBaseUrlTemplate({
+        serviceName: "diagnostic",
+        base: "${{ vars.DIAGNOSTIC_BASE_URL }}",
+        vars: { DIAGNOSTIC_BASE_URL: "http://diagnostic.example.test" },
+      }),
+    ).toBe("http://diagnostic.example.test");
   });
 });
 
