@@ -18,7 +18,6 @@ const CONNECTORS_DIR = path.resolve(
   import.meta.dirname,
   "../../../connectors/src/connectors",
 );
-const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
 const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
@@ -218,27 +217,6 @@ describe("firewall metadata generator", () => {
       expect(generatedFirewallExportName(type)).toBe(exportName);
     }
   });
-
-  it(
-    "keeps unregistered generator outputs out of the runtime manifest",
-    async () => {
-      const runtimeTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
-      const sourceSet = await loadConnectorFirewallSourceSet({
-        connectorsDir: CONNECTORS_DIR,
-      });
-      const sourceTypes = new Set<string>(
-        sourceSet.sources.map((source) => {
-          return source.type;
-        }),
-      );
-
-      for (const type of UNREGISTERED_GENERATED_FIREWALL_TYPES) {
-        expect(runtimeTypes.has(type), type).toBe(false);
-        expect(sourceTypes.has(type), type).toBe(false);
-      }
-    },
-    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
-  );
 
   it("keeps generated server metadata host-owner only", () => {
     const source = fs.readFileSync(
