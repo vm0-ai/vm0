@@ -1504,7 +1504,7 @@ mod tests {
     use std::net::Shutdown;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::os::unix::net::UnixStream;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     fn read_message(stream: &mut UnixStream) -> vsock_proto::RawMessage {
         let mut hdr = [0u8; 4];
@@ -1914,28 +1914,21 @@ mod tests {
             limit_bytes: 64,
             chunk_limit_bytes: 8,
         };
+        let seq = request.seq;
+        let registration = registry.register(request.seq, &request.label).unwrap();
+        let exec_cancel = registration.cancel_token();
 
-        start_exec_operation_with_spawner(
+        run_exec_operation_worker(
             request,
-            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
-            registry.clone(),
+            exec_cancel.clone(),
+            registration,
+            operation_guard(),
             SystemThreadSpawner,
-        )
-        .unwrap();
+        );
 
-        let started = Instant::now();
-        loop {
-            if let Ok(registration) = registry.register(44, "released") {
-                drop(registration);
-                break;
-            }
-            assert!(
-                started.elapsed() < Duration::from_secs(5),
-                "exec operation registry entry for seq=44 was not released"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        assert!(exec_cancel.load(Ordering::Acquire));
+        assert_registry_released(&registry, seq);
     }
 }
