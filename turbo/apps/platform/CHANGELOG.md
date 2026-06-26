@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.497.0](https://github.com/vm0-ai/vm0/compare/app-v0.496.0...app-v0.497.0) (2026-06-26)
+
+
+### Features
+
+* group workflow cards by visibility ([#19059](https://github.com/vm0-ai/vm0/issues/19059)) ([4726706](https://github.com/vm0-ai/vm0/commit/4726706d354eae71db054ef2a93763971291a073))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.118.0
+    * @vm0/core bumped to 8.371.2
+
 ## [0.496.0](https://github.com/vm0-ai/vm0/compare/app-v0.495.0...app-v0.496.0) (2026-06-26)
 
 
