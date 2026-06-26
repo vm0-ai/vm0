@@ -138,7 +138,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_prepared_sandbox_run(
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
         PreparedSandboxRun {
             sandbox,
             source_ip,
@@ -153,7 +153,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
         },
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None),
-    )
+    ))
     .await;
 
     assert_eq!(outcome.exit_code(), 126);
@@ -164,6 +164,14 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     assert_eq!(system_log, b"guest system log\n");
     let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
     assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
+    let bootstrap_event = captured_event(&events, "agent bootstrap abnormal exit diagnostics");
+    assert_eq!(
+        bootstrap_event
+            .fields
+            .get("stdout_stream_bytes")
+            .map(String::as_str),
+        Some("21")
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -742,6 +750,42 @@ async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
 
     assert_eq!(exit_code, 7);
     assert_eq!(error.as_deref(), Some("guest stderr"));
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
+async fn execute_inner_nonzero_with_stderr_and_guest_error_skips_bootstrap_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 7, Vec::new(), b"guest stderr".to_vec()));
+    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(Some(b"guest checkpoint error".to_vec())));
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let (result, events) = capture_async_events(run_new_sandbox_status(
+        &factory,
+        &minimal_context(),
+        &config,
+        &default_params(),
+    ))
+    .await;
+    let (exit_code, error) = result.unwrap();
+
+    assert_eq!(exit_code, 7);
+    assert_eq!(error.as_deref(), Some("guest stderr"));
+    assert!(
+        events.iter().all(|event| {
+            event.fields.get("message").map(String::as_str)
+                != Some("agent bootstrap abnormal exit diagnostics")
+        }),
+        "guest error file should suppress bootstrap diagnostics: {events:#?}"
+    );
     assert!(
         overrides
             .exec_calls()

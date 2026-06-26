@@ -2,7 +2,9 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
-use super::{redact_session_restore_diagnostic, write_session_history_file};
+use super::{
+    SessionRestoreDiagnostics, redact_session_restore_diagnostic, write_session_history_file,
+};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::types::{ExecutionContext, ResumeSession};
@@ -89,7 +91,7 @@ pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
-) -> RunnerResult<()> {
+) -> RunnerResult<SessionRestoreDiagnostics> {
     let thread_id = CodexThreadId::parse(&session.cli_agent_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
     let session_id = thread_id.as_str();
@@ -115,14 +117,19 @@ pub(super) async fn restore_codex_session(
     )
     .await?;
 
+    let diagnostics = SessionRestoreDiagnostics {
+        framework: "codex",
+        session_fingerprint: diagnostic_session_fingerprint(session_id),
+        bytes_in: session.session_history.len(),
+    };
     info!(
         run_id = %context.run_id,
-        framework = "codex",
-        session_fingerprint = %diagnostic_session_fingerprint(session_id),
-        bytes_in = session.session_history.len(),
+        framework = diagnostics.framework,
+        session_fingerprint = %diagnostics.session_fingerprint,
+        bytes_in = diagnostics.bytes_in,
         "restored session history",
     );
-    Ok(())
+    Ok(diagnostics)
 }
 
 async fn cleanup_existing_codex_session_files(

@@ -5,15 +5,18 @@ use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
     Sandbox, StartProcessRequest,
 };
+use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::diagnostics::{
-    AgentStdoutStreamDiagnostics, StdoutDrainReport, build_agent_env_diagnostics,
-    build_agent_env_key_diagnostics, check_host_oom, collect_agent_abnormal_exit_diagnostics,
-    dmesg_indicates_oom, drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
+    AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
+    build_agent_env_diagnostics, build_agent_env_key_diagnostics, check_host_oom,
+    collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom, drain_stdout_to_file,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
     log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
+    should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
@@ -31,6 +34,27 @@ use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
+
+const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+
+pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
+    let run_agent_path = quote_shell_arg(run_agent_path);
+    format!(
+        "if [ ! -e {run_agent_path} ]; then \
+            printf '%s\\n' 'agent bootstrap failed: guest-agent is missing' >&2; \
+            exit 127; \
+        fi; \
+        if [ ! -f {run_agent_path} ]; then \
+            printf '%s\\n' 'agent bootstrap failed: guest-agent is not a regular file' >&2; \
+            exit 126; \
+        fi; \
+        if [ ! -x {run_agent_path} ]; then \
+            printf '%s\\n' 'agent bootstrap failed: guest-agent is not executable' >&2; \
+            exit 126; \
+        fi; \
+        exec {run_agent_path} 2>&1"
+    )
+}
 
 pub(super) struct ProcessCancelTimeouts {
     pub(super) write: Duration,
@@ -311,6 +335,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     }
 
     // 4. Restore session history
+    let mut session_restore_diagnostics = None;
     if let Some(session) = &context.resume_session {
         let t = Instant::now();
         let result = restore_session(sandbox, context, session).await;
@@ -321,7 +346,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             result.is_ok(),
             err.as_deref(),
         );
-        result?;
+        session_restore_diagnostics = Some(result?);
     }
 
     // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
@@ -380,10 +405,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
-    //    guest-agent owns the guest-side system log for telemetry; the runner
-    //    separately writes streamed chunks to a host stream log in real time.
-    let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
+    // 6. Spawn agent — stdout streamed to host via vsock. guest-agent stderr is
+    //    merged into stdout, while a small stderr capture keeps shell/wrapper
+    //    startup failures visible when the process exits before guest logging.
+    let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
@@ -396,7 +421,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             timeout: JOB_TIMEOUT,
             env: &env_refs,
             sudo: false,
-            output: ProcessOutputMode::stream(),
+            output: ProcessOutputMode::stream_with_stderr_capture(
+                AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
+            ),
             control: ProcessControlMode::Enabled,
         })
         .await;
@@ -554,6 +581,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
     let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
+        bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: false,
     };
@@ -595,6 +623,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");
     }
     let stdout_stream_diagnostics = AgentStdoutStreamDiagnostics {
+        bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: exit.stream_overflowed,
     };
@@ -618,6 +647,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         start.reuse_result,
         &exit,
         &env_diagnostics,
+        stdout_stream_diagnostics,
     );
 
     // Check for OOM kill when process was terminated by SIGKILL.
@@ -670,36 +700,62 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let failure_exit_code = process_failure_exit_code(&exit);
         let stderr = process_failure_stderr(&exit);
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
-        let guest_error = if stderr.is_empty() {
+        let should_read_guest_error = stderr.is_empty()
+            || (failure_diagnostic.is_none()
+                && matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0));
+        let guest_error = if should_read_guest_error {
             read_guest_error_file(sandbox, context.run_id).await
         } else {
             None
         };
-        let mut resource_diagnostics = None;
-        if should_collect_agent_abnormal_exit_diagnostics(
+        let should_log_bootstrap_diagnostics = should_log_agent_bootstrap_abnormal_exit_diagnostics(
+            wait_cancelled,
+            &exit,
+            failure_diagnostic.as_ref(),
+            guest_error.as_deref(),
+        );
+        let should_collect_resource_diagnostics = should_collect_agent_abnormal_exit_diagnostics(
             wait_cancelled,
             &exit,
             &stderr,
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
-        ) {
+        );
+        let mut resource_diagnostics = None;
+        if should_log_bootstrap_diagnostics || should_collect_resource_diagnostics {
             let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
-            log_agent_abnormal_exit_env_diagnostics(
-                context.run_id,
-                sandbox.id(),
-                start.reuse_result,
-                &exit,
-                &env_diagnostics,
-                &env_key_diagnostics,
-            );
-            resource_diagnostics = collect_agent_abnormal_exit_diagnostics(
-                sandbox,
-                context.run_id,
-                sandbox.id(),
-                start.reuse_result,
-                failure_exit_code,
-            )
-            .await;
+            if should_log_bootstrap_diagnostics {
+                log_agent_bootstrap_abnormal_exit_diagnostics(
+                    AgentBootstrapAbnormalExitLogContext {
+                        run_id: context.run_id,
+                        sandbox_id: sandbox.id(),
+                        reuse_result: start.reuse_result,
+                        exit: &exit,
+                        env_diagnostics: &env_diagnostics,
+                        env_key_diagnostics: &env_key_diagnostics,
+                        stdout_stream_diagnostics,
+                        session_restore_diagnostics: session_restore_diagnostics.as_ref(),
+                    },
+                );
+            }
+            if should_collect_resource_diagnostics {
+                log_agent_abnormal_exit_env_diagnostics(
+                    context.run_id,
+                    sandbox.id(),
+                    start.reuse_result,
+                    &exit,
+                    &env_diagnostics,
+                    &env_key_diagnostics,
+                );
+                resource_diagnostics = collect_agent_abnormal_exit_diagnostics(
+                    sandbox,
+                    context.run_id,
+                    sandbox.id(),
+                    start.reuse_result,
+                    failure_exit_code,
+                )
+                .await;
+            }
         }
         let error = if !stderr.is_empty() {
             stderr

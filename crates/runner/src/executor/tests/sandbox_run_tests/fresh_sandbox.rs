@@ -307,7 +307,10 @@ async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
 
     let calls = overrides.start_process_calls();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].output, ProcessOutputMode::stream());
+    assert_eq!(
+        calls[0].output,
+        ProcessOutputMode::stream_with_stderr_capture(64 * 1024)
+    );
     assert_eq!(calls[0].control, ProcessControlMode::Enabled);
 }
 

@@ -105,7 +105,13 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
-    result.unwrap();
+    let diagnostics = result.unwrap();
+    assert_eq!(diagnostics.framework, "claude-code");
+    assert_eq!(
+        diagnostics.session_fingerprint,
+        diagnostic_session_fingerprint(raw_session_id)
+    );
+    assert_eq!(diagnostics.bytes_in, session.session_history.len());
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "restored session history");
     assert_eq!(
@@ -211,7 +217,13 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
-    result.unwrap();
+    let diagnostics = result.unwrap();
+    assert_eq!(diagnostics.framework, "codex");
+    assert_eq!(
+        diagnostics.session_fingerprint,
+        diagnostic_session_fingerprint(raw_session_id)
+    );
+    assert_eq!(diagnostics.bytes_in, session.session_history.len());
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let restore_event = captured_event(&events, "restored session history");
     assert_eq!(
