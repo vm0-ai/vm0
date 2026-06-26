@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import { findMatchingRoutingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
-import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";
+import { loadFirewallRoutingMetadata } from "@vm0/connectors/firewall-metadata/routing";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import {
@@ -49,17 +49,18 @@ Notes:
           return;
         }
 
-        const config = await loadConnectorFirewall(connectorRef);
-        if (!config) {
+        const metadata = await loadFirewallRoutingMetadata(connectorRef);
+        if (!metadata) {
           throw new Error(`Unknown connector type: ${connectorRef}`);
         }
 
         const label =
           getFirewallPermissionSummary(connectorRef)?.label ?? connectorRef;
-        const permissions = findMatchingPermissions(
+        const permissions = findMatchingRoutingPermissions(
           opts.method,
           opts.path,
-          config,
+          metadata.apis,
+          { serviceName: connectorRef },
         );
 
         console.log(
@@ -79,12 +80,11 @@ Notes:
 
         // Count total rules per permission name across all APIs
         const ruleCount = new Map<string, number>();
-        for (const api of config.apis) {
-          if (!api.permissions) continue;
-          for (const perm of api.permissions) {
+        for (const api of metadata.apis) {
+          for (const route of api.routes) {
             ruleCount.set(
-              perm.name,
-              (ruleCount.get(perm.name) ?? 0) + perm.rules.length,
+              route.permissionName,
+              (ruleCount.get(route.permissionName) ?? 0) + 1,
             );
           }
         }

@@ -3,7 +3,7 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Real (internal): All CLI code, firewall configs from @vm0/core
+ * - Real (internal): All CLI code, routing metadata from @vm0/connectors
  *
  * permission-deny is a pure diagnostic command — it identifies which permission
  * or unknown endpoint policy covers a denied request and tells the agent to run permission-change.

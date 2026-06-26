@@ -35,9 +35,6 @@ function forbiddenFirewallImport(specifier: string): boolean {
   if (specifier === "@vm0/connectors/firewalls") {
     return true;
   }
-  if (specifier === "@vm0/connectors/firewalls/runtime") {
-    return false;
-  }
   return specifier.startsWith("@vm0/connectors/firewalls/");
 }
 
