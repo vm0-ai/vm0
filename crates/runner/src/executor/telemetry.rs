@@ -54,8 +54,7 @@ impl RunnerSpawnTiming {
         }
     }
 
-    pub(super) fn record_spawn_success(self, telemetry: &mut JobTelemetry) {
-        let spawned_at = Instant::now();
+    pub(super) fn record_spawn_success_at(self, telemetry: &mut JobTelemetry, spawned_at: Instant) {
         telemetry.record(
             "runner_executor_start_to_spawn",
             spawned_at.saturating_duration_since(self.executor_started_at),

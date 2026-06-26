@@ -417,10 +417,10 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     cancel: CancellationToken,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
+    let spawn_timing = RunnerSpawnTiming::start(hooks.pre_spawn_timing);
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
-    let spawn_timing = RunnerSpawnTiming::start(hooks.pre_spawn_timing);
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
@@ -508,10 +508,10 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
     active_input_source: Option<ActiveInputSource>,
     pre_spawn_timing: Option<RunnerPreSpawnTiming>,
 ) -> (ExecuteOutcome, JobTelemetry) {
+    let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
-    let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);

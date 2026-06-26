@@ -403,9 +403,15 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let mut handle = match handle {
         Ok(h) => {
-            telemetry.record("runner_agent_start_process", t.elapsed(), true, None);
+            let spawned_at = Instant::now();
+            telemetry.record(
+                "runner_agent_start_process",
+                spawned_at.saturating_duration_since(t),
+                true,
+                None,
+            );
             if let Some(spawn_timing) = spawn_timing {
-                spawn_timing.record_spawn_success(telemetry);
+                spawn_timing.record_spawn_success_at(telemetry, spawned_at);
             }
             h
         }
