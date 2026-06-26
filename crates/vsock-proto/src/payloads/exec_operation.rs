@@ -8,7 +8,10 @@ pub use control::{
     DecodedExecControl, DecodedExecControlResult, decode_exec_control, decode_exec_control_result,
     encode_exec_control, encode_exec_control_result,
 };
-pub use output::{DecodedExecOutput, ExecOutputStream, decode_exec_output, encode_exec_output};
+pub use output::{
+    DecodedExecOutput, ExecOutputStream, decode_exec_output, encode_exec_output,
+    encode_exec_output_frame_into,
+};
 pub use result::{
     DecodedExecResult, ExecCapturedOutput, ExecTermination, decode_exec_result, encode_exec_result,
 };
