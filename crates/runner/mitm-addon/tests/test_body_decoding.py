@@ -12,7 +12,7 @@ from body_decoding import (
     create_stream_decode_session,
     decompress_body,
 )
-from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
+from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
 
 
@@ -391,16 +391,16 @@ class TestDecompressBody:
         assert result == plaintext
 
     def test_brotli_large_input_caps_adaptive_chunk_size(self, headers, monkeypatch):
-        plaintext = pseudo_random_ascii(STREAM_BUFFER_LIMIT * 3)
+        plaintext = pseudo_random_ascii(DEFAULT_BODY_DECODE_LIMIT * 3)
         compressed = brotli.compress(plaintext)
         assert len(compressed) > 64 * 1024
 
         stats = track_brotli_decompressor(monkeypatch)
 
         hdrs = headers(("Content-Encoding", "br"))
-        result = decompress_body(compressed, hdrs, max_output=STREAM_BUFFER_LIMIT)
+        result = decompress_body(compressed, hdrs, max_output=DEFAULT_BODY_DECODE_LIMIT)
 
-        assert result == plaintext[:STREAM_BUFFER_LIMIT]
+        assert result == plaintext[:DEFAULT_BODY_DECODE_LIMIT]
         assert stats["max_input"] == 1024
 
     def test_zstd_corrupted_returns_original_data(self, headers, mitm_ctx):

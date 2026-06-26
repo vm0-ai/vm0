@@ -9,7 +9,7 @@ import zstandard
 from mitmproxy import http
 
 from body_capture import add_capture_fields
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import BODY_CAPTURE_LIMIT
 from tests.body_decode_helpers import pseudo_random_ascii, track_brotli_decompressor
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
@@ -86,31 +86,31 @@ class TestDecompression:
         assert entry["response_body"] == '{"result": "hello world"}'
 
     def test_brotli_exact_limit_not_truncated(self, real_flow):
-        original = b"x" * STREAM_BUFFER_LIMIT
+        original = b"x" * BODY_CAPTURE_LIMIT
         compressed = brotli.compress(original)
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body_truncated" not in entry
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_brotli_truncation_preserves_utf8_boundary(self, real_flow):
-        original = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
+        original = b"x" * BODY_CAPTURE_LIMIT + "\u20ac".encode("utf-8")
         compressed = brotli.compress(original)
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
         assert entry["response_body_encoding"] == "utf-8"
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_brotli_large_text_uses_adaptive_chunks(self, real_flow, monkeypatch):
-        original = pseudo_random_ascii(STREAM_BUFFER_LIMIT // 2)
+        original = pseudo_random_ascii(BODY_CAPTURE_LIMIT // 2)
         compressed = brotli.compress(original)
         old_call_count = (len(compressed) + 15) // 16
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         assert old_call_count > 1000
 
         stats = track_brotli_decompressor(monkeypatch)
@@ -128,7 +128,7 @@ class TestDecompression:
     def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
         original = b"\x00" * (10 * 1024 * 1024)
         compressed = brotli.compress(original)
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
 
         stats = track_brotli_decompressor(monkeypatch)
 
@@ -137,7 +137,7 @@ class TestDecompression:
         add_capture_fields(flow, entry)
 
         assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
         assert stats["max_input"] < len(compressed)
         assert stats["max_input"] <= 16
         assert stats["max_output"] < len(original)
@@ -202,13 +202,13 @@ class TestDecompression:
         original = b"\x00" * (1024 * 1024)
         compressed = gzip.compress(original)
         # Compressed data fits in buffer limit
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "gzip", "text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         # Body should be capped, not 1MB
         assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_truncated_brotli_falls_back(self, real_flow):
         """Truncated brotli data should fall back gracefully."""

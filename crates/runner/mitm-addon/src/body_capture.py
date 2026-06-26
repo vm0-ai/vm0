@@ -12,7 +12,7 @@ import body_decoding
 import flow_metadata_keys as metadata_keys
 import request_streaming
 import response_streaming
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import BODY_CAPTURE_LIMIT
 
 _REDACTED_HEADER_VALUE = "***"
 
@@ -263,7 +263,7 @@ def _set_body_fields(
     *,
     already_truncated: bool = False,
 ) -> None:
-    truncated = already_truncated or len(body) > STREAM_BUFFER_LIMIT
+    truncated = already_truncated or len(body) > BODY_CAPTURE_LIMIT
     if truncated:
         # Truncation describes capture completeness, even when no body string is emitted.
         log_entry[f"{side}_body_truncated"] = True
@@ -272,7 +272,7 @@ def _set_body_fields(
         return
 
     encoded, encoding = _encode_body(
-        _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT) if truncated else body,
+        _truncate_bytes_utf8_safe(body, BODY_CAPTURE_LIMIT) if truncated else body,
         content_type,
     )
     if encoded is None:
@@ -316,7 +316,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             request_body = body_decoding.decode_body_bounded(
                 bytes(request_stream_body.buffer),
                 flow.request.headers,
-                max_output=STREAM_BUFFER_LIMIT + 1,
+                max_output=BODY_CAPTURE_LIMIT + 1,
                 fail_on_unsupported_encoding=True,
             )
             if request_body.failed:
@@ -336,7 +336,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             request_body = body_decoding.decode_body_bounded(
                 flow.request.raw_content,
                 flow.request.headers,
-                max_output=STREAM_BUFFER_LIMIT + 1,
+                max_output=BODY_CAPTURE_LIMIT + 1,
                 fail_on_unsupported_encoding=True,
             )
             if request_body.failed:
@@ -356,7 +356,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             body = body_decoding.decompress_body(
                 bytes(stream_body.buffer),
                 flow.response.headers,
-                max_output=STREAM_BUFFER_LIMIT + 1,
+                max_output=BODY_CAPTURE_LIMIT + 1,
             )
         else:
             try:
