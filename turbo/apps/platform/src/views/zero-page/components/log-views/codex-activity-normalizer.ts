@@ -470,6 +470,17 @@ function getItemErrorMessage(
   return extractErrorMessage(item.error);
 }
 
+function shouldRenderGenericItemFailure(
+  codexType: string,
+  item: Record<string, unknown>,
+): boolean {
+  return (
+    codexType === "item.completed" &&
+    (isFailedStatus(getItemStatus(item)) ||
+      getItemErrorMessage(item) !== undefined)
+  );
+}
+
 function parseCodexChanges(value: unknown): CodexFileChange[] {
   if (!Array.isArray(value)) {
     return [];
@@ -653,7 +664,7 @@ function formatCodexFileChanges(
   status: string | undefined,
   errorMessage: string | undefined,
   originalChangeCount: number,
-): string {
+): string | undefined {
   const lines: string[] = [];
   if (status && isFailedStatus(status)) {
     lines.push(`Status: ${status}`);
@@ -662,7 +673,7 @@ function formatCodexFileChanges(
     lines.push(`Error: ${errorMessage}`);
   }
   if (changes.length === 0 && lines.length === 0) {
-    return "[files] Files changed";
+    return undefined;
   }
 
   for (const change of changes) {
@@ -1042,7 +1053,7 @@ function normalizeCodexTextItemEvent(
   codexType: string,
   item: Record<string, unknown>,
   prefix?: string,
-): AgentEvent {
+): AgentEvent | null {
   const text = getFirstNonBlankString(item, ["text"]);
   if (text) {
     return makeCodexAssistantTextEvent(
@@ -1050,10 +1061,12 @@ function normalizeCodexTextItemEvent(
       prefix ? `${prefix} ${text}` : text,
     );
   }
-  return makeCodexAssistantTextEvent(
-    event,
-    formatGenericCodexItem(codexType, item),
-  );
+  return shouldRenderGenericItemFailure(codexType, item)
+    ? makeCodexAssistantTextEvent(
+        event,
+        formatGenericCodexItem(codexType, item),
+      )
+    : null;
 }
 
 function normalizeCodexPlanItemEvent(
@@ -1065,17 +1078,22 @@ function normalizeCodexPlanItemEvent(
   if (!text && codexType !== "item.completed") {
     return null;
   }
-  return makeCodexAssistantTextEvent(
-    event,
-    text ? `[plan]\n${text}` : formatGenericCodexItem(codexType, item),
-  );
+  if (text) {
+    return makeCodexAssistantTextEvent(event, `[plan]\n${text}`);
+  }
+  return shouldRenderGenericItemFailure(codexType, item)
+    ? makeCodexAssistantTextEvent(
+        event,
+        formatGenericCodexItem(codexType, item),
+      )
+    : null;
 }
 
 function normalizeCodexFileChangeEvent(
   event: AgentEvent,
   codexType: string,
   item: Record<string, unknown>,
-): AgentEvent {
+): AgentEvent | null {
   if (codexType !== "item.completed") {
     return makeCodexAssistantTextEvent(
       event,
@@ -1089,10 +1107,13 @@ function normalizeCodexFileChangeEvent(
   const originalChangeCount = Array.isArray(item.changes)
     ? item.changes.length
     : changes.length;
-  return makeCodexAssistantTextEvent(
-    event,
-    formatCodexFileChanges(changes, status, errorMessage, originalChangeCount),
+  const text = formatCodexFileChanges(
+    changes,
+    status,
+    errorMessage,
+    originalChangeCount,
   );
+  return text ? makeCodexAssistantTextEvent(event, text) : null;
 }
 
 function normalizeGenericCodexItemEvent(

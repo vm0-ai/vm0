@@ -2442,8 +2442,8 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("Codex item.completed")).toBeInTheDocument();
-    expect(screen.getByText(/Codex agent_message/u)).toBeInTheDocument();
-    expect(screen.getByText("[files] Files changed")).toBeInTheDocument();
+    expect(screen.queryByText(/Codex agent_message/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("[files] Files changed")).not.toBeInTheDocument();
     expect(screen.getAllByText("Write")).not.toHaveLength(0);
     expect(screen.getByText("src/generated.ts")).toBeInTheDocument();
     expect(screen.getByText("File operation completed")).toBeInTheDocument();
