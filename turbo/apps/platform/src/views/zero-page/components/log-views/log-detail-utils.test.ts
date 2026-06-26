@@ -678,6 +678,71 @@ describe("groupEventsIntoMessages duplicate tool ids", () => {
   });
 });
 
+describe("groupEventsIntoMessages parent tool ids", () => {
+  it("does not attach child tool results to a mismatched parent task", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-a",
+          tool_use_id: "task-tool-a",
+          description: "Task A",
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          parent_tool_use_id: "task-tool-a",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "shared-tool-id",
+                name: "Bash",
+                input: { command: "echo task-a" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "user",
+        eventData: {
+          parent_tool_use_id: "missing-task",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "shared-tool-id",
+                content: "wrong parent result",
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+    ]);
+
+    expect(messages).toHaveLength(2);
+    expect(
+      messages[0]?.childMessages?.[0]?.toolOperations?.[0]?.result,
+    ).toBeUndefined();
+    expect(messages[1]?.toolOperations?.[0]).toMatchObject({
+      toolName: "Unknown",
+      result: {
+        content: "wrong parent result",
+        isError: false,
+      },
+    });
+  });
+});
+
 describe("groupEventsIntoMessages thinking content", () => {
   it("keeps Claude Code thinking content blocks visible", () => {
     const messages = groupEventsIntoMessages([

@@ -500,9 +500,7 @@ function takePendingToolUse(
         })
       : -1;
 
-  if (index === -1 && pending.length === 1) {
-    index = 0;
-  } else if (index === -1 && parentToolUseId === undefined) {
+  if (index === -1 && parentToolUseId === undefined) {
     index = 0;
   }
 
