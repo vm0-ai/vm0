@@ -20,7 +20,7 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
-  IconGitBranch,
+  IconListCheck,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -312,7 +312,7 @@ function AgentTabNav({
         </TabsTrigger>
         {showWorkflows && (
           <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
-            <IconGitBranch size={14} stroke={1.5} />
+            <IconListCheck size={14} stroke={1.5} />
             Workflows
           </TabsTrigger>
         )}
