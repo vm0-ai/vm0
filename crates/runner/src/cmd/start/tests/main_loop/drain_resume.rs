@@ -161,6 +161,53 @@ async fn drain_without_active_jobs_exits_promptly() {
     .await;
 }
 
+/// A repeat SIGUSR1 while already Draining is an idempotent no-op:
+/// it must not downgrade to a hard stop or disturb the in-flight job.
+#[tokio::test]
+async fn repeated_drain_while_draining_keeps_active_job_running() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter the lifecycle gate");
+
+    env.drain();
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+
+    env.drain();
+    assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
+    assert_eq!(env.parking_gate.state(), ParkingState::SoftDraining);
+    assert!(
+        !token.is_cancelled(),
+        "repeat drain must not cancel the active job"
+    );
+
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete after the gate is released");
+    assert_eq!(completion.exit_code, 0, "job ran to normal completion");
+    assert!(completion.error.is_none(), "no cancellation error");
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "run should exit after repeated drain and natural job completion",
+    )
+    .await;
+}
+
 /// SIGUSR2 on an already-Running runner is a no-op: it does not disturb
 /// normal discovery.
 #[tokio::test(start_paused = true)]
