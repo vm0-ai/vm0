@@ -619,13 +619,16 @@ describe("workflow detail page", () => {
     expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
+    const workflowFilesButton =
+      within(breadcrumb).getByLabelText("Workflow files");
+    expect(workflowFilesButton).toHaveTextContent("instructions");
     click(buttonByText(/trigger/i));
     expect(search()).toBe("?sidebar=triggers");
     expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    click(screen.getByLabelText("Workflow files"));
+    click(workflowFilesButton);
     click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
       expect(

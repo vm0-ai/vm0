@@ -215,7 +215,6 @@ function WorkflowDetailContent({
           triggerSidebarOpen ? "hidden flex-1 basis-0 xl:flex" : "flex flex-1",
         )}
       >
-        <WorkflowBreadcrumb detail={detail} />
         <DetailHeader
           detail={detail}
           triggerSidebarOpen={triggerSidebarOpen}
@@ -277,14 +276,14 @@ function WorkflowBreadcrumb({
 }) {
   if (!detail) {
     return (
-      <DetailPageBreadcrumbBar>
-        <div className="h-4 w-56 rounded-md bg-muted/50" aria-hidden="true" />
+      <DetailPageBreadcrumbBar className="min-w-0 px-0 pt-0">
+        <div className="h-7 w-56 rounded-md bg-muted/50" aria-hidden="true" />
       </DetailPageBreadcrumbBar>
     );
   }
 
   return (
-    <DetailPageBreadcrumbBar>
+    <DetailPageBreadcrumbBar className="min-w-0 px-0 pt-0">
       <BreadcrumbLink
         pathname={ROUTES.agents}
         icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
@@ -309,6 +308,8 @@ function WorkflowBreadcrumb({
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
         {workflowTitle(detail)}
       </span>
+      <span className="select-none text-muted-foreground/40">/</span>
+      <WorkflowFilePicker detail={detail} />
     </DetailPageBreadcrumbBar>
   );
 }
@@ -448,37 +449,11 @@ function DetailHeader({
   readonly onTriggerSidebarOpenChange: (open: boolean) => void;
 }) {
   return (
-    <DetailPageHeader>
-      <div className="flex min-h-16 items-center gap-4">
+    <DetailPageHeader className="pt-4" contentClassName="max-w-none">
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
+          <WorkflowBreadcrumb detail={detail} />
           <WorkflowMobileCascade detail={detail} />
-          {detail ? (
-            <div className="hidden min-w-0 flex-col justify-center md:flex">
-              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                {workflowTitle(detail)}
-              </h1>
-              <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
-                {detail.description ?? detail.name}
-              </p>
-            </div>
-          ) : (
-            <div
-              className="hidden min-w-0 animate-pulse flex-col gap-2 md:flex"
-              aria-hidden="true"
-            >
-              <div className="h-5 w-48 rounded bg-muted" />
-              <div className="h-4 w-72 rounded bg-muted" />
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-4 flex items-center gap-2 sm:mt-6">
-        <div className="hidden min-w-0 flex-1 md:block">
-          {detail ? (
-            <WorkflowFilePicker detail={detail} />
-          ) : (
-            <div className="h-9 w-44 rounded-md bg-muted/50" />
-          )}
         </div>
         {detail ? (
           <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -500,10 +475,7 @@ function DetailHeader({
             <WorkflowActionsMenu detail={detail} />
           </div>
         ) : (
-          <div
-            className="ml-auto flex shrink-0 items-center gap-2"
-            aria-hidden="true"
-          >
+          <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
             <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-24" />
             <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-20" />
             <div className="size-9 rounded-md bg-muted/50" />
@@ -1118,9 +1090,8 @@ function WorkflowFilePicker({
         <button
           type="button"
           aria-label="Workflow files"
-          className="zero-btn-morandi inline-flex h-9 max-w-full items-center gap-1.5 rounded-lg px-3 text-sm"
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-muted"
         >
-          <IconFileText size={14} stroke={1.5} className="shrink-0" />
           <span className="min-w-0 truncate">{selectedLabel}</span>
           <IconChevronDown
             size={14}
