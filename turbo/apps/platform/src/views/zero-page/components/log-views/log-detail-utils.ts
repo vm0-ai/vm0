@@ -917,6 +917,12 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
     parts.push(message.textAfter);
   }
 
+  if (message.childMessages) {
+    for (const childMessage of message.childMessages) {
+      parts.push(getVisibleGroupedMessageText(childMessage));
+    }
+  }
+
   // For system/result events, also extract from eventData
   const eventData = toGroupingEventData(message.eventData);
 

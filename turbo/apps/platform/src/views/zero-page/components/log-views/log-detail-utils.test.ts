@@ -4,6 +4,7 @@ import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
 import {
   groupEventsIntoMessages,
   groupedMessageKey,
+  groupedMessageMatchesSearch,
 } from "./log-detail-utils.ts";
 
 describe("groupEventsIntoMessages progress events", () => {
@@ -240,6 +241,48 @@ describe("groupEventsIntoMessages sequence ordering", () => {
     ]);
     expect(messages[1]?.sequenceNumber).toBeGreaterThan(5);
     expect(messages[1]?.sequenceNumber).toBeLessThan(5.0005);
+  });
+});
+
+describe("groupedMessageMatchesSearch", () => {
+  it("matches text nested in task child messages", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-1",
+          tool_use_id: "task-tool-1",
+          description: "Parent task",
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          parent_tool_use_id: "task-tool-1",
+          message: {
+            content: [{ type: "text", text: "Nested child output." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:23Z",
+      },
+    ]);
+
+    const taskMessage = messages[0];
+    if (!taskMessage) {
+      throw new Error("expected task message");
+    }
+
+    expect(taskMessage.childMessages?.[0]?.textBefore).toBe(
+      "Nested child output.",
+    );
+    expect(groupedMessageMatchesSearch(taskMessage, "nested child")).toBe(true);
+    expect(groupedMessageMatchesSearch(taskMessage, "missing text")).toBe(
+      false,
+    );
   });
 });
 
