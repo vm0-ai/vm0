@@ -380,6 +380,69 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let expected_hash = hex::encode(Sha256::digest(b"different"));
+    let actual_hash = hex::encode(Sha256::digest(history));
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-ref-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: expected_hash.clone(),
+                url: serve_history_once(history).await,
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("expected session history hash mismatch error"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("hash mismatch"));
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == "session_history_materialization_wait"
+                && !op.1
+                && op.2.as_deref() == Some("session history materialization failed")
+        }),
+        "expected redacted session history wait telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == "session_history_download"
+                && !op.1
+                && op.2.as_deref() == Some("session history download failed")
+        }),
+        "expected redacted session history download telemetry, got: {ops:?}"
+    );
+    let telemetry_debug = format!("{ops:?}");
+    assert!(!telemetry_debug.contains(&expected_hash));
+    assert!(!telemetry_debug.contains(&actual_hash));
+}
+
+#[tokio::test]
 async fn run_in_sandbox_folds_timezone_sync_into_restore_exec() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

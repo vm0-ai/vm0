@@ -37,6 +37,9 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
+const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
+    "session history materialization failed";
 
 pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
     let run_agent_path = quote_shell_arg(run_agent_path);
@@ -371,20 +374,19 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             Some(session)
         }
         SessionHistoryMaterialization::Failed { elapsed, error } => {
-            let error_message = error.to_string();
             if should_record_materialization_wait {
                 telemetry.record(
                     "session_history_materialization_wait",
                     materialization_wait,
                     false,
-                    Some(&error_message),
+                    Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
                 );
             }
             telemetry.record(
                 "session_history_download",
                 elapsed,
                 false,
-                Some(&error_message),
+                Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
             );
             return Err(error);
         }
