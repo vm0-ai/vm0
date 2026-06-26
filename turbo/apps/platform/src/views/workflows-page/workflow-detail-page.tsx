@@ -28,6 +28,7 @@ import {
   IconShieldLock,
   IconTrash,
   IconUpload,
+  IconUsers,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -235,7 +236,12 @@ function WorkflowBreadcrumb({
       aria-label="Breadcrumb"
       className="hidden min-w-0 items-center gap-1 text-sm text-muted-foreground sm:flex"
     >
-      <BreadcrumbLink pathname={ROUTES.agents}>Agents</BreadcrumbLink>
+      <BreadcrumbLink
+        pathname={ROUTES.agents}
+        icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
+      >
+        Agents
+      </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
       <BreadcrumbLink
         pathname={ROUTES.agentDetail}
@@ -263,10 +269,12 @@ function WorkflowBreadcrumb({
 function BreadcrumbLink({
   pathname,
   options,
+  icon,
   children,
 }: {
   readonly pathname: (typeof ROUTES)[keyof typeof ROUTES];
   readonly options?: Parameters<typeof Link>[0]["options"];
+  readonly icon?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
@@ -275,6 +283,7 @@ function BreadcrumbLink({
       options={options}
       className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
     >
+      {icon}
       <span className="truncate">{children}</span>
     </Link>
   );
@@ -392,7 +401,7 @@ function DetailHeader({
   readonly onTriggerSidebarOpenChange: (open: boolean) => void;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-6">
+    <header className="flex shrink-0 items-center justify-between gap-3 px-4 pt-4 sm:px-6">
       <div className="min-w-0 flex-1">
         <WorkflowBreadcrumb detail={detail} />
         <WorkflowMobileCascade detail={detail} />
