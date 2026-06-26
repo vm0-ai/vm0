@@ -324,6 +324,9 @@ export const zeroActivityEvents$ = computed(async (get) => {
 
 export function formatLogTime(createdAt: string): string {
   const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt.trim().length > 0 ? createdAt : "—";
+  }
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   const hours = date.getHours();
@@ -341,6 +344,9 @@ export function formatDuration(
     return undefined;
   }
   const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) {
+    return undefined;
+  }
   if (ms < 1000) {
     return `${ms}ms`;
   }

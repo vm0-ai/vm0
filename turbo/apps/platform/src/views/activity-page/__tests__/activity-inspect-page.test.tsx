@@ -314,9 +314,9 @@ function malformedInspectFile(): File {
           triggerSource: "not-a-source",
           prompt: { nested: true },
           appendSystemPrompt: { nested: true },
-          createdAt: { nested: true },
-          startedAt: { nested: true },
-          completedAt: { nested: true },
+          createdAt: "bad-log-created-at",
+          startedAt: "bad-started-at",
+          completedAt: "bad-completed-at",
         },
         events: [
           null,
@@ -620,8 +620,10 @@ describe("activity inspect page", () => {
       screen.queryByText("Invalid event is dropped."),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+    expect(screen.getByText("bad-log-created-at")).toBeInTheDocument();
     expect(screen.getAllByText("bad-created-at").length).toBeGreaterThan(0);
     expect(screen.queryByText("Invalid Date")).not.toBeInTheDocument();
+    expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
 
     click(getTabByText("Context"));
 
