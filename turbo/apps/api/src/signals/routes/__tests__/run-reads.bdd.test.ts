@@ -98,6 +98,17 @@ function sandboxHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
 }
 
+function s3CommandKey(command: unknown): string | undefined {
+  return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
+}
+
+function countSessionHistoryBlobReads(hash: string): number {
+  const blobKey = `blobs/${hash}.blob`;
+  return context.mocks.s3.send.mock.calls.filter(([command]) => {
+    return s3CommandKey(command) === blobKey;
+  }).length;
+}
+
 /**
  * Marks a claimed run completed through the sandbox webhooks. Successful
  * completion requires a checkpoint, so one is always posted first.
@@ -1007,11 +1018,44 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       [200],
     );
 
+    const readsBeforeRefResumeCreate =
+      countSessionHistoryBlobReads(historyHash);
+    const refResumed = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume from the checkpoint with history ref",
+    });
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeRefResumeCreate,
+    );
+    const refClaim = await api.claimRunnerJob(refResumed.runId, {
+      capabilities: ["resumeSessionHistoryRef"],
+    });
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeRefResumeCreate,
+    );
+    expect(refClaim.resumeSession).toStrictEqual({
+      sessionId: `bdd-cli-${r1.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/storages/presigned?sig=bdd",
+      },
+    });
+    await api.requestCancelRun(actor, refResumed.runId, [200]);
+
+    const readsBeforeInlineResumeCreate =
+      countSessionHistoryBlobReads(historyHash);
     const resumed = await api.createDirectRun(actor, {
       checkpointId,
       prompt: "resume from the checkpoint",
     });
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeInlineResumeCreate,
+    );
     const claim2 = await api.claimRunnerJob(resumed.runId);
+    expect(countSessionHistoryBlobReads(historyHash)).toBe(
+      readsBeforeInlineResumeCreate + 1,
+    );
     expect(claim2.checkpointId).toBe(checkpointId);
     expect(claim2.vars).toStrictEqual({ VOL_VERSION: versionPrefix });
     expect(claim2.resumeSession).toStrictEqual({

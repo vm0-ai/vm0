@@ -206,10 +206,7 @@ impl JobProvider for LocalProvider {
             resume_session: req
                 .session_id
                 .as_ref()
-                .map(|id| crate::types::ResumeSession {
-                    cli_agent_session_id: id.clone(),
-                    session_history: String::new(),
-                }),
+                .map(|id| crate::types::ResumeSession::inline(id.clone(), String::new())),
             secret_values: environment_merge.secret_values,
             local_secret_env_keys: environment_merge.local_secret_env_keys,
             encrypted_secrets: None,

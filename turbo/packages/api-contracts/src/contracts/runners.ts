@@ -168,10 +168,40 @@ export const storageManifestSchema = z.object({
  * Resume session information. The compatibility wire field is `sessionId`, but
  * its semantic name in API/runner code is `cliAgentSessionId`.
  */
-export const resumeSessionSchema = z.object({
+const inlineResumeSessionSchema = z.object({
   sessionId: z.string(),
   sessionHistory: z.string(),
 });
+
+const resumeSessionHistoryBlobRefSchema = z.object({
+  kind: z.literal("blob"),
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+const storedResumeSessionRefSchema = z.object({
+  sessionId: z.string(),
+  historyRef: resumeSessionHistoryBlobRefSchema,
+});
+
+const resumeSessionRefSchema = z.object({
+  sessionId: z.string(),
+  historyRef: resumeSessionHistoryBlobRefSchema.extend({
+    url: z.string().url(),
+    size: z.number().int().nonnegative().optional(),
+  }),
+});
+
+export const storedResumeSessionSchema = z.union([
+  inlineResumeSessionSchema,
+  storedResumeSessionRefSchema,
+]);
+
+export const resumeSessionSchema = z.union([
+  inlineResumeSessionSchema,
+  resumeSessionRefSchema,
+]);
+
+export const runnerClaimCapabilitySchema = z.enum(["resumeSessionHistoryRef"]);
 
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider"]),
@@ -193,7 +223,7 @@ export const secretConnectorMetadataMapSchema = z.record(
 export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
-  resumeSession: resumeSessionSchema.nullable(),
+  resumeSession: storedResumeSessionSchema.nullable(),
   // AES-256-GCM encrypted Record<string, string>. Keys are the runtime secret
   // names used by `${{ secrets.NAME }}`; connector/model-provider keys are env
   // aliases, not backing storage secret names.
@@ -321,6 +351,7 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       telemetry: runnerClaimTelemetrySchema.optional(),
+      capabilities: z.array(runnerClaimCapabilitySchema).optional(),
     }),
     responses: {
       200: executionContextSchema,
@@ -388,4 +419,6 @@ export type SecretConnectorMetadata = z.infer<
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
+export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

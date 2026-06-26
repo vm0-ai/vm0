@@ -30,6 +30,7 @@ mod diagnostics;
 mod env;
 mod guest_state;
 mod sandbox_run;
+mod session_history_download;
 mod session_id;
 mod session_restore;
 mod storage;
