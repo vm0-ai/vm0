@@ -340,6 +340,33 @@ describe("known endpoint-scoped firewall bases", () => {
     );
   });
 
+  it("keeps Dropbox custom quota mutations out of members read permission", async () => {
+    const firewall = await loadRequiredConnectorFirewall("dropbox");
+    const rulesByPermission = new Map<string, Set<string>>();
+    const getCustomQuotaRule =
+      "https://api.dropboxapi.com POST /2/team/member_space_limits/get_custom_quota";
+    const setCustomQuotaRule =
+      "https://api.dropboxapi.com POST /2/team/member_space_limits/set_custom_quota";
+
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        const rules = rulesByPermission.get(permission.name) ?? new Set();
+        for (const rule of permission.rules) {
+          rules.add(`${api.base} ${rule}`);
+        }
+        rulesByPermission.set(permission.name, rules);
+      }
+    }
+
+    expect(rulesByPermission.get("members.read")).toContain(getCustomQuotaRule);
+    expect(rulesByPermission.get("members.read")).not.toContain(
+      setCustomQuotaRule,
+    );
+    expect(rulesByPermission.get("members.write")).toContain(
+      setCustomQuotaRule,
+    );
+  });
+
   it("keeps Google Search Console off the shared www.googleapis.com root", async () => {
     const bases = apiBases(
       await loadRequiredConnectorFirewall("google-search-console"),
