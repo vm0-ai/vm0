@@ -1264,32 +1264,31 @@ async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
 async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
-    if !is_unit_active(&unit).await? {
-        info!(unit = %unit, "no active service found");
-        return Ok(());
-    }
-
-    // `is_unit_active` above can race against the runner exiting on its own:
-    // by the time we read MainPID or call `kill`, the process may be gone.
-    // Both outcomes ("live, signal delivered" and "already gone") must still
-    // run `systemctl disable` below so the unit does not auto-start at the
-    // next boot.
-    match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR1).await? {
-        ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR1 (drain)"),
-        ServiceSignalOutcome::AlreadyGone => {
-            info!(unit = %unit, "runner already exited; drain signal not needed");
+    if is_unit_active(&unit).await? {
+        // `is_unit_active` above can race against the runner exiting on its own:
+        // by the time we read MainPID or call `kill`, the process may be gone.
+        // Both outcomes ("live, signal delivered" and "already gone") must still
+        // run `systemctl disable` below so the unit does not auto-start at the
+        // next boot.
+        match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR1).await? {
+            ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR1 (drain)"),
+            ServiceSignalOutcome::AlreadyGone => {
+                info!(unit = %unit, "runner already exited; drain signal not needed");
+            }
         }
+    } else {
+        info!(unit = %unit, "no active service found; drain signal not needed");
     }
 
-    // Disable so it won't restart on reboot. The SIGUSR1 has already been
-    // delivered, so a disable failure is a partial-success condition — the
-    // operator can re-run the command manually. Surface the hint on stderr
-    // in addition to the structured log so CLI users don't miss it.
+    // Disable so it won't restart on reboot. At this point the runner either
+    // saw SIGUSR1, already exited, or was inactive, so disabling is the
+    // remaining retirement step. Surface the hint on stderr in addition to
+    // the structured log so CLI users don't miss it.
     let svc = format!("{unit}.service");
     if let Err(e) = run_systemctl(&["disable", &svc]).await {
         warn!(unit = %unit, error = %e, "failed to disable unit");
         eprintln!(
-            "WARNING: drain signal was sent but `systemctl disable {svc}` failed: {e}. \
+            "WARNING: drain could not disable {svc}: {e}. \
              Run it manually to prevent the unit from restarting on reboot."
         );
     } else {
