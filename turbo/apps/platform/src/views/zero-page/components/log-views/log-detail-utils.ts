@@ -9,6 +9,10 @@ interface ToolResultContent {
   is_error?: boolean;
 }
 
+const MAX_STRINGIFY_DEPTH = 32;
+const MAX_STRINGIFY_ARRAY_ITEMS = 100;
+const MAX_STRINGIFY_OBJECT_FIELDS = 100;
+
 /**
  * Normalizes tool result content to a string.
  * The API may return non-string values that need to be converted.
@@ -27,31 +31,93 @@ function quoteJsonString(value: string): string {
   return JSON.stringify(value);
 }
 
-function stringifyUnknownJsonValue(
-  value: unknown,
-  seen: WeakSet<object>,
-): string | undefined {
+function stringifyPrimitiveJsonValue(value: unknown): string | undefined {
   if (value === null) {
     return "null";
   }
-
   if (typeof value === "string") {
     return quoteJsonString(value);
   }
-
   if (typeof value === "number") {
     return Number.isFinite(value) ? String(value) : "null";
   }
-
   if (typeof value === "boolean") {
     return String(value);
   }
-
   if (typeof value === "bigint") {
     return quoteJsonString(value.toString());
   }
+  return undefined;
+}
 
-  if (typeof value !== "object") {
+function stringifyArrayJsonValue(
+  value: unknown[],
+  seen: WeakSet<object>,
+  depth: number,
+): string {
+  const items: string[] = [];
+  const itemCount = Math.min(value.length, MAX_STRINGIFY_ARRAY_ITEMS);
+  for (let index = 0; index < itemCount; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    const item =
+      descriptor && "value" in descriptor
+        ? stringifyUnknownJsonValue(descriptor.value, seen, depth + 1)
+        : undefined;
+    items.push(item ?? "null");
+  }
+  if (value.length > MAX_STRINGIFY_ARRAY_ITEMS) {
+    items.push(
+      quoteJsonString(
+        `... ${value.length - MAX_STRINGIFY_ARRAY_ITEMS} more items`,
+      ),
+    );
+  }
+  return `[${items.join(",")}]`;
+}
+
+function stringifyObjectJsonValue(
+  value: object,
+  seen: WeakSet<object>,
+  depth: number,
+): string {
+  const entries: string[] = [];
+  let inspectedFields = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
+    }
+    if (inspectedFields >= MAX_STRINGIFY_OBJECT_FIELDS) {
+      entries.push(`${quoteJsonString("...")}:${quoteJsonString("truncated")}`);
+      break;
+    }
+    inspectedFields += 1;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      continue;
+    }
+    const serialized = stringifyUnknownJsonValue(
+      descriptor.value,
+      seen,
+      depth + 1,
+    );
+    if (serialized !== undefined) {
+      entries.push(`${quoteJsonString(key)}:${serialized}`);
+    }
+  }
+  return `{${entries.join(",")}}`;
+}
+
+function stringifyUnknownJsonValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth = 0,
+): string | undefined {
+  const primitive = stringifyPrimitiveJsonValue(value);
+  if (primitive !== undefined) {
+    return primitive;
+  }
+
+  if (value === null || typeof value !== "object") {
     return undefined;
   }
 
@@ -65,33 +131,16 @@ function stringifyUnknownJsonValue(
       : "null";
   }
 
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const items: string[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      const item =
-        descriptor && "value" in descriptor
-          ? stringifyUnknownJsonValue(descriptor.value, seen)
-          : undefined;
-      items.push(item ?? "null");
-    }
-    seen.delete(value);
-    return `[${items.join(",")}]`;
+  if (depth >= MAX_STRINGIFY_DEPTH) {
+    return quoteJsonString("[MaxDepth]");
   }
 
-  const entries = Object.keys(value).flatMap((key) => {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor || !("value" in descriptor)) {
-      return [];
-    }
-    const serialized = stringifyUnknownJsonValue(descriptor.value, seen);
-    return serialized === undefined
-      ? []
-      : [`${quoteJsonString(key)}:${serialized}`];
-  });
+  seen.add(value);
+  const serialized = Array.isArray(value)
+    ? stringifyArrayJsonValue(value, seen, depth)
+    : stringifyObjectJsonValue(value, seen, depth);
   seen.delete(value);
-  return `{${entries.join(",")}}`;
+  return serialized;
 }
 
 export function stringifyUnknownValue(value: unknown): string {

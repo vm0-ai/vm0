@@ -752,6 +752,71 @@ describe("groupEventsIntoMessages tool result metadata", () => {
     expect(messages[0]?.toolOperations?.[1]?.result?.content).toBe("42");
   });
 
+  it("bounds deeply nested and sparse tool result content", () => {
+    let deepContent: Record<string, unknown> = { leaf: "done" };
+    for (let i = 0; i < 80; i += 1) {
+      deepContent = { next: deepContent };
+    }
+    const sparseContent: unknown[] = [];
+    sparseContent.length = 10_000;
+
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "tool-deep-content",
+                name: "Bash",
+                input: { command: "echo deep" },
+              },
+              {
+                type: "tool_use",
+                id: "tool-sparse-content",
+                name: "Bash",
+                input: { command: "echo sparse" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tool-deep-content",
+                content: deepContent,
+              },
+              {
+                type: "tool_result",
+                tool_use_id: "tool-sparse-content",
+                content: sparseContent,
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages[0]?.toolOperations?.[0]?.result?.content).toContain(
+      '"[MaxDepth]"',
+    );
+    expect(messages[0]?.toolOperations?.[1]?.result?.content).toContain(
+      '"... 9900 more items"',
+    );
+  });
+});
+
+describe("groupEventsIntoMessages tool result metadata validation", () => {
   it("ignores negative tool result duration and bytes", () => {
     const messages = groupEventsIntoMessages([
       {
