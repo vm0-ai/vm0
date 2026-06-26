@@ -19,6 +19,7 @@ use super::api_ably_supervisor::{
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
+use crate::duration::duration_ms;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
@@ -630,10 +631,6 @@ fn poll_reason_value(reason: PollReason) -> &'static str {
         PollReason::Slow => "slow",
         PollReason::Fast => "fast",
     }
-}
-
-fn duration_ms(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
