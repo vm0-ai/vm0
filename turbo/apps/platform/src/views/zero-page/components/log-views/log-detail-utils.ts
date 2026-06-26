@@ -769,8 +769,9 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
     // Orphan notification (no matching task_started) — fall through to standalone
   }
 
-  // task_progress is a heartbeat signal — absorb it into the parent task row
-  if (subtype === "task_progress" && ctx.pendingTasks.has(taskId)) {
+  // task_progress is a heartbeat signal. Ignore it even if it arrives late
+  // after the matching task_notification closed the pending task.
+  if (subtype === "task_progress") {
     return;
   }
 

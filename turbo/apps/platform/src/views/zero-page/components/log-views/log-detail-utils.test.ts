@@ -577,6 +577,45 @@ describe("groupEventsIntoMessages task event data", () => {
       "Task finished through normalized fields",
     );
   });
+
+  it("ignores task progress that arrives after completion", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-1",
+          tool_use_id: "task-tool-1",
+          description: "Parent task",
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "system",
+        eventData: {
+          subtype: "task_notification",
+          task_id: "task-1",
+          status: "completed",
+          summary: "Task finished",
+        },
+        createdAt: "2026-06-26T02:31:23Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "system",
+        eventData: {
+          subtype: "task_progress",
+          task_id: "task-1",
+        },
+        createdAt: "2026-06-26T02:31:24Z",
+      },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.type).toBe("system");
+  });
 });
 
 describe("groupedMessageMatchesSearch", () => {
