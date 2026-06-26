@@ -13,7 +13,6 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
@@ -861,7 +860,6 @@ const loadResumeSessionHistory$ = command(
 );
 
 async function resolveResumeSessionForClaim(args: {
-  readonly db: Db;
   readonly resumeSession: StoredExecutionContext["resumeSession"];
   readonly supportsResumeSessionHistoryRef: boolean;
   readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
@@ -880,18 +878,12 @@ async function resolveResumeSessionForClaim(args: {
     };
   }
 
-  const [blob] = await args.db
-    .select({ size: blobs.size })
-    .from(blobs)
-    .where(eq(blobs.hash, historyRef.hash))
-    .limit(1);
   const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
   return {
     sessionId,
     historyRef: {
       ...historyRef,
       url,
-      ...(blob && blob.size > 0 ? { size: blob.size } : {}),
     },
   };
 }
@@ -931,7 +923,6 @@ async function buildClaimResponseBody(args: {
     "top_level",
     async () => {
       const resumeSession = await resolveResumeSessionForClaim({
-        db: args.db,
         resumeSession: args.storedContext.resumeSession,
         supportsResumeSessionHistoryRef: args.supportsResumeSessionHistoryRef,
         generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
