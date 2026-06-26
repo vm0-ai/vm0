@@ -26,6 +26,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
+const UPDATED_USER_ID = "test-user-456";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000101";
 const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
@@ -132,6 +133,10 @@ function salesResearch(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: UPDATED_USER_ID,
+    createdAt: "2026-06-17T13:52:00.000Z",
+    updatedAt: "2026-06-20T14:16:00.000Z",
     instruction: "Gather CRM context before outreach.",
     files: [
       { path: "examples/prompt.md", size: 1536 },
@@ -164,6 +169,10 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-15T12:00:00.000Z",
+    updatedAt: "2026-06-15T12:00:00.000Z",
     instruction: null,
     files: [],
     fileContents: [],
@@ -184,6 +193,10 @@ function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
     requestToPublish: false,
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
+    createdByUserId: CURRENT_USER_ID,
+    updatedByUserId: CURRENT_USER_ID,
+    createdAt: "2026-06-16T12:00:00.000Z",
+    updatedAt: "2026-06-16T12:00:00.000Z",
     instruction: null,
     files: [],
     fileContents: [],
@@ -244,6 +257,31 @@ function mockAgentPageApis(): void {
   });
 }
 
+function mockWorkflowAuditMembers(): void {
+  context.mocks.data.orgMembers({
+    members: [
+      {
+        userId: CURRENT_USER_ID,
+        email: "ethan@example.com",
+        firstName: "Ethan",
+        lastName: "Zhang",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        userId: UPDATED_USER_ID,
+        email: "lancy@example.com",
+        firstName: "Lancy",
+        lastName: "Lan",
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2024-01-01T00:00:00Z",
+      },
+    ],
+  });
+}
+
 function applyWorkflowUpdate(
   workflow: ZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
@@ -267,6 +305,8 @@ function applyWorkflowUpdate(
           fileContents: body.files,
         }
       : {}),
+    updatedByUserId: CURRENT_USER_ID,
+    updatedAt: "2026-06-21T12:00:00.000Z",
   };
 }
 
@@ -508,6 +548,42 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("orders workflow actions menu sections with audit metadata last", async () => {
+    mockWorkflowAuditMembers();
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Workflow actions"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(textFor(menu)).toContain("Created by Ethan Zhang");
+    });
+    const menuText = textFor(menu);
+    expect(menuText).toContain("Created by Ethan Zhang");
+    expect(menuText).toContain("Last updated by Lancy Lan");
+    expect(menuText).toContain("Jun 17, 2026");
+    expect(menuText).toContain("Jun 20, 2026");
+    expect(menuText.indexOf("Visibility")).toBeLessThan(
+      menuText.indexOf("Edit"),
+    );
+    expect(menuText.indexOf("Edit")).toBeLessThan(menuText.indexOf("Copy"));
+    expect(menuText.indexOf("Copy")).toBeLessThan(menuText.indexOf("Delete"));
+    expect(menuText.indexOf("Delete")).toBeLessThan(
+      menuText.indexOf("Created by"),
+    );
   });
 
   it("derives the trigger sidebar from workflow detail search params", async () => {

@@ -23,7 +23,10 @@ export interface WorkflowRow {
   readonly ownerUserId: string;
   readonly displayName: string | null;
   readonly description: string | null;
+  readonly createdBy: string;
+  readonly updatedBy: string;
   readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
 /**
