@@ -31,6 +31,33 @@ type WorkflowTriggerCreateDialog = "schedule" | "gmail" | "gmail-label" | null;
 const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
 const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 
+export type WorkflowCronFrequency =
+  | "every_day"
+  | "every_weekday"
+  | "every_week"
+  | "every_month"
+  | "custom";
+
+export interface WorkflowCronFields {
+  readonly frequency: WorkflowCronFrequency;
+  readonly hour: number;
+  readonly minute: number;
+  readonly dayOfWeek: string;
+  readonly dayOfMonth: string;
+  readonly customCronExpression: string;
+}
+
+export function defaultWorkflowCronFields(): WorkflowCronFields {
+  return {
+    frequency: "every_day",
+    hour: 9,
+    minute: 0,
+    dayOfWeek: "1",
+    dayOfMonth: "1",
+    customCronExpression: "0 9 * * *",
+  };
+}
+
 interface WorkflowDetailFileDraft {
   readonly workflowId: string;
   readonly filePath: string | null;
@@ -54,13 +81,19 @@ const internalWorkflowReload$ = state(0);
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
-const internalEditingGmailTriggerId$ = state<string | null>(null);
+const internalEditingWorkflowTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
 const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
+const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
+  defaultWorkflowCronFields(),
+);
+const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
+  defaultWorkflowCronFields(),
+);
 
 export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
   return (
@@ -85,7 +118,7 @@ export const setWorkflowDetailTriggerSidebarOpen$ = command(
     }
 
     params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
-    set(internalEditingGmailTriggerId$, null);
+    set(internalEditingWorkflowTriggerId$, null);
     set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
     set(internalWorkflowTriggerCreateDialog$, null);
     set(replaceSearchParams$, params);
@@ -116,23 +149,25 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
-  set(internalEditingGmailTriggerId$, null);
+  set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalScheduleTriggerType$, "cron");
+  set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
+  set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
 });
 
-export const editingGmailTriggerId$ = computed((get) => {
-  return get(internalEditingGmailTriggerId$);
+export const editingWorkflowTriggerId$ = computed((get) => {
+  return get(internalEditingWorkflowTriggerId$);
 });
 
 export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
   return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
 });
 
-export const setEditingGmailTriggerId$ = command(
+export const setEditingWorkflowTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
-    set(internalEditingGmailTriggerId$, triggerId);
+    set(internalEditingWorkflowTriggerId$, triggerId);
   },
 );
 
@@ -151,6 +186,7 @@ export const setWorkflowTriggerCreateDialog$ = command(
     set(internalWorkflowTriggerCreateDialog$, dialog);
     if (dialog === "schedule") {
       set(internalScheduleTriggerType$, "cron");
+      set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
     }
   },
 );
@@ -162,6 +198,26 @@ export const scheduleTriggerType$ = computed((get) => {
 export const setScheduleTriggerType$ = command(
   ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
     set(internalScheduleTriggerType$, scheduleType);
+  },
+);
+
+export const createScheduleCronFields$ = computed((get) => {
+  return get(internalCreateScheduleCronFields$);
+});
+
+export const setCreateScheduleCronFields$ = command(
+  ({ set }, fields: WorkflowCronFields) => {
+    set(internalCreateScheduleCronFields$, fields);
+  },
+);
+
+export const editingScheduleCronFields$ = computed((get) => {
+  return get(internalEditingScheduleCronFields$);
+});
+
+export const setEditingScheduleCronFields$ = command(
+  ({ set }, fields: WorkflowCronFields) => {
+    set(internalEditingScheduleCronFields$, fields);
   },
 );
 
@@ -479,6 +535,29 @@ export const updateWorkflowGmailLabelAppliedTrigger$ = command(
       client.update({
         params: { id: input.triggerId },
         body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowScheduleTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly schedule: ZeroWorkflowSchedule;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { schedule: input.schedule },
         fetchOptions: { signal },
       }),
       [200],
