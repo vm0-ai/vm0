@@ -687,7 +687,7 @@ fn stream_json_shell_escaped_child_does_not_hold_output_open()
     let ready_path = ready.to_string_lossy();
     let pid_path = pid_file.to_string_lossy();
     let prompt = format!(
-        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; sleep 30' & \
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; exec sleep 30' & \
          while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
     );
 
