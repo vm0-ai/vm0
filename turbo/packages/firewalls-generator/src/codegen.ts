@@ -139,6 +139,52 @@ export function escapeString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function sortedStrings(values: Iterable<string>): string[] {
+  return [...values].sort((a, b) => a.localeCompare(b));
+}
+
+export function applyPermissionDescriptions(
+  serviceLabel: string,
+  permissions: readonly PermissionGroup[],
+  descriptions: Readonly<Record<string, string>>,
+): PermissionGroup[] {
+  const permissionNames = new Set(
+    permissions.map((permission) => permission.name),
+  );
+  const staleDescriptions = sortedStrings(
+    Object.keys(descriptions).filter((name) => !permissionNames.has(name)),
+  );
+  const missingDescriptions: string[] = [];
+
+  const result = permissions.map((permission) => {
+    const description = descriptions[permission.name]?.trim();
+    if (permission.rules.length > 0 && !description) {
+      missingDescriptions.push(permission.name);
+    }
+    return {
+      ...permission,
+      ...(description ? { description } : {}),
+    };
+  });
+
+  const messages: string[] = [];
+  if (missingDescriptions.length > 0) {
+    messages.push(
+      `${serviceLabel} permissions missing descriptions:\n${sortedStrings(missingDescriptions).join("\n")}`,
+    );
+  }
+  if (staleDescriptions.length > 0) {
+    messages.push(
+      `${serviceLabel} permission descriptions reference unknown permissions:\n${staleDescriptions.join("\n")}`,
+    );
+  }
+  if (messages.length > 0) {
+    throw new Error(messages.join("\n\n"));
+  }
+
+  return result;
+}
+
 // ── TypeScript rendering ─────────────────────────────────────────────────
 
 /**

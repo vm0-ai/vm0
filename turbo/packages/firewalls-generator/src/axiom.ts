@@ -16,6 +16,7 @@
 
 import {
   ALL_METHODS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderPermissions,
@@ -33,6 +34,59 @@ const SPEC_URLS = [
 
 // Format: xaat- prefix + UUID (8-4-4-4-12 hex) = 41 total
 const PLACEHOLDER_VALUE = "xaat-c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0";
+
+const AXIOM_SCOPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "annotations|create": "Create Axiom annotations.",
+  "annotations|delete": "Delete Axiom annotations.",
+  "annotations|read": "Read Axiom annotations.",
+  "annotations|update": "Update Axiom annotations.",
+  "apiTokens|create": "Create Axiom API tokens.",
+  "apiTokens|delete": "Delete Axiom API tokens.",
+  "apiTokens|read": "Read Axiom API tokens and token metadata.",
+  "apiTokens|update": "Regenerate Axiom API tokens.",
+  "dashboards|create": "Create Axiom dashboards.",
+  "dashboards|delete": "Delete Axiom dashboards.",
+  "dashboards|read": "Read Axiom dashboards.",
+  "dashboards|update": "Update Axiom dashboards and dashboard charts.",
+  "datasets|create": "Create Axiom datasets.",
+  "datasets|delete": "Delete Axiom datasets.",
+  "datasets|read": "Read Axiom datasets, fields, and map fields.",
+  "datasets|update":
+    "Create, update, delete, and trim Axiom datasets, fields, and map fields.",
+  "ingest|create": "Ingest events into Axiom datasets.",
+  "monitors|create": "Create Axiom monitors.",
+  "monitors|delete": "Delete Axiom monitors.",
+  "monitors|read": "Read Axiom monitors and monitor history.",
+  "monitors|update": "Update Axiom monitors.",
+  "notifiers|create": "Create Axiom notifiers.",
+  "notifiers|delete": "Delete Axiom notifiers.",
+  "notifiers|read": "Read Axiom notifiers.",
+  "notifiers|update": "Update Axiom notifiers.",
+  "orgs|create": "Create Axiom organizations.",
+  "orgs|read": "Read Axiom organizations.",
+  "orgs|update": "Update Axiom organizations.",
+  "query|read": "Run Axiom queries and read query results.",
+  "rbac|create": "Create, update, and delete Axiom RBAC groups and roles.",
+  "rbac|read": "Read Axiom RBAC groups and roles.",
+  "starredQueries|create": "Create Axiom starred queries.",
+  "starredQueries|delete": "Delete Axiom starred queries.",
+  "starredQueries|read": "Read Axiom starred queries.",
+  "starredQueries|update": "Update Axiom starred queries.",
+  "trim|update": "Trim data from Axiom datasets.",
+  "users|create": "Create Axiom users.",
+  "users|delete": "Delete Axiom users.",
+  "users|read": "Read Axiom users and current user information.",
+  "users|update": "Update Axiom current user information and user roles.",
+  "vacuum|update": "Start Axiom dataset vacuum operations.",
+  "views|create": "Create Axiom views.",
+  "views|delete": "Delete Axiom views.",
+  "views|read": "Read Axiom views.",
+  "views|update": "Update Axiom views.",
+  "virtualFields|create": "Create Axiom virtual fields.",
+  "virtualFields|delete": "Delete Axiom virtual fields.",
+  "virtualFields|read": "Read Axiom virtual fields.",
+  "virtualFields|update": "Update Axiom virtual fields.",
+};
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 
@@ -227,7 +281,11 @@ export async function generate(): Promise<void> {
     }),
   );
 
-  const permissions = buildGroups(fetched);
+  const permissions = applyPermissionDescriptions(
+    "Axiom",
+    buildGroups(fetched),
+    AXIOM_SCOPE_DESCRIPTIONS,
+  );
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
