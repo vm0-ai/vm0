@@ -151,7 +151,7 @@ function buildPresentationGenerationTemplatePrompt(
             `- Apply the selected color system (${colorSystem.id}) when authoring the deck.`,
           ]
         : []),
-      "- After generating the final HTML deck, run: `node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting.",
+      "- After generating the final HTML deck, run QA from the workspace root: `npm install --no-save --no-package-lock playwright && node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting.",
       "- Follow the returned authoring packet. For a static HTML presentation, publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
       "- If a flag above no longer applies, run `zero generate presentation -h` to discover the current options.",
     ].join("\n"),
