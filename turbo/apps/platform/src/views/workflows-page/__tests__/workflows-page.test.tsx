@@ -526,7 +526,7 @@ describe("workflow detail page", () => {
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
       expect(
@@ -934,10 +934,9 @@ describe("workflow detail page", () => {
         screen.getByText("Gather CRM context before outreach."),
       ).toBeInTheDocument();
     });
-    const breadcrumb = screen.getByLabelText("Breadcrumb");
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
-    click(buttonByText(/config\/settings\.json/, breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(screen.getByLabelText("Delete config/settings.json"));
 
     await waitFor(() => {
@@ -967,8 +966,7 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
 
-    const breadcrumb = screen.getByLabelText("Breadcrumb");
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     const input = screen.getByLabelText("Upload workflow files");
     fireEvent.change(input, {
       target: {
