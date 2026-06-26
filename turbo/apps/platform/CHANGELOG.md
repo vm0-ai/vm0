@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.498.2](https://github.com/vm0-ai/vm0/compare/app-v0.498.1...app-v0.498.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* update connector access agent rows ([#19131](https://github.com/vm0-ai/vm0/issues/19131)) ([bee1838](https://github.com/vm0-ai/vm0/commit/bee183844bec1b0cb125a2e876563bab423d94c4))
+
 ## [0.498.1](https://github.com/vm0-ai/vm0/compare/app-v0.498.0...app-v0.498.1) (2026-06-26)
 
 
