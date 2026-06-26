@@ -175,6 +175,7 @@ type ArtifactMissingRootPolicy = NonNullable<
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
+const STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -1804,6 +1805,24 @@ interface StoredConnectorRequirements {
   readonly variableNames: Set<string>;
 }
 
+interface StoredConnectorSecretRow {
+  readonly name: string;
+  readonly encryptedValue: string;
+}
+
+interface StoredConnectorVariableRow {
+  readonly name: string;
+  readonly value: string;
+}
+
+interface StoredConnectorMaterializationSnapshot {
+  readonly allowedConnectorRows: readonly StoredConnectorRuntimeRow[];
+  readonly bindingSets: readonly ConnectorEnvBindingSet[];
+  readonly requirements: StoredConnectorRequirements;
+  readonly secretRows: readonly StoredConnectorSecretRow[];
+  readonly variableRows: readonly StoredConnectorVariableRow[];
+}
+
 interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
@@ -1915,21 +1934,71 @@ function collectStoredConnectorRequirements(
   return { secretNames, variableNames };
 }
 
-async function loadStoredConnectorSecrets(
+async function mapWithBoundedConcurrency<TInput, TOutput>(
+  values: readonly TInput[],
+  concurrency: number,
+  mapper: (value: TInput, index: number) => Promise<TOutput>,
+): Promise<TOutput[]> {
+  if (values.length === 0) {
+    return [];
+  }
+
+  const indexedValues = values.map((value, index) => {
+    return { index, value };
+  });
+  const results: ({ readonly value: TOutput } | undefined)[] = Array.from({
+    length: values.length,
+  });
+  const workerCount = Math.min(Math.max(1, concurrency), indexedValues.length);
+  let nextIndex = 0;
+  let stopped = false;
+
+  async function worker(): Promise<void> {
+    while (!stopped) {
+      const item = indexedValues[nextIndex];
+      nextIndex += 1;
+      if (!item) {
+        return;
+      }
+
+      const result = await settle(mapper(item.value, item.index));
+      if (!result.ok) {
+        stopped = true;
+        throw result.error;
+      }
+      results[item.index] = { value: result.value };
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      await worker();
+    }),
+  );
+
+  return indexedValues.map((item) => {
+    const result = results[item.index];
+    if (!result) {
+      throw new Error("Missing bounded concurrency result");
+    }
+    return result.value;
+  });
+}
+
+async function loadStoredConnectorSecretRows(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly names: ReadonlySet<string>;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
   timing?: ApiDispatchTimingCollector,
-): Promise<Record<string, string>> {
+): Promise<readonly StoredConnectorSecretRow[]> {
   if (args.names.size === 0) {
-    return {};
+    return [];
   }
 
-  const rows = await measureApiDispatchTiming(
+  return await measureApiDispatchTiming(
     timing,
     "api_dispatch_prepare_context_load_stored_connector_secret_rows",
     "nested",
@@ -1950,29 +2019,13 @@ async function loadStoredConnectorSecrets(
         );
     },
   );
-  return await measureApiDispatchTiming(
-    timing,
-    "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
-    "nested",
-    async () => {
-      const values: Record<string, string> = {};
-      for (const row of rows) {
-        values[row.name] = await decryptStoredSecretValue(
-          row.encryptedValue,
-          args.featureSwitchContext,
-        );
-      }
-      return values;
-    },
-  );
 }
 
-async function loadStoredConnectorVariables(
-  db: Db,
+async function decryptStoredConnectorSecrets(
+  rows: readonly StoredConnectorSecretRow[],
   args: {
-    readonly orgId: string;
-    readonly userId: string;
     readonly names: ReadonlySet<string>;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<Record<string, string>> {
@@ -1980,7 +2033,47 @@ async function loadStoredConnectorVariables(
     return {};
   }
 
-  const rows = await measureApiDispatchTiming(
+  return await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    "nested",
+    async () => {
+      const decryptedRows = await mapWithBoundedConcurrency(
+        rows,
+        STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY,
+        async (row) => {
+          return {
+            name: row.name,
+            value: await decryptStoredSecretValue(
+              row.encryptedValue,
+              args.featureSwitchContext,
+            ),
+          };
+        },
+      );
+      const values: Record<string, string> = {};
+      for (const row of decryptedRows) {
+        values[row.name] = row.value;
+      }
+      return values;
+    },
+  );
+}
+
+async function loadStoredConnectorVariableRows(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: ReadonlySet<string>;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<readonly StoredConnectorVariableRow[]> {
+  if (args.names.size === 0) {
+    return [];
+  }
+
+  return await measureApiDispatchTiming(
     timing,
     "api_dispatch_prepare_context_load_stored_connector_variable_rows",
     "nested",
@@ -2001,6 +2094,11 @@ async function loadStoredConnectorVariables(
         );
     },
   );
+}
+
+function storedConnectorVariablesFromRows(
+  rows: readonly StoredConnectorVariableRow[],
+): Record<string, string> {
   return Object.fromEntries(
     rows.map((row) => {
       return [row.name, row.value];
@@ -2089,6 +2187,64 @@ async function loadStoredConnectorContext(
     ? [...new Set(args.allowedConnectorTypes)]
     : undefined;
 
+  const snapshot = await loadStoredConnectorMaterializationSnapshot(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      allowedConnectorTypes,
+    },
+    timing,
+  );
+  if (!snapshot) {
+    return emptyConnectorRuntimeContext();
+  }
+
+  const connectorSecrets = await decryptStoredConnectorSecrets(
+    snapshot.secretRows,
+    {
+      names: snapshot.requirements.secretNames,
+      featureSwitchContext: args.featureSwitchContext,
+    },
+    timing,
+  );
+  const connectorVariables = storedConnectorVariablesFromRows(
+    snapshot.variableRows,
+  );
+
+  return await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_prepare_context_build_stored_connector_state",
+    "nested",
+    () => {
+      const resolved = resolveStoredConnectorState(
+        snapshot.bindingSets,
+        connectorSecrets,
+        connectorVariables,
+      );
+
+      return Promise.resolve({
+        secrets: compactRecord(resolved.secrets),
+        vars: compactRecord(resolved.vars),
+        secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+        connectorTypes: snapshot.allowedConnectorRows.map((row) => {
+          return row.connectorType;
+        }),
+        storedEnvironment: compactRecord(resolved.environment),
+      });
+    },
+  );
+}
+
+async function loadStoredConnectorMaterializationSnapshot(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<StoredConnectorMaterializationSnapshot | null> {
   return await db.transaction(async (tx) => {
     const connectorRows = await measureApiDispatchTiming(
       timing,
@@ -2110,15 +2266,15 @@ async function loadStoredConnectorContext(
             and(
               eq(connectors.orgId, args.orgId),
               eq(connectors.userId, args.userId),
-              allowedConnectorTypes
-                ? inArray(connectors.type, allowedConnectorTypes)
+              args.allowedConnectorTypes
+                ? inArray(connectors.type, args.allowedConnectorTypes)
                 : undefined,
             ),
           );
       },
     );
     if (connectorRows.length === 0) {
-      return emptyConnectorRuntimeContext();
+      return null;
     }
 
     const storedConnectorPlan = await measureApiDispatchTiming(
@@ -2128,7 +2284,7 @@ async function loadStoredConnectorContext(
       () => {
         const allowedConnectorRows = allowedStoredConnectorRows(
           connectorRows,
-          allowedConnectorTypes,
+          args.allowedConnectorTypes,
           nowDate(),
         );
         if (allowedConnectorRows.length === 0) {
@@ -2144,20 +2300,19 @@ async function loadStoredConnectorContext(
       },
     );
     if (!storedConnectorPlan) {
-      return emptyConnectorRuntimeContext();
+      return null;
     }
 
-    const connectorSecrets = await loadStoredConnectorSecrets(
+    const secretRows = await loadStoredConnectorSecretRows(
       tx,
       {
         orgId: args.orgId,
         userId: args.userId,
         names: storedConnectorPlan.requirements.secretNames,
-        featureSwitchContext: args.featureSwitchContext,
       },
       timing,
     );
-    const connectorVariables = await loadStoredConnectorVariables(
+    const variableRows = await loadStoredConnectorVariableRows(
       tx,
       {
         orgId: args.orgId,
@@ -2167,30 +2322,11 @@ async function loadStoredConnectorContext(
       timing,
     );
 
-    return await measureApiDispatchTiming(
-      timing,
-      "api_dispatch_prepare_context_build_stored_connector_state",
-      "nested",
-      () => {
-        const resolved = resolveStoredConnectorState(
-          storedConnectorPlan.bindingSets,
-          connectorSecrets,
-          connectorVariables,
-        );
-
-        return Promise.resolve({
-          secrets: compactRecord(resolved.secrets),
-          vars: compactRecord(resolved.vars),
-          secretConnectorMap: compactRecord(resolved.secretConnectorMap),
-          connectorTypes: storedConnectorPlan.allowedConnectorRows.map(
-            (row) => {
-              return row.connectorType;
-            },
-          ),
-          storedEnvironment: compactRecord(resolved.environment),
-        });
-      },
-    );
+    return {
+      ...storedConnectorPlan,
+      secretRows,
+      variableRows,
+    } satisfies StoredConnectorMaterializationSnapshot;
   });
 }
 
