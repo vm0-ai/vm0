@@ -76,6 +76,8 @@ function CategoryPopover({
   count: number;
   items: string[];
 }) {
+  const itemKeyCounts = new Map<string, number>();
+
   return (
     <Popover>
       <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
@@ -90,8 +92,13 @@ function CategoryPopover({
       >
         <div className="flex flex-wrap gap-1.5">
           {items.map((item) => {
+            const occurrence = itemKeyCounts.get(item) ?? 0;
+            itemKeyCounts.set(item, occurrence + 1);
             return (
-              <span key={item} className="text-xs text-muted-foreground">
+              <span
+                key={occurrence === 0 ? item : `${item}:${occurrence}`}
+                className="text-xs text-muted-foreground"
+              >
                 {item}
               </span>
             );
