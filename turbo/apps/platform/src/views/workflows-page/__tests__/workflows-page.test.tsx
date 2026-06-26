@@ -413,6 +413,39 @@ function mockWorkflowApis(
   );
 }
 
+function mockConnectedTriggerConnectors(): void {
+  context.mocks.data.connectors([
+    {
+      id: "10000000-0000-4000-a000-000000000001",
+      type: "slack",
+      authMethod: "oauth",
+      externalId: "slack-workspace",
+      externalUsername: "workspace",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+    {
+      id: "10000000-0000-4000-a000-000000000002",
+      type: "gmail",
+      authMethod: "oauth",
+      externalId: "gmail-user",
+      externalUsername: "user@example.com",
+      externalEmail: "user@example.com",
+      oauthScopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
+}
+
 function mockCreateWorkflowTrigger(
   onCreate: (body: ZeroWorkflowTriggerCreateRequest) => void,
 ): void {
@@ -531,6 +564,15 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
   return item;
 }
 
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
+}
+
 describe("agent workflows tab", () => {
   it("shows the agent's workflows and links into the detail page", async () => {
     mockAgentPageApis();
@@ -595,7 +637,9 @@ describe("agent workflows tab", () => {
 
 describe("workflow detail page", () => {
   it("renders the instruction, files, and triggers", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
+    mockConnectedTriggerConnectors();
 
     detachedSetupPage({
       context,
@@ -626,7 +670,9 @@ describe("workflow detail page", () => {
     click(buttonByText(/trigger/i));
     expect(search()).toBe("?sidebar=triggers");
     expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
-    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    });
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
     click(workflowFilesButton);
@@ -767,6 +813,7 @@ describe("workflow detail page", () => {
   });
 
   it("derives the trigger sidebar from workflow detail search params", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupPage({
@@ -777,7 +824,7 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
     });
-    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     click(buttonByText("Close trigger sidebar"));
 
     await waitFor(() => {
@@ -999,6 +1046,110 @@ describe("workflow detail page", () => {
       "webhook-secret",
     );
     expect(screen.getByText(/X-VM0-Signature/)).toBeInTheDocument();
+  });
+
+  it("creates a cron schedule trigger from the preferred time zone", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/Schedule/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add schedule trigger",
+    });
+    expect(
+      within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
+    ).toBeInTheDocument();
+    expect(within(createTriggerForm).queryByText(/Saved as/u)).toBeNull();
+    click(buttonByText("Add schedule", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "cron",
+          cronExpression: "0 1 * * *",
+          timezone: "UTC",
+        },
+      });
+    });
+  });
+
+  it("updates a cron schedule trigger from the preferred time zone", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...weekdayWorkflowTrigger(),
+          schedule: {
+            type: "cron",
+            cronExpression: "0 1 * * 1-5",
+            timezone: "UTC",
+          },
+        } satisfies WorkflowScheduleTriggerSummary,
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+
+    await waitFor(() => {
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    });
+    click(screen.getByText("Edit schedule"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update schedule trigger",
+    });
+    selectOptionByLabel("Hour", "16", updateTriggerForm);
+    selectOptionByLabel("Minute", "45", updateTriggerForm);
+    click(buttonByText("Save schedule", updateTriggerForm));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "workflow-trigger-weekday-brief",
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "45 8 * * 1-5",
+            timezone: "UTC",
+          },
+        },
+      });
+    });
   });
 
   it("updates a Gmail new message trigger with text match rules", async () => {

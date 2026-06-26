@@ -49,6 +49,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconKey,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -201,7 +202,9 @@ import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
   currentHeaderAutomationThreadId$,
+  headerWorkflowTriggerDialog$,
   openHeaderAutomationSidebar$,
+  setHeaderWorkflowTriggerDialog$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import {
   runAutomationNow$,
@@ -212,6 +215,12 @@ import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
+import {
+  gmailTriggerSummary,
+  gmailTriggerTitle,
+} from "../workflows-page/workflow-shared.tsx";
 
 import type {
   EnrichedChatMessage,
@@ -1997,6 +2006,107 @@ function automationDescription(automation: HeaderAutomationEntry): string {
   return description && description.length > 0 ? description : "No description";
 }
 
+function formatHeaderWorkflowTriggerRun(value: string | null): string {
+  if (!value) {
+    return "No runs yet";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "No runs yet";
+  }
+  return date.toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function workflowTriggerConnectorLabel(ref: string): string {
+  if (Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, ref)) {
+    return CONNECTOR_TYPES[ref as keyof typeof CONNECTOR_TYPES].label;
+  }
+  return ref;
+}
+
+function workflowTriggerAllowedPermissionNames(
+  trigger: HeaderWorkflowTriggerEntry,
+  connectorRef: string,
+): readonly string[] {
+  const policies =
+    trigger.trigger.unattendedPermissionPolicy?.[connectorRef]?.policies ?? {};
+  return Object.entries(policies)
+    .filter(([, action]) => {
+      return action === "allow";
+    })
+    .map(([permission]) => {
+      return permission;
+    })
+    .sort((left, right) => {
+      return left.localeCompare(right);
+    });
+}
+
+function HeaderWorkflowPermissionPreview({
+  permissions,
+}: {
+  readonly permissions: readonly string[];
+}) {
+  if (permissions.length === 0) {
+    return null;
+  }
+  return (
+    <span className="flex min-w-0 flex-wrap justify-end gap-1">
+      {permissions.slice(0, 2).map((permission) => {
+        return (
+          <code
+            key={permission}
+            className="max-w-[116px] truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            title={permission}
+          >
+            {permission}
+          </code>
+        );
+      })}
+      {permissions.length > 2 ? (
+        <span className="text-[11px] text-muted-foreground">
+          +{permissions.length - 2} permissions
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function HeaderWorkflowTriggerPermissions({
+  trigger,
+}: {
+  readonly trigger: HeaderWorkflowTriggerEntry;
+}) {
+  if (trigger.trigger.unattendedConnectorRefs.length === 0) {
+    return <span className="font-medium text-foreground">None</span>;
+  }
+
+  return (
+    <span className="flex min-w-0 flex-col gap-1.5 text-right">
+      {trigger.trigger.unattendedConnectorRefs.map((connectorRef) => {
+        const permissions = workflowTriggerAllowedPermissionNames(
+          trigger,
+          connectorRef,
+        );
+        return (
+          <span
+            key={connectorRef}
+            className="flex min-w-0 items-center justify-end gap-2"
+          >
+            <span className="shrink-0 font-medium text-foreground">
+              {workflowTriggerConnectorLabel(connectorRef)}
+            </span>
+            <HeaderWorkflowPermissionPreview permissions={permissions} />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function HeaderAutomationSidebarCard({
   automation,
 }: {
@@ -2118,18 +2228,110 @@ function HeaderAutomationSidebarCard({
   );
 }
 
+function HeaderWorkflowTriggerDetails({
+  trigger,
+}: {
+  readonly trigger: HeaderWorkflowTriggerEntry;
+}) {
+  const triggerTitle = gmailTriggerTitle(trigger.trigger);
+  const triggerSummary = gmailTriggerSummary(trigger.trigger);
+  const summaryLabel =
+    trigger.trigger.kind === "event" &&
+    trigger.trigger.eventType === "gmail-label-applied"
+      ? "Label"
+      : "Match";
+  const summaryValue =
+    trigger.trigger.kind === "event" &&
+    trigger.trigger.eventType === "gmail-label-applied"
+      ? trigger.trigger.eventConfig.labelName
+      : triggerSummary;
+
+  return (
+    <dl className="mt-3 text-xs">
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+        <dt className="shrink-0 text-muted-foreground">Trigger</dt>
+        <dd className="min-w-0 truncate text-right font-medium text-foreground">
+          {triggerTitle}
+        </dd>
+      </div>
+      {summaryValue ? (
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+          <dt className="shrink-0 text-muted-foreground">{summaryLabel}</dt>
+          <dd className="min-w-0 truncate text-right font-medium text-foreground">
+            {summaryValue}
+          </dd>
+        </div>
+      ) : null}
+      <div className="flex items-start justify-between gap-3 border-b border-border/50 py-2.5">
+        <dt className="shrink-0 text-muted-foreground">Permissions</dt>
+        <dd className="min-w-0 flex-1 text-right text-foreground">
+          <HeaderWorkflowTriggerPermissions trigger={trigger} />
+        </dd>
+      </div>
+      <div className="flex items-center justify-between gap-3 py-2.5">
+        <dt className="shrink-0 text-muted-foreground">Last run</dt>
+        <dd className="min-w-0 truncate text-right font-medium text-foreground">
+          {formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt)}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+function HeaderWorkflowTriggerActions({
+  onEditPermissions,
+  trigger,
+}: {
+  readonly onEditPermissions: () => void;
+  readonly trigger: HeaderWorkflowTriggerEntry;
+}) {
+  return (
+    <div className="mt-4 grid min-w-0 grid-cols-2 gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
+        onClick={onEditPermissions}
+      >
+        <IconKey size={13} stroke={1.5} />
+        Edit permissions
+      </Button>
+      <Link
+        pathname={ROUTES.agentWorkflowDetail}
+        options={{
+          pathParams: {
+            agentId: trigger.workflowAgentId,
+            workflowId: trigger.workflowId,
+          },
+        }}
+        className="zero-btn-morandi inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+      >
+        <IconArrowUpRight size={13} stroke={1.5} />
+        Edit workflow
+      </Link>
+    </div>
+  );
+}
+
 function HeaderWorkflowTriggerCard({
   trigger,
 }: {
   trigger: HeaderWorkflowTriggerEntry;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const activeDialog = useGet(headerWorkflowTriggerDialog$);
+  const setActiveDialog = useSet(setHeaderWorkflowTriggerDialog$);
   const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
     toggleWorkflowTriggerEnabled$,
   );
   const toggling = togglingLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
   const description = trigger.workflowDescription?.trim();
+  const permissionsOpen =
+    activeDialog?.kind === "permissions" &&
+    activeDialog.triggerId === trigger.id;
 
   const toggleEnabled = (enabled: boolean) => {
     detach(
@@ -2138,45 +2340,64 @@ function HeaderWorkflowTriggerCard({
       "toggle workflow trigger enabled",
     );
   };
+  const editPermissions = () => {
+    setActiveDialog({ kind: "permissions", triggerId: trigger.id });
+  };
 
   return (
-    <article
-      className={cn(
-        "rounded-lg border border-border bg-background p-4 transition-colors",
-        !trigger.enabled && "opacity-75",
-      )}
-    >
-      <p
+    <>
+      <article
         className={cn(
-          "line-clamp-1 text-sm font-medium leading-snug",
-          trigger.enabled ? "text-foreground" : "text-muted-foreground",
+          "rounded-lg border border-border bg-background p-4 transition-colors",
+          !trigger.enabled && "opacity-75",
         )}
       >
-        {title}
-      </p>
-      {description ? (
-        <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-          {description}
-        </p>
-      ) : null}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p
+              className={cn(
+                "line-clamp-1 text-sm font-medium leading-snug",
+                trigger.enabled ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {title}
+            </p>
+            {description ? (
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          <LoadingSwitch
+            checked={trigger.enabled}
+            loading={toggling}
+            onCheckedChange={toggleEnabled}
+            ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+          />
+        </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3 text-xs">
-        <span
-          className={cn(
-            "font-medium",
-            trigger.enabled ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {trigger.enabled ? "Active" : "Inactive"}
-        </span>
-        <LoadingSwitch
-          checked={trigger.enabled}
-          loading={toggling}
-          onCheckedChange={toggleEnabled}
-          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+        <HeaderWorkflowTriggerDetails trigger={trigger} />
+        <HeaderWorkflowTriggerActions
+          onEditPermissions={editPermissions}
+          trigger={trigger}
         />
-      </div>
-    </article>
+      </article>
+      <TriggerPermissionsDialog
+        agentId={trigger.workflowAgentId}
+        workflowId={trigger.workflowId}
+        trigger={trigger.trigger}
+        open={permissionsOpen}
+        onOpenChange={(open) => {
+          setActiveDialog(
+            open ? { kind: "permissions", triggerId: trigger.id } : null,
+          );
+          if (!open) {
+            reloadAutomations();
+          }
+        }}
+        onPolicyChanged={reloadAutomations}
+      />
+    </>
   );
 }
 

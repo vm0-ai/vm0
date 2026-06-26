@@ -338,22 +338,51 @@ export type ZeroWorkflowTriggerSummary = z.infer<
   typeof zeroWorkflowTriggerSummarySchema
 >;
 
-export const chatThreadWorkflowTriggerSchema = z.object({
+const chatThreadWorkflowSchema = z.object({
   id: z.string().uuid(),
-  kind: zeroWorkflowTriggerKindSchema,
-  scheduleSummary: z.string().nullable(),
-  eventType: zeroWorkflowEventTypeSchema.nullable(),
-  enabled: z.boolean(),
-  chatThreadId: z.string().min(1),
-  nextRunAt: z.string().nullable(),
-  lastRunAt: z.string().nullable(),
-  workflow: z.object({
-    id: z.string().uuid(),
-    name: zeroWorkflowNameSchema,
-    displayName: z.string().nullable(),
-    description: z.string().nullable(),
-  }),
+  agentId: z.string().uuid(),
+  name: zeroWorkflowNameSchema,
+  displayName: z.string().nullable(),
+  description: z.string().nullable(),
 });
+
+const chatThreadWorkflowTriggerBaseSchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    id: z.string().uuid(),
+    chatThreadId: z.string().min(1),
+    workflow: chatThreadWorkflowSchema,
+  });
+
+export const chatThreadWorkflowScheduleTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("schedule"),
+    schedule: zeroWorkflowScheduleSchema,
+    scheduleSummary: z.string(),
+  });
+
+export const chatThreadWorkflowGmailNewMessageTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-new-message"),
+    eventConfig: gmailNewMessageEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGmailLabelAppliedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowTriggerSchema = z.union([
+  chatThreadWorkflowScheduleTriggerSchema,
+  chatThreadWorkflowGmailNewMessageTriggerSchema,
+  chatThreadWorkflowGmailLabelAppliedTriggerSchema,
+]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
 >;

@@ -7,7 +7,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
 } from "react";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
@@ -68,21 +68,26 @@ import {
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
+  createScheduleCronFields$,
   createWorkflowScheduleTrigger$,
   createdWorkflowWebhookTrigger$,
   currentWorkflowId$,
   copyWorkflow$,
+  defaultWorkflowCronFields,
   deleteWorkflow$,
   deleteWorkflowTrigger$,
-  editingGmailTriggerId$,
+  editingScheduleCronFields$,
+  editingWorkflowTriggerId$,
   openWorkflowEditDialog$,
   patchWorkflowEditDraft$,
   reloadWorkflows$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
+  setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookTrigger$,
+  setEditingScheduleCronFields$,
+  setEditingWorkflowTriggerId$,
   setScheduleTriggerType$,
-  setEditingGmailTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowDetailTriggerSidebarOpen$,
@@ -92,6 +97,7 @@ import {
   setWorkflowTriggerPermissionsDrawerTriggerId$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflowGmailLabelAppliedTrigger$,
+  updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
   workflowTriggerCreateDialog$,
@@ -99,6 +105,8 @@ import {
   workflowFileDraft$,
   workflowDetail,
   workflowTriggerPermissionsDrawerTriggerId$,
+  type WorkflowCronFields,
+  type WorkflowCronFrequency,
   workflowEditDraft$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -111,6 +119,13 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
+import {
+  atTimeInTimezone,
+  buildCronExpression,
+  cronWallTimeInTimezone,
+  type CronTimeOption,
+} from "../../signals/zero-page/cron.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { Link } from "../router/link.tsx";
 import {
   DetailPageBreadcrumbBar,
@@ -118,7 +133,7 @@ import {
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
-import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
+import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import {
@@ -162,6 +177,50 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "to", label: "To" },
   { field: "cc", label: "Cc" },
 ];
+
+const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {
+  readonly value: WorkflowCronFrequency;
+  readonly label: string;
+}[] = [
+  { value: "every_day", label: "Every day" },
+  { value: "every_weekday", label: "Every weekday" },
+  { value: "every_week", label: "Every week" },
+  { value: "every_month", label: "Every month" },
+  { value: "custom", label: "Custom cron" },
+];
+
+const WORKFLOW_CRON_HOUR_OPTIONS: readonly number[] = Array.from(
+  { length: 24 },
+  (_, index) => {
+    return index;
+  },
+);
+
+const WORKFLOW_CRON_MINUTE_OPTIONS: readonly number[] = Array.from(
+  { length: 12 },
+  (_, index) => {
+    return index * 5;
+  },
+);
+
+const WORKFLOW_DAY_OF_WEEK_OPTIONS = [
+  ["1", "Mon"],
+  ["2", "Tue"],
+  ["3", "Wed"],
+  ["4", "Thu"],
+  ["5", "Fri"],
+  ["6", "Sat"],
+  ["0", "Sun"],
+] as const;
+
+const WORKFLOW_CRON_FREQUENCY_TO_TIME_OPTION: Readonly<
+  Record<Exclude<WorkflowCronFrequency, "custom">, CronTimeOption>
+> = Object.freeze({
+  every_day: "every-day",
+  every_weekday: "every-weekday",
+  every_week: "every-week",
+  every_month: "every-month",
+});
 
 function isGmailWorkflowTrigger(
   trigger: ZeroWorkflowTriggerSummary,
@@ -264,7 +323,7 @@ function WorkflowDetailContent({
         ) : null}
       </div>
       {permissionTrigger && detail ? (
-        <TriggerPermissionsDrawer
+        <TriggerPermissionsDialog
           agentId={detail.agentId}
           workflowId={detail.id}
           trigger={permissionTrigger}
@@ -1600,16 +1659,304 @@ async function readUploadedWorkflowFiles(
   );
 }
 
+function browserTimezone(): string {
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function timezoneDisplayName(timezone: string): string {
+  return timezone.replace(/_/g, " ");
+}
+
+function formatClockTime(hour: number, minute: number): string {
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+}
+
+function getWorkflowMinuteOptions(currentMinute: number): readonly number[] {
+  if (WORKFLOW_CRON_MINUTE_OPTIONS.includes(currentMinute)) {
+    return WORKFLOW_CRON_MINUTE_OPTIONS;
+  }
+  return [...WORKFLOW_CRON_MINUTE_OPTIONS, currentMinute].sort((a, b) => {
+    return a - b;
+  });
+}
+
+function parseCronNumber(
+  value: string | undefined,
+  min: number,
+  max: number,
+): number | null {
+  if (!value || !/^\d+$/u.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= min && parsed <= max
+    ? parsed
+    : null;
+}
+
+function normalizeCronDayOfWeek(day: number): number {
+  return day === 7 ? 0 : day;
+}
+
+function parseCronDayOfWeekList(value: string): readonly number[] | null {
+  const days: number[] = [];
+  for (const part of value.split(",")) {
+    const [startRaw, endRaw] = part.split("-");
+    const start = parseCronNumber(startRaw, 0, 7);
+    const end = parseCronNumber(endRaw ?? startRaw, 0, 7);
+    if (start === null || end === null) {
+      return null;
+    }
+    const normalizedStart = normalizeCronDayOfWeek(start);
+    const normalizedEnd = normalizeCronDayOfWeek(end);
+    if (normalizedStart <= normalizedEnd) {
+      for (let day = normalizedStart; day <= normalizedEnd; day += 1) {
+        days.push(day);
+      }
+    } else {
+      for (let day = normalizedStart; day <= 6; day += 1) {
+        days.push(day);
+      }
+      for (let day = 0; day <= normalizedEnd; day += 1) {
+        days.push(day);
+      }
+    }
+  }
+  const unique = [...new Set(days)];
+  return unique.length > 0
+    ? unique.sort((a, b) => {
+        return a - b;
+      })
+    : null;
+}
+
+function shiftCronDays(
+  days: readonly number[],
+  dayOffset: number,
+): readonly number[] {
+  return [
+    ...new Set(
+      days.map((day) => {
+        return (day + dayOffset + 7) % 7;
+      }),
+    ),
+  ].sort((a, b) => {
+    return a - b;
+  });
+}
+
+function formatCronDayOfWeekList(days: readonly number[]): string {
+  const sorted = [...new Set(days)].sort((a, b) => {
+    return a - b;
+  });
+  const weekdays = [1, 2, 3, 4, 5];
+  if (
+    sorted.length === weekdays.length &&
+    sorted.every((day, index) => {
+      return day === weekdays[index];
+    })
+  ) {
+    return "1-5";
+  }
+  return sorted.join(",");
+}
+
+function sameNumberList(a: readonly number[], b: readonly number[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((value, index) => {
+      return value === b[index];
+    })
+  );
+}
+
+function shiftedDayOfMonth(
+  dayOfMonth: string,
+  dayOffset: number,
+): string | null {
+  const day = parseCronNumber(dayOfMonth, 1, 31);
+  if (day === null) {
+    return null;
+  }
+  const shifted = day + dayOffset;
+  return shifted >= 1 && shifted <= 31 ? String(shifted) : String(day);
+}
+
+function parseWorkflowCronFields(
+  schedule: Extract<ZeroWorkflowSchedule, { type: "cron" }>,
+  displayTimezone: string,
+): WorkflowCronFields {
+  const parts = schedule.cronExpression.trim().split(/\s+/u);
+  const minute = parseCronNumber(parts[0], 0, 59);
+  const hour = parseCronNumber(parts[1], 0, 23);
+  const dayOfMonth = parts[2] ?? "*";
+  const dayOfWeek = parts[4] ?? "*";
+  if (parts.length !== 5 || minute === null || hour === null) {
+    return {
+      ...defaultWorkflowCronFields(),
+      frequency: "custom",
+      customCronExpression: schedule.cronExpression,
+    };
+  }
+
+  const converted = cronWallTimeInTimezone(
+    hour,
+    minute,
+    schedule.timezone || TRIGGER_TIMEZONE,
+    displayTimezone,
+  );
+  const base = {
+    ...defaultWorkflowCronFields(),
+    hour: converted.hour,
+    minute: converted.minute,
+    customCronExpression: schedule.cronExpression,
+  };
+
+  if (dayOfMonth === "*" && dayOfWeek === "*") {
+    return { ...base, frequency: "every_day" };
+  }
+
+  if (dayOfMonth !== "*" && dayOfWeek === "*") {
+    const displayDayOfMonth = shiftedDayOfMonth(
+      dayOfMonth,
+      converted.dayOffset,
+    );
+    return displayDayOfMonth
+      ? { ...base, frequency: "every_month", dayOfMonth: displayDayOfMonth }
+      : { ...base, frequency: "custom" };
+  }
+
+  if (dayOfMonth === "*" && dayOfWeek !== "*") {
+    const utcDays = parseCronDayOfWeekList(dayOfWeek);
+    if (!utcDays) {
+      return { ...base, frequency: "custom" };
+    }
+    const displayDays = shiftCronDays(utcDays, converted.dayOffset);
+    if (sameNumberList(displayDays, [1, 2, 3, 4, 5])) {
+      return {
+        ...base,
+        frequency: "every_weekday",
+        dayOfWeek: "1,2,3,4,5",
+      };
+    }
+    return {
+      ...base,
+      frequency: "every_week",
+      dayOfWeek: formatCronDayOfWeekList(displayDays),
+    };
+  }
+
+  return { ...base, frequency: "custom" };
+}
+
+function buildUtcCronExpressionFromFields(
+  fields: WorkflowCronFields,
+  displayTimezone: string,
+): string | null {
+  if (fields.frequency === "custom") {
+    const cronExpression = fields.customCronExpression.trim();
+    return cronExpression.length > 0 ? cronExpression : null;
+  }
+
+  const converted = cronWallTimeInTimezone(
+    fields.hour,
+    fields.minute,
+    displayTimezone,
+    TRIGGER_TIMEZONE,
+  );
+  const minute = String(converted.minute);
+  const hour = String(converted.hour);
+
+  if (fields.frequency === "every_weekday") {
+    const days = shiftCronDays([1, 2, 3, 4, 5], converted.dayOffset);
+    return `${minute} ${hour} * * ${formatCronDayOfWeekList(days)}`;
+  }
+  if (fields.frequency === "every_week") {
+    const displayDays = parseCronDayOfWeekList(fields.dayOfWeek);
+    if (!displayDays) {
+      return null;
+    }
+    const days = shiftCronDays(displayDays, converted.dayOffset);
+    return `${minute} ${hour} * * ${formatCronDayOfWeekList(days)}`;
+  }
+  if (fields.frequency === "every_month") {
+    const dayOfMonth = shiftedDayOfMonth(
+      fields.dayOfMonth,
+      converted.dayOffset,
+    );
+    return dayOfMonth ? `${minute} ${hour} ${dayOfMonth} * *` : null;
+  }
+
+  return buildCronExpression({
+    timeOption: WORKFLOW_CRON_FREQUENCY_TO_TIME_OPTION[fields.frequency],
+    hour,
+    minute,
+  });
+}
+
+function workflowScheduleTitle(
+  trigger: ZeroWorkflowTriggerSummary,
+  displayTimezone: string,
+): string {
+  if (trigger.kind !== "schedule") {
+    return workflowTriggerTitle(trigger);
+  }
+  const schedule = trigger.schedule;
+  if (schedule.type === "loop") {
+    return `Every ${schedule.intervalSeconds}s`;
+  }
+  if (schedule.type === "once") {
+    const { date, hour, minute } = atTimeInTimezone(
+      schedule.atTime,
+      displayTimezone,
+    );
+    return `Once on ${date} at ${formatClockTime(hour, minute)}`;
+  }
+
+  const fields = parseWorkflowCronFields(schedule, displayTimezone);
+  if (fields.frequency === "custom") {
+    return `${schedule.cronExpression} (${TRIGGER_TIMEZONE})`;
+  }
+  const time = formatClockTime(fields.hour, fields.minute);
+  if (fields.frequency === "every_day") {
+    return `Every day at ${time}`;
+  }
+  if (fields.frequency === "every_weekday") {
+    return `Every weekday at ${time}`;
+  }
+  if (fields.frequency === "every_month") {
+    return `Every month on day ${fields.dayOfMonth} at ${time}`;
+  }
+  const dayLabels = fields.dayOfWeek
+    .split(",")
+    .map((day) => {
+      return WORKFLOW_DAY_OF_WEEK_OPTIONS.find(([value]) => {
+        return value === day;
+      })?.[1];
+    })
+    .filter(Boolean)
+    .join(", ");
+  return dayLabels
+    ? `Every week on ${dayLabels} at ${time}`
+    : trigger.scheduleSummary;
+}
+
 function buildTriggerSchedule(
   type: ZeroWorkflowScheduleType,
   fields: {
-    readonly cronExpression: string;
+    readonly cronFields: WorkflowCronFields;
     readonly intervalSeconds: string;
     readonly atTime: string;
   },
+  displayTimezone: string,
 ): ZeroWorkflowSchedule | null {
   if (type === "cron") {
-    const cronExpression = fields.cronExpression.trim();
+    const cronExpression = buildUtcCronExpressionFromFields(
+      fields.cronFields,
+      displayTimezone,
+    );
     return cronExpression
       ? { type: "cron", cronExpression, timezone: TRIGGER_TIMEZONE }
       : null;
@@ -1885,8 +2232,10 @@ function TriggersSection({
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
   const features = useGet(featureSwitch$);
   const userLoadable = useLoadable(user$);
+  const preferences = useLastResolved(userPreferences$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
+  const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
   const webhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
@@ -1924,6 +2273,7 @@ function TriggersSection({
                   key={trigger.id}
                   trigger={trigger}
                   canManage={trigger.ownerUserId === currentUserId}
+                  displayTimezone={displayTimezone}
                   onOpenPermissions={onOpenTriggerPermissions}
                 />
               );
@@ -1937,6 +2287,7 @@ function TriggersSection({
       </div>
       <CreateScheduleTriggerDialog
         workflowId={detail.id}
+        displayTimezone={displayTimezone}
         open={createDialog === "schedule"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "schedule" : null);
@@ -1969,15 +2320,19 @@ function TriggersSection({
 
 function CreateScheduleTriggerDialog({
   workflowId,
+  displayTimezone,
   open,
   onOpenChange,
 }: {
   readonly workflowId: string;
+  readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const scheduleType = useGet(scheduleTriggerType$);
   const setScheduleType = useSet(setScheduleTriggerType$);
+  const cronFields = useGet(createScheduleCronFields$);
+  const setCronFields = useSet(setCreateScheduleCronFields$);
   const pageSignal = useGet(pageSignal$);
   const [createLoadable, createScheduleTrigger] = useLoadableSet(
     createWorkflowScheduleTrigger$,
@@ -1999,11 +2354,15 @@ function CreateScheduleTriggerDialog({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            const schedule = buildTriggerSchedule(scheduleType, {
-              cronExpression: String(form.get("cronExpression") ?? ""),
-              intervalSeconds: String(form.get("intervalSeconds") ?? ""),
-              atTime: String(form.get("atTime") ?? ""),
-            });
+            const schedule = buildTriggerSchedule(
+              scheduleType,
+              {
+                cronFields,
+                intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+                atTime: String(form.get("atTime") ?? ""),
+              },
+              displayTimezone,
+            );
             if (!schedule) {
               return;
             }
@@ -2041,6 +2400,9 @@ function CreateScheduleTriggerDialog({
 
           <ScheduleTriggerFields
             scheduleType={scheduleType}
+            cronFields={cronFields}
+            setCronFields={setCronFields}
+            displayTimezone={displayTimezone}
             creating={creating}
           />
 
@@ -2070,9 +2432,15 @@ function CreateScheduleTriggerDialog({
 
 function ScheduleTriggerFields({
   scheduleType,
+  cronFields,
+  setCronFields,
+  displayTimezone,
   creating,
 }: {
   readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly cronFields: WorkflowCronFields;
+  readonly setCronFields: (fields: WorkflowCronFields) => void;
+  readonly displayTimezone: string;
   readonly creating: boolean;
 }) {
   if (scheduleType === "loop") {
@@ -2111,20 +2479,309 @@ function ScheduleTriggerFields({
   }
 
   return (
+    <WorkflowCronFieldsForm
+      fields={cronFields}
+      onChange={setCronFields}
+      displayTimezone={displayTimezone}
+      disabled={creating}
+    />
+  );
+}
+
+function WorkflowCronFieldsForm({
+  fields,
+  onChange,
+  displayTimezone,
+  disabled,
+}: {
+  readonly fields: WorkflowCronFields;
+  readonly onChange: (fields: WorkflowCronFields) => void;
+  readonly displayTimezone: string;
+  readonly disabled: boolean;
+}) {
+  const updateFields = (patch: Partial<WorkflowCronFields>) => {
+    onChange({ ...fields, ...patch });
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <WorkflowCronFrequencyField
+        frequency={fields.frequency}
+        disabled={disabled}
+        onChange={(frequency) => {
+          updateFields({ frequency });
+        }}
+      />
+
+      {fields.frequency === "custom" ? (
+        <WorkflowCustomCronField
+          value={fields.customCronExpression}
+          disabled={disabled}
+          onChange={(customCronExpression) => {
+            updateFields({ customCronExpression });
+          }}
+        />
+      ) : (
+        <>
+          {fields.frequency === "every_week" ? (
+            <WorkflowDayOfWeekPicker
+              dayOfWeek={fields.dayOfWeek}
+              disabled={disabled}
+              onChange={(dayOfWeek) => {
+                updateFields({ dayOfWeek });
+              }}
+            />
+          ) : null}
+
+          {fields.frequency === "every_month" ? (
+            <WorkflowDayOfMonthField
+              dayOfMonth={fields.dayOfMonth}
+              disabled={disabled}
+              onChange={(dayOfMonth) => {
+                updateFields({ dayOfMonth });
+              }}
+            />
+          ) : null}
+
+          <WorkflowCronTimeField
+            hour={fields.hour}
+            minute={fields.minute}
+            displayTimezone={displayTimezone}
+            disabled={disabled}
+            onHourChange={(hour) => {
+              updateFields({ hour });
+            }}
+            onMinuteChange={(minute) => {
+              updateFields({ minute });
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function WorkflowCronFrequencyField({
+  frequency,
+  disabled,
+  onChange,
+}: {
+  readonly frequency: WorkflowCronFrequency;
+  readonly disabled: boolean;
+  readonly onChange: (frequency: WorkflowCronFrequency) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Repeats
+      <Select
+        value={frequency}
+        disabled={disabled}
+        onValueChange={(value) => {
+          onChange(value as WorkflowCronFrequency);
+        }}
+      >
+        <SelectTrigger className="h-9 w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {WORKFLOW_CRON_FREQUENCY_OPTIONS.map((option) => {
+            return (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function WorkflowCustomCronField({
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly value: string;
+  readonly disabled: boolean;
+  readonly onChange: (value: string) => void;
+}) {
+  return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       Cron expression
       <input
-        name="cronExpression"
         aria-label="Cron expression"
-        defaultValue="0 9 * * *"
-        disabled={creating}
+        value={value}
+        disabled={disabled}
         placeholder="0 9 * * *"
         className={FIELD_CLASS}
+        onChange={(event) => {
+          onChange(event.currentTarget.value);
+        }}
       />
-      <span className="text-xs text-muted-foreground">
-        Runs in {TRIGGER_TIMEZONE}.
-      </span>
     </label>
+  );
+}
+
+function WorkflowDayOfMonthField({
+  dayOfMonth,
+  disabled,
+  onChange,
+}: {
+  readonly dayOfMonth: string;
+  readonly disabled: boolean;
+  readonly onChange: (dayOfMonth: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Day of month
+      <Select value={dayOfMonth} disabled={disabled} onValueChange={onChange}>
+        <SelectTrigger className="h-9 w-full" aria-label="Day of month">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Array.from({ length: 31 }, (_, index) => {
+            const day = String(index + 1);
+            return (
+              <SelectItem key={day} value={day}>
+                {day}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function WorkflowCronTimeField({
+  hour,
+  minute,
+  displayTimezone,
+  disabled,
+  onHourChange,
+  onMinuteChange,
+}: {
+  readonly hour: number;
+  readonly minute: number;
+  readonly displayTimezone: string;
+  readonly disabled: boolean;
+  readonly onHourChange: (hour: number) => void;
+  readonly onMinuteChange: (minute: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">
+        Time ({timezoneDisplayName(displayTimezone)})
+      </span>
+      <div className="flex items-center gap-2">
+        <WorkflowNumberSelect
+          value={hour}
+          options={WORKFLOW_CRON_HOUR_OPTIONS}
+          disabled={disabled}
+          ariaLabel="Hour"
+          onChange={onHourChange}
+        />
+        <span className="text-muted-foreground">:</span>
+        <WorkflowNumberSelect
+          value={minute}
+          options={getWorkflowMinuteOptions(minute)}
+          disabled={disabled}
+          ariaLabel="Minute"
+          onChange={onMinuteChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function WorkflowNumberSelect({
+  value,
+  options,
+  disabled,
+  ariaLabel,
+  onChange,
+}: {
+  readonly value: number;
+  readonly options: readonly number[];
+  readonly disabled: boolean;
+  readonly ariaLabel: string;
+  readonly onChange: (value: number) => void;
+}) {
+  return (
+    <Select
+      value={String(value)}
+      disabled={disabled}
+      onValueChange={(nextValue) => {
+        onChange(Number(nextValue));
+      }}
+    >
+      <SelectTrigger className="h-9 w-20" aria-label={ariaLabel}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => {
+          return (
+            <SelectItem key={option} value={String(option)}>
+              {String(option).padStart(2, "0")}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function WorkflowDayOfWeekPicker({
+  dayOfWeek,
+  disabled,
+  onChange,
+}: {
+  readonly dayOfWeek: string;
+  readonly disabled: boolean;
+  readonly onChange: (dayOfWeek: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">Day of week</span>
+      <div className="flex flex-wrap gap-1">
+        {WORKFLOW_DAY_OF_WEEK_OPTIONS.map(([value, label]) => {
+          const selected = dayOfWeek.split(",").includes(value);
+          return (
+            <button
+              key={value}
+              type="button"
+              disabled={disabled}
+              aria-pressed={selected}
+              className={cn(
+                "h-8 min-w-10 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-60",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/60 bg-background text-muted-foreground hover:bg-muted",
+              )}
+              onClick={() => {
+                const current = dayOfWeek.split(",").filter(Boolean);
+                if (selected) {
+                  if (current.length <= 1) {
+                    return;
+                  }
+                  onChange(
+                    current
+                      .filter((day) => {
+                        return day !== value;
+                      })
+                      .join(","),
+                  );
+                  return;
+                }
+                onChange([...current, value].join(","));
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -2499,17 +3156,18 @@ function CreateWebhookTriggerView({
 function TriggerRow({
   trigger,
   canManage,
+  displayTimezone,
   onOpenPermissions,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
+  readonly displayTimezone: string;
   readonly onOpenPermissions: (triggerId: string) => void;
 }) {
-  const editingTriggerId = useGet(editingGmailTriggerId$);
-  const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
-  const editingMatch =
-    isGmailWorkflowTrigger(trigger) && editingTriggerId === trigger.id;
-  const title = workflowTriggerTitle(trigger);
+  const editingTriggerId = useGet(editingWorkflowTriggerId$);
+  const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
+  const editing = editingTriggerId === trigger.id;
+  const title = workflowScheduleTitle(trigger, displayTimezone);
   const matchSummary = workflowTriggerSummary(trigger);
   const TriggerIcon =
     trigger.kind === "schedule"
@@ -2564,14 +3222,24 @@ function TriggerRow({
         {canManage ? (
           <TriggerControls
             trigger={trigger}
-            editingMatch={editingMatch}
+            editing={editing}
+            displayTimezone={displayTimezone}
             onOpenPermissions={onOpenPermissions}
+          />
+        ) : null}
+        {canManage && trigger.kind === "schedule" && editing ? (
+          <UpdateScheduleTriggerForm
+            trigger={trigger}
+            displayTimezone={displayTimezone}
+            onCancel={() => {
+              setEditingTriggerId(null);
+            }}
           />
         ) : null}
         {canManage &&
         trigger.kind === "event" &&
         trigger.eventType === "gmail-new-message" &&
-        editingMatch ? (
+        editing ? (
           <UpdateGmailNewMessageTriggerForm
             trigger={trigger}
             onCancel={() => {
@@ -2582,7 +3250,7 @@ function TriggerRow({
         {canManage &&
         trigger.kind === "event" &&
         trigger.eventType === "gmail-label-applied" &&
-        editingMatch ? (
+        editing ? (
           <UpdateGmailLabelAppliedTriggerForm
             trigger={trigger}
             onCancel={() => {
@@ -2597,15 +3265,18 @@ function TriggerRow({
 
 function TriggerControls({
   trigger,
-  editingMatch,
+  editing,
+  displayTimezone,
   onOpenPermissions,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
-  readonly editingMatch: boolean;
+  readonly editing: boolean;
+  readonly displayTimezone: string;
   readonly onOpenPermissions: (triggerId: string) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
+  const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
+  const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowTriggerEnabled$,
   );
@@ -2614,6 +3285,9 @@ function TriggerControls({
   );
   const busy =
     enabledLoadable.state === "loading" || deleteLoadable.state === "loading";
+  const canEdit =
+    isGmailWorkflowTrigger(trigger) ||
+    (trigger.kind === "schedule" && trigger.schedule.type === "cron");
 
   return (
     <div className="mt-1 flex items-center gap-2">
@@ -2628,18 +3302,28 @@ function TriggerControls({
         <IconShieldLock size={13} stroke={1.5} />
         <span>Permissions</span>
       </button>
-      {isGmailWorkflowTrigger(trigger) && !editingMatch ? (
+      {canEdit && !editing ? (
         <button
           type="button"
           disabled={busy}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
           onClick={() => {
+            if (
+              trigger.kind === "schedule" &&
+              trigger.schedule.type === "cron"
+            ) {
+              setEditingScheduleCronFields(
+                parseWorkflowCronFields(trigger.schedule, displayTimezone),
+              );
+            }
             setEditingTriggerId(trigger.id);
           }}
         >
-          {trigger.eventType === "gmail-label-applied"
-            ? "Edit label"
-            : "Edit match"}
+          {trigger.kind === "schedule"
+            ? "Edit schedule"
+            : trigger.eventType === "gmail-label-applied"
+              ? "Edit label"
+              : "Edit match"}
         </button>
       ) : null}
       <button
@@ -2669,6 +3353,90 @@ function TriggerControls({
         Delete
       </button>
     </div>
+  );
+}
+
+function UpdateScheduleTriggerForm({
+  trigger,
+  displayTimezone,
+  onCancel,
+}: {
+  readonly trigger: Extract<ZeroWorkflowTriggerSummary, { kind: "schedule" }>;
+  readonly displayTimezone: string;
+  readonly onCancel: () => void;
+}) {
+  const cronFields = useGet(editingScheduleCronFields$);
+  const setCronFields = useSet(setEditingScheduleCronFields$);
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateScheduleTrigger] = useLoadableSet(
+    updateWorkflowScheduleTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      aria-label="Update schedule trigger"
+      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const cronExpression = buildUtcCronExpressionFromFields(
+          cronFields,
+          displayTimezone,
+        );
+        if (!cronExpression) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateScheduleTrigger(
+              {
+                triggerId: trigger.id,
+                schedule: {
+                  type: "cron",
+                  cronExpression,
+                  timezone: TRIGGER_TIMEZONE,
+                },
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <WorkflowCronFieldsForm
+        fields={cronFields}
+        onChange={setCronFields}
+        displayTimezone={displayTimezone}
+        disabled={saving}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className={cn(
+            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+            saving ? "cursor-not-allowed opacity-60" : "",
+          )}
+        >
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconClock size={13} stroke={1.5} />
+          )}
+          <span>Save schedule</span>
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

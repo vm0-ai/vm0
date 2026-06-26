@@ -3023,7 +3023,6 @@ describe("chat lifecycle", () => {
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
         scheduleSummary: "Every 60s",
-        eventType: null,
         workflow: {
           id: "a0000001-0000-4000-a000-000000000002",
           name: "nightly-sync",

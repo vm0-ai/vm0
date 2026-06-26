@@ -151,8 +151,16 @@ const internalTriggerPermissionsDrawerConnector$ =
     connectorRef: null,
   });
 
+const internalTriggerPermissionsDialogConnectorRef$ = state<string | null>(
+  null,
+);
+
 export const triggerPermissionsDrawerConnector$ = computed((get) => {
   return get(internalTriggerPermissionsDrawerConnector$);
+});
+
+export const triggerPermissionsDialogConnectorRef$ = computed((get) => {
+  return get(internalTriggerPermissionsDialogConnectorRef$);
 });
 
 export function triggerPermissionsDrawerConnectorForTrigger({
@@ -175,6 +183,12 @@ export const setTriggerPermissionsDrawerConnector$ = command(
       triggerId,
       connectorRef,
     });
+  },
+);
+
+export const setTriggerPermissionsDialogConnectorRef$ = command(
+  ({ set }, connectorRef: string | null) => {
+    set(internalTriggerPermissionsDialogConnectorRef$, connectorRef);
   },
 );
 
