@@ -1482,6 +1482,33 @@ function parseIpv6Address(value: string): readonly number[] | null {
   ];
 }
 
+function isPublicIpv6SpecialRegistryException(
+  words: readonly number[],
+): boolean {
+  const second = words[1]!;
+  if (
+    second === 0x0001 &&
+    words[2] === 0 &&
+    words[3] === 0 &&
+    words[4] === 0 &&
+    words[5] === 0 &&
+    words[6] === 0 &&
+    (words[7] === 1 || words[7] === 2)
+  ) {
+    return true;
+  }
+  if (second === 0x0003) {
+    return true;
+  }
+  if (second === 0x0004 && words[2] === 0x0112) {
+    return true;
+  }
+  if (second >= 0x0020 && second <= 0x002f) {
+    return true;
+  }
+  return second >= 0x0030 && second <= 0x003f;
+}
+
 function isPublicIpv6Address(words: readonly number[]): boolean {
   if (words.length !== 8) {
     return false;
@@ -1491,11 +1518,8 @@ function isPublicIpv6Address(words: readonly number[]): boolean {
   if ((first & 0xe000) !== 0x2000) {
     return false;
   }
-  if (first === 0x2001 && second === 0x0000) {
-    return false;
-  }
-  if (first === 0x2001 && second === 0x0002) {
-    return false;
+  if (first === 0x2001 && second <= 0x01ff) {
+    return isPublicIpv6SpecialRegistryException(words);
   }
   if (first === 0x2001 && second === 0x0db8) {
     return false;

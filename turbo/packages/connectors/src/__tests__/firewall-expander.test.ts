@@ -1643,9 +1643,22 @@ describe("resolveFirewallBaseUrlVars", () => {
       "https://10.0.0.5",
       "https://169.254.1.2",
       "https://192.168.1.10",
+      "https://192.0.0.9",
+      "https://192.0.0.10",
+      "https://224.0.0.1",
       "https://[::1]",
       "https://[fc00::1]",
+      "https://[64:ff9b::808:808]",
+      "https://[2001::1]",
+      "https://[2001:1::3]",
+      "https://[2001:2::1]",
+      "https://[2001:4::1]",
+      "https://[2001:10::1]",
+      "https://[2001:1ff::1]",
       "https://[2001:db8::1]",
+      "https://[2002:808:808::1]",
+      "https://[4000::1]",
+      "https://[ff0e::1]",
     ]) {
       expect(() => {
         return resolveFirewallBaseUrlVars([strapiFirewall], {
@@ -1656,10 +1669,26 @@ describe("resolveFirewallBaseUrlVars", () => {
   });
 
   it("accepts public-destination template base URLs with public IP literals", () => {
-    const result = resolveFirewallBaseUrlVars([strapiFirewall], {
-      STRAPI_BASE_URL: "https://8.8.8.8",
-    });
-    expect(result[0]!.apis[0]!.base).toBe("https://8.8.8.8");
+    for (const STRAPI_BASE_URL of [
+      "https://8.8.8.8",
+      "https://100.128.0.1",
+      "https://172.32.0.1",
+      "https://192.0.1.1",
+      "https://[2606:4700:4700::1111]",
+      "https://[2001:1::1]",
+      "https://[2001:1::2]",
+      "https://[2001:3::1]",
+      "https://[2001:4:112::1]",
+      "https://[2001:20::1]",
+      "https://[2001:30::1]",
+      "https://[2003::1]",
+      "https://[3fff::1]",
+    ]) {
+      const result = resolveFirewallBaseUrlVars([strapiFirewall], {
+        STRAPI_BASE_URL,
+      });
+      expect(result[0]!.apis[0]!.base).toBe(STRAPI_BASE_URL);
+    }
   });
 
   it("keeps generic http matching available for non-credential template bases", () => {
