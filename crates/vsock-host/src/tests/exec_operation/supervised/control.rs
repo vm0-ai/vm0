@@ -360,6 +360,51 @@ async fn supervised_exec_control_reports_guest_status_and_error() {
 }
 
 #[tokio::test]
+async fn supervised_exec_control_guest_error_uses_control_error_fallback() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-error-fallback")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("guest-error", b"payload", Duration::from_secs(5))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    send_guest_error(&mut guest, control.seq, "guest rejected control").await;
+
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest rejected control");
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
 async fn supervised_exec_control_timeout_ignores_late_result() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
