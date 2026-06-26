@@ -11,6 +11,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import type {
   AgentEvent,
   LogDetail,
@@ -141,6 +142,49 @@ function inspectFile(): File {
     "activity-log.json",
     { type: "application/json" },
   );
+}
+
+function inspectPayload(displayName: string, text: string) {
+  return {
+    meta: {
+      displayName,
+      status: "completed",
+      triggerSource: "cli",
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:02Z",
+    },
+    events: [
+      {
+        sequenceNumber: 0,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "text",
+                text,
+              },
+            ],
+          },
+        },
+        createdAt: "2026-03-10T14:56:02Z",
+      },
+    ],
+  };
+}
+
+function inspectFileWithDeferredText(
+  fileName: string,
+  textPromise: Promise<string>,
+): File {
+  const file = new File([], fileName, { type: "application/json" });
+  Object.defineProperty(file, "text", {
+    value: () => {
+      return textPromise;
+    },
+  });
+  return file;
 }
 
 function codexInspectFile(): File {
@@ -434,6 +478,55 @@ describe("activity inspect page", () => {
       }),
     ).toBeFalsy();
     expect(screen.queryByText("github-token")).not.toBeInTheDocument();
+  });
+
+  it("keeps the newest uploaded log when file reads resolve out of order", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    const staleRead = createDeferredPromise<string>(AbortSignal.any([]));
+    const latestRead = createDeferredPromise<string>(AbortSignal.any([]));
+
+    await user.upload(
+      getFileInput(),
+      inspectFileWithDeferredText("stale-log.json", staleRead.promise),
+    );
+    await user.upload(
+      getFileInput(),
+      inspectFileWithDeferredText("latest-log.json", latestRead.promise),
+    );
+
+    latestRead.resolve(
+      JSON.stringify(inspectPayload("Latest Imported Log", "latest log text")),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Latest Imported Log" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("latest log text")).toBeInTheDocument();
+
+    staleRead.resolve(
+      JSON.stringify(inspectPayload("Stale Imported Log", "stale log text")),
+    );
+    await staleRead.promise;
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Latest Imported Log" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Stale Imported Log" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("stale log text")).not.toBeInTheDocument();
   });
 
   it("normalizes imported codex adapter events", async () => {

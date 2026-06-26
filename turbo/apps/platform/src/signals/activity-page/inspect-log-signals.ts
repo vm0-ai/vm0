@@ -16,15 +16,25 @@ export interface InspectLogData {
 
 const internalInspectLogData$ = state<InspectLogData | null>(null);
 const internalInspectStepSearch$ = state("");
+const internalInspectLogLoadGeneration$ = state(0);
 
 export const inspectLogData$ = computed((get) => {
   return get(internalInspectLogData$);
 });
 
 export const loadInspectLogFile$ = command(
-  async ({ set }, file: File, _signal: AbortSignal) => {
+  async ({ get, set }, file: File, signal: AbortSignal) => {
+    const generation = get(internalInspectLogLoadGeneration$) + 1;
+    set(internalInspectLogLoadGeneration$, generation);
     const text = await file.text();
+    signal.throwIfAborted();
+    if (generation !== get(internalInspectLogLoadGeneration$)) {
+      return;
+    }
     const data = parseInspectLog(text);
+    if (generation !== get(internalInspectLogLoadGeneration$)) {
+      return;
+    }
     L.info("Loaded inspect log file", file.name);
     set(internalInspectLogData$, data);
     set(internalInspectStepSearch$, "");
