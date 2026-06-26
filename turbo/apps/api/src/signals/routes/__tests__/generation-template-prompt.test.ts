@@ -43,6 +43,12 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
     );
+    expect(result.prompt).toContain(
+      "After generating the final HTML deck, from the workspace root run",
+    );
+    expect(result.prompt).toContain(
+      "npm install --no-save --no-package-lock playwright && node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html",
+    );
   });
 
   it("builds presentation template guidance for the switched picker catalog", () => {
