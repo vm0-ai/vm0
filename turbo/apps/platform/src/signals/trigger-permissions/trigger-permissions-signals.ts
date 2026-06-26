@@ -8,6 +8,7 @@ import {
   createFirewallMetadataPolicyResolver,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { workflowDetail } from "../workflows-page/workflows-signals.ts";
@@ -44,6 +45,19 @@ export const triggerPermissionsConnectorSearch$ = computed((get) => {
 export const setTriggerPermissionsConnectorSearch$ = command(
   ({ set }, value: string) => {
     set(internalTriggerPermissionsConnectorSearch$, value);
+  },
+);
+
+const internalTriggerPermissionsDialogConnectorRef$ =
+  state<ConnectorType | null>(null);
+
+export const triggerPermissionsDialogConnectorRef$ = computed((get) => {
+  return get(internalTriggerPermissionsDialogConnectorRef$);
+});
+
+export const setTriggerPermissionsDialogConnectorRef$ = command(
+  ({ set }, connectorRef: ConnectorType | null) => {
+    set(internalTriggerPermissionsDialogConnectorRef$, connectorRef);
   },
 );
 

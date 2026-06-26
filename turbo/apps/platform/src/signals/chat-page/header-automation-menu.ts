@@ -30,6 +30,35 @@ export interface HeaderAutomationEntry {
 
 const headerAutomationMenuReload$ = state(0);
 
+const headerWorkflowTriggerEditDialogTriggerIdState$ = state<string | null>(
+  null,
+);
+const headerWorkflowTriggerPermissionsDialogTriggerIdState$ = state<
+  string | null
+>(null);
+
+export const headerWorkflowTriggerEditDialogTriggerId$ = computed((get) => {
+  return get(headerWorkflowTriggerEditDialogTriggerIdState$);
+});
+
+export const headerWorkflowTriggerPermissionsDialogTriggerId$ = computed(
+  (get) => {
+    return get(headerWorkflowTriggerPermissionsDialogTriggerIdState$);
+  },
+);
+
+export const setHeaderWorkflowTriggerEditDialogTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(headerWorkflowTriggerEditDialogTriggerIdState$, triggerId);
+  },
+);
+
+export const setHeaderWorkflowTriggerPermissionsDialogTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(headerWorkflowTriggerPermissionsDialogTriggerIdState$, triggerId);
+  },
+);
+
 /** Bump to force the header automation menu to refetch (e.g. when it opens). */
 export const reloadHeaderAutomationMenu$ = command(({ get, set }) => {
   set(headerAutomationMenuReload$, get(headerAutomationMenuReload$) + 1);
