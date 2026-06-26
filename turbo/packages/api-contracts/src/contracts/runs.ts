@@ -463,6 +463,13 @@ const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
     { message: "Sequence cursor is out of range" },
   );
 
+function boundedIntegerQueryNumberSchema(min: number, max: number) {
+  return z.preprocess(
+    rejectBlankQueryNumber,
+    z.coerce.number().int().min(min).max(max),
+  );
+}
+
 function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
   return cursorKind === "time"
     ? timestampQueryNumberSchema
@@ -924,6 +931,7 @@ export type RunNetworkLogsContract = typeof runNetworkLogsContract;
 const searchResultSchema = z.object({
   runId: z.string(),
   agentName: z.string(),
+  framework: z.string().nullable().optional(),
   matchedEvent: runEventSchema,
   contextBefore: z.array(runEventSchema),
   contextAfter: z.array(runEventSchema),
@@ -935,6 +943,16 @@ const searchResultSchema = z.object({
 const logsSearchResponseSchema = z.object({
   results: z.array(searchResultSchema),
   hasMore: z.boolean(),
+});
+
+const logsSearchQuerySchema = z.object({
+  keyword: z.string().trim().min(1),
+  agentId: z.string().uuid().optional(),
+  runId: z.string().uuid().optional(),
+  since: timestampQueryNumberSchema.optional(),
+  limit: boundedIntegerQueryNumberSchema(1, 50).default(20),
+  before: boundedIntegerQueryNumberSchema(0, 10).default(0),
+  after: boundedIntegerQueryNumberSchema(0, 10).default(0),
 });
 
 /**
@@ -950,15 +968,7 @@ export const logsSearchContract = c.router({
     method: "GET",
     path: "/api/logs/search",
     headers: authHeadersSchema,
-    query: z.object({
-      keyword: z.string().min(1),
-      agentId: z.string().uuid().optional(),
-      runId: z.string().optional(),
-      since: timestampQueryNumberSchema.optional(),
-      limit: z.coerce.number().min(1).max(50).default(20),
-      before: z.coerce.number().min(0).max(10).default(0),
-      after: z.coerce.number().min(0).max(10).default(0),
-    }),
+    query: logsSearchQuerySchema,
     responses: {
       200: logsSearchResponseSchema,
       400: apiErrorSchema,
@@ -1066,6 +1076,7 @@ export {
   networkLogEntrySchema,
   networkLogsResponseSchema,
   searchResultSchema,
+  logsSearchQuerySchema,
   logsSearchResponseSchema,
   queueEntrySchema,
   runningTaskSchema,

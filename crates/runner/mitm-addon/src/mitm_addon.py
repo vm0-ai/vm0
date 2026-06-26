@@ -20,7 +20,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,11 +54,14 @@ import response_streaming
 import usage
 from auth import (
     FirewallAuthHandlingResult,
+    FirewallHeaderPhaseAuthResult,
     handle_firewall_request,
     is_billable_firewall,
+    mark_auth_base_forwarding_saturated,
     mark_auth_base_request_length_required,
     mark_auth_base_request_too_large,
     prepare_firewall_metadata,
+    try_apply_stream_safe_firewall_auth_for_requestheaders,
 )
 from body_limits import STREAM_BUFFER_LIMIT
 from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
@@ -74,6 +77,7 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
+_HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _HTTP_DEFAULT_PORT = 80
@@ -163,6 +167,7 @@ _RequestClassificationKind = Literal[
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
+_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
 _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_RUN_ID,
     metadata_keys.VM_NETWORK_LOG_PATH,
@@ -174,6 +179,7 @@ _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.ORIGINAL_URL,
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
+    metadata_keys.HTTP_REQUEST_START_MONOTONIC,
 )
 
 
@@ -225,6 +231,7 @@ _jsonl_flush_state_write_lock = threading.Lock()
 _last_jsonl_flush_request_id: str | None = None
 _JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
 _JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
+RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
 
 # ============================================================================
 # Addon Configuration
@@ -385,14 +392,18 @@ def _flush_jsonl_for_runner_request() -> None:
 
     log_path, flush_request_id = request
     pending = 0
+    timed_out = False
     try:
-        flush_log_path(log_path)
+        if not flush_log_path(log_path, timeout=RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS):
+            pending = 1
+            timed_out = True
+            ctx.log.warn("JSONL flush did not complete before timeout")
     except Exception as exc:
         pending = 1
         ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
     finally:
         state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
-        if pending == 0 and state_written:
+        if state_written and (pending == 0 or timed_out):
             _last_jsonl_flush_request_id = flush_request_id
 
 
@@ -692,6 +703,13 @@ def _classification_needs_request_timing(classification: _RequestClassification)
 
 def _should_stream_capture_request(classification: _RequestClassification) -> bool:
     if classification.kind not in ("api_allow", "browser_allow", "allow"):
+        return False
+    vm_info = classification.vm_info
+    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+
+
+def _should_try_firewall_stream_capture_request(classification: _RequestClassification) -> bool:
+    if classification.kind != "firewall_allow":
         return False
     vm_info = classification.vm_info
     return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
@@ -1052,6 +1070,37 @@ def _log_connector_diagnostic_proxy_entry(
     )
 
 
+def _maybe_make_connector_diagnostic_local_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> bool:
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
+        flow
+    ):
+        return False
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
+    if candidate is None:
+        return False
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return False
+
+    _start_request_timing(flow)
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.response = http.Response.make(
+        _HTTP_STATUS_FAILED_DEPENDENCY,
+        _connector_diagnostic_response_body(candidate, upstream_status=0),
+        {"Content-Type": "application/json"},
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=0,
+    )
+    return True
+
+
 def _maybe_replace_connector_diagnostic_response(
     flow: http.HTTPFlow,
     *,
@@ -1105,7 +1154,7 @@ def _maybe_make_connector_diagnostic_error_response(
         return
     _set_connector_diagnostic_failure_metadata(flow, candidate)
     flow.response = http.Response.make(
-        _HTTP_STATUS_BAD_GATEWAY,
+        _HTTP_STATUS_FAILED_DEPENDENCY,
         _connector_diagnostic_response_body(candidate, upstream_status=0),
         {"Content-Type": "application/json"},
     )
@@ -1360,11 +1409,11 @@ def client_disconnected(client: connection.Client) -> None:
 # ============================================================================
 
 
-def requestheaders(flow: http.HTTPFlow) -> None:
+def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     body_check = _auth_base_body_header_check(flow)
     if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
-        return
+        return None
 
     metadata_snapshot = {
         key: flow.metadata[key]
@@ -1374,12 +1423,13 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
+    auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
     if (
         classification.kind == "firewall_allow"
         and allow is not None
         and vm_info is not None
         and body_check.kind != "ok"
-        and _firewall_allow_auth_base(allow)
+        and auth_base
     ):
         _start_request_timing(flow)
         prepare_firewall_metadata(flow, allow, vm_info)
@@ -1402,16 +1452,88 @@ def requestheaders(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
-        return
+        return None
+
+    if (
+        classification.kind == "firewall_allow"
+        and allow is not None
+        and vm_info is not None
+        and auth_base
+        and body_check.kind == "ok"
+    ):
+        try:
+            admission = auth_base_forwarder.reserve_forward_request_admission(
+                body_check.observed_size
+            )
+        except (
+            auth_base_forwarder.AuthBaseForwardingSaturatedError,
+            RuntimeError,
+        ):
+            _start_request_timing(flow)
+            prepare_firewall_metadata(flow, allow, vm_info)
+            proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+            firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+            mark_auth_base_forwarding_saturated(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+            )
+            flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            flow.kill()
+            return None
+        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        flow.metadata[_REQUEST_CLASSIFICATION] = classification
+        return None
 
     if _should_stream_capture_request(classification):
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
-        return
+        return None
+
+    if _should_try_firewall_stream_capture_request(classification):
+        return _try_firewall_request_stream_capture_from_headers(
+            flow,
+            classification=classification,
+            metadata_snapshot=metadata_snapshot,
+        )
 
     _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+    return None
+
+
+async def _try_firewall_request_stream_capture_from_headers(
+    flow: http.HTTPFlow,
+    *,
+    classification: _RequestClassification,
+    metadata_snapshot: dict[str, object],
+) -> None:
+    allow = classification.firewall_allow
+    vm_info = classification.vm_info
+    if allow is None or vm_info is None:
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        return
+
+    _start_request_timing(flow)
+    try:
+        result = await try_apply_stream_safe_firewall_auth_for_requestheaders(flow, allow, vm_info)
+    except (asyncio.CancelledError, Exception):
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        raise
+    if result is not FirewallHeaderPhaseAuthResult.APPLIED:
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        return
+
+    _maybe_track_usage_flow(
+        flow,
+        is_billable_firewall(allow.name, vm_info),
+        _is_model_provider_usage_observable(allow.name, vm_info),
+    )
+    flow.metadata[_REQUEST_CLASSIFICATION] = classification
+    flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
+    request_streaming.configure_request_stream(flow)
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
@@ -1465,12 +1587,17 @@ async def request(flow: http.HTTPFlow) -> None:
     3. Firewall match (inject auth headers for allowed requests)
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
+        _release_auth_base_forward_admission(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
     if flow.response is not None or flow.error is not None:
+        _release_auth_base_forward_admission(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
+
+    if request_streaming.streamed_request_size(flow) is not None:
+        flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
 
     try:
         classification = _request_classification(flow)
@@ -1521,6 +1648,8 @@ async def request(flow: http.HTTPFlow) -> None:
             vm_info = classification.vm_info
             if allow is None or vm_info is None:
                 return
+            if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
+                return
             _maybe_track_usage_flow(
                 flow,
                 is_billable_firewall(allow.name, vm_info),
@@ -1531,6 +1660,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 # Local firewall/auth errors never reach a provider. They only
                 # need pre-tracking to keep shutdown from racing while auth is
                 # resolving, so release as soon as the local response exists.
+                _release_auth_base_forward_admission(flow)
                 _release_tracked_usage_flow(flow)
             return
 
@@ -1538,9 +1668,17 @@ async def request(flow: http.HTTPFlow) -> None:
         if vm_info is None:
             return
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
+        if request_streaming.streamed_request_size(flow) is None:
+            original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+            if isinstance(original_url, str) and _maybe_make_connector_diagnostic_local_response(
+                flow,
+                original_url=original_url,
+            ):
+                return
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+        _release_auth_base_forward_admission(flow)
         _release_tracked_usage_flow(flow)
         raise
     finally:
@@ -1578,6 +1716,12 @@ def _maybe_track_usage_flow(
 def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
     if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
         usage.decrement_in_flight_flows()
+
+
+def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
+    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
+    if isinstance(admission, auth_base_forwarder.AuthBaseForwardingAdmission):
+        auth_base_forwarder.release_forward_request_admission(admission)
 
 
 def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
@@ -1730,8 +1874,10 @@ def _release_usage_hook_state(
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+    flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
+    _release_auth_base_forward_admission(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
 

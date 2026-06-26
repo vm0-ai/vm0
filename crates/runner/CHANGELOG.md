@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.129.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.27...runner-rs-v0.129.28) (2026-06-26)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound jsonl shutdown control waits ([#19024](https://github.com/vm0-ai/vm0/issues/19024)) ([6c862d1](https://github.com/vm0-ai/vm0/commit/6c862d1a45c947d5f757a523154b851f7fb7c822))
+* **runner:** treat duplicate drain signals as idempotent ([#19026](https://github.com/vm0-ai/vm0/issues/19026)) ([270f616](https://github.com/vm0-ai/vm0/commit/270f616112016f75870050f0d879db1a5746286c))
+* silence jsonl writes after shutdown ([#19029](https://github.com/vm0-ai/vm0/issues/19029)) ([ed601d9](https://github.com/vm0-ai/vm0/commit/ed601d9b38183ac60fbf226d10852ce6610d7799))
+
+
+### Performance Improvements
+
+* **runner:** restore ably direct candidates ([#19028](https://github.com/vm0-ai/vm0/issues/19028)) ([b148317](https://github.com/vm0-ai/vm0/commit/b1483176ef8f1cb5b29347a4b13e4effb6fce1b9))
+
+## [0.129.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.26...runner-rs-v0.129.27) (2026-06-26)
+
+## [0.129.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.25...runner-rs-v0.129.26) (2026-06-26)
+
+
+### Performance Improvements
+
+* **runner:** add pre-spawn phase timing ([#19001](https://github.com/vm0-ai/vm0/issues/19001)) ([73cd372](https://github.com/vm0-ai/vm0/commit/73cd372420e29f7d261377760896361bb93728d4))
+
+## [0.129.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.24...runner-rs-v0.129.25) (2026-06-25)
+
+
+### Performance Improvements
+
+* **mitm-addon:** short-circuit connector diagnostics ([#18937](https://github.com/vm0-ai/vm0/issues/18937)) ([a6e1bea](https://github.com/vm0-ai/vm0/commit/a6e1beac6319fde73c5e7b4eed6803b87feb02cd))
+
+## [0.129.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.23...runner-rs-v0.129.24) (2026-06-25)
+
+
+### Performance Improvements
+
+* bound auth base forwarding admission ([#18954](https://github.com/vm0-ai/vm0/issues/18954)) ([e4a7a0e](https://github.com/vm0-ai/vm0/commit/e4a7a0eabb581a16d92b6080d369a4f8d3980b76))
+
+## [0.129.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.22...runner-rs-v0.129.23) (2026-06-25)
+
+
+### Bug Fixes
+
+* use figma api token header in builtin firewall ([#18953](https://github.com/vm0-ai/vm0/issues/18953)) ([81dad4e](https://github.com/vm0-ai/vm0/commit/81dad4e7685ae21c7f6a3df863934adb6d44207c))
+
+
+### Documentation
+
+* **mitm-addon:** update billable connector guidance ([#18948](https://github.com/vm0-ai/vm0/issues/18948)) ([b8d6f52](https://github.com/vm0-ai/vm0/commit/b8d6f52331901865812f7cf24d3a7d6325bfffd1))
+
+
+### Performance Improvements
+
+* bound firewalled request body capture ([#18939](https://github.com/vm0-ai/vm0/issues/18939)) ([1381816](https://github.com/vm0-ai/vm0/commit/1381816cefb707179d1a2fef0ed7024b5db4942b))
+* **runner:** batch local cancel job lookup ([#18949](https://github.com/vm0-ai/vm0/issues/18949)) ([9575105](https://github.com/vm0-ai/vm0/commit/9575105c0cdb84681efa4630a30445051389e623))
+
+## [0.129.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.21...runner-rs-v0.129.22) (2026-06-25)
+
+
+### Performance Improvements
+
+* add runner queue-to-claim timing ([#18940](https://github.com/vm0-ai/vm0/issues/18940)) ([ae6564c](https://github.com/vm0-ai/vm0/commit/ae6564cd58f595ec239d6f1c1f4155911ded8655))
+
+## [0.129.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.20...runner-rs-v0.129.21) (2026-06-25)
+
+
+### Bug Fixes
+
+* classify claude stream idle timeout failures ([#18941](https://github.com/vm0-ai/vm0/issues/18941)) ([2f30e00](https://github.com/vm0-ai/vm0/commit/2f30e005ce1d4d85d55674c7f384d51c701fb0bf))
+
+
+### Refactoring
+
+* move firewall registry to generator manifest ([#18930](https://github.com/vm0-ai/vm0/issues/18930)) ([2e4271b](https://github.com/vm0-ai/vm0/commit/2e4271b120828ac2ed0137e30e3ab9df5ea19f56))
+
+## [0.129.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.19...runner-rs-v0.129.20) (2026-06-25)
+
+
+### Refactoring
+
+* **runner:** centralize idle pool test builders ([#18916](https://github.com/vm0-ai/vm0/issues/18916)) ([c04c100](https://github.com/vm0-ai/vm0/commit/c04c100614f9d05347f184ada2726dc8835ff136))
+* **runner:** deduplicate idle-pool expiration eviction ([#18912](https://github.com/vm0-ai/vm0/issues/18912)) ([d5bcd1c](https://github.com/vm0-ai/vm0/commit/d5bcd1c19e8d7131ee7802190bd69e8079e72bbf))
+
 ## [0.129.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.18...runner-rs-v0.129.19) (2026-06-25)
 
 

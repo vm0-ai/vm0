@@ -216,7 +216,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.figma.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.FIGMA_TOKEN }}",',
+    '          "X-Figma-Token": "${{ secrets.FIGMA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

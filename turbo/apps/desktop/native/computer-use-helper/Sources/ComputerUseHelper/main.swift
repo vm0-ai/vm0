@@ -16,6 +16,7 @@ struct SnapshotLimits {
     let maxChildrenPerSource = 160
     let maxWindows = 8
     let maxActions = 12
+    let accessibilityMessagingTimeoutSeconds: Float = 1
 }
 
 struct ChildEntry {
@@ -29,6 +30,73 @@ struct ChildSource: Sendable {
 }
 
 let limits = SnapshotLimits()
+let commandTimeoutPolicy = CommandTimeoutPolicy.computerUse
+
+final class AccessibilityReadContext: @unchecked Sendable {
+    private let lock = NSLock()
+    private var timedOutAttributes: [String] = []
+
+    func recordTimeout(attributeName: CFString) {
+        lock.lock()
+        timedOutAttributes.append(attributeName as String)
+        lock.unlock()
+    }
+
+    func timeoutFailure() -> HelperFailure? {
+        lock.lock()
+        let attributes = timedOutAttributes
+        lock.unlock()
+        guard !attributes.isEmpty else {
+            return nil
+        }
+        let attributeList = Array(Set(attributes)).sorted().joined(separator: ", ")
+        return HelperFailure(
+            code: "target_app_unresponsive",
+            message: "Timed out while reading accessibility attributes from the target app: \(attributeList)"
+        )
+    }
+
+    func hasTimedOut() -> Bool {
+        lock.lock()
+        let result = !timedOutAttributes.isEmpty
+        lock.unlock()
+        return result
+    }
+}
+
+final class AccessibilityReadContextStorage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: AccessibilityReadContext?
+
+    func withContext<T>(_ context: AccessibilityReadContext, _ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        let previous = current
+        current = context
+        lock.unlock()
+        defer {
+            lock.lock()
+            current = previous
+            lock.unlock()
+        }
+        return try body()
+    }
+
+    func recordTimeout(attributeName: CFString) {
+        lock.lock()
+        let context = current
+        lock.unlock()
+        context?.recordTimeout(attributeName: attributeName)
+    }
+
+    func hasTimedOut() -> Bool {
+        lock.lock()
+        let context = current
+        lock.unlock()
+        return context?.hasTimedOut() ?? false
+    }
+}
+
+let accessibilityReadContextStorage = AccessibilityReadContextStorage()
 
 func nonEmptyEnvironmentValue(_ key: String) -> String? {
     guard let value = ProcessInfo.processInfo.environment[key] else {
@@ -57,6 +125,7 @@ func startSentry() {
         options.tracesSampleRate = NSNumber(value: 0)
         options.enableAutoPerformanceTracing = false
         options.enableUncaughtNSExceptionReporting = true
+        options.appHangTimeoutInterval = 5
         options.initialScope = { scope in
             scope.setTag(value: "desktop", key: "app")
             scope.setTag(value: "computer-use-helper", key: "component")
@@ -524,6 +593,52 @@ final class RunLoopReference: @unchecked Sendable {
 
     init(_ runLoop: CFRunLoop) {
         self.runLoop = runLoop
+    }
+}
+
+final class CommandResponseBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var response: [String: Any]?
+
+    func set(_ value: [String: Any]) {
+        lock.lock()
+        response = value
+        lock.unlock()
+    }
+
+    func get() -> [String: Any]? {
+        lock.lock()
+        let value = response
+        lock.unlock()
+        return value
+    }
+}
+
+final class ComputerUseCommandExecutor: @unchecked Sendable {
+    private let queue = DispatchQueue(
+        label: "ai.vm0.computer-use-helper.command",
+        qos: .userInitiated
+    )
+
+    func execute(
+        kind: String?,
+        timeoutPolicy: CommandTimeoutPolicy,
+        _ block: @escaping () -> [String: Any]
+    ) -> [String: Any] {
+        let semaphore = DispatchSemaphore(value: 0)
+        let responseBox = CommandResponseBox()
+        queue.async {
+            responseBox.set(block())
+            semaphore.signal()
+        }
+        let timeoutMilliseconds = Int((timeoutPolicy.timeoutSeconds * 1000).rounded())
+        let timeout = DispatchTime.now() + .milliseconds(timeoutMilliseconds)
+        guard semaphore.wait(timeout: timeout) == .success,
+              let response = responseBox.get()
+        else {
+            return failureResponse(timeoutPolicy.failure(kind: kind))
+        }
+        return response
     }
 }
 
@@ -1709,9 +1824,15 @@ func resolveRunningApp(named appName: String) throws -> NSRunningApplication {
     return app
 }
 
+func applicationElement(forProcessIdentifier processIdentifier: pid_t) -> AXUIElement {
+    let element = AXUIElementCreateApplication(processIdentifier)
+    configureAccessibilityMessagingTimeout(element)
+    return element
+}
+
 func appElement(named appName: String) throws -> AXUIElement {
     let app = try resolveRunningApp(named: appName)
-    return AXUIElementCreateApplication(app.processIdentifier)
+    return applicationElement(forProcessIdentifier: app.processIdentifier)
 }
 
 func trimmedPipeOutput(_ pipe: Pipe) -> String {
@@ -1720,10 +1841,26 @@ func trimmedPipeOutput(_ pipe: Pipe) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 }
 
+func configureAccessibilityMessagingTimeout(_ element: AXUIElement) {
+    _ = AXUIElementSetMessagingTimeout(element, limits.accessibilityMessagingTimeoutSeconds)
+}
+
+func recordAccessibilityReadError(_ error: AXError, attributeName: CFString) {
+    guard error == .cannotComplete else {
+        return
+    }
+    accessibilityReadContextStorage.recordTimeout(attributeName: attributeName)
+}
+
 func attribute(_ element: AXUIElement, _ name: CFString) -> Any? {
+    guard !accessibilityReadContextStorage.hasTimedOut() else {
+        return nil
+    }
+    configureAccessibilityMessagingTimeout(element)
     var value: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(element, name, &value)
     if error != .success {
+        recordAccessibilityReadError(error, attributeName: name)
         return nil
     }
     return value
@@ -1734,11 +1871,16 @@ func attributeArray(_ element: AXUIElement, _ name: CFString) -> [AXUIElement] {
         return []
     }
     if let elements = value as? [AXUIElement] {
+        elements.forEach(configureAccessibilityMessagingTimeout)
         return elements
     }
     if let elements = value as? [Any] {
         return elements.compactMap { entry in
-            axElementValue(entry)
+            guard let element = axElementValue(entry) else {
+                return nil
+            }
+            configureAccessibilityMessagingTimeout(element)
+            return element
         }
     }
     return []
@@ -1866,9 +2008,14 @@ func bounds(_ element: AXUIElement) -> [String: Double]? {
 }
 
 func actionNames(_ element: AXUIElement) -> [String] {
+    guard !accessibilityReadContextStorage.hasTimedOut() else {
+        return []
+    }
+    configureAccessibilityMessagingTimeout(element)
     var names: CFArray?
     let error = AXUIElementCopyActionNames(element, &names)
     if error != .success {
+        recordAccessibilityReadError(error, attributeName: "AXActionNames" as CFString)
         return []
     }
     return ((names as? [String]) ?? []).prefix(limits.maxActions).map { name in
@@ -1950,7 +2097,8 @@ func isSelectableElement(role roleName: String?, subrole: String?, selected: Boo
 func clickCapabilities(
     _ element: AXUIElement,
     actions actionList: [String]? = nil,
-    selected selectedValue: Bool? = nil
+    selected selectedValue: Bool? = nil,
+    webAreaMouseClick webAreaMouseClickOverride: Bool? = nil
 ) -> ElementClickCapabilities {
     let elementRole = role(element)
     let elementSubrole = stringValue(attribute(element, kAXSubroleAttribute as CFString))
@@ -1958,7 +2106,8 @@ func clickCapabilities(
     let elementSelected = selectedValue ?? boolValue(attribute(element, kAXSelectedAttribute as CFString))
     let frame = clickableFrame(element)
     let selectable = isSelectableElement(role: elementRole, subrole: elementSubrole, selected: elementSelected)
-    let webAreaMouseClick = shouldUseMouseClickForElement(element)
+    let webAreaMouseClick = webAreaMouseClickOverride
+        ?? shouldUseMouseClickForElement(element, role: elementRole)
     let mouseClickable = frame != nil && (webAreaMouseClick || selectable)
     return ElementClickCapabilities(
         role: elementRole,
@@ -2010,9 +2159,14 @@ func setClickCapabilityFields(_ node: inout [String: Any], capabilities: Element
 }
 
 func attributeIsSettable(_ element: AXUIElement, _ name: CFString) -> Bool? {
+    guard !accessibilityReadContextStorage.hasTimedOut() else {
+        return nil
+    }
+    configureAccessibilityMessagingTimeout(element)
     var settable = DarwinBoolean(false)
     let error = AXUIElementIsAttributeSettable(element, name, &settable)
     if error != .success {
+        recordAccessibilityReadError(error, attributeName: name)
         return nil
     }
     return settable.boolValue
@@ -2325,7 +2479,7 @@ func resolveWindowTarget(
     guard !candidates.isEmpty else {
         return nil
     }
-    let appRoot = root ?? AXUIElementCreateApplication(pid)
+    let appRoot = root ?? applicationElement(forProcessIdentifier: pid)
     let axWindows = axWindowInfos(root: appRoot)
     let best = candidates.min { left, right in
         scoreWindowCandidate(left, axWindows: axWindows, preferredScreenPoint: preferredScreenPoint) <
@@ -3004,8 +3158,15 @@ func titleElementText(_ element: AXUIElement) -> String? {
 }
 
 func setAttribute(_ element: AXUIElement, _ name: CFString, _ value: CFTypeRef) throws {
+    configureAccessibilityMessagingTimeout(element)
     let error = AXUIElementSetAttributeValue(element, name, value)
     if error != .success {
+        if error == .cannotComplete {
+            throw HelperFailure(
+                code: "target_app_unresponsive",
+                message: "Timed out while setting accessibility attribute \(name)"
+            )
+        }
         throw HelperFailure(
             code: "accessibility_unavailable",
             message: "Unable to set accessibility attribute \(name): \(error.rawValue)"
@@ -3185,6 +3346,7 @@ func navigateBrowserAddressField(_ request: BrowserAddressNavigationRequest) thr
 }
 
 func bestEffortSetAttribute(_ element: AXUIElement, _ name: String, _ value: Bool) {
+    configureAccessibilityMessagingTimeout(element)
     _ = AXUIElementSetAttributeValue(element, name as CFString, NSNumber(value: value))
 }
 
@@ -3310,7 +3472,8 @@ func describe(
     depth: Int,
     nodeCount: inout Int,
     truncationReasons: inout [String],
-    ancestry: Set<CFHashCode> = []
+    ancestry: Set<CFHashCode> = [],
+    insideWebArea: Bool = false
 ) -> [String: Any]? {
     let elementHash = CFHash(element)
     if ancestry.contains(elementHash) {
@@ -3327,8 +3490,10 @@ func describe(
     nodeCount += 1
 
     var node: [String: Any] = ["id": id]
-    if let role = role(element) {
-        node["role"] = role
+    let elementRole = role(element)
+    let elementInsideWebArea = insideWebArea || elementRole == "AXWebArea"
+    if let elementRole {
+        node["role"] = elementRole
     }
     if let roleDescription = stringValue(attribute(element, kAXRoleDescriptionAttribute as CFString)) {
         node["roleDescription"] = roleDescription
@@ -3400,7 +3565,16 @@ func describe(
     if let bounds = bounds(element) {
         node["bounds"] = bounds
     }
-    setClickCapabilityFields(&node, capabilities: clickCapabilities(element, actions: actions, selected: selected))
+    let webAreaMouseClick = elementInsideWebArea && elementRole != "AXMenuBarItem" && elementRole != "AXMenuItem"
+    setClickCapabilityFields(
+        &node,
+        capabilities: clickCapabilities(
+            element,
+            actions: actions,
+            selected: selected,
+            webAreaMouseClick: webAreaMouseClick
+        )
+    )
 
     if depth >= limits.maxDepth {
         markTruncated(&truncationReasons, "max_depth")
@@ -3416,7 +3590,8 @@ func describe(
             depth: depth + 1,
             nodeCount: &nodeCount,
             truncationReasons: &truncationReasons,
-            ancestry: childAncestry
+            ancestry: childAncestry,
+            insideWebArea: elementInsideWebArea
         )
     }
     if !children.isEmpty {
@@ -3788,7 +3963,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
         )
     }
 
-    let root = AXUIElementCreateApplication(runningApp.processIdentifier)
+    let root = applicationElement(forProcessIdentifier: runningApp.processIdentifier)
     enableBestEffortAccessibilityModes(root)
 
     let captured = optionalBool(request, "settle")
@@ -4108,8 +4283,11 @@ func hasRoleInElementAncestry(_ element: AXUIElement, roleName: String) -> Bool 
     return false
 }
 
-func shouldUseMouseClickForElement(_ element: AXUIElement) -> Bool {
-    let elementRole = role(element)
+func shouldUseMouseClickForElement(
+    _ element: AXUIElement,
+    role elementRoleOverride: String? = nil
+) -> Bool {
+    let elementRole = elementRoleOverride ?? role(element)
     if elementRole == "AXMenuBarItem" || elementRole == "AXMenuItem" {
         return false
     }
@@ -4433,11 +4611,18 @@ func performElementAccessibilityClick(
                 point: CGPoint(x: frame.midX, y: frame.midY)
             )
         }
+        configureAccessibilityMessagingTimeout(clickTarget.element)
         for index in 0..<clickCount {
             let error = AXUIElementPerformAction(clickTarget.element, actionName as CFString)
             if error != .success {
                 if index == 0, isUnsupportedActionError(error) {
                     throw UnsupportedClickAction(actionName: actionName, error: error)
+                }
+                if error == .cannotComplete {
+                    throw HelperFailure(
+                        code: "target_app_unresponsive",
+                        message: "Timed out while performing \(actionName) on \(elementId)"
+                    )
                 }
                 throw HelperFailure(
                     code: "accessibility_unavailable",
@@ -4719,8 +4904,15 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
                 point: CGPoint(x: frame.midX, y: frame.midY)
             )
         }
+        configureAccessibilityMessagingTimeout(element)
         let error = AXUIElementPerformAction(element, action as CFString)
         if error != .success {
+            if error == .cannotComplete {
+                throw HelperFailure(
+                    code: "target_app_unresponsive",
+                    message: "Timed out while performing \(action) on \(elementId)"
+                )
+            }
             throw HelperFailure(
                 code: "accessibility_unavailable",
                 message: "Unable to perform \(action) on \(elementId): \(error.rawValue)"
@@ -4901,32 +5093,55 @@ func writeJSONObject(_ object: [String: Any]) throws {
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
+func failureResponse(code: String, message: String) -> [String: Any] {
+    return [
+        "status": "failed",
+        "error": [
+            "code": code,
+            "message": message,
+        ],
+    ]
+}
+
+func failureResponse(_ failure: HelperFailure) -> [String: Any] {
+    return failureResponse(code: failure.code, message: failure.message)
+}
+
+func failureResponse(_ failure: CommandTimeoutFailure) -> [String: Any] {
+    return failureResponse(code: failure.code, message: failure.message)
+}
+
 func responseObject(for request: [String: Any], session: ComputerUseRuntimeSession?) -> [String: Any] {
     var response: [String: Any]
     do {
         let command = try commandRequest(from: request)
-        let result = try handle(command, session: session)
+        let context = AccessibilityReadContext()
+        let result = try accessibilityReadContextStorage.withContext(context) {
+            do {
+                let result = try handle(command, session: session)
+                if let failure = context.timeoutFailure() {
+                    throw failure
+                }
+                return result
+            } catch {
+                if let failure = context.timeoutFailure() {
+                    throw failure
+                }
+                throw error
+            }
+        }
         response = [
             "status": "succeeded",
             "result": result,
         ]
     } catch let failure as HelperFailure {
-        response = [
-            "status": "failed",
-            "error": [
-                "code": failure.code,
-                "message": failure.message,
-            ],
-        ]
+        response = failureResponse(failure)
     } catch {
         captureUnexpectedHelperError(error, stage: "request")
-        response = [
-            "status": "failed",
-            "error": [
-                "code": "accessibility_unavailable",
-                "message": String(describing: error),
-            ],
-        ]
+        response = failureResponse(
+            code: "accessibility_unavailable",
+            message: String(describing: error)
+        )
     }
 
     if let id = request["id"] {
@@ -4952,28 +5167,22 @@ func runOneShot() {
         let request = try parseRequestData(input)
         try writeJSONObject(responseObject(for: request, session: nil))
     } catch let failure as HelperFailure {
-        try? writeJSONObject([
-            "status": "failed",
-            "error": [
-                "code": failure.code,
-                "message": failure.message,
-            ],
-        ])
+        try? writeJSONObject(failureResponse(failure))
     } catch {
         captureUnexpectedHelperError(error, stage: "oneshot")
-        try? writeJSONObject([
-            "status": "failed",
-            "error": [
-                "code": "accessibility_unavailable",
-                "message": String(describing: error),
-            ],
-        ])
+        try? writeJSONObject(
+            failureResponse(
+                code: "accessibility_unavailable",
+                message: String(describing: error)
+            )
+        )
     }
 }
 
 func runStdioSession() {
     let session = ComputerUseRuntimeSession()
     let mainRunLoop = RunLoopReference(CFRunLoopGetCurrent())
+    let commandExecutor = ComputerUseCommandExecutor()
     DispatchQueue.global(qos: .userInitiated).async {
         while let line = readLine(strippingNewline: true) {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4982,27 +5191,28 @@ func runStdioSession() {
             }
             do {
                 let request = try parseRequestData(Data(trimmed.utf8))
-                let response = DispatchQueue.main.sync {
+                let kind = (request["kind"] as? String)
+                    ?? ((request["payload"] as? [String: Any])?["kind"] as? String)
+                var response = commandExecutor.execute(
+                    kind: kind,
+                    timeoutPolicy: commandTimeoutPolicy
+                ) {
                     responseObject(for: request, session: session)
+                }
+                if response["id"] == nil, let id = request["id"] {
+                    response["id"] = id
                 }
                 try writeJSONObject(response)
             } catch let failure as HelperFailure {
-                try? writeJSONObject([
-                    "status": "failed",
-                    "error": [
-                        "code": failure.code,
-                        "message": failure.message,
-                    ],
-                ])
+                try? writeJSONObject(failureResponse(failure))
             } catch {
                 captureUnexpectedHelperError(error, stage: "stdio")
-                try? writeJSONObject([
-                    "status": "failed",
-                    "error": [
-                        "code": "accessibility_unavailable",
-                        "message": String(describing: error),
-                    ],
-                ])
+                try? writeJSONObject(
+                    failureResponse(
+                        code: "accessibility_unavailable",
+                        message: String(describing: error)
+                    )
+                )
             }
         }
         ComputerUseVisualPointer.shared.hide()

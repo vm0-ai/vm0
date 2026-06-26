@@ -20,6 +20,7 @@ from tests.auth_base_forwarder_helpers import (
 )
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.requestheaders_helpers import await_requestheaders_result
 
 _X_FIREWALL_NAME = "x"
 _X_TRACKING_PATH = "/2/users/by"
@@ -123,6 +124,7 @@ def _write_billable_x_tracking_registry(
     tmp_path: Path,
     *,
     include_encrypted_secrets: bool = True,
+    vm_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
         tmp_path,
@@ -142,6 +144,7 @@ def _write_billable_x_tracking_registry(
             },
             billable_firewalls=[_X_FIREWALL_NAME],
             include_encrypted_secrets=include_encrypted_secrets,
+            vm_fields=vm_fields,
         ),
     )
 
@@ -314,6 +317,50 @@ async def test_billable_flow_error_releases_tracking_after_request(
     )
 
 
+async def test_header_phase_streamed_billable_flow_error_releases_tracking(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_billable_x_tracking_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _x_tracking_flow(real_flow)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        usage.write_pending_snapshot(flush_request_id="request-headers")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-headers",
+        )
+
+        flow.error = Error("connection reset")
+        mitm_addon.error(flow)
+
+    usage.write_pending_snapshot(flush_request_id="after-error")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-error",
+    )
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+
 async def test_duplicate_terminal_hooks_do_not_double_decrement_usage_flow(
     tmp_path,
     usage_pending_path,
@@ -412,7 +459,7 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
         fake_firewall_headers(),
     ):
         await mitm_addon.request(untracked_flow)
-        assert untracked_flow.metadata["firewall_billable"] is False
+        assert untracked_flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
         usage.write_pending_snapshot(flush_request_id="after-untracked-request")
         assert_pending(
             usage_pending_path,
@@ -462,7 +509,7 @@ async def test_local_firewall_error_leaves_usage_flows_drained(
 
     assert flow.response is not None
     assert flow.response.status_code == 502
-    assert flow.metadata["firewall_error"] == "auth_unavailable"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_unavailable"
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -567,9 +614,9 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata["cli_agent_type"] == "claude-code"
-    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
+    assert flow.metadata[metadata_keys.CLI_AGENT_TYPE] == "claude-code"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -598,8 +645,8 @@ async def test_non_billable_model_provider_with_invalid_model_usage_provider_is_
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
     assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == 123
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
@@ -629,9 +676,9 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["model_usage_provider"] == "claude-sonnet-4-6"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == "claude-sonnet-4-6"
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -664,10 +711,10 @@ async def test_billable_model_provider_records_model_usage_provider(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata["cli_agent_type"] == "codex"
-    assert flow.metadata["firewall_billable"] is True
-    assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
+    assert flow.metadata[metadata_keys.CLI_AGENT_TYPE] == "codex"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is True
+    assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == "claude-opus-4-6"
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -733,7 +780,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
         assert flow.response is not None
         assert flow.response.status_code == 200
         assert flow.response.content == b'{"delivered":true}'
-        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(
             usage_pending_path,
@@ -780,8 +827,8 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
     assert flow.response is not None
     assert flow.response.status_code == 502
-    assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-    assert "auth_url_rewrite" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -848,7 +895,7 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
             await _drain_request_task(request_task)
 
     assert flow.response is None
-    assert "auth_url_rewrite" not in flow.metadata
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")

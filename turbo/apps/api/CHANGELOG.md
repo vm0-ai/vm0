@@ -1,5 +1,179 @@
 # Changelog
 
+## [1.179.7](https://github.com/vm0-ai/vm0/compare/api-v1.179.6...api-v1.179.7) (2026-06-26)
+
+
+### Refactoring
+
+* remove typescript firewall runtime loader ([#19027](https://github.com/vm0-ai/vm0/issues/19027)) ([a2c7b0e](https://github.com/vm0-ai/vm0/commit/a2c7b0e2cd7c484ccb13a0f85864305c086dc5af))
+
+
+### Performance Improvements
+
+* **runner:** restore ably direct candidates ([#19028](https://github.com/vm0-ai/vm0/issues/19028)) ([b148317](https://github.com/vm0-ai/vm0/commit/b1483176ef8f1cb5b29347a4b13e4effb6fce1b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.4
+    * @vm0/connectors bumped to 1.108.6
+    * @vm0/core bumped to 8.370.9
+    * @vm0/db bumped to 1.72.6
+
+## [1.179.6](https://github.com/vm0-ai/vm0/compare/api-v1.179.5...api-v1.179.6) (2026-06-26)
+
+
+### Refactoring
+
+* remove MobileSingleLineComposer/CustomConnectorProposals switches and enable ChatRunGroupFolding ([#18995](https://github.com/vm0-ai/vm0/issues/18995)) ([1f74dc2](https://github.com/vm0-ai/vm0/commit/1f74dc21392f011239b88b3472092df4909762b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.3
+    * @vm0/connectors bumped to 1.108.5
+    * @vm0/core bumped to 8.370.8
+    * @vm0/db bumped to 1.72.5
+
+## [1.179.5](https://github.com/vm0-ai/vm0/compare/api-v1.179.4...api-v1.179.5) (2026-06-26)
+
+
+### Bug Fixes
+
+* restore presentation deck QA flow ([#19008](https://github.com/vm0-ai/vm0/issues/19008)) ([2a137bb](https://github.com/vm0-ai/vm0/commit/2a137bb3e5849bc5d9a569ed96d62285d2add574))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.7
+    * @vm0/db bumped to 1.72.4
+
+## [1.179.4](https://github.com/vm0-ai/vm0/compare/api-v1.179.3...api-v1.179.4) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.2
+    * @vm0/connectors bumped to 1.108.4
+    * @vm0/core bumped to 8.370.6
+    * @vm0/db bumped to 1.72.3
+
+## [1.179.3](https://github.com/vm0-ai/vm0/compare/api-v1.179.2...api-v1.179.3) (2026-06-25)
+
+
+### Bug Fixes
+
+* refresh presentation template registry archives ([#18980](https://github.com/vm0-ai/vm0/issues/18980)) ([941727a](https://github.com/vm0-ai/vm0/commit/941727a14a176feb173f70c63843dafb027fe964))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+    * @vm0/db bumped to 1.72.2
+
+## [1.179.2](https://github.com/vm0-ai/vm0/compare/api-v1.179.1...api-v1.179.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+    * @vm0/db bumped to 1.72.1
+
+## [1.179.1](https://github.com/vm0-ai/vm0/compare/api-v1.179.0...api-v1.179.1) (2026-06-25)
+
+
+### Performance Improvements
+
+* split compose resolution timing ([#18979](https://github.com/vm0-ai/vm0/issues/18979)) ([dcfda07](https://github.com/vm0-ai/vm0/commit/dcfda07e5bc575a0752b2c08532f3b739e952491))
+
+## [1.179.0](https://github.com/vm0-ai/vm0/compare/api-v1.178.4...api-v1.179.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger connector access ([#18959](https://github.com/vm0-ai/vm0/issues/18959)) ([2302afb](https://github.com/vm0-ai/vm0/commit/2302afb6169ec835f3f9782c99c0573a598132b9))
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Bug Fixes
+
+* normalize codex cli log rendering ([#18773](https://github.com/vm0-ai/vm0/issues/18773)) ([731975b](https://github.com/vm0-ai/vm0/commit/731975b8fa1376fbec62c86527ae87935d9a4d07))
+* use figma api token header in builtin firewall ([#18953](https://github.com/vm0-ai/vm0/issues/18953)) ([81dad4e](https://github.com/vm0-ai/vm0/commit/81dad4e7685ae21c7f6a3df863934adb6d44207c))
+
+
+### Performance Improvements
+
+* optimize stored connector allowlist loading ([#18972](https://github.com/vm0-ai/vm0/issues/18972)) ([5ab6e86](https://github.com/vm0-ai/vm0/commit/5ab6e8681d0956097b515809014d5239a5f8bfaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+    * @vm0/db bumped to 1.72.0
+
+## [1.178.4](https://github.com/vm0-ai/vm0/compare/api-v1.178.3...api-v1.178.4) (2026-06-25)
+
+
+### Performance Improvements
+
+* add runner queue-to-claim timing ([#18940](https://github.com/vm0-ai/vm0/issues/18940)) ([ae6564c](https://github.com/vm0-ai/vm0/commit/ae6564cd58f595ec239d6f1c1f4155911ded8655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+    * @vm0/db bumped to 1.71.3
+
+## [1.178.3](https://github.com/vm0-ai/vm0/compare/api-v1.178.2...api-v1.178.3) (2026-06-25)
+
+
+### Bug Fixes
+
+* constrain presentation template imagery ([#18938](https://github.com/vm0-ai/vm0/issues/18938)) ([75c9003](https://github.com/vm0-ai/vm0/commit/75c9003900b875b9f3f467e37840cd6a179044d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+    * @vm0/db bumped to 1.71.2
+
+## [1.178.2](https://github.com/vm0-ai/vm0/compare/api-v1.178.1...api-v1.178.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.1
+    * @vm0/connectors bumped to 1.108.0
+    * @vm0/core bumped to 8.370.0
+    * @vm0/db bumped to 1.71.1
+
 ## [1.178.1](https://github.com/vm0-ai/vm0/compare/api-v1.178.0...api-v1.178.1) (2026-06-25)
 
 

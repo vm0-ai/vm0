@@ -54,6 +54,16 @@ function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
   return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
 }
 
+function stableGeneratedFirewallChunkName(moduleId: string): string | null {
+  return firewallMetadataDetailChunkName(moduleId);
+}
+
+function stableGeneratedFirewallChunkFileName(
+  chunkName: string,
+): string | null {
+  return firewallMetadataDetailChunkFileName(chunkName);
+}
+
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   if (url.protocol !== "https:") {
     return false;
@@ -164,11 +174,11 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Stable metadata chunk URLs must also keep stable import contracts.
+        // Stable generated firewall chunk URLs must also keep stable import contracts.
         minifyInternalExports: false,
         chunkFileNames(chunkInfo) {
           return (
-            firewallMetadataDetailChunkFileName(chunkInfo.name) ??
+            stableGeneratedFirewallChunkFileName(chunkInfo.name) ??
             "assets/[name]-[hash].js"
           );
         },
@@ -176,10 +186,10 @@ export default defineConfig({
           groups: [
             {
               name(moduleId) {
-                return firewallMetadataDetailChunkName(moduleId);
+                return stableGeneratedFirewallChunkName(moduleId);
               },
               test(moduleId) {
-                return firewallMetadataDetailChunkName(moduleId) !== null;
+                return stableGeneratedFirewallChunkName(moduleId) !== null;
               },
               priority: 10,
             },

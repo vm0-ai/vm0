@@ -197,7 +197,10 @@ function CreditBalanceChart({
   });
   const total = billing.credits;
   const showFreeEmptyPrompt =
-    (billing.tier === "free" || billing.tier === "pro-suspend") && total <= 0;
+    (billing.tier === "free" ||
+      billing.tier === "limited-free-1" ||
+      billing.tier === "pro-suspend") &&
+    total <= 0;
   const openBillingPlans = useSet(openBillingPlans$);
   const handleComparePlans = onComparePlans ?? openBillingPlans;
 

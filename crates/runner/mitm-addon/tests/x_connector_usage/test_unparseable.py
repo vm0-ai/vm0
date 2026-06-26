@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -23,7 +24,7 @@ def test_logs_x_stream_with_ndjson_state(x_usage, tmp_path, real_flow):
         body=b"",
         rule="GET /2/tweets/search/stream",
     )
-    flow.metadata["x_ndjson_state"] = {
+    flow.metadata[metadata_keys.X_NDJSON_STATE] = {
         "data_count": 50,
         "includes": {"users": 47, "tweets": 12},
         "lines_parsed": 50,
@@ -46,7 +47,7 @@ def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
         body=b"",
         rule="GET /2/tweets/search/stream",
     )
-    flow.metadata["x_ndjson_state"] = {
+    flow.metadata[metadata_keys.X_NDJSON_STATE] = {
         "data_count": 0,
         "includes": {},
         "lines_parsed": 0,
@@ -145,7 +146,7 @@ def test_unparseable_no_hints_writes_error_to_proxy_log(x_usage, tmp_path, real_
         body=b"not json",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata["original_url"] = (
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
         f"https://api.x.com:8443/2/tweets/search/recent?query={sensitive_query}"
     )
     proxy_log = tmp_path / "proxy.jsonl"
@@ -178,7 +179,7 @@ def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
         body=b"not json",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata["vm_proxy_log_path"] = ""
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = ""
 
     with mitm_ctx(api_url="https://api.vm0.ai") as log:
         usage.report_connector_usage(flow, "run-abc-123")
@@ -201,7 +202,7 @@ def test_unparseable_x_json_state_logs_parse_error(x_usage, tmp_path, real_flow)
         path="/2/tweets/search/recent",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": "incomplete json",
@@ -230,7 +231,7 @@ def test_unparseable_x_json_state_omits_invalid_parse_error(
         path="/2/tweets/search/recent",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": parse_error,
@@ -528,7 +529,7 @@ def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
         permission=permission,
         rule=rule,
     )
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": "incomplete json",
@@ -555,7 +556,7 @@ def test_x_json_parse_error_with_zero_max_results_is_no_reliable_hint(x_usage, t
         query="query=hello&max_results=0",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": "incomplete json",

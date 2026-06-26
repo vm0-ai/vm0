@@ -40,7 +40,7 @@ import type { ComposerPasteEvent } from "./composer-input-types.ts";
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
 // element itself scrolls (single layer), so there is no overlay to sync. The
 // resting min-height is applied separately (see editorContentClass) so the
-// mobileSingleLineComposer switch can rest the editor at a single line on mobile.
+// editor can rest at a single line on mobile.
 const EDITOR_CONTENT_CLASS =
   "w-full max-h-[200px] overflow-y-auto whitespace-pre-wrap " +
   "break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground " +
@@ -621,6 +621,7 @@ export function TiptapWorkflowComposer({
           loading={isLoadingOrgWorkflows}
           selectedIndex={selectedWorkflowIndex}
           showWorkflowsPageLink={showWorkflowsPageLink}
+          currentAgentId={currentAgentId}
           onSelect={(workflow) => {
             insertWorkflow(workflow);
           }}

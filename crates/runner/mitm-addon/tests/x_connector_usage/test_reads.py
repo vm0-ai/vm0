@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -535,7 +536,9 @@ def test_query_string_does_not_break_literal_suffix_override(x_usage, tmp_path, 
     )
     # The ?max_results metadata goes into original_url for
     # req-meta parsing to consume.
-    flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    )
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "user.read"
     assert p["quantity"] == 2

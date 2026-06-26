@@ -131,7 +131,6 @@ export {
   deleteWorkflowTrigger,
   enableWorkflowTrigger,
   disableWorkflowTrigger,
-  runWorkflowTrigger,
 } from "./domains/zero-workflows";
 
 // Domain modules - Zero Goals

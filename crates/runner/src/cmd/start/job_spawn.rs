@@ -26,7 +26,7 @@ use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
-use crate::executor::{self, ExecutionFailureKind, ExecutorConfig};
+use crate::executor::{self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnTiming};
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -85,6 +85,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) job_profile: JobProfile,
     pub(super) reuse_entry: Option<ReusableIdleSandbox>,
     pub(super) reuse_result: SandboxReuseResult,
+    pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
 }
 
@@ -97,6 +98,7 @@ struct ExecutorInvocation {
     factory: SharedFactory,
     reuse_entry: Option<ReusableIdleSandbox>,
     reuse_result: SandboxReuseResult,
+    pre_spawn_timing: RunnerPreSpawnTiming,
     cancel: CancellationToken,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
@@ -121,6 +123,7 @@ impl ExecutorInvocation {
             factory,
             reuse_entry,
             reuse_result,
+            pre_spawn_timing,
             cancel,
             sandbox_token,
             sandbox_prepared,
@@ -140,6 +143,7 @@ impl ExecutorInvocation {
                     &params,
                     cancel_for_executor,
                     active_input_source,
+                    Some(pre_spawn_timing),
                 )
                 .await
             } else {
@@ -156,6 +160,7 @@ impl ExecutorInvocation {
                     executor::ExecutionHooks {
                         sandbox_prepared,
                         active_input_source,
+                        pre_spawn_timing: Some(pre_spawn_timing),
                     },
                 )
                 .await
@@ -434,6 +439,7 @@ pub(super) fn spawn_job(
         job_profile,
         reuse_entry,
         reuse_result,
+        pre_spawn_timing,
         active_cli_agent_session_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
@@ -522,6 +528,7 @@ pub(super) fn spawn_job(
         factory: Arc::clone(&factory),
         reuse_entry,
         reuse_result,
+        pre_spawn_timing,
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
@@ -850,6 +857,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                     | FailureReason::InvalidCredentials
                     | FailureReason::OutputTokenLimit
                     | FailureReason::ProviderOverloaded
+                    | FailureReason::ProviderStreamTimeout
                     | FailureReason::ProviderServerError
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
@@ -920,8 +928,7 @@ mod tests {
         AgentFramework, CliTerminationDiagnostic, CliTerminationReason, CliTerminationSignal,
         FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
-    use sandbox::{SandboxFactory, SandboxId};
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox::SandboxId;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -930,8 +937,7 @@ mod tests {
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
@@ -1023,6 +1029,7 @@ mod tests {
             FailureReason::InvalidCredentials,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
+            FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
@@ -1077,6 +1084,41 @@ mod tests {
     }
 
     #[test]
+    fn claude_result_provider_stream_timeout_logs_job_execution_failed_at_info() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+        .with_session_history_status(SessionHistoryStatus::Present)
+        .with_failure_reason(FailureReason::ProviderStreamTimeout);
+        let failure = executor::ExecutionFailure::new(
+            1,
+            "API Error: Stream idle timeout - partial response received",
+            Some(diagnostic),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::INFO);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(
+            &event,
+            "error",
+            "API Error: Stream idle timeout - partial response received",
+        );
+        assert_field_eq(&event, "failure_reason", "provider_stream_timeout");
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_framework", "claude_code");
+        assert_field_eq(&event, "failure_detail_source", "claude_result");
+    }
+
+    #[test]
     fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,
@@ -1110,6 +1152,7 @@ mod tests {
             FailureReason::InvalidCredentials,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
+            FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
@@ -1520,18 +1563,10 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate =
-            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-                sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
-                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-                cli_agent_session_id: "sess-idle-owned-cleanup".into(),
-                sandbox_id,
-                profile_name: "vm0/default".into(),
-                device_rate_limits: None,
-                budget_lease: lease,
-                source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-            });
+        let candidate = ParkedIdleCandidateBuilder::new("sess-idle-owned-cleanup", lease)
+            .with_mock_sandbox_name("idle-owned-cleanup")
+            .with_sandbox_id(sandbox_id)
+            .build();
         assert!(matches!(
             fixture.idle_pool.lock().await.park(candidate),
             ParkResult::Parked

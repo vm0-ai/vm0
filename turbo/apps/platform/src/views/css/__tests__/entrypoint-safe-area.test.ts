@@ -44,7 +44,7 @@ describe("platform entrypoint safe area behavior", () => {
     );
   });
 
-  it("suppresses the bottom safe-area inset while text entry is focused", () => {
+  it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
     const globalCss = readGlobalCss();
 
     expect(globalCss).toMatch(
@@ -52,7 +52,7 @@ describe("platform entrypoint safe area behavior", () => {
     );
     expect(globalCss).toMatch(/--sab:\s*var\(--sab-raw\);/);
     expect(globalCss).toMatch(
-      /:root:has\([\s\S]*:focus-visible[\s\S]*\)\s*{\s*--sab:\s*0px;\s*}/,
+      /:root\[data-keyboard-open="true"\]\s*{\s*--sab:\s*0px;\s*}/,
     );
     expect(globalCss).toMatch(/bottom:\s*calc\(-1\s*\*\s*var\(--sab\)\);/);
   });
@@ -63,7 +63,7 @@ describe("platform entrypoint safe area behavior", () => {
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100lvh;/);
     expect(globalCss).toMatch(
-      /:root:has\([\s\S]*:focus-visible[\s\S]*\)\s*{\s*--zero-viewport-height:\s*100dvh;\s*}/,
+      /:root\[data-keyboard-open="true"\]\s*{\s*--zero-viewport-height:\s*100dvh;\s*}/,
     );
     expect(globalCss).toMatch(
       /html,\s*body,\s*#root\s*{[\s\S]*overflow:\s*hidden;[\s\S]*overscroll-behavior:\s*none;/,

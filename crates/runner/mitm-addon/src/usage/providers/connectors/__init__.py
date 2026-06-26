@@ -7,11 +7,13 @@ it applies the universal gates (``run_id`` present, firewall flagged
 billable by the web layer, firewall has a registered handler) and
 delegates to the matching per-connector ``report_usage`` function.
 
-Adding a new billable connector = add a new file here + register it in
-:data:`_HANDLERS`. Connectors that need incremental response-body usage
-extraction also register a parser factory in
-:data:`_RESPONSE_PARSER_FACTORIES`. The dispatcher already enforces the
-cross-connector invariants.
+The TypeScript billable connector manifest lives in
+``turbo/packages/firewalls-generator/src/connector-firewall-manifest.ts`` as
+``BILLABLE_FIREWALL_CONNECTOR_TYPES``. Adding a new billable connector means
+marking it billable there, adding a connector module here, and registering it
+in :data:`_HANDLERS`. Connectors that need incremental response-body usage
+extraction also register a parser factory in :data:`_RESPONSE_PARSER_FACTORIES`.
+The dispatcher already enforces the cross-connector invariants.
 """
 
 from collections.abc import Callable
@@ -28,12 +30,12 @@ from .response_parser import ConnectorResponseParser
 _ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
 _ResponseParserFactory = Callable[[http.HTTPFlow, str], ConnectorResponseParser | None]
 
-# Map firewall_name → per-connector report_usage handler.  A handler is only
-# invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, so the
-# BILLABLE_CONNECTORS whitelist in ``@vm0/core`` and this table must stay
-# in sync.  (The web layer controls who shows up as ``billable``; this
-# table controls who we know how to parse.  Desync manifests as a
-# dropped billing record plus a missing handler in test coverage.)
+# Map firewall_name → per-connector report_usage handler. A handler is only
+# invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True. That
+# flag comes from the runner claim's ``billableFirewalls`` list, generated from
+# ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` in the TypeScript firewall manifest.
+# This table controls which billable flows the addon knows how to parse. Desync
+# manifests as a dropped billing record plus a missing handler in test coverage.
 _HANDLERS: dict[str, _ConnectorUsageHandler] = {
     "x": x.report_usage,
 }
@@ -48,9 +50,9 @@ _RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
 
 # One-shot guard: first time we see a billable firewall_name with no
 # registered handler, warn once per name per addon process.  Catches the
-# deployment-desync case where ``@vm0/core``'s ``BILLABLE_CONNECTORS`` has
-# grown but the runner is on an older addon image — without this, billing
-# records silently drop with no local signal.
+# deployment-desync case where ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` and the
+# generated execution metadata have grown but the runner is on an older addon
+# image — without this, billing records silently drop with no local signal.
 _unregistered_handler_warned: set[str] = set()
 
 
@@ -72,9 +74,9 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
       this firewall is not platform-billable for this run).
     - ``flow.metadata[metadata_keys.FIREWALL_NAME]`` has no registered handler (covers
       both the model-provider path — routed through
-      :func:`report_model_provider_usage` instead — and any firewall that
-      ``@vm0/core``'s ``BILLABLE_CONNECTORS`` flags as billable but which
-      this addon version does not yet know how to parse).
+      :func:`report_model_provider_usage` instead — and any connector firewall
+      marked billable by the TypeScript firewall manifest but not yet supported
+      by this addon version).
     """
     if not run_id:
         return
@@ -91,7 +93,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
-                "BILLABLE_CONNECTORS in @vm0/core and _HANDLERS here are in sync.",
+                "BILLABLE_FIREWALL_CONNECTOR_TYPES and _HANDLERS here are in sync.",
                 "unregistered_billable_handler",
                 "confirmed",
                 firewall_name=firewall_name,

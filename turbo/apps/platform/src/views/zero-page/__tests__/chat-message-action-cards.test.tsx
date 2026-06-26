@@ -210,7 +210,7 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.CustomConnectorProposals]: true },
+      featureSwitches: {},
       path: `/chats/${THREAD_ID}-custom-connector`,
     });
 

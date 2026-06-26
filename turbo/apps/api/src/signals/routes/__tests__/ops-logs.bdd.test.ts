@@ -2,6 +2,8 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
+
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -393,6 +395,68 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     );
     expectApiError(invalidSince.body);
 
+    const invalidLimit = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", limit: 1.5 },
+      [400],
+    );
+    expectApiError(invalidLimit.body);
+
+    const invalidBefore = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", before: 1.5 },
+      [400],
+    );
+    expectApiError(invalidBefore.body);
+
+    const invalidAfter = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", after: 1.5 },
+      [400],
+    );
+    expectApiError(invalidAfter.body);
+
+    const blankContext = await api.rawSearchLogs(
+      actor,
+      "?keyword=OOM&before=&after=",
+    );
+    expect(blankContext.status).toBe(400);
+    expectApiError(blankContext.body);
+
+    const blankKeyword = await api.rawSearchLogs(actor, "?keyword=%20%20");
+    expect(blankKeyword.status).toBe(400);
+    expectApiError(blankKeyword.body);
+
+    const invalidRunId = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", runId: "not-a-uuid" },
+      [400],
+    );
+    expectApiError(invalidRunId.body);
+
+    const axiomCallsBeforeMalformed =
+      context.mocks.axiom.query.mock.calls.length;
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      { ...axiomEvent(runId, 3, "Error: OOM killed"), sequenceNumber: "bad" },
+      {
+        ...axiomEvent(runId, 4, "Error: OOM killed"),
+        sequenceNumber: MAX_EVENT_SEQUENCE_NUMBER + 1,
+      },
+      { ...axiomEvent(runId, 5, "Error: OOM killed"), _time: "not-a-date" },
+    ]);
+    const malformedAxiomRow = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM", before: 1, after: 1 },
+      [200],
+    );
+    expect(malformedAxiomRow.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
+      axiomCallsBeforeMalformed + 1,
+    );
+
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 3, "Error: OOM killed"),
     ]);
@@ -404,12 +468,32 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(matched.body.results).toHaveLength(1);
     expect(matched.body.results[0]?.runId).toBe(runId);
     expect(matched.body.results[0]?.agentName).toBe("BDD ops-logs agent");
+    expect(matched.body.results[0]?.framework).toBe("claude-code");
     expect(matched.body.results[0]?.matchedEvent.sequenceNumber).toBe(3);
     expect(matched.body.results[0]?.contextBefore).toStrictEqual([]);
     expect(matched.body.results[0]?.contextAfter).toStrictEqual([]);
     const broadApl = lastAxiomApl();
     expect(broadApl).toContain('search "*OOM*"');
     expect(broadApl).toContain(`runId == "${runId}"`);
+
+    context.mocks.axiom.query.mockResolvedValueOnce([]);
+    const escapedKeywordSearch = await api.requestSearchLogs(
+      actor,
+      { keyword: 'quote" slash\\ tab\t newline\n carriage\r return' },
+      [200],
+    );
+    expect(escapedKeywordSearch.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    const escapedSearchLine = lastAxiomApl()
+      .split("\n")
+      .find((line) => {
+        return line.includes("| search");
+      });
+    expect(escapedSearchLine).toBe(
+      String.raw`| search "*quote\" slash\\ tab\t newline\n carriage\n return*"`,
+    );
 
     context.mocks.axiom.query
       .mockResolvedValueOnce([
@@ -447,6 +531,32 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     expect(byRunId.body.results).toHaveLength(1);
     expect(byRunId.body.results[0]?.runId).toBe(runId);
     expect(lastAxiomApl()).toContain(`runId == "${runId}"`);
+
+    const axiomCallsBeforeMismatchedRunAgent =
+      context.mocks.axiom.query.mock.calls.length;
+    const mismatchedRunAgent = await api.requestSearchLogs(
+      actor,
+      { keyword: "Found", runId, agentId: randomUUID() },
+      [200],
+    );
+    expect(mismatchedRunAgent.body).toStrictEqual({
+      results: [],
+      hasMore: false,
+    });
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
+      axiomCallsBeforeMismatchedRunAgent,
+    );
+
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      axiomEvent(runId, 2, "Found again"),
+    ]);
+    const byRunAndAgent = await api.requestSearchLogs(
+      actor,
+      { keyword: "Found", runId, agentId },
+      [200],
+    );
+    expect(byRunAndAgent.body.results).toHaveLength(1);
+    expect(byRunAndAgent.body.results[0]?.runId).toBe(runId);
 
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 1, "Agent scoped event"),

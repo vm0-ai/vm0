@@ -6,9 +6,10 @@
 //! truncation and overflow markers, and post-job guest log copies.
 //!
 //! Environment diagnostics are deliberately key-only. They may record counts,
-//! sanitized key names, omitted-key counts, and suspicious key names, but they
-//! must not log environment values. This keeps operator debugging signals
-//! separate from secret-bearing user, model, or connector environment data.
+//! byte totals, sanitized key names, omitted-key counts, value lengths, and
+//! suspicious key names, but they must not log environment values. This keeps
+//! operator debugging signals separate from secret-bearing user, model, or
+//! connector environment data.
 //!
 //! Diagnostic collection should not mask the original run result. Failed reads,
 //! failed probes, and failed log copies are reported to operator logs when useful
@@ -35,6 +36,7 @@ use tracing::{info, warn};
 
 use super::env::is_runner_owned_env_key;
 use super::session_id::is_valid_session_id;
+use super::session_restore::SessionRestoreDiagnostics;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
     AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,
@@ -47,8 +49,11 @@ use crate::ids::RunId;
 use crate::paths::{LogPaths, diagnostic_session_fingerprint};
 use crate::types::ExecutionContext;
 
+const AGENT_ENV_VALUE_SIZE_DIAGNOSTIC_LIMIT: usize = 5;
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AgentStdoutStreamDiagnostics {
+    pub(super) bytes_written: u64,
     pub(super) chunk_truncated: bool,
     pub(super) stream_overflowed: bool,
 }
@@ -62,15 +67,31 @@ impl AgentStdoutStreamDiagnostics {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AgentEnvDiagnostics {
     pub(super) env_count: usize,
+    pub(super) env_bytes: usize,
     pub(super) runner_owned_count: usize,
     pub(super) external_count: usize,
     pub(super) suspicious_keys: Vec<String>,
+    pub(super) largest_entries: Vec<AgentEnvValueSizeDiagnostics>,
 }
 
 impl AgentEnvDiagnostics {
     pub(super) fn suspicious_keys_csv(&self) -> String {
         self.suspicious_keys.join(",")
     }
+
+    pub(super) fn largest_entries_csv(&self) -> String {
+        self.largest_entries
+            .iter()
+            .map(|entry| format!("{}:{}", entry.key, entry.value_len))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct AgentEnvValueSizeDiagnostics {
+    pub(super) key: String,
+    pub(super) value_len: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,12 +122,29 @@ pub(super) fn build_agent_env_diagnostics(
         .keys()
         .filter(|key| is_runner_owned_env_key(key))
         .count();
+    let env_bytes = env.iter().map(|(key, value)| key.len() + value.len()).sum();
+    let mut largest_entries: Vec<AgentEnvValueSizeDiagnostics> = env
+        .iter()
+        .map(|(key, value)| AgentEnvValueSizeDiagnostics {
+            key: sanitize_env_key_for_diagnostic(key),
+            value_len: value.len(),
+        })
+        .collect();
+    largest_entries.sort_by(|left, right| {
+        right
+            .value_len
+            .cmp(&left.value_len)
+            .then_with(|| left.key.cmp(&right.key))
+    });
+    largest_entries.truncate(AGENT_ENV_VALUE_SIZE_DIAGNOSTIC_LIMIT);
 
     AgentEnvDiagnostics {
         env_count: env.len(),
+        env_bytes,
         runner_owned_count,
         external_count: env.len().saturating_sub(runner_owned_count),
         suspicious_keys,
+        largest_entries,
     }
 }
 
@@ -160,8 +198,24 @@ pub(super) fn should_collect_agent_abnormal_exit_diagnostics(
         && guest_error.is_none()
 }
 
+pub(super) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && process_exited_nonzero(exit)
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
 fn process_failed(exit: &sandbox::ProcessExit) -> bool {
     !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn process_exited_nonzero(exit: &sandbox::ProcessExit) -> bool {
+    matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0)
 }
 
 fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
@@ -289,6 +343,7 @@ pub(super) fn log_agent_process_exit_summary(
     reuse_result: SandboxReuseResult,
     exit: &sandbox::ProcessExit,
     env_diagnostics: &AgentEnvDiagnostics,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     info!(
         run_id = %run_id,
@@ -300,9 +355,12 @@ pub(super) fn log_agent_process_exit_summary(
         stderr_len = exit.stderr.len(),
         stdout_truncated = exit.stdout_truncated,
         stderr_truncated = exit.stderr_truncated,
+        stdout_stream_bytes = stdout_stream_diagnostics.bytes_written,
         diagnostic_present = !exit.diagnostic.is_empty(),
         stream_overflowed = exit.stream_overflowed,
         env_count = env_diagnostics.env_count,
+        env_bytes = env_diagnostics.env_bytes,
+        largest_env_value_lengths = %env_diagnostics.largest_entries_csv(),
         suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
         "agent process exit summary"
     );
@@ -323,12 +381,70 @@ pub(super) fn log_agent_abnormal_exit_env_diagnostics(
         termination = ?exit.termination,
         exit_code = ?process_exit_code(exit),
         env_count = env_diagnostics.env_count,
+        env_bytes = env_diagnostics.env_bytes,
         runner_owned_env_count = env_diagnostics.runner_owned_count,
         external_env_count = env_diagnostics.external_count,
+        largest_env_value_lengths = %env_diagnostics.largest_entries_csv(),
         suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
         env_keys = %env_key_diagnostics.logged_keys_csv(),
         omitted_env_key_count = env_key_diagnostics.omitted_key_count,
         "agent abnormal exit env diagnostics"
+    );
+}
+
+pub(super) struct AgentBootstrapAbnormalExitLogContext<'a> {
+    pub(super) run_id: RunId,
+    pub(super) sandbox_id: &'a str,
+    pub(super) reuse_result: SandboxReuseResult,
+    pub(super) exit: &'a sandbox::ProcessExit,
+    pub(super) env_diagnostics: &'a AgentEnvDiagnostics,
+    pub(super) env_key_diagnostics: &'a AgentEnvKeyDiagnostics,
+    pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+    pub(super) session_restore_diagnostics: Option<&'a SessionRestoreDiagnostics>,
+}
+
+pub(super) fn log_agent_bootstrap_abnormal_exit_diagnostics(
+    context: AgentBootstrapAbnormalExitLogContext<'_>,
+) {
+    let resume_session_framework = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.framework)
+        .unwrap_or("none");
+    let resume_session_fingerprint = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.session_fingerprint.as_str())
+        .unwrap_or("");
+    let resume_session_bytes_in = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.bytes_in);
+
+    warn!(
+        run_id = %context.run_id,
+        sandbox_id = %context.sandbox_id,
+        sandbox_reuse_result = context.reuse_result.as_wire(),
+        termination = ?context.exit.termination,
+        exit_code = ?process_exit_code(context.exit),
+        stdout_len = context.exit.stdout.len(),
+        stderr_len = context.exit.stderr.len(),
+        stdout_truncated = context.exit.stdout_truncated,
+        stderr_truncated = context.exit.stderr_truncated,
+        stdout_stream_bytes = context.stdout_stream_diagnostics.bytes_written,
+        captured_stderr_present = !context.exit.stderr.is_empty(),
+        captured_stderr_truncated = context.exit.stderr_truncated,
+        diagnostic_present = !context.exit.diagnostic.is_empty(),
+        stream_overflowed = context.exit.stream_overflowed,
+        env_count = context.env_diagnostics.env_count,
+        env_bytes = context.env_diagnostics.env_bytes,
+        runner_owned_env_count = context.env_diagnostics.runner_owned_count,
+        external_env_count = context.env_diagnostics.external_count,
+        largest_env_value_lengths = %context.env_diagnostics.largest_entries_csv(),
+        suspicious_env_keys = %context.env_diagnostics.suspicious_keys_csv(),
+        env_keys = %context.env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = context.env_key_diagnostics.omitted_key_count,
+        resume_session_framework = %resume_session_framework,
+        resume_session_fingerprint = %resume_session_fingerprint,
+        resume_session_bytes_in = ?resume_session_bytes_in,
+        "agent bootstrap abnormal exit diagnostics"
     );
 }
 
@@ -583,6 +699,7 @@ pub(super) enum StdoutDrainError {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct StdoutDrainReport {
+    pub(super) bytes_written: u64,
     pub(super) chunk_truncated: bool,
 }
 
@@ -600,6 +717,9 @@ pub(super) async fn drain_stdout_to_file(
     };
     let mut report = StdoutDrainReport::default();
     while let Some(chunk) = rx.recv().await {
+        report.bytes_written = report
+            .bytes_written
+            .saturating_add(u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX));
         if chunk.truncated {
             report.chunk_truncated = true;
             warn!(path = %path.display(), "stdout stream chunk was truncated before host log write");

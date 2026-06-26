@@ -21,6 +21,7 @@ import {
   IconBlockquote,
   IconCode,
 } from "@tabler/icons-react";
+import { cn } from "@vm0/ui";
 import "highlight.js/styles/github.css";
 
 function getLowlight() {
@@ -109,8 +110,12 @@ interface TiptapInstructionsEditorProps {
   initialContent: string;
   onChange: (markdown: string) => void;
   disabled?: boolean;
+  ariaLabel?: string;
+  placeholder?: string;
   /** Hint shown below the editor (default copy is for agent profile instructions). */
-  footerHint?: string;
+  footerHint?: string | null;
+  /** Visual surface for embedding the editor in either a card or a full-page canvas. */
+  surface?: "card" | "canvas";
 }
 
 const ICON_SIZE = 18;
@@ -190,8 +195,15 @@ export function TiptapInstructionsEditor({
   initialContent,
   onChange,
   disabled = false,
+  ariaLabel = "Instructions editor",
+  placeholder = "Write instructions for your agent...",
   footerHint = "Edit the instructions directly to customize your agent's behavior.",
+  surface = "card",
 }: TiptapInstructionsEditorProps) {
+  const editorClassName = cn(
+    EDITOR_CLASSES,
+    surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
+  );
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -204,15 +216,20 @@ export function TiptapInstructionsEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class: EDITOR_CLASSES,
-        "data-placeholder": "Write instructions for your agent...",
+        class: editorClassName,
+        "aria-label": ariaLabel,
+        "data-placeholder": placeholder,
       },
     },
   });
 
   return (
     <div
-      className={`zero-card relative transition-colors focus-within:border-primary ${disabled ? "opacity-60 pointer-events-none" : ""}`}
+      className={cn(
+        "relative transition-colors",
+        surface === "card" ? "zero-card focus-within:border-primary" : "",
+        disabled ? "pointer-events-none opacity-60" : "",
+      )}
     >
       {editor && (
         <BubbleMenu
@@ -329,9 +346,11 @@ export function TiptapInstructionsEditor({
         </BubbleMenu>
       )}
       <EditorContent editor={editor} />
-      <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
-        {footerHint}
-      </p>
+      {footerHint ? (
+        <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
+          {footerHint}
+        </p>
+      ) : null}
     </div>
   );
 }

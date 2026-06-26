@@ -40,8 +40,8 @@ Design:
 - Scopes that are not billable (e.g. the ``"app-only"`` group for
   BearerToken-only endpoints) are intentionally absent; ``classify_bucket``
   returns ``None`` and the caller skips emitting a ``usage_event`` row.
-  That matches current behaviour where ``BILLABLE_CONNECTORS`` only
-  covers user-authenticated X calls.
+  That matches current behaviour where the TypeScript firewall execution
+  metadata only marks user-authenticated X calls as connector-billable.
 
 New X endpoints appearing in a scope but not in overrides will be
 billed at the scope default.  If X's own pricing for that new endpoint
@@ -237,8 +237,8 @@ def classify_bucket(permission: str, method: str, path: str) -> str | None:
     """Return the X billing bucket for a matched firewall request.
 
     ``permission`` is the firewall permission name set on
-    ``flow.metadata["firewall_permission"]``.  ``method`` and ``path``
-    come from ``flow.request``.
+    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` and ``path`` come from
+    ``flow.request``.
 
     Returns ``None`` for permissions that are not billable (e.g. the
     ``"app-only"`` scope).  The caller should skip emission in that

@@ -1211,7 +1211,7 @@ describe("run command", () => {
         return call[0];
       });
       const resultIndex = logMessages.findIndex((message) => {
-        return String(message).includes("Agent Completed");
+        return String(message).includes("Claude Code Completed");
       });
       const completionIndex = logMessages.findIndex((message) => {
         return String(message).includes("Run completed successfully");
@@ -1274,7 +1274,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1325,7 +1325,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(1);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1421,7 +1421,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("terminal watermark"),
@@ -1482,7 +1482,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(2);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Codex Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1553,7 +1553,7 @@ describe("run command", () => {
 
       expect(pollCount).toBe(4);
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Agent Completed"),
+        expect.stringContaining("Claude Code Completed"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Run completed successfully"),
@@ -1937,6 +1937,51 @@ describe("run command", () => {
       );
     });
 
+    it("should not fail when an events response has an unsupported framework", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  duration_ms: 1000,
+                  num_turns: 1,
+                  result: "Done despite unknown framework",
+                  session_id: "test",
+                  total_cost_usd: 0,
+                  usage: {},
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "future-framework",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Agent Completed");
+      expect(logCalls).toContain("Run completed successfully");
+    });
+
     it("should handle polling errors gracefully", async () => {
       let pollCount = 0;
       server.use(
@@ -2166,6 +2211,343 @@ describe("run command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Run failed"),
       );
+    });
+
+    it("should render failed Codex turn.completed before failed run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: {
+                      message: "selected model is at capacity",
+                      additional_details: "retry later",
+                    },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 1,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+      expect(logCalls).toContain("selected model is at capacity");
+      expect(logCalls).toContain("retry later");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+    });
+
+    it("should collapse same-turn Codex error and failed turn.completed across event pages", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "thread.started",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+                {
+                  sequenceNumber: 1,
+                  eventType: "error",
+                  eventData: {
+                    type: "error",
+                    turn_id: "turn-1",
+                    message: "API connection failed",
+                  },
+                  createdAt: "2025-01-01T00:00:01Z",
+                },
+              ],
+              hasMore: true,
+              nextSequence: 1,
+              run: { status: "running" },
+              framework: "codex",
+            });
+          }
+
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: { message: "Rate limit exceeded" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(pollCount).toBe(2);
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(1);
+      expect(logCalls).toContain("API connection failed");
+      expect(logCalls).toContain("Rate limit exceeded");
+    });
+
+    it("should not collapse Codex terminal failures from different turns while polling", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  turn_id: "turn-1",
+                  message: "First turn failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-2",
+                    status: "failed",
+                    error: { message: "Second turn failed" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Second turn failed");
+    });
+
+    it("should not collapse Codex polling failures when only the pending error has a turn id", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "error",
+                eventData: {
+                  type: "error",
+                  turn_id: "turn-1",
+                  message: "First turn failed",
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.failed",
+                eventData: {
+                  type: "turn.failed",
+                  error: "Unattributed terminal failure",
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(countOccurrences(logCalls, "Codex Failed")).toBe(2);
+      expect(logCalls).toContain("First turn failed");
+      expect(logCalls).toContain("Unattributed terminal failure");
+    });
+
+    it("should flush pending Codex tool use before terminal run lifecycle output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "item.started",
+                eventData: {
+                  type: "item.started",
+                  item: {
+                    id: "cmd-pending",
+                    type: "command_execution",
+                    command: "sleep 10",
+                  },
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 0,
+            run: {
+              status: "completed",
+              lastEventSequence: 0,
+              result: {
+                checkpointId: "cp-1",
+                agentSessionId: "s-1",
+                conversationId: "c-1",
+                artifact: {},
+              },
+            },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("sleep 10");
+      const pendingIndex = logCalls.indexOf("sleep 10");
+      const completedIndex = logCalls.indexOf("Run completed successfully");
+      expect(pendingIndex).toBeGreaterThan(-1);
+      expect(completedIndex).toBeGreaterThan(pendingIndex);
+    });
+
+    it("should flush pending Codex tool use before terminal Codex failure output", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 0,
+                eventType: "thread.started",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-x",
+                },
+                createdAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                sequenceNumber: 1,
+                eventType: "item.started",
+                eventData: {
+                  type: "item.started",
+                  item: {
+                    id: "cmd-pending",
+                    type: "command_execution",
+                    command: "sleep 10",
+                  },
+                },
+                createdAt: "2025-01-01T00:00:01Z",
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "turn.completed",
+                eventData: {
+                  type: "turn.completed",
+                  turn: {
+                    id: "turn-1",
+                    status: "failed",
+                    error: { message: "model unavailable" },
+                  },
+                },
+                createdAt: "2025-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: false,
+            nextSequence: 2,
+            run: { status: "failed", error: "Agent crashed" },
+            framework: "codex",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const pendingIndex = logCalls.indexOf("sleep 10");
+      const codexFailedIndex = logCalls.indexOf("Codex Failed");
+      expect(pendingIndex).toBeGreaterThan(-1);
+      expect(codexFailedIndex).toBeGreaterThan(pendingIndex);
+      expect(logCalls).toContain("model unavailable");
     });
 
     it("should not drain additional pages after failed status without watermark", async () => {

@@ -1,5 +1,87 @@
 # Changelog
 
+## [12.441.4](https://github.com/vm0-ai/vm0/compare/web-v12.441.3...web-v12.441.4) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.4
+
+## [12.441.3](https://github.com/vm0-ai/vm0/compare/web-v12.441.2...web-v12.441.3) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.3
+
+## [12.441.2](https://github.com/vm0-ai/vm0/compare/web-v12.441.1...web-v12.441.2) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.2
+
+## [12.441.1](https://github.com/vm0-ai/vm0/compare/web-v12.441.0...web-v12.441.1) (2026-06-25)
+
+
+### Bug Fixes
+
+* align so action proxy origin ([#18986](https://github.com/vm0-ai/vm0/issues/18986)) ([23faff7](https://github.com/vm0-ai/vm0/commit/23faff7aa72934557daa13fb133b84f08f9faa0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+
+## [12.441.0](https://github.com/vm0-ai/vm0/compare/web-v12.440.7...web-v12.441.0) (2026-06-25)
+
+
+### Features
+
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+
+## [12.440.7](https://github.com/vm0-ai/vm0/compare/web-v12.440.6...web-v12.440.7) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+
+## [12.440.6](https://github.com/vm0-ai/vm0/compare/web-v12.440.5...web-v12.440.6) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+
+## [12.440.5](https://github.com/vm0-ai/vm0/compare/web-v12.440.4...web-v12.440.5) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.1
+
 ## [12.440.4](https://github.com/vm0-ai/vm0/compare/web-v12.440.3...web-v12.440.4) (2026-06-25)
 
 

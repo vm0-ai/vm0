@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.64](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.63...sandbox-fc-v0.37.64) (2026-06-26)
+
+## [0.37.63](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.62...sandbox-fc-v0.37.63) (2026-06-25)
+
+## [0.37.62](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.61...sandbox-fc-v0.37.62) (2026-06-25)
+
+
+### Refactoring
+
+* **sandbox-fc:** split create transaction tests ([#18903](https://github.com/vm0-ai/vm0/issues/18903)) ([e30b45f](https://github.com/vm0-ai/vm0/commit/e30b45f3cbd79b87b15f30d8a7c22eeb5114c038))
+* split cow pool module ([#18888](https://github.com/vm0-ai/vm0/issues/18888)) ([82c88a5](https://github.com/vm0-ai/vm0/commit/82c88a55fd27bf8a4923efb095a7bc7ec21d258e))
+
 ## [0.37.61](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.60...sandbox-fc-v0.37.61) (2026-06-25)
 
 ## [0.37.60](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.59...sandbox-fc-v0.37.60) (2026-06-25)

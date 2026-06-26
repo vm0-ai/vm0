@@ -137,7 +137,10 @@ export function isVisibleMessage(
   if (typeof result !== "string" || result.trim().length === 0) {
     return true;
   }
-  return (message.toolOperations?.length ?? 0) > 0;
+  return (
+    (message.thinkingBlocks?.length ?? 0) > 0 ||
+    (message.toolOperations?.length ?? 0) > 0
+  );
 }
 
 function ActivityBreadcrumbLink() {

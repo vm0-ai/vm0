@@ -15,6 +15,7 @@ import {
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -66,6 +67,34 @@ const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_insert_runner_job_queue",
   "api_dispatch_update_run_runner_group",
 ] as const;
+const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
+  "claim_route_request_prepare",
+  "claim_route_lookup_authorization",
+  "claim_route_context_parse",
+  "claim_route_feature_switch_context",
+  "claim_route_secret_materialization",
+  "claim_route_response_assembly",
+  "claim_route_transition_running",
+] as const;
+const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
+  "claim_route_transition_lock_run",
+  "claim_route_transition_lock_queue_job",
+  "claim_route_transition_update_run",
+  "claim_route_transition_delete_queue_job",
+] as const;
+const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
+  ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
+  ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
+] as const;
+const RUNNER_POLL_TIMING_ACTION_TYPES = [
+  "runner_poll_pending_job_lookup",
+  "runner_poll_request_to_job_response",
+  "runner_queue_to_poll_response",
+] as const;
+const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+  "runner_poll_due_to_job_discovered",
+  "runner_poll_http_request",
+] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
@@ -94,6 +123,21 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_build_stored_execution_context",
 ] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_by_compose_id",
+  "api_dispatch_resolve_compose_by_version_id",
+  "api_dispatch_resolve_compose_by_session_id",
+  "api_dispatch_resolve_compose_by_checkpoint_id",
+] as const;
+const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_lookup_compose",
+  "api_dispatch_resolve_compose_lookup_version",
+  "api_dispatch_resolve_compose_lookup_session",
+  "api_dispatch_resolve_compose_lookup_checkpoint",
+  "api_dispatch_resolve_compose_load_resume_session",
+  "api_dispatch_resolve_compose_resolve_session_history",
+  "api_dispatch_resolve_compose_lookup_session_vars",
+] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
   "user_id",
@@ -107,6 +151,34 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "environment",
   "execution_context",
   "presigned_url",
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "sandbox_token",
+  "sandboxToken",
+  "api_key",
+  "apiKey",
+] as const;
+const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "stored_context",
+  "sandbox_token",
+  "sandboxToken",
+  "presigned_url",
+  "response_body",
 ] as const;
 
 function modelProviderPlaceholder(
@@ -220,7 +292,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function apiDispatchTimingEventsForRun(
+function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
@@ -230,13 +302,77 @@ function apiDispatchTimingEventsForRun(
       return [];
     }
     return events.filter((event): event is Record<string, unknown> => {
-      return (
-        isRecord(event) &&
-        event.run_id === runId &&
-        typeof event.op_type === "string" &&
-        event.op_type.startsWith("api_dispatch_")
-      );
+      return isRecord(event) && event.run_id === runId;
     });
+  });
+}
+
+function claimRouteTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("claim_route_")
+    );
+  });
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("api_dispatch_")
+    );
+  });
+}
+
+function apiDispatchActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
+function expectApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of expectedActionTypes) {
+    expect(observedActionTypes).toContain(actionType);
+  }
+}
+
+function expectNoApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of unexpectedActionTypes) {
+    expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function mockSessionHistoryBlob(hash: string, history: string): void {
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: string } })
+      .input;
+    if (input?.Key === `blobs/${hash}.blob`) {
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from(history, "utf8");
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
   });
 }
 
@@ -346,14 +482,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
-    const observedActionTypes = new Set(
-      timingEvents.map((event) => {
-        return event.op_type;
+    expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_compose_id",
+      "api_dispatch_resolve_compose_lookup_compose",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_compose_id";
       }),
     );
-    for (const actionType of API_DISPATCH_TIMING_ACTION_TYPES) {
-      expect(observedActionTypes).toContain(actionType);
-    }
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_compose";
+      }),
+    );
+    const observedActionTypes = apiDispatchActionTypes(timingEvents);
     const preCreateEvents = timingEvents.filter((event) => {
       return event.op_type === "api_dispatch_pre_create_agent_run";
     });
@@ -400,6 +546,164 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(prompt);
       expect(serialized).not.toContain(agentId);
     }
+  });
+
+  it("emits compose resolution timing for direct compose version runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "version timing should not leak prompt";
+    const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const [composeRow] = await writeDb
+      .select({ headVersionId: agentComposes.headVersionId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, compose.composeId))
+      .limit(1);
+    const headVersionId = composeRow?.headVersionId;
+    if (!headVersionId) {
+      throw new Error("Expected created compose to have a head version id");
+    }
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_resolve_compose_by_version_id",
+      "api_dispatch_resolve_compose_lookup_version",
+    ]);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_version_id";
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_lookup_version";
+      }),
+    );
+    for (const event of timingEvents) {
+      expect(JSON.stringify(event)).not.toContain(prompt);
+      expect(JSON.stringify(event)).not.toContain(headVersionId);
+    }
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits compose resolution timing for session and checkpoint resume runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(first.runId);
+    const history = `bdd timing session history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-timing-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    const checkpointId = completed.result?.checkpointId;
+    if (!checkpointId) {
+      throw new Error("Expected checkpointed timing run to expose checkpoint");
+    }
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue checkpointed timing session",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
+    expectApiDispatchActions(sessionTimingEvents, [
+      "api_dispatch_resolve_compose_by_session_id",
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    expectNoApiDispatchActions(
+      sessionTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_session_id";
+      }),
+    );
+    for (const event of sessionTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(first.sessionId);
+    }
+
+    const checkpointZeroToken = "bdd-checkpoint-zero-token";
+    const checkpointRun = await api.createDirectRun(actor, {
+      checkpointId,
+      prompt: "resume checkpoint with timing",
+      secrets: { ZERO_TOKEN: checkpointZeroToken },
+    });
+    const checkpointTimingEvents = apiDispatchTimingEventsForRun(
+      checkpointRun.runId,
+    );
+    expectApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_by_checkpoint_id",
+      "api_dispatch_resolve_compose_lookup_checkpoint",
+      "api_dispatch_resolve_compose_lookup_version",
+      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_resolve_session_history",
+    ]);
+    expectNoApiDispatchActions(
+      checkpointTimingEvents,
+      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
+        return actionType !== "api_dispatch_resolve_compose_by_checkpoint_id";
+      }),
+    );
+    expectNoApiDispatchActions(checkpointTimingEvents, [
+      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_lookup_session_vars",
+    ]);
+    for (const event of checkpointTimingEvents) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(history);
+      expect(serialized).not.toContain(historyHash);
+      expect(serialized).not.toContain(checkpointId);
+      expect(serialized).not.toContain(checkpointZeroToken);
+    }
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+    await api.requestCancelRun(actor, checkpointRun.runId, [200]);
   });
 
   it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {
@@ -1088,6 +1392,37 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 });
 
 describe("RUN-02: stored connector injection into claimed runs", () => {
+  it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-unallowed-access",
+      refreshToken: "x-bdd-unallowed-refresh",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without enabled stored connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1098,6 +1433,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       authMethod: "oauth",
       accessToken: "x-bdd-access",
       refreshToken: "x-bdd-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-unenabled-access",
     });
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
@@ -1130,6 +1470,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
 
     // The stored access token is only readable through the firewall-auth
     // webhook with the claimed run's sandbox token.
@@ -1204,7 +1549,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("uses Figma personal access tokens in the X-Figma-Token firewall header", async () => {
+  it("uses the builtin Figma firewall for personal access tokens", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -1237,12 +1582,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).toMatchObject({ FIGMA_TOKEN: "figma" });
 
     const figmaEntry = findFirewallEntry(claim.firewalls, "figma");
-    expect(figmaEntry?.kind).toBe("inline");
-    expect(
-      inlineFirewallApis(claim.firewalls, "figma")[0]?.auth.headers,
-    ).toStrictEqual({
-      "X-Figma-Token": figmaTokenTemplate,
-    });
+    expect(figmaEntry).toStrictEqual({ kind: "builtin", name: "figma" });
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected the figma claim to carry encrypted secrets");
@@ -1489,10 +1829,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorProposals]: true,
-    });
 
     const saved = await connectors.saveCustomConnectorProposal(actor, {
       proposal: {
@@ -1847,7 +2183,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(overridden.unknownPolicy).toBe("allow");
   });
 
-  it("applies connector default named policies to direct runs without explicit policies", async () => {
+  it("loads stored connectors and applies default named policies to direct runs without explicit policies", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1880,6 +2216,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.CLOUDFLARE_TOKEN).toBe(
+      connectorPlaceholder("cloudflare", "CLOUDFLARE_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({
+      CLOUDFLARE_TOKEN: "cloudflare",
+    });
+    expect(findFirewallEntry(claim.firewalls, "cloudflare")).toStrictEqual({
+      kind: "builtin",
+      name: "cloudflare",
+    });
+
     const policy = claim.networkPolicies?.cloudflare;
     if (!policy) {
       throw new Error("Expected a cloudflare network policy on the claim");
@@ -2134,15 +2481,20 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const apiKey = await api.createApiKey(actor);
     const bearer = `Bearer ${apiKey.token}`;
+    const firstPrompt = "user runner job one";
 
     const first = await api.createRun(actor, {
       agentId,
-      prompt: "user runner job one",
+      prompt: firstPrompt,
       modelProvider: "anthropic-api-key",
     });
     const polled = await api.requestPollRunnerAs(
       bearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      {
+        group: runnerGroup,
+        profiles: ["vm0/default"],
+        telemetry: { pollReason: "deferred" },
+      },
       [200],
     );
     if (polled.status !== 200) {
@@ -2156,8 +2508,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       [200],
       {
         telemetry: {
+          discoverySource: "poll",
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
+          pollDueToJobDiscoveredMs: 789,
+          pollHttpRequestMs: 321,
           pollReason: "deferred",
         },
       },
@@ -2167,36 +2522,183 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
-      "vm0-sandbox-op-log-dev",
-      [
+    const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
+    expect(claimRouteTimingEvents).toHaveLength(
+      CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
+    );
+    const observedClaimRouteActionTypes = new Set(
+      claimRouteTimingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of CLAIM_ROUTE_TIMING_ACTION_TYPES) {
+      expect(observedClaimRouteActionTypes).toContain(actionType);
+    }
+    for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
         expect.objectContaining({
-          op_type: "job_discovered_to_claim_request",
+          span_kind: "top_level",
+        }),
+      );
+    }
+    for (const actionType of CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "nested",
+        }),
+      );
+    }
+    for (const event of claimRouteTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          success: true,
+          run_id: first.runId,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          auth_type: "user",
+          discovery_source: "poll",
+          poll_reason: "deferred",
+        }),
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(["top_level", "nested"]).toContain(event.span_kind);
+      for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(firstPrompt);
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
+    const timingEvents = sandboxOperationEventsForRun(first.runId);
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "job_discovered_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "job_discovered_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 1234,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "poll",
+        poll_reason: "deferred",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "local_admission_to_claim_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        op_type: "local_admission_to_claim_request",
+        sandbox_type: "runner",
+        run_id: first.runId,
+        duration_ms: 56,
+        success: true,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "poll",
+        poll_reason: "deferred",
+      }),
+    );
+    for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
           sandbox_type: "runner",
           run_id: first.runId,
-          duration_ms: 1234,
           success: true,
+          runner_group: runnerGroup,
           profile: "vm0/default",
           auth_type: "user",
           poll_reason: "deferred",
         }),
-      ],
-    );
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
-      "vm0-sandbox-op-log-dev",
-      [
+      );
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    }
+    for (const actionType of RUNNER_CLAIM_TELEMETRY_ACTION_TYPES) {
+      const events = timingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      if (!event) {
+        throw new Error(`Missing ${actionType} timing event`);
+      }
+      expect(event).toStrictEqual(
         expect.objectContaining({
-          op_type: "local_admission_to_claim_request",
+          source: "api",
           sandbox_type: "runner",
           run_id: first.runId,
-          duration_ms: 56,
           success: true,
+          runner_group: runnerGroup,
           profile: "vm0/default",
           auth_type: "user",
+          discovery_source: "poll",
           poll_reason: "deferred",
         }),
-      ],
+      );
+    }
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_due_to_job_discovered";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 789,
+      }),
     );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "runner_poll_http_request";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 321,
+      }),
+    );
+    const newRunnerTimingActionTypes = new Set<string>([
+      ...RUNNER_POLL_TIMING_ACTION_TYPES,
+      ...RUNNER_CLAIM_TELEMETRY_ACTION_TYPES,
+    ]);
+    for (const event of timingEvents.filter((timingEvent) => {
+      return (
+        typeof timingEvent.op_type === "string" &&
+        newRunnerTimingActionTypes.has(timingEvent.op_type)
+      );
+    })) {
+      for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+        expect(event).not.toHaveProperty(forbiddenKey);
+      }
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain("user runner job one");
+      expect(serialized).not.toContain(claimed.body.sandboxToken);
+      expect(serialized).not.toContain(apiKey.token);
+    }
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 

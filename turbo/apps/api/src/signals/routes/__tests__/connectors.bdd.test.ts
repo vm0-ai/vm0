@@ -1441,10 +1441,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 
-    await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.CustomConnectorProposals]: true,
-    });
-
     const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
       proposal: {
         operation: "create",
@@ -1515,10 +1511,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const admin = bdd.user({ orgRole: "org:admin" });
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 
-    await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.CustomConnectorProposals]: true,
-    });
-
     const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
       admin,
       {
@@ -1569,10 +1561,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
-
-    await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.CustomConnectorProposals]: true,
-    });
 
     const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
       proposal: {

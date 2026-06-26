@@ -113,98 +113,106 @@ async function dispatchFetch(
   return await responsePromise;
 }
 
+const REVALIDATED_STATIC_ASSET_URLS = [
+  "https://app.test/firewall-metadata/v1/gmail.generated.js",
+] as const;
+
 describe("platform service worker", () => {
-  it("revalidates firewall metadata requests and caches successful responses", async () => {
-    const runtime = createServiceWorkerRuntime();
-    const request = new Request(
-      "https://app.test/firewall-metadata/v1/gmail.generated.js",
-    );
-    runtime.fetchMock.mockResolvedValueOnce(
-      new Response("export const ok = true;", {
-        headers: { "content-type": "application/javascript" },
-      }),
-    );
+  it.each(REVALIDATED_STATIC_ASSET_URLS)(
+    "revalidates stable generated firewall asset requests and caches successful responses: %s",
+    async (url) => {
+      const runtime = createServiceWorkerRuntime();
+      const request = new Request(url);
+      runtime.fetchMock.mockResolvedValueOnce(
+        new Response("export const ok = true;", {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
 
-    const response = await dispatchFetch(runtime, request);
+      const response = await dispatchFetch(runtime, request);
 
-    expect(runtime.fetchMock).toHaveBeenCalledWith(request, {
-      cache: "no-cache",
-    });
-    expect(response.ok).toBeTruthy();
-    expect(runtime.cache.put).toHaveBeenCalledTimes(1);
-    const cached = runtime.cache.entries.get(request.url);
-    if (!cached) {
-      throw new Error("metadata response was not cached");
-    }
-    await expect(cached.text()).resolves.toBe("export const ok = true;");
-  });
+      expect(runtime.fetchMock).toHaveBeenCalledWith(request, {
+        cache: "no-cache",
+      });
+      expect(response.ok).toBeTruthy();
+      expect(runtime.cache.put).toHaveBeenCalledTimes(1);
+      const cached = runtime.cache.entries.get(request.url);
+      if (!cached) {
+        throw new Error("generated firewall asset response was not cached");
+      }
+      await expect(cached.text()).resolves.toBe("export const ok = true;");
+    },
+  );
 
-  it("uses cached firewall metadata only when revalidation cannot reach the network", async () => {
-    const runtime = createServiceWorkerRuntime();
-    const request = new Request(
-      "https://app.test/firewall-metadata/v1/gmail.generated.js",
-    );
-    runtime.cache.entries.set(
-      request.url,
-      new Response("cached", {
-        headers: { "content-type": "application/javascript" },
-      }),
-    );
-    runtime.fetchMock.mockRejectedValueOnce(new TypeError("offline"));
+  it.each(REVALIDATED_STATIC_ASSET_URLS)(
+    "uses cached stable generated firewall assets only when revalidation cannot reach the network: %s",
+    async (url) => {
+      const runtime = createServiceWorkerRuntime();
+      const request = new Request(url);
+      runtime.cache.entries.set(
+        request.url,
+        new Response("cached", {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+      runtime.fetchMock.mockRejectedValueOnce(new TypeError("offline"));
 
-    const response = await dispatchFetch(runtime, request);
+      const response = await dispatchFetch(runtime, request);
 
-    expect(runtime.fetchMock).toHaveBeenCalledWith(request, {
-      cache: "no-cache",
-    });
-    await expect(response.text()).resolves.toBe("cached");
-  });
+      expect(runtime.fetchMock).toHaveBeenCalledWith(request, {
+        cache: "no-cache",
+      });
+      await expect(response.text()).resolves.toBe("cached");
+    },
+  );
 
-  it("uses the network response when cache storage cannot be updated", async () => {
-    const runtime = createServiceWorkerRuntime();
-    const request = new Request(
-      "https://app.test/firewall-metadata/v1/gmail.generated.js",
-    );
-    runtime.cache.entries.set(
-      request.url,
-      new Response("stale", {
-        headers: { "content-type": "application/javascript" },
-      }),
-    );
-    runtime.fetchMock.mockResolvedValueOnce(
-      new Response("fresh", {
-        headers: { "content-type": "application/javascript" },
-      }),
-    );
-    runtime.cache.put.mockRejectedValueOnce(new Error("quota exceeded"));
+  it.each(REVALIDATED_STATIC_ASSET_URLS)(
+    "uses the network response when stable generated firewall asset cache storage cannot be updated: %s",
+    async (url) => {
+      const runtime = createServiceWorkerRuntime();
+      const request = new Request(url);
+      runtime.cache.entries.set(
+        request.url,
+        new Response("stale", {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+      runtime.fetchMock.mockResolvedValueOnce(
+        new Response("fresh", {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+      runtime.cache.put.mockRejectedValueOnce(new Error("quota exceeded"));
 
-    const response = await dispatchFetch(runtime, request);
+      const response = await dispatchFetch(runtime, request);
 
-    await expect(response.text()).resolves.toBe("fresh");
-  });
+      await expect(response.text()).resolves.toBe("fresh");
+    },
+  );
 
-  it("does not hide reachable 404 responses behind cached firewall metadata", async () => {
-    const runtime = createServiceWorkerRuntime();
-    const request = new Request(
-      "https://app.test/firewall-metadata/v1/gmail.generated.js",
-    );
-    runtime.cache.entries.set(
-      request.url,
-      new Response("cached", {
-        headers: { "content-type": "application/javascript" },
-      }),
-    );
-    runtime.fetchMock.mockResolvedValueOnce(
-      new Response("missing", {
-        headers: { "content-type": "text/plain" },
-        status: 404,
-      }),
-    );
+  it.each(REVALIDATED_STATIC_ASSET_URLS)(
+    "does not hide reachable 404 responses behind cached stable generated firewall assets: %s",
+    async (url) => {
+      const runtime = createServiceWorkerRuntime();
+      const request = new Request(url);
+      runtime.cache.entries.set(
+        request.url,
+        new Response("cached", {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+      runtime.fetchMock.mockResolvedValueOnce(
+        new Response("missing", {
+          headers: { "content-type": "text/plain" },
+          status: 404,
+        }),
+      );
 
-    const response = await dispatchFetch(runtime, request);
+      const response = await dispatchFetch(runtime, request);
 
-    expect(response.status).toBe(404);
-    expect(runtime.cache.put).not.toHaveBeenCalled();
-    await expect(response.text()).resolves.toBe("missing");
-  });
+      expect(response.status).toBe(404);
+      expect(runtime.cache.put).not.toHaveBeenCalled();
+      await expect(response.text()).resolves.toBe("missing");
+    },
+  );
 });

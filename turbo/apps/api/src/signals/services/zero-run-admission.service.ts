@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -57,9 +58,16 @@ export async function checkOrgCreditsForRunAdmission(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly modelProviderType: string | null | undefined;
+  readonly selectedModel?: string | null;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
   const availability = await resolveOrgCreditAvailability(params);
   if (!availability) {
+    return insufficientCredits();
+  }
+  if (
+    availability.tier === "limited-free-1" &&
+    isLimitedFree1RestrictedRunModel(params.selectedModel)
+  ) {
     return insufficientCredits();
   }
   if (availability.tier === "pro-suspend") {
@@ -71,4 +79,18 @@ export async function checkOrgCreditsForRunAdmission(params: {
   }
 
   return availability.spendableCredits > 0 ? undefined : insufficientCredits();
+}
+
+export async function checkLimitedFreeRunModelAdmission(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly selectedModel: string | null | undefined;
+}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  if (!isLimitedFree1RestrictedRunModel(params.selectedModel)) {
+    return undefined;
+  }
+  const availability = await resolveOrgCreditAvailability(params);
+  return availability?.tier === "limited-free-1"
+    ? insufficientCredits()
+    : undefined;
 }

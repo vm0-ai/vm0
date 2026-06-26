@@ -132,10 +132,6 @@ const ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE = `/api/zero/workflow-trigger
 const ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
 );
-const ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/run`;
-const ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE = new RegExp(
-  `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/run$`,
-);
 const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/permission-policy`;
 const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/permission-policy$`,
@@ -1196,6 +1192,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/maps/:path*", "/api/zero/maps/:path*"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
+  [
+    "/api/zero/onboarding/complete-limited-free",
+    "/api/zero/onboarding/complete-limited-free",
+  ],
   ["/api/zero/usage/insight", "/api/zero/usage/insight"],
   ["/api/zero/usage/members", "/api/zero/usage/members"],
   ["/api/zero/usage/record", "/api/zero/usage/record"],
@@ -1411,11 +1411,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE,
     "/api/zero/workflow-triggers/:id/disable",
     ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE,
-  ],
-  [
-    ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE,
-    "/api/zero/workflow-triggers/:id/run",
-    ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE,

@@ -22,6 +22,9 @@ use crate::workspace_promotion::{
     abandon_unpublished_workspace_promotion, promote_workspace_image_from_parked_sandbox,
 };
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 /// Default idle timeout for kept-alive VMs (30 minutes).
 ///
 /// Re-exported via `SandboxConfig::default()` so the YAML default and
@@ -236,19 +239,6 @@ pub struct ParkedIdleCandidate {
     budget_lease: BudgetLease,
 }
 
-#[cfg(test)]
-pub(crate) struct SyntheticParkedIdleCandidateParts {
-    pub sandbox: Box<dyn Sandbox>,
-    pub factory: Arc<Box<dyn SandboxFactory>>,
-    pub cli_agent_session_id: String,
-    pub sandbox_id: SandboxId,
-    pub profile_name: String,
-    pub device_rate_limits: Option<DeviceRateLimits>,
-    pub budget_lease: BudgetLease,
-    pub source_ip: String,
-    pub storage_fingerprints: StorageFingerprints,
-}
-
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
 pub(crate) struct IdleParkFailure {
     resources: IdleSandboxResources,
@@ -393,51 +383,6 @@ impl IdleParkFailure {
 }
 
 impl ParkedIdleCandidate {
-    /// Build a synthetic candidate for tests that seed idle-pool state without
-    /// running a real park transition.
-    #[cfg(test)]
-    pub(crate) fn synthetic_for_test(parts: SyntheticParkedIdleCandidateParts) -> Self {
-        Self {
-            resources: IdleSandboxResources {
-                sandbox: parts.sandbox,
-                factory: parts.factory,
-                workspace_promotion: None,
-            },
-            metadata: IdleSandboxMetadata::new(
-                parts.cli_agent_session_id,
-                parts.sandbox_id,
-                parts.profile_name,
-                parts.device_rate_limits,
-                parts.source_ip,
-                parts.storage_fingerprints,
-            ),
-            budget_lease: parts.budget_lease,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn synthetic_for_test_with_workspace_promotion(
-        parts: SyntheticParkedIdleCandidateParts,
-        workspace_promotion: WorkspaceImagePromotionContext,
-    ) -> Self {
-        Self {
-            resources: IdleSandboxResources {
-                sandbox: parts.sandbox,
-                factory: parts.factory,
-                workspace_promotion: Some(workspace_promotion),
-            },
-            metadata: IdleSandboxMetadata::new(
-                parts.cli_agent_session_id,
-                parts.sandbox_id,
-                parts.profile_name,
-                parts.device_rate_limits,
-                parts.source_ip,
-                parts.storage_fingerprints,
-            ),
-            budget_lease: parts.budget_lease,
-        }
-    }
-
     fn cli_agent_session_id(&self) -> &str {
         self.metadata.cli_agent_session_id()
     }
@@ -1111,8 +1056,9 @@ mod tests {
     use crate::resource_budget::ResourceBudget;
     use crate::storage_fingerprints::StorageFingerprint;
 
+    use super::test_support::ParkedIdleCandidateBuilder;
     use sandbox::{ResourceLimits, SandboxConfig};
-    use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
+    use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
 
     fn make_budget_lease(vcpu: u32, memory_mb: u32) -> BudgetLease {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
@@ -1127,17 +1073,9 @@ mod tests {
         session_id: &str,
         budget_lease: BudgetLease,
     ) -> ParkedIdleCandidate {
-        ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-            sandbox: Box::new(MockSandbox::new("test")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: session_id.into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            device_rate_limits: None,
-            budget_lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        })
+        ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+            .with_mock_sandbox_name("test")
+            .build()
     }
 
     fn park_at(

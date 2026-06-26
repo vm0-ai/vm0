@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
+import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
@@ -55,7 +57,7 @@ def test_x_json_parse_error_on_write_does_not_emit_lost_visibility_log(
         rule="POST /2/tweets",
     )
     flow.request.method = "POST"
-    flow.metadata["x_json_state"] = {
+    flow.metadata[metadata_keys.X_JSON_STATE] = {
         "body_parsed": False,
         "body_truncated": False,
         "parse_error": "incomplete json",
@@ -173,6 +175,151 @@ def test_tweet_create_raw_body_over_cap_stays_conservative(x_usage, tmp_path, re
     assert p["quantity"] == 1
 
 
+def test_tweet_create_refines_from_complete_stream_capture(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_refines_from_complete_stream_capture_when_raw_content_is_empty(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = b""
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_complete_stream_capture_overrides_stale_raw_content(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=b'{"text":"https://example.com"}',
+    )
+    flow.request.method = "POST"
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_truncated_stream_capture_ignores_stale_raw_content(
+    x_usage, tmp_path, real_flow
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=b'{"text":"hello world"}',
+    )
+    flow.request.method = "POST"
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
+    assert stream(request_body) == request_body
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_incomplete_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    assert stream(b'{"text":"hello world"}') == b'{"text":"hello world"}'
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_truncated_stream_capture_stays_conservative(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.raw_content = None
+    request_streaming.configure_request_stream(flow)
+    stream = flow.request.stream
+    assert callable(stream)
+    request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
+    assert stream(request_body) == request_body
+    flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
+    p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
 @pytest.mark.parametrize("request_encoding", ["gzip", "deflate", "br", "zstd", "x-vm0-test"])
 def test_tweet_create_invalid_or_unsupported_encoding_stays_conservative(
     x_usage, tmp_path, real_flow, request_encoding
@@ -207,7 +354,9 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         request_body=b"not gzip request content",
         request_encoding="gzip",
     )
-    flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+    )
 
     # The billing payload cannot prove this negative side effect: the decoder
     # fails closed, so a regression that decodes non-refinement request bodies

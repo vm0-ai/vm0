@@ -68,6 +68,12 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("make an internal slide plan");
     expect(stdout).toContain("Adapt the selected template");
     expect(stdout).toContain(
+      "Use selected template references only for structure, layout devices, spacing, and visual language",
+    );
+    expect(stdout).toContain(
+      "Derive every presentation image/media choice from the user's requested topic",
+    );
+    expect(stdout).toContain(
       "Do not add decorative, duplicate, or empty filler slides",
     );
     expect(stdout).toContain("establish the deck's arc");

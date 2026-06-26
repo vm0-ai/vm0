@@ -1,5 +1,130 @@
 # Changelog
 
+## [9.210.6](https://github.com/vm0-ai/vm0/compare/cli-v9.210.5...cli-v9.210.6) (2026-06-26)
+
+
+### Refactoring
+
+* remove typescript firewall runtime loader ([#19027](https://github.com/vm0-ai/vm0/issues/19027)) ([a2c7b0e](https://github.com/vm0-ai/vm0/commit/a2c7b0e2cd7c484ccb13a0f85864305c086dc5af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.4
+    * @vm0/connectors bumped to 1.108.6
+    * @vm0/core bumped to 8.370.9
+
+## [9.210.5](https://github.com/vm0-ai/vm0/compare/cli-v9.210.4...cli-v9.210.5) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.3
+    * @vm0/connectors bumped to 1.108.5
+    * @vm0/core bumped to 8.370.8
+
+## [9.210.4](https://github.com/vm0-ai/vm0/compare/cli-v9.210.3...cli-v9.210.4) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.370.7
+
+## [9.210.3](https://github.com/vm0-ai/vm0/compare/cli-v9.210.2...cli-v9.210.3) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.2
+    * @vm0/connectors bumped to 1.108.4
+    * @vm0/core bumped to 8.370.6
+
+## [9.210.2](https://github.com/vm0-ai/vm0/compare/cli-v9.210.1...cli-v9.210.2) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.370.5
+
+## [9.210.1](https://github.com/vm0-ai/vm0/compare/cli-v9.210.0...cli-v9.210.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+
+## [9.210.0](https://github.com/vm0-ai/vm0/compare/cli-v9.209.3...cli-v9.210.0) (2026-06-25)
+
+
+### Features
+
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Bug Fixes
+
+* normalize codex cli log rendering ([#18773](https://github.com/vm0-ai/vm0/issues/18773)) ([731975b](https://github.com/vm0-ai/vm0/commit/731975b8fa1376fbec62c86527ae87935d9a4d07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+
+## [9.209.3](https://github.com/vm0-ai/vm0/compare/cli-v9.209.2...cli-v9.209.3) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+
+## [9.209.2](https://github.com/vm0-ai/vm0/compare/cli-v9.209.1...cli-v9.209.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* constrain presentation template imagery ([#18938](https://github.com/vm0-ai/vm0/issues/18938)) ([75c9003](https://github.com/vm0-ai/vm0/commit/75c9003900b875b9f3f467e37840cd6a179044d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+
+## [9.209.1](https://github.com/vm0-ai/vm0/compare/cli-v9.209.0...cli-v9.209.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.114.1
+    * @vm0/connectors bumped to 1.108.0
+    * @vm0/core bumped to 8.370.0
+
 ## [9.209.0](https://github.com/vm0-ai/vm0/compare/cli-v9.208.2...cli-v9.209.0) (2026-06-25)
 
 

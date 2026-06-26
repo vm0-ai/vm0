@@ -1,7 +1,6 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CustomConnectorField } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -15,7 +14,6 @@ import {
   saveCustomConnectorProposal$,
   setCustomConnectorProposalFieldValue$,
 } from "../../signals/connectors-page/custom-connector-proposal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Vm0LogoLink } from "./zero-directed-shared.tsx";
@@ -106,7 +104,6 @@ function ProposalStatusCard({ message }: { message: string }) {
 }
 
 function CustomConnectorProposalCard() {
-  const switches = useGet(featureSwitch$);
   const params = useGet(customConnectorProposalParams$);
   const agentNameLoadable = useLastLoadable(customConnectorProposalAgentName$);
   const valueMap = useGet(customConnectorProposalValueMap$);
@@ -117,12 +114,6 @@ function CustomConnectorProposalCard() {
   const [saveLoadable, saveProposal] = useLoadableSet(
     saveCustomConnectorProposal$,
   );
-
-  if (!switches[FeatureSwitchKey.CustomConnectorProposals]) {
-    return (
-      <ProposalStatusCard message="Custom connector proposals are not available for this workspace." />
-    );
-  }
 
   if (!params) {
     return (

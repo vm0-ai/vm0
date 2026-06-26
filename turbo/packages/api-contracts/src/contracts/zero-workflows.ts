@@ -193,6 +193,13 @@ export type UnattendedTriggerPermissionAction = z.infer<
 const unattendedTriggerConnectorRefSchema = z.string().min(1).max(64);
 const unattendedTriggerPermissionKeySchema = z.string().min(1).max(128);
 
+export const unattendedTriggerConnectorRefsSchema = z.array(
+  unattendedTriggerConnectorRefSchema,
+);
+export type UnattendedTriggerConnectorRefs = z.infer<
+  typeof unattendedTriggerConnectorRefsSchema
+>;
+
 export const unattendedTriggerPermissionPolicySchema = z.record(
   unattendedTriggerConnectorRefSchema,
   z.object({
@@ -207,10 +214,12 @@ export type UnattendedTriggerPermissionPolicy = z.infer<
 >;
 
 /**
- * Full-replace request for a trigger's unattended permission policy. `null`
- * clears the policy back to connector metadata defaults.
+ * Full-replace request for a trigger's unattended connector access and
+ * permission policy. `null` clears the policy back to connector metadata
+ * defaults.
  */
 export const setUnattendedTriggerPermissionPolicyRequestSchema = z.object({
+  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema.optional(),
   unattendedPermissionPolicy:
     unattendedTriggerPermissionPolicySchema.nullable(),
 });
@@ -230,6 +239,7 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
+  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema,
   unattendedPermissionPolicy:
     unattendedTriggerPermissionPolicySchema.nullable(),
 });
@@ -704,21 +714,6 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Disable a workflow trigger",
-  },
-  run: {
-    method: "POST",
-    path: "/api/zero/workflow-triggers/:id/run",
-    headers: authHeadersSchema,
-    pathParams: triggerIdParams,
-    body: c.noBody(),
-    responses: {
-      200: z.object({ runId: z.string() }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Fire a one-off test run of a workflow trigger",
   },
   setPermissionPolicy: {
     method: "PUT",

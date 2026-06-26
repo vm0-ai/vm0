@@ -3503,11 +3503,13 @@ mod tests {
                 stream_limit_bytes: 1024,
                 chunk_limit_bytes: 0,
                 queue_capacity: 1,
+                stderr_capture_limit_bytes: None,
             },
             ProcessOutputMode::Stream {
                 stream_limit_bytes: 1024,
                 chunk_limit_bytes: 16,
                 queue_capacity: 0,
+                stderr_capture_limit_bytes: None,
             },
         ] {
             match sandbox

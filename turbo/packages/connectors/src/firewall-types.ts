@@ -1242,16 +1242,65 @@ function baseUrlScheme(base: string): string {
   return base.slice(0, schemeEnd).toLowerCase();
 }
 
-function validateCredentialedBaseUrlTransport(
+function validateCredentialedBaseUrlTransportValue(
   base: string,
   serviceName: string,
-  auth: FirewallApi["auth"],
+  credentialed: boolean,
 ): void {
-  if (!firewallAuthInjectsCredentials(auth)) return;
+  if (!credentialed) return;
   if (baseUrlScheme(base) === REQUIRED_AUTH_BASE_URL_SCHEME) return;
   throw new Error(
     `Invalid base URL "${base}" in firewall "${serviceName}": credentialed base URL must use https`,
   );
+}
+
+export interface ResolveFirewallBaseUrlTemplateOptions {
+  readonly serviceName: string;
+  readonly base: string;
+  readonly vars: Record<string, string> | undefined;
+  readonly credentialed?: boolean;
+}
+
+export function resolveFirewallBaseUrlTemplate({
+  serviceName,
+  base,
+  vars,
+  credentialed = false,
+}: ResolveFirewallBaseUrlTemplateOptions): string {
+  if (!hasBaseUrlVars(base)) return base;
+
+  let resolved = "";
+  let lastIndex = 0;
+  for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+    const fullMatch = match[0];
+    const name = match[1]!;
+    const matchIndex = match.index!;
+    const value = vars?.[name];
+    if (!value) {
+      throw new Error(
+        `Firewall "${serviceName}" base URL requires variable "${name}" but it was not provided`,
+      );
+    }
+    validateBaseUrlTemplateVariable({
+      base,
+      serviceName,
+      name,
+      value,
+      prefix: base.slice(0, matchIndex),
+      suffix: base.slice(matchIndex + fullMatch.length),
+    });
+    resolved += base.slice(lastIndex, matchIndex) + value;
+    lastIndex = matchIndex + fullMatch.length;
+  }
+  resolved += base.slice(lastIndex);
+  validateResolvedBaseUrlPathSafety(base, serviceName, resolved);
+  validateBaseUrl(resolved, serviceName);
+  validateCredentialedBaseUrlTransportValue(
+    resolved,
+    serviceName,
+    credentialed,
+  );
+  return resolved;
 }
 
 /**
@@ -1268,33 +1317,12 @@ export function resolveFirewallBaseUrlVars(
       ...fw,
       apis: fw.apis.map((api) => {
         if (!hasBaseUrlVars(api.base)) return api;
-        let resolved = "";
-        let lastIndex = 0;
-        for (const match of api.base.matchAll(BASE_URL_VARS_PATTERN_G)) {
-          const fullMatch = match[0];
-          const name = match[1]!;
-          const matchIndex = match.index!;
-          const value = vars?.[name];
-          if (!value) {
-            throw new Error(
-              `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
-            );
-          }
-          validateBaseUrlTemplateVariable({
-            base: api.base,
-            serviceName: fw.name,
-            name,
-            value,
-            prefix: api.base.slice(0, matchIndex),
-            suffix: api.base.slice(matchIndex + fullMatch.length),
-          });
-          resolved += api.base.slice(lastIndex, matchIndex) + value;
-          lastIndex = matchIndex + fullMatch.length;
-        }
-        resolved += api.base.slice(lastIndex);
-        validateResolvedBaseUrlPathSafety(api.base, fw.name, resolved);
-        validateBaseUrl(resolved, fw.name);
-        validateCredentialedBaseUrlTransport(resolved, fw.name, api.auth);
+        const resolved = resolveFirewallBaseUrlTemplate({
+          serviceName: fw.name,
+          base: api.base,
+          vars,
+          credentialed: firewallAuthInjectsCredentials(api.auth),
+        });
         return { ...api, base: resolved };
       }),
     };

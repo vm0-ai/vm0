@@ -254,8 +254,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Fold repeated automation, workflow trigger, and goal continuation chat runs by contiguous run-group sections in the chat thread UI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
@@ -313,18 +312,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation. Individuals opt in via feature-switch overrides.",
     enabled: false,
-  },
-  [FeatureSwitchKey.MobileSingleLineComposer]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Default the chat composer to a single-line resting height on mobile (below the md breakpoint) instead of the three-line desktop height.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorProposals]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable custom connector proposal cards, multi-field custom connector definitions, and agent-driven custom connector setup.",
-    enabled: true,
   },
   [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
     maintainer: "lancy@vm0.ai",

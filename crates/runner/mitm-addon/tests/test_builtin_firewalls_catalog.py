@@ -131,6 +131,12 @@ def test_figma_firewall_uses_granular_permissions():
     assert "files:read" not in permissions
 
 
+def test_figma_builtin_firewall_uses_personal_access_token_header():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["figma"]
+
+    assert firewall["apis"][0]["auth"]["headers"] == {"X-Figma-Token": "${{ secrets.FIGMA_TOKEN }}"}
+
+
 def test_figma_firewall_has_one_owner_per_route():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS["figma"]
     route_owners: dict[tuple[str, str], str] = {}

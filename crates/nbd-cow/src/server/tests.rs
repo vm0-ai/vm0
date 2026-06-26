@@ -1,6 +1,6 @@
 use super::*;
 use crate::cow::CowLayer;
-use crate::protocol::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
+use crate::protocol_impl::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
 use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 use std::time::Duration;
@@ -166,7 +166,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
 
     let large_write = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 1,
         offset: 0,
@@ -178,7 +177,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert_eq!(error, 0, "large write should succeed");
 
     let small_write = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 2,
         offset: small_offset,
@@ -190,7 +188,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert_eq!(error, 0, "small write after large write should succeed");
 
     let large_read = NbdRequest {
-        flags: 0,
         command: Command::Read,
         handle: 3,
         offset: 0,
@@ -202,7 +199,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert!(large_read_data.iter().all(|&byte| byte == 0x44));
 
     let small_read = NbdRequest {
-        flags: 0,
         command: Command::Read,
         handle: 4,
         offset: small_offset,
@@ -214,7 +210,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert_eq!(small_read_data, small_write_data);
 
     let max_reusable_read = NbdRequest {
-        flags: 0,
         command: Command::Read,
         handle: 5,
         offset: 0,
@@ -226,7 +221,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert!(max_reusable_data.iter().all(|&byte| byte == 0x44));
 
     let alignment_read = NbdRequest {
-        flags: 0,
         command: Command::Read,
         handle: 6,
         offset: alignment_offset,
@@ -238,7 +232,6 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     assert!(alignment_data.iter().all(|&byte| byte == 0x33));
 
     let disc = NbdRequest {
-        flags: 0,
         command: Command::Disconnect,
         handle: 7,
         offset: 0,
@@ -260,7 +253,6 @@ async fn dispatch_shutdown_flushes_data() {
     let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
 
     let write_req = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 1,
         offset: 0,
@@ -297,7 +289,6 @@ async fn dispatch_shutdown_while_write_payload_pending_exits() {
     let (_reader, mut writer, task, shutdown) = setup_dispatch(cow).await;
 
     let write_req = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 1,
         offset: 0,
@@ -327,7 +318,6 @@ async fn dispatch_shutdown_while_oversized_write_discard_pending_exits() {
     let (_reader, mut writer, task, shutdown) = setup_dispatch(cow).await;
 
     let write_req = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 1,
         offset: 0,
@@ -357,7 +347,6 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
 
     let accepted_write = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 1,
         offset: 0,
@@ -373,7 +362,6 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     }
 
     let partial_write = NbdRequest {
-        flags: 0,
         command: Command::Write,
         handle: 2,
         offset: crate::BLOCK_SIZE as u64,

@@ -9,21 +9,21 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   type FirewallBaseUrlMatch,
-  findMatchingPermissions,
+  findMatchingRoutingPermissions,
   matchFirewallBaseUrl,
+  type FirewallRoutingPermissionApi,
 } from "@vm0/connectors/firewall-rule-matcher";
 import {
-  extractSecretNamesFromApis,
-  resolveFirewallBaseUrlVars,
+  resolveFirewallBaseUrlTemplate,
   UNKNOWN_PERMISSION_GRANT,
-  type FirewallConfig,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
-  loadConnectorFirewall,
-  loadConnectorFirewalls,
-  RUNTIME_FIREWALL_CONNECTOR_TYPES,
-} from "@vm0/connectors/firewalls/runtime";
+  FIREWALL_ROUTING_METADATA_INDEX,
+  loadFirewallRoutingMetadata,
+  type FirewallRoutingMetadata,
+} from "@vm0/connectors/firewall-metadata/routing";
+import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
 import {
@@ -45,70 +45,143 @@ interface CheckConnectorOptions {
 
 interface DiagContext {
   envName: string;
-  connectorType: string;
+  connectorType: ConnectorType;
   label: string;
   connectorAvailable: boolean;
   platformOrigin: string;
   agentId: string | undefined;
 }
 
+interface DiagnosticRoutingConfig {
+  type: ConnectorType;
+  label: string;
+  apis: readonly FirewallRoutingPermissionApi[];
+}
+
 interface UrlLookupResult {
-  connectorType: string;
+  connectorType: ConnectorType;
   envName: string;
   matchedBase: string;
   relativePath: string;
-  permissionConfig?: FirewallConfig;
+  routingConfig?: DiagnosticRoutingConfig;
 }
+
+type RunContextFirewall = RunContextResponse["firewalls"][number];
+type RunContextInlineFirewall = Extract<RunContextFirewall, { apis: unknown }>;
+type RunContextInlinePermission =
+  RunContextInlineFirewall["apis"][number]["permissions"] extends
+    | readonly (infer Permission)[]
+    | undefined
+    ? Permission
+    : never;
 
 function isConnectorType(type: string): type is ConnectorType {
   return type in CONNECTOR_TYPES;
 }
 
-async function connectorTypeIsAvailable(type: string): Promise<boolean> {
-  if (!isConnectorType(type)) {
-    return false;
-  }
+async function connectorTypeIsAvailable(type: ConnectorType): Promise<boolean> {
   const catalog = await searchZeroConnectors();
   return catalog.connectors.some((connector) => {
     return connector.id === type;
   });
 }
 
-function hasPermissionRules(config: FirewallConfig): boolean {
+function connectorEnvName(type: ConnectorType): string | null {
+  return getConnectorEnvBindingEntries(type)[0]?.envName ?? null;
+}
+
+function hasRoutingPermissionRules(config: DiagnosticRoutingConfig): boolean {
   return config.apis.some((api) => {
-    return (
-      api.permissions?.some((permission) => {
-        return permission.rules.length > 0;
-      }) ?? false
-    );
+    return api.routes.length > 0;
   });
+}
+
+function routingBaseIsCredentialed(type: ConnectorType, base: string): boolean {
+  const executionMetadata = getFirewallExecutionMetadata(type);
+  const template = executionMetadata?.baseUrlTemplates.find((entry) => {
+    return entry.base === base;
+  });
+  return template?.credentialed ?? true;
+}
+
+function routingConfigFromMetadata(
+  metadata: FirewallRoutingMetadata,
+  baseUrlVars: Record<string, string> | undefined,
+  resolveBaseUrlVars: boolean,
+): DiagnosticRoutingConfig {
+  return {
+    type: metadata.type,
+    label: metadata.label,
+    apis: metadata.apis.map((api) => {
+      return {
+        base: resolveBaseUrlVars
+          ? resolveFirewallBaseUrlTemplate({
+              serviceName: metadata.type,
+              base: api.base,
+              vars: baseUrlVars,
+              credentialed: routingBaseIsCredentialed(metadata.type, api.base),
+            })
+          : api.base,
+        routes: api.routes,
+      };
+    }),
+  };
+}
+
+function runContextPermissionRoutes(
+  permissions: readonly RunContextInlinePermission[] | undefined,
+): FirewallRoutingPermissionApi["routes"] {
+  const routes: { permissionName: string; rule: string }[] = [];
+  const seenPermissionNames = new Set<string>();
+  for (const permission of permissions ?? []) {
+    if (seenPermissionNames.has(permission.name)) continue;
+    seenPermissionNames.add(permission.name);
+    for (const rule of permission.rules) {
+      routes.push({
+        permissionName: permission.name,
+        rule,
+      });
+    }
+  }
+  return routes;
+}
+
+function routingConfigFromInlineRunContext(
+  firewall: RunContextInlineFirewall,
+): DiagnosticRoutingConfig | null {
+  if (!isConnectorType(firewall.name)) {
+    return null;
+  }
+  return {
+    type: firewall.name,
+    label: CONNECTOR_TYPES[firewall.name].label,
+    apis: firewall.apis.map((api) => {
+      return {
+        base: api.base,
+        routes: runContextPermissionRoutes(api.permissions),
+      };
+    }),
+  };
 }
 
 /**
  * Reverse-lookup a full URL to find which connector handles it.
- * Iterates all connector firewall configs and checks if the URL
+ * Iterates routing index base URLs and checks if the URL
  * starts with any registered base URL (scheme + host + optional path prefix).
  */
-async function resolveConnectorFromUrl(
-  url: string,
-): Promise<UrlLookupResult | null> {
+function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   let bestMatch: {
-    connectorType: string;
+    connectorType: ConnectorType;
     match: FirewallBaseUrlMatch;
   } | null = null;
 
-  const firewalls = await loadConnectorFirewalls(
-    RUNTIME_FIREWALL_CONNECTOR_TYPES,
-  );
-  for (const type of RUNTIME_FIREWALL_CONNECTOR_TYPES) {
-    const config = firewalls[type];
-    if (!config) continue;
-    for (const api of config.apis) {
+  for (const metadata of Object.values(FIREWALL_ROUTING_METADATA_INDEX)) {
+    for (const api of metadata.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
       if (match !== null) {
         // Pick the longest (most specific) base URL match
         if (!bestMatch || match.score > bestMatch.match.score) {
-          bestMatch = { connectorType: type, match };
+          bestMatch = { connectorType: metadata.type, match };
         }
       }
     }
@@ -117,10 +190,7 @@ async function resolveConnectorFromUrl(
   if (!bestMatch) return null;
 
   // Derive the environment name from the connector's configured env bindings.
-  const envBindingEntries = getConnectorEnvBindingEntries(
-    bestMatch.connectorType as ConnectorType,
-  );
-  const envName = envBindingEntries[0]?.envName;
+  const envName = connectorEnvName(bestMatch.connectorType);
   if (!envName) return null;
 
   return {
@@ -131,30 +201,18 @@ async function resolveConnectorFromUrl(
   };
 }
 
-async function runContextFirewallPermissionConfig(
-  firewall: RunContextResponse["firewalls"][number],
-): Promise<FirewallConfig | null> {
-  if (!("apis" in firewall)) {
-    if (!isConnectorType(firewall.name)) {
-      return null;
-    }
-    const config = await loadConnectorFirewall(firewall.name);
-    if (!config) return null;
-    return resolveFirewallBaseUrlVars(
-      [{ name: config.name, apis: config.apis }],
-      firewall.baseUrlVars,
-    )[0]!;
+async function runContextFirewallRoutingConfig(
+  firewall: RunContextFirewall,
+): Promise<DiagnosticRoutingConfig | null> {
+  if ("apis" in firewall) {
+    return routingConfigFromInlineRunContext(firewall);
   }
-  return {
-    name: firewall.name,
-    apis: firewall.apis.map((api) => {
-      return {
-        base: api.base,
-        auth: {},
-        permissions: api.permissions,
-      };
-    }),
-  };
+  if (!isConnectorType(firewall.name)) {
+    return null;
+  }
+  const metadata = await loadFirewallRoutingMetadata(firewall.name);
+  if (!metadata) return null;
+  return routingConfigFromMetadata(metadata, firewall.baseUrlVars, true);
 }
 
 async function resolveConnectorFromRunContext(
@@ -162,23 +220,23 @@ async function resolveConnectorFromRunContext(
   runContext: RunContextResponse,
 ): Promise<UrlLookupResult | null> {
   let bestMatch: {
-    connectorType: string;
+    connectorType: ConnectorType;
     match: FirewallBaseUrlMatch;
-    permissionConfig: FirewallConfig;
+    routingConfig: DiagnosticRoutingConfig;
   } | null = null;
 
   for (const firewall of runContext.firewalls) {
     if (!isConnectorType(firewall.name)) continue;
-    const permissionConfig = await runContextFirewallPermissionConfig(firewall);
-    if (!permissionConfig) continue;
-    for (const api of permissionConfig.apis) {
+    const routingConfig = await runContextFirewallRoutingConfig(firewall);
+    if (!routingConfig) continue;
+    for (const api of routingConfig.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
       if (match === null) continue;
       if (!bestMatch || match.score > bestMatch.match.score) {
         bestMatch = {
           connectorType: firewall.name,
           match,
-          permissionConfig,
+          routingConfig,
         };
       }
     }
@@ -186,10 +244,7 @@ async function resolveConnectorFromRunContext(
 
   if (!bestMatch) return null;
 
-  const envBindingEntries = getConnectorEnvBindingEntries(
-    bestMatch.connectorType as ConnectorType,
-  );
-  const envName = envBindingEntries[0]?.envName;
+  const envName = connectorEnvName(bestMatch.connectorType);
   if (!envName) return null;
 
   return {
@@ -197,8 +252,8 @@ async function resolveConnectorFromRunContext(
     envName,
     matchedBase: bestMatch.match.displayBase,
     relativePath: bestMatch.match.relativePath,
-    ...(hasPermissionRules(bestMatch.permissionConfig)
-      ? { permissionConfig: bestMatch.permissionConfig }
+    ...(hasRoutingPermissionRules(bestMatch.routingConfig)
+      ? { routingConfig: bestMatch.routingConfig }
       : {}),
   };
 }
@@ -243,7 +298,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
 
   const [connector, enabledTypes] = await Promise.all([
-    getZeroConnector(ctx.connectorType as ConnectorType),
+    getZeroConnector(ctx.connectorType),
     ctx.agentId
       ? getZeroAgentUserConnectors(ctx.agentId)
       : Promise.resolve(null),
@@ -367,9 +422,8 @@ async function printConnectorDomains(
     );
     return;
   }
-  const permissionConfig =
-    await runContextFirewallPermissionConfig(matchingEntry);
-  if (!permissionConfig) {
+  const routingConfig = await runContextFirewallRoutingConfig(matchingEntry);
+  if (!routingConfig) {
     console.log(
       `No configuration found for the ${ctx.label} connector in this run.`,
     );
@@ -382,7 +436,7 @@ async function printConnectorDomains(
   console.log(
     `The ${ctx.label} connector is configured for this run with the following base URLs:`,
   );
-  for (const api of permissionConfig.apis) {
+  for (const api of routingConfig.apis) {
     console.log(`  - ${api.base}`);
   }
   console.log("");
@@ -390,17 +444,16 @@ async function printConnectorDomains(
     "When the sandbox sends an HTTP request matching one of these URL prefixes, the network boundary intercepts the request and injects real credentials into the auth headers.",
   );
 
-  const firewallConfig = await loadConnectorFirewall(ctx.connectorType);
-  if (firewallConfig) {
-    const secretNames = extractSecretNamesFromApis(firewallConfig.apis);
-    if (secretNames.length > 0) {
-      console.log(`Credentials resolved from: ${secretNames.join(", ")}`);
-    }
+  const secretNames =
+    getFirewallExecutionMetadata(ctx.connectorType)?.secretPlaceholderNames ??
+    [];
+  if (secretNames.length > 0) {
+    console.log(`Credentials resolved from: ${secretNames.join(", ")}`);
   }
 }
 
 function checkPermissionPolicy(
-  connectorType: string,
+  connectorType: ConnectorType,
   label: string,
   permissionName: string,
   networkPolicies: NetworkPolicies | null,
@@ -470,12 +523,12 @@ function unknownPermissionChangeCommand(connectorRef: string): string {
  * the URL's relative path against the connector's firewall rules.
  */
 async function resolvePermissionFromUrl(
-  connectorType: string,
+  connectorType: ConnectorType,
   label: string,
   method: string,
   relativePath: string,
   matchedBase: string,
-  permissionConfig: FirewallConfig | undefined,
+  routingConfig: DiagnosticRoutingConfig | undefined,
   networkPolicies: NetworkPolicies | null,
 ): Promise<void> {
   console.log("## Step 3: Permission policy check (auto-detected from URL)");
@@ -485,8 +538,13 @@ async function resolvePermissionFromUrl(
   );
   console.log("");
 
-  const config =
-    permissionConfig ?? (await loadConnectorFirewall(connectorType));
+  let config = routingConfig;
+  if (!config) {
+    const metadata = await loadFirewallRoutingMetadata(connectorType);
+    config = metadata
+      ? routingConfigFromMetadata(metadata, undefined, false)
+      : undefined;
+  }
   if (!config) {
     console.log(
       `The ${label} connector does not have permission rules defined.`,
@@ -495,10 +553,10 @@ async function resolvePermissionFromUrl(
     return;
   }
 
-  const matchedPermissions = findMatchingPermissions(
+  const matchedPermissions = findMatchingRoutingPermissions(
     method,
     relativePath,
-    config,
+    config.apis,
     { apiBase: matchedBase },
   );
 
@@ -617,7 +675,7 @@ How connectors work:
       }
 
       let envName: string;
-      let connectorType: string;
+      let connectorType: ConnectorType;
       let urlLookup: UrlLookupResult | null = null;
       let runContext: RunContextResponse | null | undefined;
 
@@ -640,7 +698,7 @@ How connectors work:
         connectorType = urlLookup.connectorType;
         envName = opts.envName ?? urlLookup.envName;
         console.log(
-          `URL ${opts.url} matches the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
+          `URL ${opts.url} matches the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
         );
         console.log(`  Matched base URL: ${urlLookup.matchedBase}`);
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
@@ -656,12 +714,12 @@ How connectors work:
         }
         connectorType = resolvedConnectorType;
         console.log(
-          `${envName} is managed by the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
+          `${envName} is managed by the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
         );
       }
       console.log("");
 
-      const { label } = CONNECTOR_TYPES[connectorType as ConnectorType];
+      const { label } = CONNECTOR_TYPES[connectorType];
       const [apiUrl, connectorAvailable] = await Promise.all([
         getApiUrl(),
         connectorTypeIsAvailable(connectorType),
@@ -699,7 +757,7 @@ How connectors work:
           opts.method,
           urlLookup.relativePath,
           urlLookup.matchedBase,
-          urlLookup.permissionConfig,
+          urlLookup.routingConfig,
           networkPolicies,
         );
       } else if (opts.checkPermission) {

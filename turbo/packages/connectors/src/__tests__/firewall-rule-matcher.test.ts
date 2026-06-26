@@ -5,6 +5,7 @@ import {
   matchFirewallPathPrefix,
   matchFirewallBaseUrl,
   findMatchingPermissions,
+  findMatchingRoutingPermissions,
 } from "../firewall-rule-matcher";
 import type { FirewallConfig } from "../firewall-types";
 
@@ -1831,5 +1832,118 @@ describe("findMatchingPermissions", () => {
     expect(findMatchingPermissions("GET", "/data", multiApi)).toEqual([
       "shared-perm",
     ]);
+  });
+});
+
+describe("findMatchingRoutingPermissions", () => {
+  it("matches routing rules without requiring full firewall config auth", () => {
+    expect(
+      findMatchingRoutingPermissions("get", "/repos/acme/demo/issues", [
+        {
+          base: "https://api.example.com",
+          routes: [
+            {
+              permissionName: "repos.read",
+              rule: "GET /repos/{owner}/{repo}/issues",
+            },
+          ],
+        },
+      ]),
+    ).toEqual(["repos.read"]);
+  });
+
+  it("matches ANY rules and keeps the most-specific route per API", () => {
+    expect(
+      findMatchingRoutingPermissions("POST", "/api/users", [
+        {
+          base: "https://api.example.com",
+          routes: [
+            { permissionName: "catchall", rule: "ANY /{path*}" },
+            { permissionName: "users.write", rule: "POST /api/users" },
+          ],
+        },
+      ]),
+    ).toEqual(["users.write"]);
+  });
+
+  it("can restrict matching to one routing API base", () => {
+    const apis = [
+      {
+        base: "https://api1.example.com",
+        routes: [{ permissionName: "api1.read", rule: "GET /data" }],
+      },
+      {
+        base: "https://api2.example.com/",
+        routes: [{ permissionName: "api2.read", rule: "GET /data" }],
+      },
+    ];
+
+    expect(
+      findMatchingRoutingPermissions("GET", "/data", apis, {
+        apiBase: "https://api1.example.com",
+      }),
+    ).toEqual(["api1.read"]);
+    expect(
+      findMatchingRoutingPermissions("GET", "/data", apis, {
+        apiBase: "https://api2.example.com",
+      }),
+    ).toEqual(["api2.read"]);
+  });
+
+  it("deduplicates duplicate routing permission names inside and across APIs", () => {
+    expect(
+      findMatchingRoutingPermissions("GET", "/data", [
+        {
+          base: "https://api1.example.com",
+          routes: [
+            { permissionName: "shared", rule: "GET /data" },
+            { permissionName: "shared", rule: "ANY /data" },
+          ],
+        },
+        {
+          base: "https://api2.example.com",
+          routes: [{ permissionName: "shared", rule: "GET /data" }],
+        },
+      ]),
+    ).toEqual(["shared"]);
+  });
+
+  it("ignores malformed routing APIs and routes while keeping valid routes", () => {
+    const apis = [
+      "not-an-api",
+      { base: "https://bad.example.com?token=1", routes: [] },
+      { base: "https://missing-routes.example.com" },
+      {
+        base: "https://api.example.com",
+        routes: [
+          { permissionName: "", rule: "GET /empty" },
+          { permissionName: "all", rule: "GET /all" },
+          { permissionName: "lowercase-method", rule: "get /data" },
+          { permissionName: "query-path", rule: "GET /data?debug=1" },
+          { permissionName: "non-string-rule", rule: 123 },
+          { permissionName: 123, rule: "GET /data" },
+          { permissionName: "valid", rule: "GET /data" },
+        ],
+      },
+    ] as unknown as Parameters<typeof findMatchingRoutingPermissions>[2];
+
+    expect(findMatchingRoutingPermissions("GET", "/data", apis)).toEqual([
+      "valid",
+    ]);
+  });
+
+  it("returns multiple routing permissions when best-specificity routes tie", () => {
+    expect(
+      findMatchingRoutingPermissions("GET", "/api/users", [
+        {
+          base: "https://api.example.com",
+          routes: [
+            { permissionName: "users.read", rule: "GET /api/users" },
+            { permissionName: "users.audit", rule: "ANY /api/users" },
+            { permissionName: "catchall", rule: "ANY /{path*}" },
+          ],
+        },
+      ]),
+    ).toEqual(["users.read", "users.audit"]);
   });
 });

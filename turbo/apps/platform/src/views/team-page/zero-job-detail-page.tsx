@@ -20,7 +20,9 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
+  IconGitBranch,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   Button,
@@ -83,6 +85,7 @@ import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.
 import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
@@ -131,6 +134,11 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  WorkflowListPanel,
+  WorkflowsSearch,
+} from "../workflows-page/workflows-page.tsx";
 
 type ApplyUserPermissionGrants = (
   params: {
@@ -265,11 +273,16 @@ const TAB_TRIGGER_CLASS =
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
+  showWorkflows: boolean,
 ): string {
+  if (!showWorkflows && rawTab === "workflows") {
+    return "authorization";
+  }
   if (
     hideProfileAndInstructions &&
     rawTab !== "authorization" &&
-    rawTab !== "automations"
+    rawTab !== "automations" &&
+    rawTab !== "workflows"
   ) {
     return "authorization";
   }
@@ -280,10 +293,12 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showWorkflows,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showWorkflows: boolean;
 }) {
   return (
     <Tabs
@@ -300,6 +315,9 @@ function AgentTabNav({
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
             <SelectItem value="automations">Automations</SelectItem>
+            {showWorkflows && (
+              <SelectItem value="workflows">Workflows</SelectItem>
+            )}
             {showProfileAndInstructions && (
               <SelectItem value="profile">Profile</SelectItem>
             )}
@@ -319,6 +337,12 @@ function AgentTabNav({
           <IconCalendar size={14} stroke={1.5} />
           Automations
         </TabsTrigger>
+        {showWorkflows && (
+          <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
+            <IconGitBranch size={14} stroke={1.5} />
+            Workflows
+          </TabsTrigger>
+        )}
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
             <IconUserCircle size={14} stroke={1.5} />
@@ -1213,6 +1237,27 @@ function JobAutomationsTab({ displayName }: { displayName: string }) {
   );
 }
 
+function JobWorkflowsTab({ agentId }: { agentId: string }) {
+  const workflowsLoadable = useLoadable(agentVisibleWorkflows$(agentId));
+  const workflows =
+    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+  const loading = workflowsLoadable.state === "loading" && !workflows;
+
+  return (
+    <div className="mx-auto flex max-w-[900px] flex-col gap-3">
+      <div className="flex justify-end">
+        <WorkflowsSearch />
+      </div>
+      <WorkflowListPanel
+        workflows={workflows}
+        loading={loading}
+        showAgentColumn={false}
+        emptyDescription="Workflows attached to this agent appear here."
+      />
+    </div>
+  );
+}
+
 function JobInstructionsTab() {
   const pageSignal = useGet(pageSignal$);
   const instructionsLoadable = useLoadable(agentInstructions$);
@@ -1266,6 +1311,7 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showWorkflows,
 }: {
   displayName: string;
   description: string;
@@ -1273,6 +1319,7 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showWorkflows: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
@@ -1325,6 +1372,7 @@ function AgentHeader({
             activeTab={activeTab}
             onTabChange={onTabChange}
             showProfileAndInstructions={showProfileAndInstructions}
+            showWorkflows={showWorkflows}
           />
           <Button
             variant="outline"
@@ -1382,6 +1430,9 @@ function AgentTabContent({
     }
     case "automations": {
       return <JobAutomationsTab displayName={displayName} />;
+    }
+    case "workflows": {
+      return <JobWorkflowsTab agentId={agentId} />;
     }
     case "profile": {
       return (
@@ -1454,13 +1505,20 @@ function useTabVisibility(agentId: string, ownerId: string) {
 
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
+  const features = useLastResolved(featureSwitch$);
+  const showWorkflows = features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
   const hideProfileAndInstructions = !isAdmin && !isOwner;
-  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
+  const activeTab = resolveVisibleTab(
+    rawTab,
+    hideProfileAndInstructions,
+    showWorkflows,
+  );
 
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showWorkflows,
     activeTab,
     setActiveTab,
   };
@@ -1476,6 +1534,7 @@ export function ZeroJobDetailPage() {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showWorkflows,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -1498,6 +1557,7 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
+        showWorkflows={showWorkflows}
       />
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         <AgentTabContent

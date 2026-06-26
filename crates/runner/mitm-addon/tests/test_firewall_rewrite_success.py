@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import auth
+import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
@@ -15,7 +16,7 @@ class TestAuthBaseUrlRewriteSuccess:
     async def test_no_url_rewrite_when_auth_base_absent(self, real_flow, mitm_ctx, tmp_path):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
         original_url = flow.request.url
         api_entry = {
             "base": "https://api.github.com",
@@ -63,7 +64,7 @@ class TestAuthBaseUrlRewriteSuccess:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         with (
             fake_forwarder_upstream(
                 body=b'{"ok":true}', headers=[("Content-Type", "application/json")]
@@ -73,12 +74,12 @@ class TestAuthBaseUrlRewriteSuccess:
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
-        assert flow.metadata["auth_url_rewrite"] is True
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK"]
-        assert flow.metadata["auth_refreshed_connectors"] == ["discord"]
-        assert flow.metadata["auth_refreshed_secrets"] == ["WEBHOOK"]
-        assert flow.metadata["auth_cache_hit"] is False
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == ["WEBHOOK"]
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] == ["discord"]
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] == ["WEBHOOK"]
+        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
         assert flow.response is not None
         assert flow.response.status_code == 200
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
@@ -103,14 +104,14 @@ class TestAuthBaseUrlRewriteSuccess:
         assert flow.response is not None
         assert flow.response.status_code == 500
         assert flow.response.content == b'{"error":"upstream"}'
-        assert flow.metadata["auth_url_rewrite"] is True
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert "firewall_error" not in flow.metadata
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert metadata_keys.FIREWALL_ERROR not in flow.metadata
 
     async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
@@ -135,6 +136,6 @@ class TestAuthBaseUrlRewriteSuccess:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert "auth_url_rewrite" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"

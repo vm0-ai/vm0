@@ -11,6 +11,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -549,6 +550,54 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await cancelChatRun(actor, run.runId);
     detail = await chat.readThread(actor, run.threadId);
     expect(detail.activeRunIds).toStrictEqual([]);
+  }, 90_000);
+
+  it("rejects restricted model pins for limited-free-1 workspaces", async () => {
+    const { actor, agentId } = await entitledChatActor(
+      "Limited free model pin agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected actor org");
+    }
+    const db = store.set(writeDb$);
+    await db
+      .update(orgMetadata)
+      .set({ tier: "limited-free-1" })
+      .where(eq(orgMetadata.orgId, actor.orgId));
+
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "limited free model pin",
+    });
+    const restrictedSelection = await chat.requestUpdateThreadModelSelection(
+      actor,
+      thread.id,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      [402],
+    );
+    expectApiError(restrictedSelection.body);
+    expect(restrictedSelection.body.error).toStrictEqual({
+      message:
+        "Insufficient credits. Add credits or configure your own API key to continue.",
+      code: "INSUFFICIENT_CREDITS",
+    });
+
+    const [threadRow] = await db
+      .select({ selectedModel: chatThreads.selectedModel })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, thread.id))
+      .limit(1);
+    expect(threadRow?.selectedModel).toBeNull();
+
+    await chat.updateThreadModelSelection(actor, thread.id, {
+      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const detail = await chat.readThread(actor, thread.id);
+    expect(detail.selectedModel).toBe("claude-sonnet-4-6");
   }, 90_000);
 
   it("updates the Computer Use host binding on a chat thread", async () => {
@@ -1372,6 +1421,9 @@ describe("CHAT-01 chat search", () => {
     const emptyResults = await chat.searchChat(owner, "quokka");
     expect(emptyResults.results).toStrictEqual([]);
     expect(emptyResults.hasMore).toBeFalsy();
+
+    const blankKeyword = await chat.requestSearchChat(owner, "   ", {}, [400]);
+    expectApiError(blankKeyword.body);
 
     // Peer-user isolation inside one org.
     const peerAgent = await bdd.createAgent(peer, {

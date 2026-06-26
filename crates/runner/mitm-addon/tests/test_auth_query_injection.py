@@ -4,19 +4,9 @@ from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import auth
-import matching
-
-
-def _allow(
-    api_entry: dict,
-    *,
-    name: str = "test",
-    permission: str | None = "send",
-    params: dict[str, str] | None = None,
-    rule: str | None = "POST /",
-    rel_path: str = "/",
-) -> matching.FirewallAllow:
-    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
+import flow_metadata_keys as metadata_keys
+from tests.firewall_auth_helpers import make_allow
+from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 
 
 def make_query_inputs(
@@ -30,7 +20,7 @@ def make_query_inputs(
     match_overrides=None,
 ):
     flow = real_flow(with_response=False, host=host, path=path)
-    flow.metadata["vm_run_id"] = "test-run"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
     auth_config = {
         "headers": {},
         "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"},
@@ -55,7 +45,7 @@ def make_query_inputs(
     }
     if match_overrides:
         allow_kwargs.update(match_overrides)
-    allow = _allow(api_entry, **allow_kwargs)
+    allow = make_allow(api_entry, **allow_kwargs)
     token_meta = {
         "headers": {},
         "resolved_secrets": ["SERPAPI_TOKEN"],
@@ -102,7 +92,7 @@ class TestAuthQueryInjection:
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
-        assert "auth_url_rewrite" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
         assert flow.request.query["empty_auth"] == ""
         assert flow.request.query["space"] == "a b"
@@ -157,11 +147,13 @@ class TestAuthQueryInjection:
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["key"] == "resolved-query-value"
 
-    async def test_query_params_merged_into_rewrite_url(self, real_flow, mitm_ctx, headers):
+    async def test_query_params_merged_into_rewrite_url(
+        self, real_flow, mitm_ctx, headers, tmp_path
+    ):
         """auth.query params are forwarded without mutating the placeholder request."""
-        flow = real_flow(
-            with_response=False,
-            host="firewall-placeholder.vm3.ai",
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
             path="/hook?client=visible",
             request_headers=headers(
                 ("Authorization", "Bearer agent"),
@@ -169,30 +161,14 @@ class TestAuthQueryInjection:
                 ("X-Api-Key", "agent-api-key"),
                 ("X-Keep", "client"),
             ),
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
-                "query": {"api_key": "${{ secrets.KEY }}"},
+            api_base="https://firewall-placeholder.vm3.ai/webhook/hook",
+            resolved_base="https://real-api.com/webhook/secret",
+            auth_overrides={"query": {"api_key": "${{ secrets.KEY }}"}},
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK", "KEY"],
+                "query": {"api_key": "resolved-key-456"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok",
-            "encryptedSecrets": "iv:tag:data",
-            "billableFirewalls": [],
-        }
-        allow = _allow(api_entry)
-        token_meta = {
-            "headers": {},
-            "base": "https://real-api.com/webhook/secret",
-            "resolved_secrets": ["WEBHOOK", "KEY"],
-            "cache_hit": False,
-            "query": {"api_key": "resolved-key-456"},
-        }
+        )
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -200,7 +176,7 @@ class TestAuthQueryInjection:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         # Verify the forwarded URL contains the auth.query params
         call_args = mock_forward.call_args
         forwarded_url = call_args[0][0]
@@ -219,44 +195,34 @@ class TestAuthQueryInjection:
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert flow.request.headers["Cookie"] == "session=agent"
 
-    async def test_query_params_overwrite_existing_rewrite_url_keys(self, real_flow, mitm_ctx):
+    async def test_query_params_overwrite_existing_rewrite_url_keys(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
         """auth.query overwrites duplicate keys while preserving other query values."""
-        flow = real_flow(
-            with_response=False,
-            host="firewall-placeholder.vm3.ai",
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
             path="/hook?api_key=agent-key&q=test&empty=&repeat=one&repeat=two",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
+            api_base="https://firewall-placeholder.vm3.ai/webhook/hook",
+            resolved_base=(
+                "https://real-api.com/webhook/secret?api_key=base-key&mode=fast&base_empty="
+            ),
+            auth_overrides={
                 "query": {
                     "api_key": "${{ secrets.KEY }}",
                     "empty_auth": "${{ vars.EMPTY }}",
                     "space": "${{ vars.SPACE }}",
                 },
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok",
-            "encryptedSecrets": "iv:tag:data",
-            "billableFirewalls": [],
-        }
-        allow = _allow(api_entry)
-        token_meta = {
-            "headers": {},
-            "base": "https://real-api.com/webhook/secret?api_key=base-key&mode=fast&base_empty=",
-            "resolved_secrets": ["WEBHOOK", "KEY"],
-            "cache_hit": False,
-            "query": {
-                "api_key": "resolved-key-456",
-                "empty_auth": "",
-                "space": "a b",
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK", "KEY"],
+                "query": {
+                    "api_key": "resolved-key-456",
+                    "empty_auth": "",
+                    "space": "a b",
+                },
             },
-        }
+        )
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -279,36 +245,21 @@ class TestAuthQueryInjection:
         assert query["space"] == ["a b"]
         assert query["repeat"] == ["one", "two"]
 
-    async def test_query_params_preserve_rewrite_path_params(self, real_flow, mitm_ctx):
+    async def test_query_params_preserve_rewrite_path_params(self, real_flow, mitm_ctx, tmp_path):
         """auth.query merging must not strip URL path params from the rewrite target."""
-        flow = real_flow(
-            with_response=False,
-            host="firewall-placeholder.vm3.ai",
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
             path="/hook/callback;matrix=1?q=test",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
-                "query": {"api_key": "${{ secrets.KEY }}"},
+            api_base="https://firewall-placeholder.vm3.ai/webhook/hook",
+            resolved_base="https://real-api.com/webhook/secret;v=1?mode=fast",
+            rel_path="/callback;matrix=1",
+            auth_overrides={"query": {"api_key": "${{ secrets.KEY }}"}},
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK", "KEY"],
+                "query": {"api_key": "resolved-key"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok",
-            "encryptedSecrets": "iv:tag:data",
-            "billableFirewalls": [],
-        }
-        allow = _allow(api_entry, rel_path="/callback;matrix=1")
-        token_meta = {
-            "headers": {},
-            "base": "https://real-api.com/webhook/secret;v=1?mode=fast",
-            "resolved_secrets": ["WEBHOOK", "KEY"],
-            "cache_hit": False,
-            "query": {"api_key": "resolved-key"},
-        }
+        )
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -330,7 +281,7 @@ class TestAuthQueryInjection:
     async def test_no_query_injection_when_absent(self, real_flow, mitm_ctx):
         """No query modification when auth.query is not present."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
@@ -341,7 +292,9 @@ class TestAuthQueryInjection:
             "encryptedSecrets": "iv:tag:data",
             "billableFirewalls": [],
         }
-        allow = _allow(api_entry, name="gh", permission="read", rule="GET /repos/{owner}/{repo}")
+        allow = make_allow(
+            api_entry, name="gh", permission="read", rule="GET /repos/{owner}/{repo}"
+        )
         token_meta = {
             "headers": {"Authorization": "Bearer real"},
             "resolved_secrets": ["TOKEN"],

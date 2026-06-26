@@ -12,7 +12,6 @@ export type TextPreviewLoadState = {
 
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
-const TRACKPAD_PINCH_ZOOM_STEP = 0.006;
 
 const internalImageLoadStatusByKey$ = state<Record<string, ImageLoadStatus>>(
   {},
@@ -90,53 +89,6 @@ export const resetZoomableImageCanvasZoom$ = command(({ set }, key: string) => {
     return { ...current, [key]: 1 };
   });
 });
-
-function nextPinchZoom(currentZoom: number, deltaY: number) {
-  const zoomDelta = -deltaY * TRACKPAD_PINCH_ZOOM_STEP;
-  return Math.min(
-    IMAGE_LIGHTBOX_MAX_ZOOM,
-    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, currentZoom + zoomDelta),
-  );
-}
-
-export const zoomableImageCanvasWheelRef$ = onRef(
-  command(({ get, set }, el: HTMLDivElement, signal: AbortSignal) => {
-    const handleWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey) {
-        return;
-      }
-
-      const zoomKey = el.dataset.zoomKey;
-      if (!zoomKey) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const displayZoom = get(zoomableImageCanvasZoomByKey$)[zoomKey] ?? 1;
-      const nextZoom = nextPinchZoom(displayZoom, event.deltaY);
-      if (nextZoom === displayZoom) {
-        return;
-      }
-
-      const zoomRatio = nextZoom / displayZoom;
-      const viewportX = event.clientX - el.getBoundingClientRect().x;
-      const viewportY = event.clientY - el.getBoundingClientRect().y;
-      const contentX = el.scrollLeft + viewportX;
-      const contentY = el.scrollTop + viewportY;
-
-      set(setZoomableImageCanvasZoom$, zoomKey, nextZoom);
-      el.scrollLeft = contentX * zoomRatio - viewportX;
-      el.scrollTop = contentY * zoomRatio - viewportY;
-    };
-
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    signal.addEventListener("abort", () => {
-      el.removeEventListener("wheel", handleWheel);
-    });
-  }),
-);
 
 const resetImageLoadStatus$ = command(({ set }, key: string) => {
   set(internalImageLoadStatusByKey$, (current) => {

@@ -1,7 +1,7 @@
 import { computed } from "ccstate";
 import type { RoutePath } from "../../types/route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { pathParams$ } from "../route.ts";
+import { pathParams$, type RouterPathParams } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { agents$, defaultAgentId$ } from "../agent.ts";
 import {
@@ -14,10 +14,15 @@ import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signal
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { automationTitleExcerpt } from "./automation-title.ts";
+import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 
 interface MobileBreadcrumb {
   section: string;
   sectionPath: RoutePath;
+  sectionOptions?: {
+    pathParams?: RouterPathParams;
+    searchParams?: URLSearchParams;
+  };
   name?: string;
   avatarAgentId?: string;
 }
@@ -98,6 +103,38 @@ const automationBreadcrumb$ = computed(
   },
 );
 
+const workflowsBreadcrumb$ = computed(
+  async (get): Promise<MobileBreadcrumb> => {
+    const section = "Workflows";
+    const params = get(pathParams$) as Params;
+    const agentId = getStringParam(params, "agentId");
+    const sectionOptions = agentId
+      ? { pathParams: { agentId } as RouterPathParams }
+      : undefined;
+    const workflowId = getStringParam(params, "workflowId");
+    if (workflowId) {
+      const detail = await get(workflowDetail(workflowId));
+      if (detail) {
+        return {
+          section,
+          sectionPath: ROUTES.agentWorkflows,
+          sectionOptions:
+            sectionOptions ??
+            ({
+              pathParams: { agentId: detail.agentId } as RouterPathParams,
+            } as const),
+          name: detail.displayName ?? detail.name,
+        };
+      }
+    }
+    return {
+      section,
+      sectionPath: ROUTES.agentWorkflows,
+      sectionOptions,
+    };
+  },
+);
+
 const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const params = get(pathParams$) as Params;
   const displayName = await get(currentChatAgentDisplayName$);
@@ -140,6 +177,10 @@ export const mobileBreadcrumb$ = computed(
 
     if (route === "automations" || route === "automationDetail") {
       return await get(automationBreadcrumb$);
+    }
+
+    if (route === "agentWorkflows" || route === "agentWorkflowDetail") {
+      return await get(workflowsBreadcrumb$);
     }
 
     if (

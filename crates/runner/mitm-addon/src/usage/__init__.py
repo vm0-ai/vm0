@@ -7,7 +7,7 @@ Two paths:
   upload to billing and/or observation endpoints through a background thread pool — see
   :mod:`usage.providers.model_provider`.
 - Billable connector responses (flagged by the web layer via
-  ``billableFirewalls`` → ``flow.metadata["firewall_billable"]``): compute
+  ``billableFirewalls`` → ``metadata_keys.FIREWALL_BILLABLE``): compute
   per-permission billable resource counts and buffer them for aggregate
   platform upload via ``/api/webhooks/agent/usage-event`` — see
   :mod:`usage.providers.connectors`.

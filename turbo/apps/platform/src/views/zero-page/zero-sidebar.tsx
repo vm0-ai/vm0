@@ -9,7 +9,6 @@ import {
   IconChevronRight,
   IconLayoutSidebarLeftCollapse,
   IconPlug,
-  IconGitBranch,
   IconSparkles,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -67,18 +66,17 @@ interface ManageNavItem {
 const MANAGE_NAV: readonly ManageNavItem[] = [
   {
     id: "agents",
-    activeKeys: ["agents", "agentDetail", "agentPermissions"],
+    activeKeys: [
+      "agents",
+      "agentDetail",
+      "agentPermissions",
+      "agentWorkflows",
+      "agentWorkflowDetail",
+      "agentWorkflowTriggerPermissions",
+    ],
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
-  },
-  {
-    id: "workflows",
-    activeKeys: ["workflows"],
-    pathname: "/workflows",
-    label: "Workflows",
-    icon: IconGitBranch as NavIcon,
-    featureGate: FeatureSwitchKey.WorkflowsViewer,
   },
   {
     id: "connectors",

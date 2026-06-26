@@ -7,6 +7,7 @@ import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
@@ -34,8 +35,8 @@ class TestResponseStreamBuffer:
         callback = response_stream(flow)
         assert callback(b"hello ") == b"hello "
         assert callback(b"world") == b"world"
-        assert bytes(flow.metadata["stream_buffer"]) == b"hello world"
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert bytes(flow.metadata[metadata_keys.STREAM_BUFFER]) == b"hello world"
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is False
 
     def test_stream_callback_stops_buffering_at_limit(self, real_flow):
         flow = self._json_response_flow(real_flow)
@@ -45,12 +46,12 @@ class TestResponseStreamBuffer:
         callback = response_stream(flow)
         chunk = b"x" * STREAM_BUFFER_LIMIT
         assert callback(chunk) == chunk
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is False
 
         assert callback(b"overflow") == b"overflow"
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_stream_callback_large_single_chunk(self, real_flow):
         flow = self._json_response_flow(real_flow)
@@ -60,8 +61,8 @@ class TestResponseStreamBuffer:
         callback = response_stream(flow)
         big_chunk = b"A" * (STREAM_BUFFER_LIMIT + 1000)
         assert callback(big_chunk) == big_chunk
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_stream_callback_partial_fill_then_overflow(self, real_flow):
         flow = self._json_response_flow(real_flow)
@@ -71,14 +72,14 @@ class TestResponseStreamBuffer:
         callback = response_stream(flow)
         half = STREAM_BUFFER_LIMIT // 2
         callback(b"A" * half)
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is False
 
         callback(b"B" * STREAM_BUFFER_LIMIT)
         remaining = STREAM_BUFFER_LIMIT - half
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
-        assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER][:half] == bytearray(b"A" * half)
+        assert flow.metadata[metadata_keys.STREAM_BUFFER][half:] == bytearray(b"B" * remaining)
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_stream_callback_empty_chunk(self, real_flow):
         flow = self._json_response_flow(real_flow)
@@ -87,11 +88,11 @@ class TestResponseStreamBuffer:
 
         callback = response_stream(flow)
         assert callback(b"") == b""
-        assert len(flow.metadata["stream_buffer"]) == 0
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == 0
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is False
 
         callback(b"hello")
-        assert bytes(flow.metadata["stream_buffer"]) == b"hello"
+        assert bytes(flow.metadata[metadata_keys.STREAM_BUFFER]) == b"hello"
 
     def test_non_model_provider_buffer_truncated(self, real_flow):
         flow = self._json_response_flow(real_flow, host="api.github.com")
@@ -100,21 +101,21 @@ class TestResponseStreamBuffer:
 
         response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
 
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
     def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow):
         flow = self._json_response_flow(real_flow, host="api.gamma.example")
-        flow.metadata["firewall_name"] = "gamma"
-        flow.metadata["firewall_billable"] = True
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "gamma"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
 
         mitm_addon.responseheaders(flow)
 
         response_stream(flow)(b"g" * (STREAM_BUFFER_LIMIT + 1000))
 
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        assert "x_ndjson_state" not in flow.metadata
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
 
@@ -128,7 +129,7 @@ class TestNdjsonExtractor:
 
     def _stream_parser(self, real_flow):
         flow = self._stream_flow(real_flow)
-        return response_stream(flow), flow.metadata["x_ndjson_state"]
+        return response_stream(flow), flow.metadata[metadata_keys.X_NDJSON_STATE]
 
     def test_single_line(self, real_flow):
         parse, state = self._stream_parser(real_flow)
@@ -149,12 +150,12 @@ class TestNdjsonExtractor:
     def test_forensic_buffer_truncation_does_not_stop_parser(self, real_flow):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
         parse(b'{"data":{"id":"1"}}\n' + b"x" * (200 * 1024))
 
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
         assert state["data_count"] == 1
         assert "connector_response_finish" in flow.metadata
 
@@ -176,7 +177,7 @@ class TestNdjsonExtractor:
         mid = len(compressed) // 2
         response_stream(flow)(compressed[:mid])
         response_stream(flow)(compressed[mid:])
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
         assert state["data_count"] == 3
         assert state["includes"] == {"users": 3}
         assert "connector_response_finish" in flow.metadata
@@ -239,7 +240,7 @@ class TestNdjsonExtractor:
     def test_complete_trailing_line_without_newline_counted_on_finish(self, real_flow):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}')
         response_streaming.finalize_connector_response_state(flow)
@@ -252,7 +253,7 @@ class TestNdjsonExtractor:
     def test_incomplete_trailing_line_without_newline_fails_on_finish(self, real_flow):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
         parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')
         response_streaming.finalize_connector_response_state(flow)
@@ -265,7 +266,7 @@ class TestNdjsonExtractor:
     def test_blank_trailing_line_ignored_on_finish(self, real_flow, tail):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
         parse(b'{"data":{"id":"1"}}\n' + tail)
         response_streaming.finalize_connector_response_state(flow)
@@ -277,7 +278,7 @@ class TestNdjsonExtractor:
     def test_trailing_line_finish_is_idempotent(self, real_flow):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
         parse(b'{"data":{"id":"1"}}')
         response_streaming.finalize_connector_response_state(flow)
@@ -290,7 +291,7 @@ class TestNdjsonExtractor:
     def test_oversized_line_tail_not_counted_on_finish(self, real_flow):
         flow = self._stream_flow(real_flow)
         parse = response_stream(flow)
-        state = flow.metadata["x_ndjson_state"]
+        state = flow.metadata[metadata_keys.X_NDJSON_STATE]
         big = b"x" * _OVERSIZED_NDJSON_LINE_BYTES
 
         parse(big)
@@ -414,7 +415,7 @@ class TestXJsonFinalize:
 
         response_streaming.finalize_connector_response_state(flow)
 
-        assert "x_json_state" not in flow.metadata
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
 
     def test_finalizes_successful_x_json_state(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
@@ -424,14 +425,14 @@ class TestXJsonFinalize:
         response_stream(flow)(b'{"data":[{"id":"1"}]}')
         response_streaming.finalize_connector_response_state(flow)
 
-        state = dict(flow.metadata["x_json_state"])
+        state = dict(flow.metadata[metadata_keys.X_JSON_STATE])
         assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert "parse_error" not in state
 
         response_streaming.finalize_connector_response_state(flow)
-        assert flow.metadata["x_json_state"] == state
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
 
     def test_forensic_buffer_truncation_does_not_stop_x_json_parser(self, real_flow):
         flow = make_x_response_flow(
@@ -450,10 +451,10 @@ class TestXJsonFinalize:
         )
         response_streaming.finalize_connector_response_state(flow)
 
-        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        assert "x_ndjson_state" not in flow.metadata
-        state = flow.metadata["x_json_state"]
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+        state = flow.metadata[metadata_keys.X_JSON_STATE]
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert state["response_includes"] == {"users": 1}
@@ -472,7 +473,7 @@ class TestXJsonFinalize:
 
         response_stream(flow)(gzip.compress(body))
         response_streaming.finalize_connector_response_state(flow)
-        state = flow.metadata["x_json_state"]
+        state = flow.metadata[metadata_keys.X_JSON_STATE]
         assert state["response_data_count"] == 2
         assert state["response_includes"] == {"users": 1}
         assert state["response_result_count"] == 2
@@ -495,7 +496,7 @@ class TestXJsonFinalize:
         response_stream(flow)(compressed)
         response_streaming.finalize_connector_response_state(flow)
 
-        state = flow.metadata["x_json_state"]
+        state = flow.metadata[metadata_keys.X_JSON_STATE]
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 2
         assert state["response_includes"] == {"users": 1}
@@ -510,14 +511,14 @@ class TestXJsonFinalize:
         response_stream(flow)(b'{"data":[1')
         response_streaming.finalize_connector_response_state(flow)
 
-        state = dict(flow.metadata["x_json_state"])
+        state = dict(flow.metadata[metadata_keys.X_JSON_STATE])
         assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is False
         assert isinstance(state["parse_error"], str)
         assert state["parse_error"]
 
         response_streaming.finalize_connector_response_state(flow)
-        assert flow.metadata["x_json_state"] == state
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
 
     def test_finalizes_non_object_x_json_without_parse_error(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
@@ -527,7 +528,7 @@ class TestXJsonFinalize:
         response_stream(flow)(b"[1,2,3]")
         response_streaming.finalize_connector_response_state(flow)
 
-        state = flow.metadata["x_json_state"]
+        state = flow.metadata[metadata_keys.X_JSON_STATE]
         assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is False
         assert "parse_error" not in state
@@ -542,16 +543,16 @@ class TestResponseHeadersModelJsonParser:
             status_code=200,
             headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
         assert "model_json_usage_finish" not in flow.metadata
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
         assert any(
             "Streaming decompression skipped (br)" in call.args[0]
             for call in log.debug.call_args_list
@@ -566,14 +567,14 @@ class TestResponseHeadersSseParser:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
-        assert isinstance(flow.metadata["model_provider_usage"], dict)
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
+        assert isinstance(flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE], dict)
         assert "model_sse_usage_finish" in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata
         # Feed SSE data through the callback
@@ -584,8 +585,8 @@ class TestResponseHeadersSseParser:
             b'{"model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":42}}}\n\n'
         )
-        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["model_provider_usage"]["tokens.input"] == 42
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 42
 
     def test_sets_up_sse_parser_with_case_insensitive_content_type(self, real_flow):
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -593,22 +594,22 @@ class TestResponseHeadersSseParser:
             status_code=200,
             headers=header_map({"content-type": "Text/Event-Stream"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "gpt-5.5"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
         callback = response_stream(flow)
         callback(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":5}}}\n\n'
         )
-        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
-        assert flow.metadata["model_provider_usage"]["tokens.output"] == 5
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.output"] == 5
 
     def test_finalizes_sse_parser_for_trailing_event_without_blank_line(self, real_flow):
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -616,10 +617,10 @@ class TestResponseHeadersSseParser:
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "gpt-5.5"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
@@ -629,12 +630,12 @@ class TestResponseHeadersSseParser:
             b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":7}}}\n'
         )
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
 
         response_streaming.finalize_model_sse_usage(flow)
 
-        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
-        assert flow.metadata["model_provider_usage"]["tokens.output"] == 7
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.output"] == 7
 
     def test_sets_up_openai_sse_parser_for_openai_model_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -642,14 +643,14 @@ class TestResponseHeadersSseParser:
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "gpt-5.5"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
         callback = response_stream(flow)
         callback(
             b"event: response.completed\n"
@@ -657,9 +658,9 @@ class TestResponseHeadersSseParser:
             b'"usage":{"input_tokens":42,'
             b'"input_tokens_details":{"cached_tokens":12}}}}\n\n'
         )
-        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
-        assert flow.metadata["model_provider_usage"]["tokens.input"] == 30
-        assert flow.metadata["model_provider_usage"]["tokens.cache_read"] == 12
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 30
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.cache_read"] == 12
 
     def test_codex_oauth_model_provider_uses_openai_sse_parser(self, real_flow):
         flow = real_flow(with_response=False, host="chatgpt.com")
@@ -667,14 +668,14 @@ class TestResponseHeadersSseParser:
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "gpt-5.5"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
         callback = response_stream(flow)
         callback(
             b"event: response.completed\n"
@@ -682,9 +683,9 @@ class TestResponseHeadersSseParser:
             b'"usage":{"input_tokens":42,'
             b'"input_tokens_details":{"cached_tokens":12}}}}\n\n'
         )
-        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
-        assert flow.metadata["model_provider_usage"]["tokens.input"] == 30
-        assert flow.metadata["model_provider_usage"]["tokens.cache_read"] == 12
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 30
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.cache_read"] == 12
 
     @pytest.mark.parametrize("cli_agent_type", [None, ""])
     def test_default_cli_agent_type_uses_anthropic_sse_parser(self, real_flow, cli_agent_type):
@@ -693,11 +694,11 @@ class TestResponseHeadersSseParser:
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
         )
-        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
         if cli_agent_type is not None:
-            flow.metadata["cli_agent_type"] = cli_agent_type
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+            flow.metadata[metadata_keys.CLI_AGENT_TYPE] = cli_agent_type
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
@@ -708,8 +709,8 @@ class TestResponseHeadersSseParser:
             b'{"model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":42}}}\n\n'
         )
-        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["model_provider_usage"]["tokens.input"] == 42
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 42
 
     def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
@@ -723,13 +724,13 @@ class TestResponseHeadersSseParser:
                 }
             ),
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
         callback = response_stream(flow)
         plaintext = (
             b"event: message_start\n"
@@ -742,42 +743,42 @@ class TestResponseHeadersSseParser:
         result = callback(compressed)
         assert result == compressed
         # But parser receives decompressed data
-        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["model_provider_usage"]["tokens.input"] == 99
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 99
 
     def test_no_sse_parser_for_non_model_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.github.com")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        flow.metadata["firewall_name"] = "github"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     def test_no_sse_parser_for_non_sse_response(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     def test_no_sse_parser_without_model_usage_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     def test_sets_up_sse_parser_for_non_billable_observable_model_provider(
         self, real_flow, headers
@@ -786,14 +787,14 @@ class TestResponseHeadersSseParser:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = False
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" in flow.metadata
-        assert isinstance(flow.metadata["model_provider_usage"], dict)
+        assert metadata_keys.MODEL_PROVIDER_USAGE in flow.metadata
+        assert isinstance(flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE], dict)
         assert "model_sse_usage_finish" in flow.metadata
 
     def test_no_sse_parser_without_firewall_name(self, real_flow, headers):
@@ -805,7 +806,7 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_malformed_firewall_name_skips_usage_parsers(self, real_flow, firewall_name):
@@ -817,11 +818,11 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "model_provider_usage" not in flow.metadata
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
-        assert "x_ndjson_state" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
 
 
 class TestReleaseResponseStreamState:
@@ -845,8 +846,8 @@ class TestReleaseResponseStreamState:
 
         assert flow.response.stream is external_stream
         assert "_vm0_response_stream_callback" not in flow.metadata
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize(
         ("host", "path", "response_content_type", "metadata", "finish_key"),
@@ -856,9 +857,9 @@ class TestReleaseResponseStreamState:
                 "/v1/messages",
                 "application/json",
                 {
-                    "firewall_name": "model-provider:anthropic-api-key",
-                    "firewall_billable": True,
-                    "model_usage_provider": "claude-sonnet-4-6",
+                    metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
+                    metadata_keys.FIREWALL_BILLABLE: True,
+                    metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
                 },
                 "model_json_usage_finish",
                 id="model-json",
@@ -868,10 +869,10 @@ class TestReleaseResponseStreamState:
                 "/v1/responses",
                 "text/event-stream",
                 {
-                    "firewall_name": "model-provider:openai-api-key",
-                    "cli_agent_type": "codex",
-                    "firewall_billable": True,
-                    "model_usage_provider": "gpt-5.5",
+                    metadata_keys.FIREWALL_NAME: "model-provider:openai-api-key",
+                    metadata_keys.CLI_AGENT_TYPE: "codex",
+                    metadata_keys.FIREWALL_BILLABLE: True,
+                    metadata_keys.MODEL_USAGE_PROVIDER: "gpt-5.5",
                 },
                 "model_sse_usage_finish",
                 id="model-sse",
@@ -881,9 +882,9 @@ class TestReleaseResponseStreamState:
                 "/2/tweets",
                 "application/json",
                 {
-                    "firewall_name": "x",
-                    "firewall_billable": True,
-                    "original_url": "https://api.x.com/2/tweets",
+                    metadata_keys.FIREWALL_NAME: "x",
+                    metadata_keys.FIREWALL_BILLABLE: True,
+                    metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets",
                 },
                 "connector_response_finish",
                 id="x-json",
@@ -893,9 +894,9 @@ class TestReleaseResponseStreamState:
                 "/2/tweets/search/stream",
                 "application/json",
                 {
-                    "firewall_name": "x",
-                    "firewall_billable": True,
-                    "original_url": "https://api.x.com/2/tweets/search/stream",
+                    metadata_keys.FIREWALL_NAME: "x",
+                    metadata_keys.FIREWALL_BILLABLE: True,
+                    metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets/search/stream",
                 },
                 "connector_response_finish",
                 id="x-ndjson",
@@ -924,8 +925,8 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert finish_key not in flow.metadata
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert flow.response.stream is False
 
     def test_unconfigured_flow_is_noop(self, real_flow):
@@ -955,14 +956,14 @@ class TestReleaseResponseStreamState:
 
         assert flow.response.stream is False
         assert "_vm0_response_stream_callback" not in flow.metadata
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_release_after_response_is_removed_still_drops_metadata(self, real_flow):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
@@ -977,6 +978,6 @@ class TestReleaseResponseStreamState:
 
         assert flow.response is None
         assert "_vm0_response_stream_callback" not in flow.metadata
-        assert "stream_buffer" not in flow.metadata
-        assert "stream_buffer_state" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata

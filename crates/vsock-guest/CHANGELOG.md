@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.8](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.7...vsock-guest-v0.19.8) (2026-06-26)
+
+
+### Performance Improvements
+
+* write exec stream chunks directly ([#19023](https://github.com/vm0-ai/vm0/issues/19023)) ([cc35233](https://github.com/vm0-ai/vm0/commit/cc3523354f8702d8fbfe47e9da77e7c2cd53e45f))
+
 ## [0.19.7](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.6...vsock-guest-v0.19.7) (2026-06-25)
 
 

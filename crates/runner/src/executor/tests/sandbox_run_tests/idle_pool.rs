@@ -3,8 +3,7 @@ use super::*;
 #[tokio::test]
 async fn idle_pool_park_and_reuse_cycle() {
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
     };
 
     let dir = tempfile::tempdir().unwrap();
@@ -34,17 +33,10 @@ async fn idle_pool_park_and_reuse_cycle() {
         max_idle: 0,
     });
 
-    let entry = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-        sandbox,
-        factory: std::sync::Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-        cli_agent_session_id: "test-session".into(),
-        sandbox_id: SandboxId::new_v4(),
-        profile_name: "vm0/default".into(),
-        device_rate_limits: None,
-        budget_lease: test_budget_lease(),
-        source_ip: outcome.source_ip,
-        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-    });
+    let entry = ParkedIdleCandidateBuilder::new("test-session", test_budget_lease())
+        .with_sandbox(sandbox)
+        .with_source_ip(outcome.source_ip)
+        .build();
 
     let result = pool.park(entry);
     assert!(matches!(result, ParkResult::Parked));
@@ -80,9 +72,7 @@ async fn idle_pool_park_and_reuse_cycle() {
 
 #[tokio::test]
 async fn idle_pool_profile_mismatch_returns_none() {
-    use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
-    };
+    use crate::idle_pool::{IdlePool, IdlePoolConfig, test_support::ParkedIdleCandidateBuilder};
 
     let mut pool = IdlePool::new(IdlePoolConfig {
         default_timeout: std::time::Duration::from_secs(300),
@@ -90,19 +80,9 @@ async fn idle_pool_profile_mismatch_returns_none() {
     });
 
     // Park with profile "vm0/default"
-    let entry = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
-        sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
-        factory: std::sync::Arc::new(
-            Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-        ),
-        cli_agent_session_id: "test-session".into(),
-        sandbox_id: SandboxId::new_v4(),
-        profile_name: "vm0/default".into(),
-        device_rate_limits: None,
-        budget_lease: test_budget_lease(),
-        source_ip: "10.0.0.1".into(),
-        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
-    });
+    let entry = ParkedIdleCandidateBuilder::new("test-session", test_budget_lease())
+        .with_mock_sandbox_name("test")
+        .build();
     let _ = pool.park(entry);
 
     // Take and verify profile

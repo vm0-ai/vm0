@@ -140,6 +140,10 @@ function buildPresentationGenerationTemplatePrompt(
         ? [`- Template preview URL: ${generationTemplate.selection.previewUrl}`]
         : []),
       "",
+      "Hard rules for presentation template references and media:",
+      "- Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
+      "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
+      "",
       "When you produce a presentation from the user's request:",
       `- Run: zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"`,
       ...(colorSystem
@@ -147,6 +151,7 @@ function buildPresentationGenerationTemplatePrompt(
             `- Apply the selected color system (${colorSystem.id}) when authoring the deck.`,
           ]
         : []),
+      "- After generating the final HTML deck, from the workspace root run: `npm install --no-save --no-package-lock playwright && node ./generated/resources/presentation-runtime/html-ppt-deck-tools/qa-deck.mjs <output-dir>/index.html`. Fix failures before hosting.",
       "- Follow the returned authoring packet. For a static HTML presentation, publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
       "- If a flag above no longer applies, run `zero generate presentation -h` to discover the current options.",
     ].join("\n"),

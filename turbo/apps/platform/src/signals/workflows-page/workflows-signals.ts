@@ -5,19 +5,36 @@ import {
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
   type GmailNewMessageEventConfig,
-  type ZeroWorkflowCreateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
   type ZeroWorkflowUpdateRequest,
+  type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { pathParams$ } from "../route.ts";
+import {
+  pathParams$,
+  replaceSearchParams$,
+  searchParams$,
+  updateSearchParams$,
+} from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+
+type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
+const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
+
+interface WorkflowDetailFileDraft {
+  readonly workflowId: string;
+  readonly filePath: string | null;
+  readonly sourceContent: string;
+  readonly content: string;
+}
 
 /**
  * The workflow uuid for the active detail route, or null elsewhere.
@@ -33,8 +50,17 @@ export const currentWorkflowId$ = computed((get): string | null => {
 const internalWorkflowReload$ = state(0);
 
 const internalSelectedFilePath$ = state<string | null>(null);
+const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
+const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalWorkflowSearch$ = state("");
 const internalEditingGmailTriggerId$ = state<string | null>(null);
+const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
+  null,
+);
+const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
+  null,
+);
+const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
 
 export const workflowSearch$ = computed((get) => {
   return get(internalWorkflowSearch$);
@@ -44,13 +70,106 @@ export const setWorkflowSearch$ = command(({ set }, value: string) => {
   set(internalWorkflowSearch$, value);
 });
 
+export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+    WORKFLOW_TRIGGER_SIDEBAR_VALUE
+  );
+});
+
+export const setWorkflowDetailTriggerSidebarOpen$ = command(
+  ({ get, set }, open: boolean) => {
+    const params = new URLSearchParams(get(searchParams$));
+    const currentlyOpen =
+      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
+      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
+    if (open === currentlyOpen) {
+      return;
+    }
+    if (open) {
+      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
+      set(updateSearchParams$, params);
+      return;
+    }
+
+    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
+    set(internalEditingGmailTriggerId$, null);
+    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+    set(internalWorkflowTriggerCreateDialog$, null);
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const workflowActionDialog$ = computed((get) => {
+  return get(internalWorkflowActionDialog$);
+});
+
+export const setWorkflowActionDialog$ = command(
+  ({ set }, dialog: WorkflowDetailActionDialog) => {
+    set(internalWorkflowActionDialog$, dialog);
+  },
+);
+
+export const workflowFileDraft$ = computed((get) => {
+  return get(internalWorkflowFileDraft$);
+});
+
+export const setWorkflowFileDraft$ = command(
+  ({ set }, draft: WorkflowDetailFileDraft | null) => {
+    set(internalWorkflowFileDraft$, draft);
+  },
+);
+
+export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalSelectedFilePath$, null);
+  set(internalWorkflowActionDialog$, null);
+  set(internalWorkflowFileDraft$, null);
+  set(internalEditingGmailTriggerId$, null);
+  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+  set(internalWorkflowTriggerCreateDialog$, null);
+  set(internalScheduleTriggerType$, "cron");
+});
+
 export const editingGmailTriggerId$ = computed((get) => {
   return get(internalEditingGmailTriggerId$);
+});
+
+export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
+  return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
 });
 
 export const setEditingGmailTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingGmailTriggerId$, triggerId);
+  },
+);
+
+export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
+  },
+);
+
+export const workflowTriggerCreateDialog$ = computed((get) => {
+  return get(internalWorkflowTriggerCreateDialog$);
+});
+
+export const setWorkflowTriggerCreateDialog$ = command(
+  ({ set }, dialog: "schedule" | "gmail" | null) => {
+    set(internalWorkflowTriggerCreateDialog$, dialog);
+    if (dialog === "schedule") {
+      set(internalScheduleTriggerType$, "cron");
+    }
+  },
+);
+
+export const scheduleTriggerType$ = computed((get) => {
+  return get(internalScheduleTriggerType$);
+});
+
+export const setScheduleTriggerType$ = command(
+  ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
+    set(internalScheduleTriggerType$, scheduleType);
   },
 );
 
@@ -73,16 +192,6 @@ function matchesWorkflowSearch(
     .includes(search);
 }
 
-export const filteredVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    const workflows = await get(allVisibleWorkflows$);
-    const search = get(internalWorkflowSearch$).trim().toLowerCase();
-    return workflows.filter((workflow) => {
-      return matchesWorkflowSearch(workflow, search);
-    });
-  },
-);
-
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
   return get(internalSelectedFilePath$);
@@ -100,19 +209,6 @@ const reloadWorkflows$ = command(({ set }) => {
     return prev + 1;
   });
 });
-
-/**
- * The user's visible workflows across every agent. Used by the read-only
- * cross-agent index at `/workflows`.
- */
-const allVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    get(internalWorkflowReload$);
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(client.list(), [200], { toast: false });
-    return result.body;
-  },
-);
 
 /**
  * Factory for a single agent's visible workflows (public ∪ the caller's own
@@ -143,7 +239,33 @@ function createAgentWorkflowsFactory(): (
   };
 }
 
-export const agentWorkflows = createAgentWorkflowsFactory();
+const agentWorkflows = createAgentWorkflowsFactory();
+
+function createFilteredAgentWorkflowsFactory(): (
+  agentId: string,
+) => Computed<Promise<readonly ZeroWorkflowSummary[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly ZeroWorkflowSummary[]>>
+  >();
+  return (agentId: string) => {
+    const existing = cache.get(agentId);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      const workflows = await get(agentWorkflows(agentId));
+      const search = get(internalWorkflowSearch$).trim().toLowerCase();
+      return workflows.filter((workflow) => {
+        return matchesWorkflowSearch(workflow, search);
+      });
+    });
+    cache.set(agentId, atom$);
+    return atom$;
+  };
+}
+
+export const agentVisibleWorkflows$ = createFilteredAgentWorkflowsFactory();
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow
@@ -193,23 +315,6 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
-
-export const createWorkflow$ = command(
-  async (
-    { get, set },
-    input: ZeroWorkflowCreateRequest,
-    signal: AbortSignal,
-  ): Promise<ZeroWorkflowSummary> => {
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const result = await accept(
-      client.create({ body: input, fetchOptions: { signal } }),
-      [201],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-    return result.body;
-  },
-);
 
 export const updateWorkflow$ = command(
   async (
@@ -415,6 +520,7 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     { get, set },
     input: {
       triggerId: string;
+      unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
       unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
     },
     signal: AbortSignal,
@@ -423,7 +529,12 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     await accept(
       client.setPermissionPolicy({
         params: { id: input.triggerId },
-        body: { unattendedPermissionPolicy: input.unattendedPermissionPolicy },
+        body: {
+          ...(input.unattendedConnectorRefs !== undefined
+            ? { unattendedConnectorRefs: input.unattendedConnectorRefs }
+            : {}),
+          unattendedPermissionPolicy: input.unattendedPermissionPolicy,
+        },
         fetchOptions: { signal },
       }),
       [200],
@@ -442,16 +553,5 @@ export const deleteWorkflowTrigger$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
-  },
-);
-
-export const runWorkflowTrigger$ = command(
-  async ({ get }, triggerId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.run({ params: { id: triggerId }, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
   },
 );

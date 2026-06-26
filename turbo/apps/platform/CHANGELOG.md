@@ -1,5 +1,179 @@
 # Changelog
 
+## [0.494.0](https://github.com/vm0-ai/vm0/compare/app-v0.493.3...app-v0.494.0) (2026-06-26)
+
+
+### Features
+
+* move workflows into agent detail ([#19031](https://github.com/vm0-ai/vm0/issues/19031)) ([9d49641](https://github.com/vm0-ai/vm0/commit/9d496411e92044dce94b6038b6bf26a363d076bd))
+
+
+### Refactoring
+
+* remove typescript firewall runtime loader ([#19027](https://github.com/vm0-ai/vm0/issues/19027)) ([a2c7b0e](https://github.com/vm0-ai/vm0/commit/a2c7b0e2cd7c484ccb13a0f85864305c086dc5af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.4
+    * @vm0/connectors bumped to 1.108.6
+    * @vm0/core bumped to 8.370.9
+
+## [0.493.3](https://github.com/vm0-ai/vm0/compare/app-v0.493.2...app-v0.493.3) (2026-06-26)
+
+
+### Bug Fixes
+
+* preserve mobile chat safe area ([#19017](https://github.com/vm0-ai/vm0/issues/19017)) ([169a5db](https://github.com/vm0-ai/vm0/commit/169a5db2d0c20ffffebc609c110106a6e0262a16))
+* render activity thinking blocks ([#19018](https://github.com/vm0-ai/vm0/issues/19018)) ([edd6970](https://github.com/vm0-ai/vm0/commit/edd6970463c295307aaca893973579aca87744b5))
+
+
+### Refactoring
+
+* remove MobileSingleLineComposer/CustomConnectorProposals switches and enable ChatRunGroupFolding ([#18995](https://github.com/vm0-ai/vm0/issues/18995)) ([1f74dc2](https://github.com/vm0-ai/vm0/commit/1f74dc21392f011239b88b3472092df4909762b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.3
+    * @vm0/connectors bumped to 1.108.5
+    * @vm0/core bumped to 8.370.8
+
+## [0.493.2](https://github.com/vm0-ai/vm0/compare/app-v0.493.1...app-v0.493.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* pan image lightbox on ordinary wheel ([#19002](https://github.com/vm0-ai/vm0/issues/19002)) ([e51486f](https://github.com/vm0-ai/vm0/commit/e51486fc62ccb1bc75ecc85d7a410d1dfd48d70e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.7
+
+## [0.493.1](https://github.com/vm0-ai/vm0/compare/app-v0.493.0...app-v0.493.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* stabilize image lightbox max zoom ([#18992](https://github.com/vm0-ai/vm0/issues/18992)) ([fa537f8](https://github.com/vm0-ai/vm0/commit/fa537f806684fa8f2313cc70e5f5b06201e77664))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.2
+    * @vm0/connectors bumped to 1.108.4
+    * @vm0/core bumped to 8.370.6
+
+## [0.493.0](https://github.com/vm0-ai/vm0/compare/app-v0.492.1...app-v0.493.0) (2026-06-25)
+
+
+### Features
+
+* redesign workflow detail workspace ([#18985](https://github.com/vm0-ai/vm0/issues/18985)) ([ff808f7](https://github.com/vm0-ai/vm0/commit/ff808f7ad3e40a585998488ed055317adfc60a73))
+
+
+### Bug Fixes
+
+* roll up run group usage ([#18989](https://github.com/vm0-ai/vm0/issues/18989)) ([b46db5f](https://github.com/vm0-ai/vm0/commit/b46db5f29021cf1665d238cbeb1c9fa023e9a8be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+
+## [0.492.1](https://github.com/vm0-ai/vm0/compare/app-v0.492.0...app-v0.492.1) (2026-06-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.1
+    * @vm0/connectors bumped to 1.108.3
+    * @vm0/core bumped to 8.370.4
+
+## [0.492.0](https://github.com/vm0-ai/vm0/compare/app-v0.491.2...app-v0.492.0) (2026-06-25)
+
+
+### Features
+
+* add workflow trigger connector access ([#18959](https://github.com/vm0-ai/vm0/issues/18959)) ([2302afb](https://github.com/vm0-ai/vm0/commit/2302afb6169ec835f3f9782c99c0573a598132b9))
+* add workflow trigger permission drawer ([#18947](https://github.com/vm0-ai/vm0/issues/18947)) ([8a52018](https://github.com/vm0-ai/vm0/commit/8a52018f7e3e1e9ec6b7d914cb50ef512024bc59))
+* simplify workflow trigger creation ([#18951](https://github.com/vm0-ai/vm0/issues/18951)) ([48d1eab](https://github.com/vm0-ai/vm0/commit/48d1eab7f0644ec3938618c22a347105fcdfc80d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.0
+    * @vm0/connectors bumped to 1.108.2
+    * @vm0/core bumped to 8.370.3
+
+## [0.491.2](https://github.com/vm0-ai/vm0/compare/app-v0.491.1...app-v0.491.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* simplify workflow detail navigation ([#18942](https://github.com/vm0-ai/vm0/issues/18942)) ([e1175ca](https://github.com/vm0-ai/vm0/commit/e1175ca8bc19e8f59c68fca48d41b08cf352460d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.3
+    * @vm0/core bumped to 8.370.2
+
+## [0.491.1](https://github.com/vm0-ai/vm0/compare/app-v0.491.0...app-v0.491.1) (2026-06-25)
+
+
+### Refactoring
+
+* move firewall registry to generator manifest ([#18930](https://github.com/vm0-ai/vm0/issues/18930)) ([2e4271b](https://github.com/vm0-ai/vm0/commit/2e4271b120828ac2ed0137e30e3ab9df5ea19f56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.2
+    * @vm0/connectors bumped to 1.108.1
+    * @vm0/core bumped to 8.370.1
+
+## [0.491.0](https://github.com/vm0-ai/vm0/compare/app-v0.490.1...app-v0.491.0) (2026-06-25)
+
+
+### Features
+
+* add html artifact edit feature switch ([#18894](https://github.com/vm0-ai/vm0/issues/18894)) ([6797974](https://github.com/vm0-ai/vm0/commit/6797974850c27f69612175bd33a0d5dbd2137a5e))
+
+
+### Bug Fixes
+
+* align trigger permissions with metadata defaults ([#18929](https://github.com/vm0-ai/vm0/issues/18929)) ([e4bbbb1](https://github.com/vm0-ai/vm0/commit/e4bbbb19502919a33655c19ec9bf1b7052c66a51))
+* cap connectors popover list height so it scrolls ([#18868](https://github.com/vm0-ai/vm0/issues/18868)) ([a4ccebc](https://github.com/vm0-ai/vm0/commit/a4ccebc18c438de91c01e6f39d8dd3a549721668))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.114.1
+    * @vm0/connectors bumped to 1.108.0
+    * @vm0/core bumped to 8.370.0
+
 ## [0.490.1](https://github.com/vm0-ai/vm0/compare/app-v0.490.0...app-v0.490.1) (2026-06-25)
 
 

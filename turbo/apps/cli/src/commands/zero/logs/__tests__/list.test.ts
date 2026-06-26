@@ -16,7 +16,7 @@ import chalk from "chalk";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
 const mockLogEntry = {
-  id: "abc12345-1234-1234-1234-123456789abc",
+  id: "550e8400-e29b-41d4-a716-446655440001",
   sessionId: null,
   agentId: AGENT_ID,
   displayName: "My Agent",
@@ -71,10 +71,28 @@ describe("zero logs list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345-1234-1234-1234-123456789abc");
+    expect(logCalls).toContain("550e8400-e29b-41d4-a716-446655440001");
     expect(logCalls).toContain("My Agent");
     expect(logCalls).toContain("completed");
     expect(logCalls).toContain("2026-04-01");
+  });
+
+  it("should tolerate invalid run creation timestamps", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs", () => {
+        return HttpResponse.json({
+          data: [{ ...mockLogEntry, createdAt: "not-a-timestamp" }],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters: emptyFilters,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("invalid-date");
+    expect(logCalls).toContain("My Agent");
   });
 
   it("should handle empty run list", async () => {
@@ -110,6 +128,24 @@ describe("zero logs list command", () => {
     await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
 
     expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
+  });
+
+  it("should reject non-UUID agent filter values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--agent", "agent-123"]),
+    ).rejects.toThrow("process.exit called");
+
+    let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
+
+    mockConsoleError.mockClear();
+
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--agent", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid agent ID");
   });
 
   it("should pass status filter to API", async () => {
@@ -186,6 +222,56 @@ describe("zero logs list command", () => {
     const sinceValue = Number(capturedUrl?.searchParams.get("since"));
     expect(sinceValue).toBeGreaterThan(Date.now() - 2 * 60 * 60 * 1000);
     expect(sinceValue).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("should pass epoch since filter to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 0 },
+          filters: emptyFilters,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync([
+      "node",
+      "cli",
+      "--since",
+      "1970-01-01T00:00:00Z",
+    ]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBe("0");
+  });
+
+  it("should reject partial numeric --limit values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", "1abc"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
+  });
+
+  it("should reject empty --limit values", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", ""]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
+  });
+
+  it("should reject --limit values above the API maximum", async () => {
+    await expect(
+      listCommand.parseAsync(["node", "cli", "--limit", "101"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("--limit must be between 1 and 100");
   });
 
   it("should fall back to agentId when displayName is null", async () => {

@@ -560,9 +560,9 @@ pub enum ProcessOutputMode {
     },
     /// Request real-time stdout delivery through a bounded host receiver.
     ///
-    /// This mode requests stdout streaming only. Provider-specific stderr
-    /// handling may differ; the current Firecracker-backed provider discards
-    /// stderr in stream mode instead of streaming or capturing it.
+    /// By default this mode requests stdout streaming only. Callers that need
+    /// startup diagnostics can request a small captured stderr tail without
+    /// changing stdout streaming behavior.
     Stream {
         /// Maximum stdout bytes the guest should emit as stream chunks.
         ///
@@ -577,6 +577,10 @@ pub enum ProcessOutputMode {
         /// guarantee that a slow caller applies backpressure to the guest; host
         /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
         queue_capacity: usize,
+        /// Optional captured stderr byte limit retained in [`ProcessExit`].
+        ///
+        /// When unset, providers may discard stderr in stream mode.
+        stderr_capture_limit_bytes: Option<u32>,
     },
 }
 
@@ -617,6 +621,17 @@ impl ProcessOutputMode {
             stream_limit_bytes: Self::DEFAULT_STREAM_LIMIT_BYTES,
             chunk_limit_bytes: Self::DEFAULT_CHUNK_LIMIT_BYTES,
             queue_capacity: Self::DEFAULT_QUEUE_CAPACITY,
+            stderr_capture_limit_bytes: None,
+        }
+    }
+
+    /// Return stdout stream mode with bounded defaults and captured stderr.
+    pub const fn stream_with_stderr_capture(stderr_capture_limit_bytes: u32) -> Self {
+        Self::Stream {
+            stream_limit_bytes: Self::DEFAULT_STREAM_LIMIT_BYTES,
+            chunk_limit_bytes: Self::DEFAULT_CHUNK_LIMIT_BYTES,
+            queue_capacity: Self::DEFAULT_QUEUE_CAPACITY,
+            stderr_capture_limit_bytes: Some(stderr_capture_limit_bytes),
         }
     }
 
@@ -786,6 +801,20 @@ mod tests {
                 stream_limit_bytes: ProcessOutputMode::DEFAULT_STREAM_LIMIT_BYTES,
                 chunk_limit_bytes: ProcessOutputMode::DEFAULT_CHUNK_LIMIT_BYTES,
                 queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
+                stderr_capture_limit_bytes: None,
+            }
+        );
+    }
+
+    #[test]
+    fn process_output_mode_stream_with_stderr_capture_uses_bounded_defaults() {
+        assert_eq!(
+            ProcessOutputMode::stream_with_stderr_capture(4096),
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: ProcessOutputMode::DEFAULT_STREAM_LIMIT_BYTES,
+                chunk_limit_bytes: ProcessOutputMode::DEFAULT_CHUNK_LIMIT_BYTES,
+                queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
+                stderr_capture_limit_bytes: Some(4096),
             }
         );
     }

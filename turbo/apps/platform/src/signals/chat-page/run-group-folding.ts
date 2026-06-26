@@ -99,6 +99,82 @@ function usageByRunIdFromGroups(
   return usageByRunId;
 }
 
+interface UsageBreakdownAccumulator {
+  readonly kind: string;
+  credits: number;
+  readonly providers: Map<string, number>;
+}
+
+function mergeUsagePayloads(
+  usages: readonly ChatMessageUsagePayload[],
+): ChatMessageUsagePayload | undefined {
+  if (usages.length === 0) {
+    return undefined;
+  }
+
+  let totalCredits = 0;
+  let settledAt = "";
+  const breakdownByKind = new Map<string, UsageBreakdownAccumulator>();
+
+  for (const usage of usages) {
+    totalCredits += usage.totalCredits;
+    settledAt = usage.settledAt;
+
+    for (const kindBreakdown of usage.breakdown) {
+      let accumulator = breakdownByKind.get(kindBreakdown.kind);
+      if (accumulator === undefined) {
+        accumulator = {
+          kind: kindBreakdown.kind,
+          credits: 0,
+          providers: new Map(),
+        };
+        breakdownByKind.set(kindBreakdown.kind, accumulator);
+      }
+
+      accumulator.credits += kindBreakdown.credits;
+
+      for (const providerBreakdown of kindBreakdown.providers) {
+        accumulator.providers.set(
+          providerBreakdown.provider,
+          (accumulator.providers.get(providerBreakdown.provider) ?? 0) +
+            providerBreakdown.credits,
+        );
+      }
+    }
+  }
+
+  return {
+    version: 1,
+    totalCredits,
+    settledAt,
+    breakdown: Array.from(breakdownByKind.values()).map((accumulator) => {
+      return {
+        kind: accumulator.kind,
+        credits: accumulator.credits,
+        providers: Array.from(accumulator.providers.entries()).map(
+          ([provider, credits]) => {
+            return { provider, credits };
+          },
+        ),
+      };
+    }),
+  };
+}
+
+function mergedUsageForRunSegments(
+  runSegments: readonly GroupedRunSegment[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): ChatMessageUsagePayload | undefined {
+  const usages: ChatMessageUsagePayload[] = [];
+  for (const segment of runSegments) {
+    const usage = usageByRunId.get(segment.runId);
+    if (usage !== undefined) {
+      usages.push(usage);
+    }
+  }
+  return mergeUsagePayloads(usages);
+}
+
 function attachUsageToGroups(
   groups: readonly GroupedChatMessageGroup[],
   usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
@@ -399,7 +475,12 @@ function buildFoldSection(
   const hiddenGroups = hiddenSegments.flatMap((item) => {
     return segmentGroups(item, usageByRunId);
   });
-  const collapsedGroups = segmentGroups(latestSegment, usageByRunId);
+  const collapsedUsageByRunId = new Map(usageByRunId);
+  const collapsedUsage = mergedUsageForRunSegments(runSegments, usageByRunId);
+  if (collapsedUsage !== undefined) {
+    collapsedUsageByRunId.set(latestSegment.runId, collapsedUsage);
+  }
+  const collapsedGroups = segmentGroups(latestSegment, collapsedUsageByRunId);
   const expandedGroups = runSegments.flatMap((item) => {
     return segmentGroups(item, usageByRunId);
   });

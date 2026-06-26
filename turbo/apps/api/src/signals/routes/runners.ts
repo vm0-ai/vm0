@@ -5,6 +5,7 @@ import {
   runnersJobClaimContract,
   runnersPollContract,
   storedExecutionContextSchema,
+  type ExecutionContext,
   type HeldSessionState,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
@@ -24,7 +25,7 @@ import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import { recordSandboxOperation } from "../external/sandbox-op-log";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -37,10 +38,103 @@ import { tapError } from "../utils";
 
 const L = logger("Runners");
 
+type SandboxOperationAttrs = Parameters<
+  typeof recordSandboxOperations
+>[0][number];
+
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
+
+type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimRouteTimingActionType =
+  | "claim_route_request_prepare"
+  | "claim_route_lookup_authorization"
+  | "claim_route_context_parse"
+  | "claim_route_feature_switch_context"
+  | "claim_route_secret_materialization"
+  | "claim_route_response_assembly"
+  | "claim_route_transition_running"
+  | "claim_route_transition_lock_run"
+  | "claim_route_transition_lock_queue_job"
+  | "claim_route_transition_update_run"
+  | "claim_route_transition_delete_queue_job";
+
+interface ClaimRouteTimingRecord {
+  readonly actionType: ClaimRouteTimingActionType;
+  readonly spanKind: ClaimRouteTimingSpanKind;
+  readonly durationMs: number;
+  readonly timestamp: string;
+}
+
+class ClaimRouteTimingCollector {
+  private readonly records: ClaimRouteTimingRecord[] = [];
+
+  recordElapsed(
+    actionType: ClaimRouteTimingActionType,
+    spanKind: ClaimRouteTimingSpanKind,
+    startedAt: number,
+    finishedAt: number = now(),
+  ): void {
+    this.records.push({
+      actionType,
+      spanKind,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      timestamp: new Date(finishedAt).toISOString(),
+    });
+  }
+
+  measure<T>(
+    actionType: ClaimRouteTimingActionType,
+    spanKind: ClaimRouteTimingSpanKind,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = now();
+    return operation().finally(() => {
+      this.recordElapsed(actionType, spanKind, startedAt);
+    });
+  }
+
+  flush(args: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly authType: RunnerAuthContext["type"];
+    readonly discoverySource: string | undefined;
+    readonly pollReason: string | undefined;
+  }): void {
+    const records = this.records.splice(0);
+    const dimensions: Record<string, string> = {
+      runner_group: args.runnerGroup,
+      profile: args.profile,
+      auth_type: args.authType,
+    };
+    if (args.discoverySource) {
+      dimensions.discovery_source = args.discoverySource;
+    }
+    if (args.pollReason) {
+      dimensions.poll_reason = args.pollReason;
+    }
+
+    recordSandboxOperations(
+      records.map((record) => {
+        return {
+          sandboxType: "runner",
+          actionType: record.actionType,
+          durationMs: record.durationMs,
+          success: true,
+          runId: args.runId,
+          timestamp: record.timestamp,
+          dimensions: {
+            ...dimensions,
+            span_kind: record.spanKind,
+          },
+        };
+      }),
+    );
+  }
+}
 
 interface ValidationIssueLike {
   readonly path: readonly PropertyKey[];
@@ -215,7 +309,63 @@ function uniqueHeldCliAgentSessionIds(
   ];
 }
 
+function recordPollTimingMetrics(args: {
+  readonly runId: string;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly authType: RunnerAuthContext["type"];
+  readonly pollReason: string | undefined;
+  readonly queueCreatedAtMs: number;
+  readonly pollRequestStartedAtMs: number;
+  readonly pendingJobLookupStartedAtMs: number;
+  readonly pendingJobLookupFinishedAtMs: number;
+  readonly pollResponseAtMs: number;
+}): void {
+  const dimensions: Record<string, string> = {
+    runner_group: args.runnerGroup,
+    profile: args.profile,
+    auth_type: args.authType,
+  };
+  if (args.pollReason) {
+    dimensions.poll_reason = args.pollReason;
+  }
+
+  recordSandboxOperations([
+    {
+      sandboxType: "runner",
+      actionType: "runner_poll_pending_job_lookup",
+      durationMs: Math.max(
+        0,
+        args.pendingJobLookupFinishedAtMs - args.pendingJobLookupStartedAtMs,
+      ),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_poll_request_to_job_response",
+      durationMs: Math.max(
+        0,
+        args.pollResponseAtMs - args.pollRequestStartedAtMs,
+      ),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_queue_to_poll_response",
+      durationMs: Math.max(0, args.pollResponseAtMs - args.queueCreatedAtMs),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+  ]);
+}
+
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const pollRequestStartedAtMs = now();
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
   if (!auth) {
@@ -270,6 +420,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       : [runnerJobQueue.createdAt];
 
   const db = set(writeDb$);
+  const pendingJobLookupStartedAtMs = now();
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -279,6 +430,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
+      createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
@@ -286,10 +438,25 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .orderBy(...orderClauses)
     .limit(1);
   signal.throwIfAborted();
+  const pendingJobLookupFinishedAtMs = now();
 
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
+
+  const pollResponseAtMs = now();
+  recordPollTimingMetrics({
+    runId: pendingJob.runId,
+    runnerGroup: group,
+    profile: pendingJob.profile,
+    authType: auth.type,
+    pollReason: body.data.telemetry?.pollReason,
+    queueCreatedAtMs: pendingJob.createdAt.getTime(),
+    pollRequestStartedAtMs,
+    pendingJobLookupStartedAtMs,
+    pendingJobLookupFinishedAtMs,
+    pollResponseAtMs,
+  });
 
   return {
     status: 200 as const,
@@ -408,6 +575,10 @@ type ClaimTransitionResult =
   | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
+type ClaimedTransitionResult = Extract<
+  ClaimTransitionResult,
+  { readonly status: "claimed" }
+>;
 
 interface LockedClaimRunRow extends Record<string, unknown> {
   readonly id: string;
@@ -455,20 +626,41 @@ async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
   signal: AbortSignal,
+  timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
   return await db.transaction(async (tx) => {
-    const run = await lockClaimRun(tx, runId);
+    const run = await timing.measure(
+      "claim_route_transition_lock_run",
+      "nested",
+      async () => {
+        return await lockClaimRun(tx, runId);
+      },
+    );
     signal.throwIfAborted();
     if (!run) {
       return { status: "run-not-found" };
     }
     if (run.status !== "pending") {
-      await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+      await timing.measure(
+        "claim_route_transition_delete_queue_job",
+        "nested",
+        async () => {
+          await tx
+            .delete(runnerJobQueue)
+            .where(eq(runnerJobQueue.runId, runId));
+        },
+      );
       signal.throwIfAborted();
       return { status: "run-not-found" };
     }
 
-    const job = await lockRunnerJob(tx, runId);
+    const job = await timing.measure(
+      "claim_route_transition_lock_queue_job",
+      "nested",
+      async () => {
+        return await lockRunnerJob(tx, runId);
+      },
+    );
     signal.throwIfAborted();
     if (!job || job.isExpired) {
       return { status: "job-not-found" };
@@ -478,21 +670,33 @@ async function transitionClaimedJobToRunning(
     }
 
     const claimedAt = nowDate();
-    const [updatedRun] = await tx
-      .update(agentRuns)
-      .set({
-        status: "running",
-        startedAt: claimedAt,
-        lastHeartbeatAt: claimedAt,
-      })
-      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
-      .returning({ id: agentRuns.id });
+    const [updatedRun] = await timing.measure(
+      "claim_route_transition_update_run",
+      "nested",
+      async () => {
+        return await tx
+          .update(agentRuns)
+          .set({
+            status: "running",
+            startedAt: claimedAt,
+            lastHeartbeatAt: claimedAt,
+          })
+          .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
+          .returning({ id: agentRuns.id });
+      },
+    );
     signal.throwIfAborted();
     if (!updatedRun) {
       throw new Error("Locked pending run was not claimed");
     }
 
-    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+    await timing.measure(
+      "claim_route_transition_delete_queue_job",
+      "nested",
+      async () => {
+        await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+      },
+    );
     signal.throwIfAborted();
 
     return { status: "claimed" as const, claimedAt };
@@ -574,6 +778,116 @@ async function secretValuesForRunner(
   });
 }
 
+async function buildClaimResponseBody(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly storedContext: StoredExecutionContext;
+  readonly timing: ClaimRouteTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<ExecutionContext> {
+  const featureSwitchContext = await args.timing.measure(
+    "claim_route_feature_switch_context",
+    "top_level",
+    () => {
+      return loadUserFeatureSwitchContext(
+        args.db,
+        args.run.orgId,
+        args.run.userId,
+      );
+    },
+  );
+  args.signal.throwIfAborted();
+  const secretValues = await args.timing.measure(
+    "claim_route_secret_materialization",
+    "top_level",
+    () => {
+      return secretValuesForRunner(args.storedContext, featureSwitchContext);
+    },
+  );
+  args.signal.throwIfAborted();
+  const responseAssemblyStartedAt = now();
+  const sandboxToken = generateSandboxToken(
+    args.run.userId,
+    args.run.id,
+    args.run.orgId,
+  );
+  const responseBody = {
+    ...args.storedContext,
+    runId: args.run.id,
+    prompt: args.run.prompt,
+    appendSystemPrompt: args.run.appendSystemPrompt,
+    agentComposeVersionId: args.run.agentComposeVersionId,
+    vars: (args.run.vars as Record<string, string>) ?? null,
+    checkpointId: args.run.resumedFromCheckpointId ?? null,
+    sandboxToken,
+    secretValues,
+  };
+  args.timing.recordElapsed(
+    "claim_route_response_assembly",
+    "top_level",
+    responseAssemblyStartedAt,
+  );
+  return responseBody;
+}
+
+function scheduleSuccessfulClaimSideEffects(args: {
+  readonly jobWithRun: ClaimableJob;
+  readonly authType: RunnerAuthContext["type"];
+  readonly storedContext: StoredExecutionContext;
+  readonly claimRequestStartedAtMs: number;
+  readonly claimResult: ClaimedTransitionResult;
+  readonly telemetry:
+    | {
+        readonly discoverySource?: string;
+        readonly jobDiscoveredToClaimRequestMs?: number;
+        readonly localAdmissionToClaimRequestMs?: number;
+        readonly pollDueToJobDiscoveredMs?: number;
+        readonly pollHttpRequestMs?: number;
+        readonly pollReason?: string;
+      }
+    | undefined;
+  readonly claimRouteTiming: ClaimRouteTimingCollector;
+}): void {
+  const { job, run } = args.jobWithRun;
+  const queueCreatedAtMs = job.createdAt.getTime();
+  scheduleClaimSucceededSideEffects({
+    runId: run.id,
+    userId: run.userId,
+    runnerGroup: job.runnerGroup,
+    profile: job.profile,
+    authType: args.authType,
+    apiToRunnerQueueMs: elapsedSinceApiStartMs(
+      args.storedContext.apiStartTime,
+      queueCreatedAtMs,
+    ),
+    runnerQueueToClaimRequestMs: Math.max(
+      0,
+      args.claimRequestStartedAtMs - queueCreatedAtMs,
+    ),
+    apiToClaimRequestMs: elapsedSinceApiStartMs(
+      args.storedContext.apiStartTime,
+      args.claimRequestStartedAtMs,
+    ),
+    apiToClaimMs: elapsedSinceApiStartMs(
+      args.storedContext.apiStartTime,
+      args.claimResult.claimedAt.getTime(),
+    ),
+    claimRequestToRunningMs: Math.max(
+      0,
+      args.claimResult.claimedAt.getTime() - args.claimRequestStartedAtMs,
+    ),
+    jobDiscoveredToClaimRequestMs:
+      args.telemetry?.jobDiscoveredToClaimRequestMs,
+    localAdmissionToClaimRequestMs:
+      args.telemetry?.localAdmissionToClaimRequestMs,
+    discoverySource: args.telemetry?.discoverySource,
+    pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
+    pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
+    pollReason: args.telemetry?.pollReason,
+    claimRouteTiming: args.claimRouteTiming,
+  });
+}
+
 function scheduleClaimSucceededSideEffects(args: {
   readonly runId: string;
   readonly userId: string;
@@ -587,7 +901,11 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly discoverySource: string | undefined;
+  readonly pollDueToJobDiscoveredMs: number | undefined;
+  readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   waitUntil(
     publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -614,7 +932,11 @@ async function recordClaimTimingMetrics(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly discoverySource: string | undefined;
+  readonly pollDueToJobDiscoveredMs: number | undefined;
+  readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): Promise<void> {
   await Promise.resolve();
   const dimensions: Record<string, string> = {
@@ -622,70 +944,99 @@ async function recordClaimTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
   };
+  if (args.discoverySource) {
+    dimensions.discovery_source = args.discoverySource;
+  }
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_runner_queue",
-    args.apiToRunnerQueueMs,
-    dimensions,
+  recordSandboxOperations(
+    [
+      claimTimingOperation(
+        args.runId,
+        "api_to_runner_queue",
+        args.apiToRunnerQueueMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_queue_to_claim_request",
+        args.runnerQueueToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim_request",
+        args.apiToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "api_to_claim",
+        args.apiToClaimMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "claim_request_to_running",
+        args.claimRequestToRunningMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "job_discovered_to_claim_request",
+        args.jobDiscoveredToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "local_admission_to_claim_request",
+        args.localAdmissionToClaimRequestMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_due_to_job_discovered",
+        args.pollDueToJobDiscoveredMs,
+        dimensions,
+      ),
+      claimTimingOperation(
+        args.runId,
+        "runner_poll_http_request",
+        args.pollHttpRequestMs,
+        dimensions,
+      ),
+    ].filter((operation): operation is SandboxOperationAttrs => {
+      return operation !== undefined;
+    }),
   );
-  recordClaimTimingOperation(
-    args.runId,
-    "runner_queue_to_claim_request",
-    args.runnerQueueToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim_request",
-    args.apiToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "api_to_claim",
-    args.apiToClaimMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "claim_request_to_running",
-    args.claimRequestToRunningMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "job_discovered_to_claim_request",
-    args.jobDiscoveredToClaimRequestMs,
-    dimensions,
-  );
-  recordClaimTimingOperation(
-    args.runId,
-    "local_admission_to_claim_request",
-    args.localAdmissionToClaimRequestMs,
-    dimensions,
-  );
+  args.claimRouteTiming.flush({
+    runId: args.runId,
+    runnerGroup: args.runnerGroup,
+    profile: args.profile,
+    authType: args.authType,
+    discoverySource: args.discoverySource,
+    pollReason: args.pollReason,
+  });
 }
 
-function recordClaimTimingOperation(
+function claimTimingOperation(
   runId: string,
   actionType: string,
   durationMs: number | undefined,
   dimensions: Record<string, string>,
-): void {
+): SandboxOperationAttrs | undefined {
   if (durationMs === undefined) {
-    return;
+    return undefined;
   }
-  recordSandboxOperation({
+  return {
     sandboxType: "runner",
     actionType,
     durationMs,
     success: true,
     runId,
     dimensions,
-  });
+  };
 }
 
 const scheduleClaimFailedSideEffects$ = command(
@@ -729,6 +1080,7 @@ const scheduleClaimFailedSideEffects$ = command(
 
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const claimRequestStartedAtMs = now();
+  const claimRouteTiming = new ClaimRouteTimingCollector();
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
   if (!auth) {
@@ -744,21 +1096,39 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const params = get(pathParamsOf(runnersJobClaimContract.claim));
   const runId = params.id;
   const db = set(writeDb$);
+  claimRouteTiming.recordElapsed(
+    "claim_route_request_prepare",
+    "top_level",
+    claimRequestStartedAtMs,
+  );
 
+  const lookupAuthorizationStartedAt = now();
   const jobWithRun = await getClaimableJob(db, runId, signal);
   if (!isClaimableJob(jobWithRun)) {
     return jobWithRun;
   }
   const authError = claimAuthorizationError(auth, jobWithRun);
+  claimRouteTiming.recordElapsed(
+    "claim_route_lookup_authorization",
+    "top_level",
+    lookupAuthorizationStartedAt,
+  );
   if (authError) {
     return authError;
   }
 
   const run = jobWithRun.run;
 
+  const contextParseStartedAt = now();
   const storedContextResult = storedExecutionContextSchema.safeParse(
     jobWithRun.job.executionContext,
   );
+  claimRouteTiming.recordElapsed(
+    "claim_route_context_parse",
+    "top_level",
+    contextParseStartedAt,
+  );
+  signal.throwIfAborted();
   if (!storedContextResult.success) {
     warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
     const poisonResult = await failPoisonQueuedJob(
@@ -787,31 +1157,28 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const storedContext = storedContextResult.data;
 
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
+  const responseBody = await buildClaimResponseBody({
     db,
-    run.orgId,
-    run.userId,
-  );
-  signal.throwIfAborted();
-  const secretValues = await secretValuesForRunner(
+    run,
     storedContext,
-    featureSwitchContext,
+    timing: claimRouteTiming,
+    signal,
+  });
+  signal.throwIfAborted();
+
+  const claimResult = await claimRouteTiming.measure(
+    "claim_route_transition_running",
+    "top_level",
+    async () => {
+      return await transitionClaimedJobToRunning(
+        db,
+        runId,
+        signal,
+        claimRouteTiming,
+      );
+    },
   );
   signal.throwIfAborted();
-  const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
-  const responseBody = {
-    ...storedContext,
-    runId: run.id,
-    prompt: run.prompt,
-    appendSystemPrompt: run.appendSystemPrompt,
-    agentComposeVersionId: run.agentComposeVersionId,
-    vars: (run.vars as Record<string, string>) ?? null,
-    checkpointId: run.resumedFromCheckpointId ?? null,
-    sandboxToken,
-    secretValues,
-  };
-
-  const claimResult = await transitionClaimedJobToRunning(db, runId, signal);
   if (claimResult.status === "conflict") {
     return conflict("Job was claimed by another runner");
   }
@@ -822,38 +1189,14 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Run not found");
   }
 
-  const queueCreatedAtMs = jobWithRun.job.createdAt.getTime();
-  scheduleClaimSucceededSideEffects({
-    runId,
-    userId: run.userId,
-    runnerGroup: jobWithRun.job.runnerGroup,
-    profile: jobWithRun.job.profile,
+  scheduleSuccessfulClaimSideEffects({
+    jobWithRun,
     authType: auth.type,
-    apiToRunnerQueueMs: elapsedSinceApiStartMs(
-      storedContext.apiStartTime,
-      queueCreatedAtMs,
-    ),
-    runnerQueueToClaimRequestMs: Math.max(
-      0,
-      claimRequestStartedAtMs - queueCreatedAtMs,
-    ),
-    apiToClaimRequestMs: elapsedSinceApiStartMs(
-      storedContext.apiStartTime,
-      claimRequestStartedAtMs,
-    ),
-    apiToClaimMs: elapsedSinceApiStartMs(
-      storedContext.apiStartTime,
-      claimResult.claimedAt.getTime(),
-    ),
-    claimRequestToRunningMs: Math.max(
-      0,
-      claimResult.claimedAt.getTime() - claimRequestStartedAtMs,
-    ),
-    jobDiscoveredToClaimRequestMs:
-      body.data.telemetry?.jobDiscoveredToClaimRequestMs,
-    localAdmissionToClaimRequestMs:
-      body.data.telemetry?.localAdmissionToClaimRequestMs,
-    pollReason: body.data.telemetry?.pollReason,
+    storedContext,
+    claimRequestStartedAtMs,
+    claimResult,
+    telemetry: body.data.telemetry,
+    claimRouteTiming,
   });
 
   return {

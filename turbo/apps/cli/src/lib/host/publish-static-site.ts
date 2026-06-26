@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-
 import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
 import { completeHostedSite, prepareHostedSite } from "../api";
-import { scanStaticSite } from "./static-site";
+import { readStaticSiteFile, scanStaticSite } from "./static-site";
 
 interface PublishStaticSiteProgress {
   readonly phase: "preparing" | "uploading";
@@ -31,7 +29,11 @@ interface PublishStaticSiteOptions {
 export async function publishStaticSite(
   options: PublishStaticSiteOptions,
 ): Promise<PublishStaticSiteResult> {
-  const scan = await scanStaticSite(options.dir);
+  const artifactKind = options.artifactKind ?? "hosted-site";
+  const scan = await scanStaticSite(
+    options.dir,
+    artifactKind === "hosted-site" ? { defaultRobots: "disallow-all" } : {},
+  );
   const totalSize = scan.files.reduce((sum, file) => {
     return sum + file.size;
   }, 0);
@@ -44,7 +46,7 @@ export async function publishStaticSite(
   const prepared = await prepareHostedSite({
     site: options.site,
     ...(options.slugSuffix !== undefined && { slugSuffix: options.slugSuffix }),
-    artifactKind: options.artifactKind ?? "hosted-site",
+    artifactKind,
     spaFallback: Boolean(options.spaFallback),
     files: scan.files.map((file) => {
       return {
@@ -69,7 +71,7 @@ export async function publishStaticSite(
       throw new Error(`Missing upload URL for ${file.path}`);
     }
     options.onProgress?.({ phase: "uploading", path: file.path });
-    const bytes = await readFile(file.absolutePath);
+    const bytes = await readStaticSiteFile(file);
     const response = await fetch(uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": file.contentType },

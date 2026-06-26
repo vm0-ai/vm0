@@ -1447,7 +1447,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
-          "Authorization"
+          "X-Figma-Token"
         ],
         "authQueryParamNames": [],
         "base": "https://api.figma.com",

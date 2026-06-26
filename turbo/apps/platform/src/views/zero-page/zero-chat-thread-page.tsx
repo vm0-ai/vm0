@@ -2667,14 +2667,12 @@ function ChatThreadMessagesMain({
     !skeletonVisible;
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
-  const features = useLastResolved(featureSwitch$);
-  const runGroupFoldingEnabled =
-    features?.[FeatureSwitchKey.ChatRunGroupFolding] ?? false;
   const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
-  const runGroupFolding = runGroupFoldingEnabled
-    ? buildRunGroupFolding(renderedActiveGroups, runGroupExpandedKeys)
-    : null;
+  const runGroupFolding = buildRunGroupFolding(
+    renderedActiveGroups,
+    runGroupExpandedKeys,
+  );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
   const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
@@ -4775,14 +4773,6 @@ function CustomConnectorActionCard({
 }: {
   block: CustomConnectorActionBlock;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled =
-    features?.[FeatureSwitchKey.CustomConnectorProposals] ?? false;
-
-  if (!enabled) {
-    return null;
-  }
-
   return (
     <div
       data-testid="custom-connector-action-card"
@@ -5559,9 +5549,9 @@ function InsufficientCreditsCard() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const requiresPro = tier === "pro-suspend";
+  const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
   const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === null;
+  const isFree = tier === "free" || tier === "limited-free-1" || tier === null;
   const shouldStartProCheckout = requiresPro || isFree;
   const redirecting =
     checkoutLoadable.state === "loading" ||
@@ -5627,12 +5617,17 @@ function InsufficientCreditsCard() {
   );
 }
 
+function isBillingRecoveryError(error: string): boolean {
+  const normalized = error.trim().toLowerCase();
+  return normalized === "insufficient_credits" || normalized === "pro_required";
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
 
-  if (error === "insufficient_credits") {
+  if (isBillingRecoveryError(error)) {
     return <InsufficientCreditsCard />;
   }
 

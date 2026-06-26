@@ -22,10 +22,13 @@ const CURRENT_USER_ID = "test-user-123";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000301";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000401";
 const TRIGGER_ID = "workflow-trigger-perm-editor";
-const PERMISSION_LABEL = "Access workspace analytics data";
+const SLACK_PERMISSION_LABEL = "Access workspace analytics data";
+const GMAIL_DRAFTS_WRITE_LABEL = "Create, update, and delete Gmail drafts.";
+const GMAIL_MESSAGES_SEND_LABEL = "Send Gmail messages directly.";
 
 function trigger(
   unattendedPermissionPolicy: ZeroWorkflowTriggerSummary["unattendedPermissionPolicy"],
+  unattendedConnectorRefs: ZeroWorkflowTriggerSummary["unattendedConnectorRefs"] = [],
 ): ZeroWorkflowTriggerSummary {
   return {
     id: TRIGGER_ID,
@@ -37,6 +40,7 @@ function trigger(
     chatThreadId: "thread_perm_editor",
     nextRunAt: null,
     lastRunAt: null,
+    unattendedConnectorRefs,
     unattendedPermissionPolicy,
   };
 }
@@ -71,32 +75,37 @@ function workflow(
  */
 function mockTriggerPolicyApis(
   initialPolicy: ZeroWorkflowTriggerSummary["unattendedPermissionPolicy"],
+  initialConnectorRefs: ZeroWorkflowTriggerSummary["unattendedConnectorRefs"] = [],
 ): SetUnattendedTriggerPermissionPolicyRequest[] {
   const bodies: SetUnattendedTriggerPermissionPolicyRequest[] = [];
   let currentPolicy = initialPolicy;
+  let currentConnectorRefs = initialConnectorRefs;
 
   context.mocks.api(zeroWorkflowsDetailContract.get, ({ params, respond }) => {
     if (params.workflowId !== WORKFLOW_ID) {
       return respond(404, { error: { code: "NOT_FOUND", message: "missing" } });
     }
-    return respond(200, workflow(trigger(currentPolicy)));
+    return respond(200, workflow(trigger(currentPolicy, currentConnectorRefs)));
   });
 
   context.mocks.api(
     zeroWorkflowTriggersContract.setPermissionPolicy,
     ({ body, respond }) => {
       bodies.push(body);
+      if (body.unattendedConnectorRefs !== undefined) {
+        currentConnectorRefs = body.unattendedConnectorRefs;
+      }
       currentPolicy = body.unattendedPermissionPolicy ?? null;
-      return respond(200, trigger(currentPolicy));
+      return respond(200, trigger(currentPolicy, currentConnectorRefs));
     },
   );
 
   return bodies;
 }
 
-function permissionRow(): HTMLElement {
-  const label = screen.getByText(PERMISSION_LABEL);
-  const row = label.parentElement;
+function permissionRow(labelText: string): HTMLElement {
+  const label = screen.getByText(labelText);
+  const row = label.parentElement?.parentElement;
   if (!row) {
     throw new Error("Expected a permission row");
   }
@@ -113,7 +122,9 @@ function button(label: string, container?: HTMLElement): HTMLElement {
   return match;
 }
 
-const editorPath = `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=slack`;
+function editorPath(connectorRef: string): string {
+  return `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions?ref=${connectorRef}`;
+}
 
 describe("trigger permissions page", () => {
   it("shows a connector picker when no connector ref is selected", async () => {
@@ -135,6 +146,30 @@ describe("trigger permissions page", () => {
     );
   });
 
+  it("toggles connector access from the connector picker", async () => {
+    const bodies = mockTriggerPolicyApis(null);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/triggers/${TRIGGER_ID}/permissions`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("switch", { name: "Enable Slack" }));
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([
+        {
+          unattendedConnectorRefs: ["slack"],
+          unattendedPermissionPolicy: null,
+        },
+      ]);
+    });
+  });
+
   it("rejects an unknown connector ref", async () => {
     mockTriggerPolicyApis(null);
 
@@ -153,16 +188,16 @@ describe("trigger permissions page", () => {
   it("allows a permission and saves the merged policy", async () => {
     const bodies = mockTriggerPolicyApis(null);
 
-    detachedSetupPage({ context, path: editorPath });
+    detachedSetupPage({ context, path: editorPath("slack") });
 
     await waitFor(() => {
-      expect(screen.getByText(PERMISSION_LABEL)).toBeInTheDocument();
+      expect(screen.getByText(SLACK_PERMISSION_LABEL)).toBeInTheDocument();
     });
 
     // Save is disabled until something changes.
     expect(button("Save")).toBeDisabled();
 
-    await user.click(button("Allow", permissionRow()));
+    await user.click(button("Allow", permissionRow(SLACK_PERMISSION_LABEL)));
     await user.click(button("Save"));
 
     await waitFor(() => {
@@ -171,6 +206,7 @@ describe("trigger permissions page", () => {
 
     expect(bodies).toStrictEqual([
       {
+        unattendedConnectorRefs: [],
         unattendedPermissionPolicy: {
           slack: { policies: { "admin.analytics:read": "allow" } },
         },
@@ -183,19 +219,88 @@ describe("trigger permissions page", () => {
       slack: { policies: { "admin.analytics:read": "allow" } },
     });
 
-    detachedSetupPage({ context, path: editorPath });
+    detachedSetupPage({ context, path: editorPath("slack") });
 
     await waitFor(() => {
-      expect(screen.getByText(PERMISSION_LABEL)).toBeInTheDocument();
+      expect(screen.getByText(SLACK_PERMISSION_LABEL)).toBeInTheDocument();
     });
 
-    await user.click(button("Deny", permissionRow()));
+    await user.click(button("Deny", permissionRow(SLACK_PERMISSION_LABEL)));
     await user.click(button("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Saved")).toBeInTheDocument();
     });
 
-    expect(bodies).toStrictEqual([{ unattendedPermissionPolicy: null }]);
+    expect(bodies).toStrictEqual([
+      { unattendedConnectorRefs: [], unattendedPermissionPolicy: null },
+    ]);
+  });
+
+  it("shows Gmail connector metadata defaults when no trigger policy is saved", async () => {
+    mockTriggerPolicyApis(null);
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    expect(
+      button("Allow", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      button("Deny", permissionRow(GMAIL_MESSAGES_SEND_LABEL)),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(button("Save")).toBeDisabled();
+  });
+
+  it("preserves an explicit Gmail deny override for metadata-default allowed permissions", async () => {
+    const bodies = mockTriggerPolicyApis(null);
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    await user.click(button("Deny", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)));
+    await user.click(button("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+
+    expect(bodies).toStrictEqual([
+      {
+        unattendedConnectorRefs: [],
+        unattendedPermissionPolicy: {
+          gmail: { policies: { "drafts.write": "deny" } },
+        },
+      },
+    ]);
+  });
+
+  it("clears a Gmail override when restored to the metadata default", async () => {
+    const bodies = mockTriggerPolicyApis({
+      gmail: { policies: { "drafts.write": "deny" } },
+    });
+
+    detachedSetupPage({ context, path: editorPath("gmail") });
+
+    await waitFor(() => {
+      expect(screen.getByText(GMAIL_DRAFTS_WRITE_LABEL)).toBeInTheDocument();
+    });
+
+    await user.click(button("Allow", permissionRow(GMAIL_DRAFTS_WRITE_LABEL)));
+    await user.click(button("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+
+    expect(bodies).toStrictEqual([
+      { unattendedConnectorRefs: [], unattendedPermissionPolicy: null },
+    ]);
   });
 });

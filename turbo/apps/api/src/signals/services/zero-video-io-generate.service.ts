@@ -530,6 +530,16 @@ export function videoInsufficientCredits() {
   };
 }
 
+export function videoRequiresPro() {
+  return {
+    status: 402 as const,
+    body: errorBody(
+      "Built-in video generation requires Pro. Return `pro_required` as the assistant error marker so the app can show the Pro upgrade card. Do not retry video generation until the workspace upgrades.",
+      "PRO_REQUIRED",
+    ),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

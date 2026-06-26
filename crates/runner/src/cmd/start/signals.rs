@@ -63,6 +63,13 @@ pub(crate) struct LifecycleController {
     parking_gate: ParkingGate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DrainSignalOutcome {
+    EnteredDraining,
+    AlreadyDraining,
+    Ignored(RunnerMode),
+}
+
 impl LifecycleController {
     pub(crate) fn new(
         mode_tx: tokio::sync::watch::Sender<RunnerMode>,
@@ -83,19 +90,30 @@ impl LifecycleController {
         &self.mode_tx
     }
 
-    pub(crate) fn enter_soft_drain(&self) -> bool {
+    fn enter_soft_drain(&self) -> DrainSignalOutcome {
         let gate = self.parking_gate.clone();
-        let mut transitioned = false;
-        let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode == RunnerMode::Running && gate.soft_drain() {
-                *mode = RunnerMode::Draining;
-                transitioned = true;
-                true
-            } else {
+        let mut outcome = DrainSignalOutcome::Ignored(self.current_mode());
+        let _ = self.mode_tx.send_if_modified(|mode| match *mode {
+            RunnerMode::Running => {
+                if gate.soft_drain() {
+                    *mode = RunnerMode::Draining;
+                    outcome = DrainSignalOutcome::EnteredDraining;
+                    true
+                } else {
+                    outcome = DrainSignalOutcome::Ignored(RunnerMode::Running);
+                    false
+                }
+            }
+            RunnerMode::Draining => {
+                outcome = DrainSignalOutcome::AlreadyDraining;
+                false
+            }
+            mode => {
+                outcome = DrainSignalOutcome::Ignored(mode);
                 false
             }
         });
-        transitioned
+        outcome
     }
 
     pub(crate) fn resume_from_soft_drain(&self) -> bool {
@@ -203,7 +221,8 @@ impl SignalController {
     ///
     /// Signal semantics:
     /// - **SIGUSR1** (drain): from `Running`, close parking for soft drain,
-    ///   then send `Draining`. Ignored from any other state.
+    ///   then send `Draining`. From `Draining`, treat as an idempotent no-op.
+    ///   Ignored from `Stopping` / `Stopped`.
     /// - **SIGUSR2** (resume): from `Draining`, reopen parking, then send
     ///   `Running` (resume normal discovery). Ignored from `Running` /
     ///   `Stopping` / `Stopped`.
@@ -285,12 +304,17 @@ pub(super) async fn recv_handler_task(
 }
 
 pub(super) fn handle_drain_signal(lifecycle: &LifecycleController) {
-    let current = lifecycle.current_mode();
-    if !lifecycle.enter_soft_drain() {
-        warn!(mode = ?current, "SIGUSR1 ignored — only valid from Running");
-        return;
+    match lifecycle.enter_soft_drain() {
+        DrainSignalOutcome::EnteredDraining => {
+            info!("received SIGUSR1, entering Draining (soft drain)");
+        }
+        DrainSignalOutcome::AlreadyDraining => {
+            info!("received SIGUSR1 while already Draining");
+        }
+        DrainSignalOutcome::Ignored(mode) => {
+            warn!(mode = ?mode, "SIGUSR1 ignored — soft drain is no longer actionable");
+        }
     }
-    info!("received SIGUSR1, entering Draining (soft drain)");
 }
 
 pub(super) fn handle_resume_signal(lifecycle: &LifecycleController) {
@@ -450,8 +474,9 @@ mod tests {
             .expect("dropping signal handler task should abort the task");
     }
 
-    /// `handle_drain_signal` state guard: SIGUSR1 is honored only from
-    /// Running. Mirrors `handle_resume_signal`'s Draining-only guard.
+    /// `enter_soft_drain` state guard: SIGUSR1 transitions only from Running;
+    /// repeated SIGUSR1 in Draining is an idempotent no-op, while teardown modes
+    /// stay ignored.
     #[test]
     fn drain_signal_state_guards() {
         use crate::idle_pool::ParkingState;
@@ -460,16 +485,22 @@ mod tests {
         let gate = ParkingGate::new_open();
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
         let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_drain_signal(&lifecycle);
+        assert_eq!(
+            lifecycle.enter_soft_drain(),
+            DrainSignalOutcome::EnteredDraining
+        );
         assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
         assert_eq!(gate.state(), ParkingState::SoftDraining);
 
-        // Draining → ignored (no self-transition).
+        // Draining → idempotent no-op (no warning-worthy self-transition).
         let gate = ParkingGate::new_open();
         gate.soft_drain();
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Draining);
         let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_drain_signal(&lifecycle);
+        assert_eq!(
+            lifecycle.enter_soft_drain(),
+            DrainSignalOutcome::AlreadyDraining
+        );
         assert_eq!(lifecycle.current_mode(), RunnerMode::Draining);
         assert_eq!(gate.state(), ParkingState::SoftDraining);
 
@@ -478,7 +509,10 @@ mod tests {
         gate.close();
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopping);
         let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_drain_signal(&lifecycle);
+        assert_eq!(
+            lifecycle.enter_soft_drain(),
+            DrainSignalOutcome::Ignored(RunnerMode::Stopping)
+        );
         assert_eq!(lifecycle.current_mode(), RunnerMode::Stopping);
         assert_eq!(gate.state(), ParkingState::Closed);
 
@@ -487,7 +521,10 @@ mod tests {
         gate.close();
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopped);
         let lifecycle = LifecycleController::new(tx, gate.clone());
-        handle_drain_signal(&lifecycle);
+        assert_eq!(
+            lifecycle.enter_soft_drain(),
+            DrainSignalOutcome::Ignored(RunnerMode::Stopped)
+        );
         assert_eq!(lifecycle.current_mode(), RunnerMode::Stopped);
         assert_eq!(gate.state(), ParkingState::Closed);
     }

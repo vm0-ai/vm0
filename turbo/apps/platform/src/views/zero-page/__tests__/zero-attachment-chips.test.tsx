@@ -106,6 +106,75 @@ async function setupUploadedImagePreview(): Promise<void> {
   });
 }
 
+function mockElementBox(
+  element: HTMLElement,
+  { height, width }: { height: number; width: number },
+) {
+  Object.defineProperties(element, {
+    clientHeight: {
+      configurable: true,
+      value: height,
+    },
+    clientWidth: {
+      configurable: true,
+      value: width,
+    },
+    offsetHeight: {
+      configurable: true,
+      value: height,
+    },
+    offsetWidth: {
+      configurable: true,
+      value: width,
+    },
+  });
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return {
+        bottom: height,
+        height,
+        left: 0,
+        right: width,
+        toJSON: () => {
+          return {};
+        },
+        top: 0,
+        width,
+        x: 0,
+        y: 0,
+      };
+    },
+  });
+}
+
+function touchPoint({
+  clientX,
+  clientY,
+  identifier,
+  target,
+}: {
+  clientX: number;
+  clientY: number;
+  identifier: number;
+  target: EventTarget;
+}): Touch {
+  return {
+    clientX,
+    clientY,
+    force: 1,
+    identifier,
+    pageX: clientX,
+    pageY: clientY,
+    radiusX: 1,
+    radiusY: 1,
+    rotationAngle: 0,
+    screenX: clientX,
+    screenY: clientY,
+    target,
+  } as Touch;
+}
+
 function clipboardFileItem(file: File): DataTransferItem {
   return {
     kind: "file",
@@ -264,16 +333,15 @@ describe("zero attachment chips", () => {
     });
 
     const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
-    expect(zoomStage).toHaveClass("overflow-auto");
-    expect(
-      screen.getByTestId("artifact-dialog-image-stage-content"),
-    ).toBeInTheDocument();
+    expect(zoomStage).toHaveStyle({ touchAction: "none" });
+    expect(zoomStage).toHaveAttribute("data-zoomable-image-canvas", "true");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
-    Object.defineProperty(zoomStage, "clientWidth", {
-      configurable: true,
-      value: 800,
-    });
+    mockElementBox(zoomStage, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -287,7 +355,8 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
       expect(screen.getByText("115%")).toBeInTheDocument();
-      expect(lightboxImage).toHaveStyle({ width: "920px" });
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+      expect(transformContent.style.transform).toContain("scale(1.15)");
     });
 
     const zoomInButton = screen.getByLabelText("Zoom in");
@@ -297,7 +366,8 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.getByText("300%")).toBeInTheDocument();
-      expect(lightboxImage).toHaveStyle({ width: "2400px" });
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+      expect(transformContent.style.transform).toContain("scale(3)");
       expect(zoomInButton).toBeDisabled();
     });
 
@@ -307,7 +377,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("pans an uploaded image preview from image-originating drag and wheel gestures", async () => {
+  it("pans an uploaded image preview with ordinary wheel events", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -319,46 +389,265 @@ describe("zero attachment chips", () => {
     });
 
     const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
-
-    zoomStage.scrollLeft = 120;
-    zoomStage.scrollTop = 80;
-
-    const mouseDownEvent = createEvent.mouseDown(lightboxImage, {
-      button: 0,
-      buttons: 1,
-      clientX: 100,
-      clientY: 100,
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 1200, width: 1600 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
     });
-    fireEvent(lightboxImage, mouseDownEvent);
-    expect(mouseDownEvent.defaultPrevented).toBeTruthy();
+    fireEvent.load(lightboxImage);
 
-    fireEvent.mouseMove(window, {
-      buttons: 1,
-      clientX: 70,
-      clientY: 60,
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
     });
 
-    expect(zoomStage.scrollLeft).toBe(150);
-    expect(zoomStage.scrollTop).toBe(120);
+    click(screen.getByLabelText("Zoom in"));
 
-    fireEvent.mouseUp(window);
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
 
-    let wheelReachedStage = false;
-    const markWheelReachedStage = () => {
-      wheelReachedStage = true;
-    };
-    zoomStage.addEventListener("wheel", markWheelReachedStage);
-
-    const trackpadPanEvent = createEvent.wheel(lightboxImage, {
+    const transformBeforePan = transformContent.style.transform;
+    const trackpadPanEvent = createEvent.wheel(transformWrapper, {
       deltaX: 12,
       deltaY: 24,
     });
-    fireEvent(lightboxImage, trackpadPanEvent);
-    zoomStage.removeEventListener("wheel", markWheelReachedStage);
+    fireEvent(transformWrapper, trackpadPanEvent);
 
-    expect(wheelReachedStage).toBeTruthy();
-    expect(trackpadPanEvent.defaultPrevented).toBeFalsy();
+    expect(trackpadPanEvent.defaultPrevented).toBeTruthy();
+    expect(transformContent.style.transform).not.toBe(transformBeforePan);
+    expect(transformContent.style.transform).toContain("scale(1.15)");
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps an uploaded image preview stable when zooming past the maximum from the top-left", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const zoomInButton = screen.getByLabelText("Zoom in");
+    for (let i = 0; i < 14; i += 1) {
+      click(zoomInButton);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(3)");
+    });
+
+    const transformAtMaxZoom = transformContent.style.transform;
+    fireEvent.keyDown(window, { key: "Control" });
+    const maxedWheelEvent = createEvent.wheel(transformWrapper, {
+      clientX: 0,
+      clientY: 0,
+      ctrlKey: true,
+      deltaY: -120,
+    });
+    fireEvent(transformWrapper, maxedWheelEvent);
+    fireEvent.keyUp(window, { key: "Control" });
+
+    expect(maxedWheelEvent.defaultPrevented).toBeTruthy();
+    expect(transformContent.style.transform).toBe(transformAtMaxZoom);
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("pinches an uploaded image preview with touch gestures", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+    expect(zoomStage).toHaveStyle({ touchAction: "none" });
+
+    const firstTouch = touchPoint({
+      clientX: 100,
+      clientY: 100,
+      identifier: 1,
+      target: lightboxImage,
+    });
+    const secondTouch = touchPoint({
+      clientX: 300,
+      clientY: 100,
+      identifier: 2,
+      target: lightboxImage,
+    });
+    fireEvent.touchStart(lightboxImage, {
+      touches: [firstTouch, secondTouch],
+    });
+    fireEvent.touchMove(lightboxImage, {
+      touches: [
+        firstTouch,
+        touchPoint({
+          clientX: 500,
+          clientY: 100,
+          identifier: 2,
+          target: lightboxImage,
+        }),
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+      expect(transformContent.style.transform).toContain("scale(2)");
+    });
+
+    fireEvent.touchEnd(lightboxImage, {
+      touches: [],
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps an uploaded image preview stable when pinching past the maximum", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const firstTouch = touchPoint({
+      clientX: 0,
+      clientY: 0,
+      identifier: 1,
+      target: lightboxImage,
+    });
+    const secondTouch = touchPoint({
+      clientX: 200,
+      clientY: 0,
+      identifier: 2,
+      target: lightboxImage,
+    });
+    fireEvent.touchStart(lightboxImage, {
+      touches: [firstTouch, secondTouch],
+    });
+    fireEvent.touchMove(lightboxImage, {
+      touches: [
+        firstTouch,
+        touchPoint({
+          clientX: 600,
+          clientY: 0,
+          identifier: 2,
+          target: lightboxImage,
+        }),
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("300%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(3)");
+    });
+
+    const transformAtMaxZoom = transformContent.style.transform;
+    fireEvent.touchMove(lightboxImage, {
+      touches: [
+        touchPoint({
+          clientX: 4,
+          clientY: 2,
+          identifier: 1,
+          target: lightboxImage,
+        }),
+        touchPoint({
+          clientX: 700,
+          clientY: 2,
+          identifier: 2,
+          target: lightboxImage,
+        }),
+      ],
+    });
+
+    expect(transformContent.style.transform).toBe(transformAtMaxZoom);
+
+    fireEvent.touchEnd(lightboxImage, {
+      touches: [],
+    });
 
     click(screen.getByLabelText("Close"));
     await waitFor(() => {

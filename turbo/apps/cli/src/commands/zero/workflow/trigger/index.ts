@@ -13,7 +13,6 @@ import {
   getWorkflowTrigger,
   listWorkflowTriggers,
   listWorkflows,
-  runWorkflowTrigger,
   updateWorkflowTrigger,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
@@ -511,20 +510,6 @@ const disableCommand = new Command()
     }),
   );
 
-const runCommand = new Command()
-  .name("run")
-  .description("Fire a workflow trigger test run")
-  .argument("<trigger>", "Workflow trigger ID")
-  .action(
-    withErrorHandler(async (id: string) => {
-      const result = await runWorkflowTrigger(id);
-      console.log(chalk.green(`✓ Workflow trigger ${id} run started`));
-      console.log(`  Run ID:        ${result.runId}`);
-      console.log();
-      console.log(`Stream logs: zero logs ${result.runId}`);
-    }),
-  );
-
 export const triggerCommand = new Command()
   .name("trigger")
   .description("Manage a workflow's triggers")
@@ -535,7 +520,6 @@ export const triggerCommand = new Command()
   .addCommand(rmCommand)
   .addCommand(enableCommand)
   .addCommand(disableCommand)
-  .addCommand(runCommand)
   .addHelpText(
     "after",
     `
@@ -544,6 +528,5 @@ Examples:
   Update a schedule:  zero workflow trigger update <trigger-id> --every 10m
   List triggers:      zero workflow trigger list <workflow>
   Inspect a trigger:  zero workflow trigger show <trigger-id>
-  Test run:           zero workflow trigger run <trigger-id>
   Pause one trigger:  zero workflow trigger disable <trigger-id>`,
   );

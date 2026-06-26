@@ -5,6 +5,8 @@
 
 import chalk from "chalk";
 
+const MAX_FORMATTED_TODOS = 20;
+
 export interface ToolUseData {
   tool: string;
   input: Record<string, unknown>;
@@ -30,6 +32,22 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + "...";
 }
 
+function displayValue(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function nonEmptyDisplayValue(value: unknown): string | undefined {
+  const display = displayValue(value);
+  return display.length > 0 ? display : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 /**
  * Format the header line for a tool (e.g., "Read src/lib/api.ts")
  */
@@ -49,31 +67,31 @@ const toolHeadlineFormatters: Record<
   (input: Record<string, unknown>) => string
 > = {
   Read: (input) => {
-    return `Read${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Read${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Edit: (input) => {
-    return `Edit${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Edit${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Write: (input) => {
-    return `Write${chalk.dim(`(${String(input.file_path || "")})`)}`;
+    return `Write${chalk.dim(`(${displayValue(input.file_path)})`)}`;
   },
   Bash: (input) => {
-    return `Bash${chalk.dim(`(${truncate(String(input.command || ""), 60)})`)}`;
+    return `Bash${chalk.dim(`(${truncate(displayValue(input.command), 60)})`)}`;
   },
   Glob: (input) => {
-    return `Glob${chalk.dim(`(${String(input.pattern || "")})`)}`;
+    return `Glob${chalk.dim(`(${displayValue(input.pattern)})`)}`;
   },
   Grep: (input) => {
-    return `Grep${chalk.dim(`(${String(input.pattern || "")})`)}`;
+    return `Grep${chalk.dim(`(${displayValue(input.pattern)})`)}`;
   },
   Task: (input) => {
-    return `Task${chalk.dim(`(${truncate(String(input.description || ""), 60)})`)}`;
+    return `Task${chalk.dim(`(${truncate(displayValue(input.description), 60)})`)}`;
   },
   WebFetch: (input) => {
-    return `WebFetch${chalk.dim(`(${truncate(String(input.url || ""), 60)})`)}`;
+    return `WebFetch${chalk.dim(`(${truncate(displayValue(input.url), 60)})`)}`;
   },
   WebSearch: (input) => {
-    return `WebSearch${chalk.dim(`(${truncate(String(input.query || ""), 60)})`)}`;
+    return `WebSearch${chalk.dim(`(${truncate(displayValue(input.query), 60)})`)}`;
   },
   TodoWrite: () => {
     return "TodoWrite";
@@ -100,32 +118,15 @@ export function formatToolResult(
   const { result: resultText, isError } = result;
   const lines: string[] = [];
 
-  // Special handling for Read - strip line numbers and filter system content
-  if (tool === "Read" && !isError && resultText) {
-    const readLines = formatReadContent(resultText, verbose);
-    lines.push(...readLines);
-    return lines;
-  }
-
-  // Special handling for TodoWrite - show the task list
-  if (tool === "TodoWrite" && !isError) {
-    const todoLines = formatTodoList(input);
-    lines.push(...todoLines);
-    return lines;
-  }
-
-  // Special handling for Edit - show diff format
-  if (tool === "Edit" && !isError) {
-    const editLines = formatEditDiff(input, verbose);
-    lines.push(...editLines);
-    return lines;
-  }
-
-  // Special handling for Write - show content preview
-  if (tool === "Write" && !isError) {
-    const writeLines = formatWritePreview(input, verbose);
-    lines.push(...writeLines);
-    return lines;
+  const specialLines = formatSpecialToolResult(
+    tool,
+    input,
+    resultText,
+    isError,
+    verbose,
+  );
+  if (specialLines) {
+    return specialLines;
   }
 
   // Error case: show error message
@@ -166,6 +167,42 @@ export function formatToolResult(
   return lines;
 }
 
+function formatSpecialToolResult(
+  tool: string,
+  input: Record<string, unknown>,
+  resultText: string,
+  isError: boolean,
+  verbose: boolean,
+): string[] | null {
+  if (isError) {
+    return null;
+  }
+
+  if (tool === "Read" && resultText) {
+    return formatReadContent(resultText, verbose);
+  }
+  if (tool === "TodoWrite") {
+    return formatTodoList(input);
+  }
+  if (tool === "Edit" && hasClaudeEditInput(input)) {
+    return formatEditDiff(input, verbose);
+  }
+  if (tool === "Write" && hasClaudeWriteInput(input)) {
+    return formatWritePreview(input, verbose);
+  }
+  return null;
+}
+
+function hasClaudeEditInput(input: Record<string, unknown>): boolean {
+  return (
+    typeof input.old_string === "string" || typeof input.new_string === "string"
+  );
+}
+
+function hasClaudeWriteInput(input: Record<string, unknown>): boolean {
+  return typeof input.content === "string";
+}
+
 /**
  * Format Read tool output - strip line numbers and filter system content
  * Input format: "     1→content" (line numbers with → separator)
@@ -186,13 +223,9 @@ function formatReadContent(resultText: string, verbose: boolean): string[] {
     }
   }
 
-  // If no line numbers found, use raw content (fallback for plain text results)
-  const displayLines =
-    contentLines.length > 0
-      ? contentLines
-      : rawLines.filter((line) => {
-          return line.trim().length > 0;
-        });
+  // If no line numbers found, use raw content so whitespace-only files are not
+  // misreported as empty.
+  const displayLines = contentLines.length > 0 ? contentLines : rawLines;
   const totalLines = displayLines.length;
 
   if (totalLines === 0) {
@@ -231,7 +264,7 @@ function formatWritePreview(
   verbose: boolean,
 ): string[] {
   const lines: string[] = [];
-  const content = String(input.content || "");
+  const content = displayValue(input.content);
   const contentLines = content.split("\n");
   const totalLines = contentLines.length;
 
@@ -267,8 +300,8 @@ function formatEditDiff(
   verbose: boolean,
 ): string[] {
   const lines: string[] = [];
-  const oldString = String(input.old_string || "");
-  const newString = String(input.new_string || "");
+  const oldString = displayValue(input.old_string);
+  const newString = displayValue(input.new_string);
 
   const oldLines = oldString.split("\n");
   const newLines = newString.split("\n");
@@ -326,27 +359,34 @@ function formatEditDiff(
  */
 function formatTodoList(input: Record<string, unknown>): string[] {
   const lines: string[] = [];
-  const todos = input.todos as
-    | Array<{
-        id?: string;
-        content?: string;
-        status?: string;
-      }>
-    | undefined;
+  const todos = input.todos;
 
-  if (!todos || !Array.isArray(todos)) {
+  if (!Array.isArray(todos)) {
     lines.push("└ ✓ Done");
     return lines;
   }
 
-  for (let i = 0; i < todos.length; i++) {
-    const todo = todos[i]!;
-    const content = todo.content || "Unknown task";
-    const status = todo.status || "pending";
+  if (todos.length === 0) {
+    lines.push("└ ✓ Done");
+    return lines;
+  }
+
+  const displayedTodos = todos.slice(0, MAX_FORMATTED_TODOS);
+  for (let i = 0; i < displayedTodos.length; i++) {
+    const todo = recordValue(displayedTodos[i]);
+    const content = nonEmptyDisplayValue(todo?.content) ?? "Unknown task";
+    const status = nonEmptyDisplayValue(todo?.status) ?? "pending";
     const icon = getTodoStatusIcon(status);
     const styledContent = formatTodoContent(content, status);
     const prefix = i === 0 ? "└ " : "  ";
     lines.push(`${prefix}${icon} ${styledContent}`);
+  }
+
+  const remaining = todos.length - MAX_FORMATTED_TODOS;
+  if (remaining > 0) {
+    lines.push(
+      `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "task", "tasks")} (vm0 logs <runId> to see all)`)}`,
+    );
   }
 
   return lines;

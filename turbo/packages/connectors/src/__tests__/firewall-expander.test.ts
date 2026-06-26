@@ -4,11 +4,11 @@ import {
   validateBaseUrl,
   hasBaseUrlParams,
   hasBaseUrlVars,
+  resolveFirewallBaseUrlTemplate,
   resolveFirewallBaseUrlVars,
 } from "../firewall-types";
 import {
   collectAndValidatePermissions,
-  resolveFirewallConfigSelection,
   validateRule,
 } from "../firewall-expander";
 import type { FirewallConfig, PermissionNamesOf } from "../firewall-types";
@@ -36,108 +36,6 @@ describe("firewall expander helpers", () => {
     expectTypeOf<PermissionNamesOf<typeof config>>().toEqualTypeOf<
       "read" | "write"
     >();
-  });
-
-  it("resolveFirewallConfigSelection filters selected permissions", () => {
-    const config: FirewallConfig = {
-      name: "mixed",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [
-            { name: "read", rules: ["GET /files"] },
-            { name: "write", rules: ["POST /files"] },
-          ],
-        },
-        {
-          base: "https://uploads.example.com",
-          auth: { headers: {} },
-          permissions: [],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: ["read"],
-    });
-
-    expect(resolved).toStrictEqual({
-      name: "mixed",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    });
-  });
-
-  it("resolveFirewallConfigSelection keeps all api entries and metadata", () => {
-    const config: FirewallConfig = {
-      name: "metadata",
-      description: "Metadata test",
-      placeholders: { TOKEN: "secret" },
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-        {
-          base: "https://uploads.example.com",
-          auth: { headers: {} },
-          permissions: [],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: "all",
-    });
-
-    expect(resolved).toStrictEqual(config);
-  });
-
-  it("resolveFirewallConfigSelection returns null when no api entries remain", () => {
-    const config: FirewallConfig = {
-      name: "empty-selection",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    };
-
-    const resolved = resolveFirewallConfigSelection(config, {
-      permissions: [],
-    });
-
-    expect(resolved).toBeNull();
-  });
-
-  it("resolveFirewallConfigSelection rejects missing permission names", () => {
-    const config: FirewallConfig = {
-      name: "missing-permission",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [{ name: "read", rules: ["GET /files"] }],
-        },
-      ],
-    };
-
-    expect(() => {
-      return resolveFirewallConfigSelection(config, {
-        permissions: ["write"],
-      });
-    }).toThrow(
-      'Permission "write" does not exist in firewall "missing-permission". Available: read',
-    );
   });
 
   it("collectAndValidatePermissions accepts mixed empty and non-empty apis", () => {
@@ -1201,6 +1099,51 @@ describe("hasBaseUrlVars", () => {
     expect(
       hasBaseUrlVars("https://${{ vars.A }}.${{ vars.B }}.example.com"),
     ).toBe(true);
+  });
+});
+
+describe("resolveFirewallBaseUrlTemplate", () => {
+  it("resolves host template variables without requiring a firewall API auth object", () => {
+    expect(
+      resolveFirewallBaseUrlTemplate({
+        serviceName: "zendesk",
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        vars: { ZENDESK_SUBDOMAIN: "acme" },
+        credentialed: true,
+      }),
+    ).toBe("https://acme.zendesk.com");
+  });
+
+  it("throws when required template variables are missing", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlTemplate({
+        serviceName: "zendesk",
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        vars: {},
+        credentialed: true,
+      });
+    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  });
+
+  it("enforces https for credentialed resolved template bases", () => {
+    expect(() => {
+      return resolveFirewallBaseUrlTemplate({
+        serviceName: "strapi",
+        base: "${{ vars.STRAPI_BASE_URL }}",
+        vars: { STRAPI_BASE_URL: "http://strapi.example.test" },
+        credentialed: true,
+      });
+    }).toThrow("credentialed base URL must use https");
+  });
+
+  it("keeps non-credentialed http template bases valid", () => {
+    expect(
+      resolveFirewallBaseUrlTemplate({
+        serviceName: "diagnostic",
+        base: "${{ vars.DIAGNOSTIC_BASE_URL }}",
+        vars: { DIAGNOSTIC_BASE_URL: "http://diagnostic.example.test" },
+      }),
+    ).toBe("http://diagnostic.example.test");
   });
 });
 

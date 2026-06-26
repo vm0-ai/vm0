@@ -1,7 +1,7 @@
 //! Executor telemetry marker helpers.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tracing::warn;
 
@@ -11,6 +11,66 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Copy)]
+pub(crate) struct RunnerPreSpawnTiming {
+    claim_returned_at: Instant,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RunnerSpawnTiming {
+    executor_started_at: Instant,
+    pre_spawn_timing: Option<RunnerPreSpawnTiming>,
+}
+
+impl RunnerPreSpawnTiming {
+    pub(crate) fn start_after_claim() -> Self {
+        Self {
+            claim_returned_at: Instant::now(),
+        }
+    }
+
+    fn elapsed_at(self, at: Instant) -> Duration {
+        at.saturating_duration_since(self.claim_returned_at)
+    }
+}
+
+impl RunnerSpawnTiming {
+    pub(super) fn start(pre_spawn_timing: Option<RunnerPreSpawnTiming>) -> Self {
+        Self {
+            executor_started_at: Instant::now(),
+            pre_spawn_timing,
+        }
+    }
+
+    pub(super) fn record_claim_to_executor_start(self, telemetry: &mut JobTelemetry) {
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing {
+            telemetry.record(
+                "runner_claim_to_executor_start",
+                pre_spawn_timing.elapsed_at(self.executor_started_at),
+                true,
+                None,
+            );
+        }
+    }
+
+    pub(super) fn record_spawn_success_at(self, telemetry: &mut JobTelemetry, spawned_at: Instant) {
+        telemetry.record(
+            "runner_executor_start_to_spawn",
+            spawned_at.saturating_duration_since(self.executor_started_at),
+            true,
+            None,
+        );
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing {
+            telemetry.record(
+                "runner_claim_to_spawn",
+                pre_spawn_timing.elapsed_at(spawned_at),
+                true,
+                None,
+            );
+        }
+    }
+}
 
 pub(super) fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
     let action_type = match result {

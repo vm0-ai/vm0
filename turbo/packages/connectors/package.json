@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.107.1",
+  "version": "1.108.6",
   "private": true,
   "type": "module",
   "exports": {
@@ -48,15 +48,11 @@
       "import": "./src/firewall-metadata/server.ts",
       "types": "./src/firewall-metadata/server.ts"
     },
+    "./firewall-metadata/routing": {
+      "import": "./src/firewall-metadata/routing.ts",
+      "types": "./src/firewall-metadata/routing.ts"
+    },
     "./firewalls": null,
-    "./firewalls/runtime": {
-      "import": "./src/firewall-runtime.ts",
-      "types": "./src/firewall-runtime.ts"
-    },
-    "./firewalls/selection-resolver": {
-      "import": "./src/firewall-selection-resolver.ts",
-      "types": "./src/firewall-selection-resolver.ts"
-    },
     "./firewalls/*": null,
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",

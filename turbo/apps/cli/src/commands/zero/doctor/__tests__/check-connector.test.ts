@@ -4,7 +4,7 @@
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
  * - Mock (external): Web API via MSW
- * - Real (internal): All CLI code, connector mappings from @vm0/core
+ * - Real (internal): All CLI code, connector metadata from @vm0/connectors
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

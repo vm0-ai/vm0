@@ -4,12 +4,16 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import auth
+import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_streaming
 import usage
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
@@ -26,6 +30,35 @@ _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
+
+
+def _assert_fal_local_connector_diagnostic(flow):
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    content = flow.response.content
+    assert content is not None
+    body = json.loads(content)
+    assert body == {
+        "error": "connector_not_configured_for_run",
+        "connector": "fal",
+        "reason": "not_configured_for_run",
+        "message": (
+            "fal is not configured for this run. FAL_TOKEN is unavailable, "
+            "so credentials cannot be injected."
+        ),
+        "envNames": ["FAL_TOKEN"],
+        "base": "https://fal.run",
+        "upstreamStatus": 0,
+    }
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://fal.run"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == "not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
 
 
 def _write_auth_base_firewall_registry(
@@ -72,13 +105,13 @@ async def test_firewall_match_calls_handler(
 
     # Dispatcher routed to the real handle_firewall_request, which writes
     # firewall allow metadata into flow.metadata up front.
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
-    assert flow.metadata["firewall_permission"] == "full-access"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
 
 
-async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
-    tmp_path, real_flow, mitm_ctx, monkeypatch
+async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
+    tmp_path, real_flow, mitm_ctx
 ):
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
@@ -89,13 +122,69 @@ async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
         method="POST",
     )
 
-    def fail_find_candidate(*_args, **_kwargs):
-        raise AssertionError("request hook should not run connector diagnostic lookup")
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
-    monkeypatch.setattr(
-        mitm_addon.builtin_connector_diagnostics,
-        "find_candidate",
-        fail_find_candidate,
+    _assert_fal_local_connector_diagnostic(flow)
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert entry["action"] == "ALLOW"
+    assert entry["status"] == 424
+    assert entry["firewall_error"] == "connector_not_configured_for_run"
+    assert entry["connector_diagnostic_type"] == "fal"
+    [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_entry["type"] == "connector_diagnostic"
+    assert proxy_entry["connector"] == "fal"
+    assert proxy_entry["upstream_status"] == 0
+    assert http_error_entry["type"] == "http_error"
+    assert http_error_entry["status"] == 424
+
+
+@pytest.mark.parametrize(
+    ("path", "request_header_pairs"),
+    [
+        ("/fal-ai/nano-banana-pro", [("Authorization", "Bearer ")]),
+        ("/fal-ai/nano-banana-pro", [("Authorization", "Key ")]),
+        ("/fal-ai/nano-banana-pro", [("Proxy-Authorization", "Basic proxy-secret")]),
+        ("/fal-ai/nano-banana-pro?api_key=", []),
+    ],
+)
+async def test_inactive_builtin_connector_url_with_empty_auth_gets_local_diagnostic(
+    tmp_path, real_flow, mitm_ctx, headers, path, request_header_pairs
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path=path,
+        method="POST",
+        request_headers=headers(
+            ("Host", "fal.run"),
+            *request_header_pairs,
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    _assert_fal_local_connector_diagnostic(flow)
+
+
+async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+        request_headers=headers(
+            ("Host", "fal.run"),
+            ("Authorization", "Key user-provided"),
+        ),
     )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
@@ -105,9 +194,36 @@ async def test_inactive_builtin_connector_url_allows_without_diagnostic_lookup(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
+
+
+async def test_streamed_inactive_builtin_connector_request_waits_for_response_fallback(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        request_stream = flow.request.stream
+        assert callable(request_stream)
+        assert request_stream(b"partial request") == b"partial request"
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert request_streaming.streamed_request_size(flow) == len(b"partial request")
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
 
 
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(
@@ -205,8 +321,8 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     # handle_firewall_request is reached.
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     body = json.loads(flow.response.content)
     assert body["error"] == "permission_denied"
     assert body["method"] == "GET"
@@ -355,7 +471,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
 
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     body = json.loads(flow.response.content)
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
@@ -404,7 +520,7 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
 
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     body = json.loads(flow.response.content)
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
@@ -504,11 +620,11 @@ async def test_firewall_permission_allows_matched(
 
     # Dispatcher routed to the real handle_firewall_request, which writes
     # firewall allow metadata into flow.metadata up front.
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
-    assert flow.metadata["firewall_permission"] == "read-repos"
-    assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
-    assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "read-repos"
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == "GET /repos/{owner}/{repo}"
+    assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"owner": "octocat", "repo": "hello"}
 
 
 @pytest.mark.parametrize(
@@ -740,6 +856,59 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     assert "auth.base request body too large" in proxy_log_text
 
 
+async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Type", "application/json"),
+            ("Content-Length", str(declared_size)),
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            auth_base_forwarder,
+            "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES",
+            declared_size - 1,
+        ),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+        mitm_addon.error(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.live is False
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+    assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+    network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
+    network_log_entry = json.loads(network_log_text)
+    assert network_log_entry["error"] == Error.KILLED_MESSAGE
+    assert network_log_entry["request_size"] == 0
+    assert "request_body" not in network_log_entry
+    assert network_log_entry["firewall_error"] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+
+
 @pytest.mark.parametrize(
     ("method", "request_header_pairs"),
     [
@@ -894,11 +1063,57 @@ async def test_auth_base_requestheaders_accepts_no_body_framing(
         path="/",
         request_headers=headers(("Host", "placeholder.example.com")),
     )
+    token_meta = {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+        fake_forwarder_upstream(status=200, body=b"ok"),
+    ):
         mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            0,
+        )
+        await mitm_addon.request(flow)
 
-    assert flow.response is None
+    assert flow.response is not None
+    assert flow.response.status_code == 200
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_bodyless_requests_do_not_spend_body_budget(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="placeholder.example.com",
+            method="GET",
+            path="/",
+            request_headers=headers(("Host", "placeholder.example.com")),
+        )
+        for _ in range(2)
+    ]
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_base_forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 1),
+    ):
+        for flow in flows:
+            mitm_addon.requestheaders(flow)
+
+    assert all(flow.response is None for flow in flows)
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (2, 0)
 
 
 async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow, headers):
@@ -960,6 +1175,164 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
     assert flow.response.status_code == 200
     assert mock_forward.call_args is not None
     assert mock_forward.call_args[0][3] == b"ok"
+
+
+async def test_auth_base_requestheaders_admission_released_after_success(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    request_body = b"x" * (mitm_addon.STREAM_BUFFER_LIMIT + 1)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(len(request_body))),
+        ),
+        request_body=request_body,
+    )
+    token_meta = {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+        fake_forwarder_upstream(status=202, body=b"accepted"),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            len(request_body),
+        )
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 202
+    assert flow.response.content == b"accepted"
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_requestheaders_admission_released_on_auth_failure(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"ok",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            auth,
+            "get_firewall_headers",
+            AsyncMock(side_effect=RuntimeError("auth service unavailable")),
+        ),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_requestheaders_admission_released_when_resolved_base_missing(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"ok",
+    )
+    token_meta = {
+        "headers": {"Authorization": "Bearer resolved"},
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_requestheaders_admission_released_when_request_already_has_response(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"ok",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        flow.response = http.Response.make(204)
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 204
+    assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
 @pytest.mark.parametrize(
@@ -1039,12 +1412,12 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_base"] == "https://api-{region}.example.com/v1"
-    assert flow.metadata["firewall_name"] == "example"
-    assert flow.metadata["firewall_permission"] == ""
-    assert flow.metadata["firewall_rule_match"] == ""
-    assert flow.metadata["firewall_params"] == {"region": "us"}
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api-{region}.example.com/v1"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"region": "us"}
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
@@ -1095,18 +1468,18 @@ async def test_browser_passthrough_skips_firewall_auth_injection(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
-    assert "firewall_permission" not in flow.metadata
-    assert "firewall_rule_match" not in flow.metadata
-    assert "firewall_params" not in flow.metadata
-    assert "firewall_api_id" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_PERMISSION not in flow.metadata
+    assert metadata_keys.FIREWALL_RULE_MATCH not in flow.metadata
+    assert metadata_keys.FIREWALL_PARAMS not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
     assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
-    assert "auth_resolved_secrets" not in flow.metadata
-    assert "auth_url_rewrite" not in flow.metadata
+    assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="browser-passthrough")
     assert_pending(
         pending_path,
@@ -1167,9 +1540,9 @@ async def test_non_browser_firewall_match_still_injects_auth(
     mock_headers.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer x"
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
-    assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.stripe.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "stripe"
 
 
 async def test_browser_passthrough_skips_denied_unknown_policy_match(
@@ -1216,11 +1589,11 @@ async def test_browser_passthrough_skips_denied_unknown_policy_match(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
 
 
 async def test_browser_passthrough_skips_denied_permission_match(
@@ -1273,12 +1646,12 @@ async def test_browser_passthrough_skips_denied_permission_match(
     mock_headers.assert_not_called()
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert flow.metadata["browser_user_agent"] is True
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
-    assert "firewall_api_id" not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
 
     flow.response = mitm_addon.http.Response.make(200)
     mitm_addon.response(flow)
@@ -1356,9 +1729,9 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     mock_headers.assert_not_called()
     assert flow.response is not None
     assert flow.response.status_code == 403
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_base"] == "https://api.github.com"
-    assert flow.metadata["firewall_name"] == "github"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
     assert "Authorization" not in flow.request.headers
     body = json.loads(flow.response.content)
     assert body["error"] == "permission_denied"
@@ -1421,9 +1794,9 @@ async def test_browser_passthrough_skips_unsafe_path_firewall_match(
 
     mock_headers.assert_not_called()
     assert flow.response is None
-    assert flow.metadata["browser_user_agent"] is True
-    assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_billable"] is False
-    assert "firewall_base" not in flow.metadata
-    assert "firewall_name" not in flow.metadata
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
     assert "Authorization" not in flow.request.headers

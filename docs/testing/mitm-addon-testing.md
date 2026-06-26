@@ -78,7 +78,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_firewall_rewrite_forwarding.py` | Firewall auth URL rewrite forwarding behavior |
 | `test_firewall_rewrite_safety.py` | Firewall auth URL rewrite fail-closed and safety behavior |
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
-| `test_url_utils.py` | URL reconstruction and rewrite utility cases |
+| `test_url_utils.py` | Rewrite URL, path, query, and auth-base URL utility cases |
+| `test_url_utils_trusted_authority.py` | Trusted request authority success and URL reconstruction |
+| `test_url_utils_trusted_authority_rejection.py` | Trusted request authority rejection matrices |
 | `test_auth_cache.py` | Firewall auth cache behavior |
 | `test_body_capture_decompression.py` | Capture-level body decompression integration |
 | `test_body_capture_encoding.py` | Body capture text detection, encoding, and UTF-8 truncation helpers |
@@ -91,7 +93,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
-| `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
+| `test_model_provider_json_fallback.py` | Model provider buffered JSON fallback usage pipeline |
+| `test_model_provider_json_streaming.py` | Model provider streaming JSON response usage pipeline |
 | `test_model_provider_sse_usage.py` | Model provider SSE usage pipeline |
 | `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
 | `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |
@@ -102,7 +105,6 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
 | `test_webhook.py` | Usage webhook delivery |
 | `test_counters.py` | Usage pending counters |
-| `test_utils.py` | Utility functions |
 
 ## Patterns
 
@@ -136,14 +138,17 @@ metadata semantics, while still letting the test seed metadata for later hook
 phases:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=True, host="api.github.com", path="/repos")
     flow.metadata.update(
         {
-            "vm_run_id": "run-abc-123",
-            "vm_network_log_path": str(tmp_path / "network.jsonl"),
-            "original_url": "https://api.github.com/repos",
-            "firewall_action": "ALLOW",
+            metadata_keys.VM_RUN_ID: "run-abc-123",
+            metadata_keys.VM_NETWORK_LOG_PATH: str(tmp_path / "network.jsonl"),
+            metadata_keys.ORIGINAL_URL: "https://api.github.com/repos",
+            metadata_keys.FIREWALL_ACTION: "ALLOW",
         }
     )
 
@@ -177,6 +182,9 @@ shared `fake_firewall_headers` fixture to stub the auth-service boundary while
 still running the real dispatcher and firewall handler:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 async def test_firewall_request_injects_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
@@ -190,7 +198,7 @@ async def test_firewall_request_injects_auth(
         await mitm_addon.request(flow)
 
     assert flow.request.headers["Authorization"] == "Bearer real-token"
-    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 ```
 
 Avoid patching internal handlers only to prove they were called. Assert the flow
@@ -202,10 +210,13 @@ hook path.
 Check flow metadata and response after handler execution:
 
 ```python
+import flow_metadata_keys as metadata_keys
+
+
 # Service auth injected
 assert flow.request.headers["Authorization"] == "Bearer real-token"
-assert flow.metadata["firewall_action"] == "ALLOW"
-assert flow.metadata["firewall_base"] == "https://api.github.com"
+assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
 ```
 
 ### Shared Flow Metadata Keys

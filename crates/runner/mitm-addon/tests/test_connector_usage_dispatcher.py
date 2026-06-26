@@ -60,7 +60,7 @@ class TestConnectorUsageDispatcher:
         it early-returns and never reaches the X parser even when
         firewall_billable=True."""
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
         proxy_log = tmp_path / "proxy.jsonl"
         if jsonl_exists_after_flush(proxy_log):
@@ -74,7 +74,7 @@ class TestConnectorUsageDispatcher:
         flow = self._make_x_flow(
             real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
         )
-        flow.metadata["firewall_name"] = firewall_name
+        flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
 
         assert self._call_and_get_billing(flow) == []
 
@@ -84,18 +84,18 @@ class TestConnectorUsageDispatcher:
 
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to
-        BILLABLE_CONNECTORS) must NOT reach the X parser.  The dispatcher
-        drops when the firewall_name has no registered handler, which
-        prevents bogus billing records if someone grows the whitelist
-        without also registering a handler in ``_HANDLERS``."""
+        the TypeScript firewall billable metadata) must NOT reach the X parser.
+        The dispatcher drops when the firewall_name has no registered handler,
+        which prevents bogus billing records if someone marks a connector
+        billable without also registering a handler in ``_HANDLERS``."""
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata["firewall_name"] = "github"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
         assert self._call_and_get_billing(flow) == []
 
     def test_unregistered_handler_does_not_require_original_url(self, tmp_path, real_flow):
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata["firewall_name"] = "github"
-        flow.metadata.pop("original_url")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
+        flow.metadata.pop(metadata_keys.ORIGINAL_URL)
 
         assert self._call_and_get_billing(flow) == []
 
@@ -105,7 +105,7 @@ class TestConnectorUsageDispatcher:
         proxy_log = tmp_path / "proxy.jsonl"
         for _ in range(3):
             flow = self._make_x_flow(real_flow, tmp_path)
-            flow.metadata["firewall_name"] = "github"
+            flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
             assert self._call_and_get_billing(flow) == []
 
         lines = [
@@ -127,7 +127,7 @@ class TestConnectorUsageDispatcher:
         proxy_log = tmp_path / "proxy.jsonl"
         for name in ("github", "slack", "github"):  # github repeats; slack new
             flow = self._make_x_flow(real_flow, tmp_path)
-            flow.metadata["firewall_name"] = name
+            flow.metadata[metadata_keys.FIREWALL_NAME] = name
             assert self._call_and_get_billing(flow) == []
 
         warned_names = [
@@ -142,7 +142,7 @@ class TestConnectorUsageDispatcher:
         violation) already logged elsewhere; don't double-warn here."""
         proxy_log = tmp_path / "proxy.jsonl"
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata["firewall_name"] = ""
+        flow.metadata[metadata_keys.FIREWALL_NAME] = ""
         assert self._call_and_get_billing(flow) == []
 
         if jsonl_exists_after_flush(proxy_log):
@@ -150,7 +150,7 @@ class TestConnectorUsageDispatcher:
 
     def test_registered_x_usage_requires_original_url(self, tmp_path, real_flow, mitm_ctx):
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata.pop("original_url")
+        flow.metadata.pop(metadata_keys.ORIGINAL_URL)
 
         with (
             mitm_ctx(api_url="https://api.vm0.ai"),

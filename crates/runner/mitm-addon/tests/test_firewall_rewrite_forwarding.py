@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 import auth
 import auth_base_forwarder as forwarder
+import flow_metadata_keys as metadata_keys
 from aws_sigv4 import AwsSigV4Credentials
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
@@ -70,7 +71,7 @@ class TestAuthBaseUrlRewriteForwarding:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
 
         with (
             fake_forwarder_upstream(
@@ -124,12 +125,12 @@ class TestAuthBaseUrlRewriteForwarding:
         assert ("Content-Type", "application/json") in response_pairs
         assert ("X-Upstream", "real") in response_pairs
 
-        assert flow.metadata["auth_url_rewrite"] is True
-        assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK", "API_KEY"]
-        assert flow.metadata["auth_refreshed_connectors"] == ["discord"]
-        assert flow.metadata["auth_refreshed_secrets"] == ["WEBHOOK"]
-        assert flow.metadata["auth_cache_hit"] is False
-        assert "firewall_error" not in flow.metadata
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+        assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == ["WEBHOOK", "API_KEY"]
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] == ["discord"]
+        assert flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] == ["WEBHOOK"]
+        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+        assert metadata_keys.FIREWALL_ERROR not in flow.metadata
 
         assert flow.request.path == "/hook?client=visible"
         assert flow.request.headers["Authorization"] == "Bearer agent"
@@ -169,7 +170,7 @@ class TestAuthBaseUrlRewriteForwarding:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
         assert upstream.socket.request_header_values("X-Api-Key") == ["real-api-key"]
         assert upstream.socket.request_header_values("X-Custom") == ["injected-value"]
@@ -391,8 +392,8 @@ class TestAuthBaseUrlRewriteForwarding:
         mock_forward.assert_not_called()
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "invalid_resolved_auth_header"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_resolved_auth_header"
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_resolved_auth_header"
 
@@ -659,10 +660,10 @@ class TestAuthBaseUrlRewriteForwarding:
             "permission": allow.name,
             "base": allow.api_entry["base"],
         }
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_base_request_body_too_large"
-        assert "auth_url_rewrite" not in flow.metadata
-        assert "auth_resolved_secrets" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
         response_text = flow.response.text
         assert "super-secret-body" not in response_text
         assert "super-secret-token" not in response_text
@@ -709,9 +710,9 @@ class TestAuthBaseUrlRewriteForwarding:
         assert flow.response.status_code == 413
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_base_request_body_too_large"
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "auth_base_request_body_too_large"
-        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert "url_rewrite_forward_failed" not in flow.response.text
         assert "super-secret-token" not in flow.response.text
         assert "Bearer real-token" not in flow.response.text
@@ -750,9 +751,9 @@ class TestAuthBaseUrlRewriteForwarding:
         assert get_headers.await_count == 1
         assert flow.response is None
         assert flow.request.headers["Authorization"] == "Bearer real-token"
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert "firewall_error" not in flow.metadata
-        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
 
     async def test_forward_failure_returns_502(self, headers, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
@@ -784,7 +785,7 @@ class TestAuthBaseUrlRewriteForwarding:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -811,13 +812,13 @@ class TestAuthBaseUrlRewriteForwarding:
         assert body["base"] == allow.api_entry["base"]
         assert "connectors" not in body
         # Failure must not masquerade as a successful rewrite.
-        assert "auth_url_rewrite" not in flow.metadata
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-        assert "auth_resolved_secrets" not in flow.metadata
-        assert "auth_refreshed_connectors" not in flow.metadata
-        assert "auth_refreshed_secrets" not in flow.metadata
-        assert "auth_cache_hit" not in flow.metadata
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_CONNECTORS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_CACHE_HIT not in flow.metadata
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert "X-Custom" not in flow.request.headers
         assert "api_key" not in flow.request.query
@@ -827,3 +828,49 @@ class TestAuthBaseUrlRewriteForwarding:
         assert "URL rewrite forward failed" in log_text
         assert "Firewall URL rewrite:" not in log_text
         assert f"Firewall {allow.api_entry['base']}:" not in log_text
+
+    async def test_forward_saturation_returns_dedicated_local_error(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook",
+            request_headers=headers(("Host", "firewall-placeholder.vm3.ai")),
+            token_overrides={
+                "headers": {},
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        mock_forward = AsyncMock(side_effect=forwarder.AuthBaseForwardingSaturatedError())
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 503
+        body = json.loads(flow.response.content)
+        assert body["error"] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+        assert body["message"] == "auth.base forwarding is temporarily saturated"
+        assert body["permission"] == allow.name
+        assert body["base"] == allow.api_entry["base"]
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert (
+            flow.metadata[metadata_keys.FIREWALL_ERROR] == auth.AUTH_BASE_FORWARDING_SATURATED_ERROR
+        )
+        assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "auth.base forwarding admission saturated" in log_text
+        assert "URL rewrite forward failed" not in log_text
+        assert "Firewall URL rewrite:" not in log_text

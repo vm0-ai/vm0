@@ -2617,46 +2617,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("uses physical groups for the initial window when run group folding is disabled", async () => {
-    const threadId = "render-window-run-group-folding-disabled";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Run group render window without folding",
-      chatMessages: [
-        ...makeRunGroupMessages({
-          label: "A",
-          count: 11,
-          runGroupId: "disabled-group-a",
-          startMinute: 0,
-        }),
-        ...makeRunGroupMessages({
-          label: "B",
-          count: 1,
-          runGroupId: "disabled-group-b",
-          startMinute: 30,
-        }),
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Run group render window without folding"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Expand grouped run history"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByText("A reply 8")).toBeInTheDocument();
-      expect(screen.getByText("B reply 1")).toBeInTheDocument();
-      expect(screen.queryByText("A reply 7")).not.toBeInTheDocument();
-    });
-  });
-
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "render-window-middle-run-group";
     mockChatLifecycle(context, {
@@ -3294,6 +3254,25 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
+          id: "msg-run-group-usage-1",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000724",
+          usage: {
+            version: 1,
+            totalCredits: 10,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 10,
+                providers: [{ provider: "github", credits: 10 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
           id: "msg-run-group-user-2",
           role: "user",
           content: "Run the daily check",
@@ -3312,6 +3291,25 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:01:01Z",
         },
         {
+          id: "msg-run-group-usage-2",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000725",
+          usage: {
+            version: 1,
+            totalCredits: 20,
+            settledAt: "2026-06-09T10:01:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 20,
+                providers: [{ provider: "github", credits: 20 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+        {
           id: "msg-run-group-user-3",
           role: "user",
           content: "Run the daily check",
@@ -3328,6 +3326,25 @@ describe("chat lifecycle", () => {
           runId: "f0000001-0000-4000-a000-000000000726",
           runGroupId,
           createdAt: "2026-06-09T10:02:01Z",
+        },
+        {
+          id: "msg-run-group-usage-3",
+          role: "assistant",
+          content: null,
+          runId: "f0000001-0000-4000-a000-000000000726",
+          usage: {
+            version: 1,
+            totalCredits: 30,
+            settledAt: "2026-06-09T10:02:02Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 30,
+                providers: [{ provider: "github", credits: 30 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:02:02Z",
         },
       ],
     });
@@ -3354,6 +3371,16 @@ describe("chat lifecycle", () => {
       expect(
         screen.queryByText("Second daily check result"),
       ).not.toBeInTheDocument();
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 60");
+    expect(screen.queryByLabelText("Credit usage 30")).not.toBeInTheDocument();
+
+    click(credit);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Github").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("60").length).toBeGreaterThanOrEqual(1);
     });
 
     fireEvent.click(buttonByLabel("Expand grouped run history"));
@@ -3539,76 +3566,6 @@ describe("chat lifecycle", () => {
       );
       expect(
         screen.queryByText("First workflow result"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("does not fold automation run groups when the feature switch is off", async () => {
-    const threadId = "thread-run-group-folding-off";
-    const automationId = "f0000001-0000-4000-a000-000000000727";
-    const runGroupId = "f0000001-0000-4000-a000-000000000728";
-    const automationSnapshot = {
-      id: automationId,
-      title: "Daily check",
-      description: "Daily check",
-    };
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Run group folding disabled",
-      chatMessages: [
-        {
-          id: "msg-run-group-off-user-1",
-          role: "user",
-          content: "Run the daily check",
-          runId: "f0000001-0000-4000-a000-000000000729",
-          runGroupId,
-          automationId,
-          automationSnapshot,
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-run-group-off-assistant-1",
-          role: "assistant",
-          content: "First daily check result",
-          runId: "f0000001-0000-4000-a000-000000000729",
-          runGroupId,
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-run-group-off-user-2",
-          role: "user",
-          content: "Run the daily check",
-          runId: "f0000001-0000-4000-a000-00000000072a",
-          runGroupId,
-          automationId,
-          automationSnapshot,
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-        {
-          id: "msg-run-group-off-assistant-2",
-          role: "assistant",
-          content: "Latest daily check result",
-          runId: "f0000001-0000-4000-a000-00000000072a",
-          runGroupId,
-          createdAt: "2026-06-09T10:01:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Run group folding disabled"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("First daily check result")).toBeInTheDocument();
-      expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Expand grouped run history"),
       ).not.toBeInTheDocument();
     });
   });
@@ -4707,6 +4664,94 @@ describe("chat lifecycle", () => {
         screen.getByText("Upgrade to Pro to run Zero"),
       ).toBeInTheDocument();
       expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Upgrade to Pro"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/recover?tier=pro",
+      );
+    });
+  });
+
+  it("shows Pro upgrade guidance when built-in video requires Pro", async () => {
+    const threadId = "failed-guidance-video-pro";
+    mockFailedAssistantThread({ threadId, error: "pro_required" });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Upgrade to Pro"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/recover?tier=pro",
+      );
+    });
+  });
+
+  it("shows Pro upgrade guidance for limited-free-1 even with credits", async () => {
+    const threadId = "failed-guidance-limited-free";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "limited-free-1",
+        credits: 1500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: false,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 1,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+      expect(screen.queryByText("Credits available")).toBeNull();
     });
 
     click(buttonByText("Upgrade to Pro"));

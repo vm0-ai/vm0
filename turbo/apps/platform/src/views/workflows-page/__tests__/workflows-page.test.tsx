@@ -10,6 +10,9 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,13 +21,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000101";
+const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000102";
 const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
+const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 
 type WorkflowScheduleTriggerSummary = Extract<
@@ -55,6 +61,7 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
+    unattendedConnectorRefs: [],
     unattendedPermissionPolicy: null,
   };
 }
@@ -79,6 +86,7 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
     chatThreadId: "thread_gmail_new_message",
     nextRunAt: null,
     lastRunAt: null,
+    unattendedConnectorRefs: ["gmail"],
     unattendedPermissionPolicy: null,
   };
 }
@@ -135,6 +143,40 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
+function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
+  return {
+    id: OTHER_WORKFLOW_ID,
+    agentId: OTHER_AGENT_ID,
+    agentName: "support-bot",
+    agentDisplayName: "Support Bot",
+    name: "support-intake",
+    displayName: "Support Intake",
+    description: "Sorts incoming support requests.",
+    visibility: "public",
+    requestToPublish: false,
+    ownerUserId: CURRENT_USER_ID,
+    canManage: true,
+    instruction: null,
+    files: [],
+    fileContents: [],
+    triggers: [],
+  };
+}
+
+function agent(id: string, displayName: string): TeamComposeItem {
+  return {
+    id,
+    ownerId: CURRENT_USER_ID,
+    displayName,
+    description: "Finds and summarizes information",
+    sound: null,
+    avatarUrl: null,
+    visibility: "public",
+    headVersionId: "version_2",
+    updatedAt: "2026-06-01T00:00:00Z",
+  };
+}
+
 function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   return {
     id: workflow.id,
@@ -149,6 +191,29 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     ownerUserId: workflow.ownerUserId,
     canManage: workflow.canManage,
   };
+}
+
+function mockAgentPageApis(): void {
+  context.mocks.data.team([
+    agent(AGENT_ID, "Research Bot"),
+    agent(OTHER_AGENT_ID, "Support Bot"),
+  ]);
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const displayName =
+      params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
+    return respond(200, {
+      agentId: params.id,
+      ownerId: CURRENT_USER_ID,
+      description: "Finds and summarizes information",
+      displayName,
+      sound: null,
+      avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "public",
+    });
+  });
 }
 
 function applyWorkflowUpdate(
@@ -263,17 +328,79 @@ function mockUpdateWorkflowTrigger(
   );
 }
 
-describe("workflows index page", () => {
-  it("shows every visible workflow with its agent and links into the detail page", async () => {
-    mockWorkflowApis([salesResearch(), opsPlaybook()]);
+type RoleTextMatch = RegExp | string;
 
-    detachedSetupPage({ context, path: "/workflows" });
+function textFor(element: Element): string {
+  return element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function valueMatchesText(value: string, text: RoleTextMatch): boolean {
+  return typeof text === "string" ? value === text : text.test(value);
+}
+
+function matchesText(element: Element, text: RoleTextMatch): boolean {
+  const label = element.getAttribute("aria-label") ?? "";
+  return [textFor(element), label].some((value) => {
+    return value.length > 0 && valueMatchesText(value, text);
+  });
+}
+
+function matchLabel(text: RoleTextMatch): string {
+  return typeof text === "string" ? text : text.toString();
+}
+
+function buttonByText(
+  text: RoleTextMatch,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const buttons = queryAllByRoleFast("button", container);
+  const button = buttons.find((candidate) => {
+    return matchesText(candidate, text);
+  });
+  if (!button) {
+    throw new Error(`${matchLabel(text)} button not found`);
+  }
+  return button;
+}
+
+function queryButtonByText(
+  text: RoleTextMatch,
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((candidate) => {
+      return matchesText(candidate, text);
+    }) ?? null
+  );
+}
+
+function menuItemByText(text: RoleTextMatch): HTMLElement {
+  const menuItems = queryAllByRoleFast("menuitem");
+  const item = menuItems.find((candidate) => {
+    return matchesText(candidate, text);
+  });
+  if (!item) {
+    throw new Error(`${matchLabel(text)} menu item not found`);
+  }
+  return item;
+}
+
+describe("agent workflows tab", () => {
+  it("shows the agent's workflows and links into the detail page", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
     expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
-    expect(screen.getAllByText("Research Bot").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
     expect(screen.getByText("private")).toBeInTheDocument();
 
     const searchInput = screen.getByLabelText("Search workflows");
@@ -301,29 +428,73 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Instruction")).toHaveValue(
-      "Gather CRM context before outreach.",
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    const workflowsLink = queryAllByRoleFast("link", breadcrumb).find(
+      (link) => {
+        return link.textContent?.trim() === "workflows";
+      },
     );
-    expect(screen.getByText("Triggers")).toBeInTheDocument();
+    expect(workflowsLink).toHaveAttribute(
+      "href",
+      `/agents/${AGENT_ID}/workflows`,
+    );
+    expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
+    click(buttonByText(/trigger/i));
+    expect(search()).toBe("?sidebar=triggers");
+    expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
     expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    const permissionsLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent?.trim() === "Permissions";
-    });
-    expect(permissionsLink).toHaveAttribute(
-      "href",
-      `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}/triggers/workflow-trigger-weekday-brief/permissions`,
-    );
-
-    click(screen.getByLabelText("Open config/settings.json"));
+    click(buttonByText("instructions", breadcrumb));
+    click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
       expect(
-        screen.getByText('{ "risk": "low", "tone": "direct" }'),
+        screen.getByLabelText("Workflow file content"),
       ).toBeInTheDocument();
     });
+    expect(screen.getByLabelText("Workflow file content")).toHaveValue(
+      '{ "risk": "low", "tone": "direct" }',
+    );
+
+    await waitFor(() => {
+      expect(buttonByText(/permissions/i)).toBeInTheDocument();
+    });
+    click(buttonByText(/permissions/i));
+    await waitFor(() => {
+      expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByPlaceholderText("Search connectors"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("derives the trigger sidebar from workflow detail search params", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?sidebar=triggers`,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
+    click(buttonByText("Close trigger sidebar"));
+
+    await waitFor(() => {
+      expect(
+        queryButtonByText("Close trigger sidebar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("");
   });
 
   it("renders Gmail new message trigger match summaries", async () => {
@@ -337,6 +508,13 @@ describe("workflow detail page", () => {
       context,
       path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
     });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -362,10 +540,32 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
-    const createTriggerForm = screen.getByRole("form", {
-      name: "Create Gmail new message trigger",
+    click(buttonByText(/trigger/i));
+    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Add trigger";
+    });
+    expect(addTriggerButton).toBeDefined();
+    click(addTriggerButton!);
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((item) => {
+          return item.textContent?.includes("Gmail new message");
+        }),
+      ).toBeTruthy();
+    });
+    const gmailMenuItem = queryAllByRoleFast("menuitem").find((item) => {
+      return item.textContent?.includes("Gmail new message");
+    });
+    expect(gmailMenuItem).toBeDefined();
+    click(gmailMenuItem!);
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Gmail trigger",
     });
     await fill(
       within(createTriggerForm).getByLabelText("From contains"),
@@ -423,6 +623,13 @@ describe("workflow detail page", () => {
       context,
       path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
     });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -499,9 +706,14 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
-    click(screen.getByLabelText("Open config/settings.json"));
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    click(buttonByText("instructions", breadcrumb));
+    click(menuItemByText(/config\/settings\.json/));
+    click(buttonByText(/config\/settings\.json/, breadcrumb));
     click(screen.getByLabelText("Delete config/settings.json"));
 
     await waitFor(() => {
@@ -526,14 +738,14 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
 
-    const input =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!input) {
-      throw new Error("Expected upload input");
-    }
+    const breadcrumb = screen.getByLabelText("Breadcrumb");
+    click(buttonByText("instructions", breadcrumb));
+    const input = screen.getByLabelText("Upload workflow files");
     fireEvent.change(input, {
       target: {
         files: [new File(["new notes"], "notes.md", { type: "text/markdown" })],

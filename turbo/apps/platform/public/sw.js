@@ -84,7 +84,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   if (isRevalidatedStaticAsset(url)) {
-    // Stable generated metadata URLs must revalidate instead of being served
+    // Stable generated firewall URLs must revalidate instead of being served
     // cache-first like content-hashed Vite assets.
     event.respondWith(fetchRevalidatedStaticAsset(event.request));
     return;

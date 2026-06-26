@@ -4,7 +4,9 @@ mod process;
 mod protocol;
 mod temp_paths;
 
-pub(crate) use connection::{finish_guest_connection, start_guest_connection};
+pub(crate) use connection::{
+    finish_guest_connection, join_guest_connection, start_guest_connection,
+};
 pub(crate) use exec::{
     DRAIN_DEADLINE_SECS, LARGE_ENV_COMMAND, LONG_RUNNING_EXEC_TIMEOUT_MS, assert_large_env_stdout,
     large_env_entries, large_env_values, read_exec_output_chunk, read_exec_result,

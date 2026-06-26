@@ -1,6 +1,7 @@
 use crate::support::*;
 use httpmock::prelude::*;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
@@ -22,6 +23,82 @@ fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), S
     std::fs::write(&history_path, history)
         .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
     Ok(())
+}
+
+fn write_literal_session_history(
+    session_id: &str,
+    history: &[u8],
+) -> Result<tempfile::TempDir, String> {
+    let dir = tempfile::tempdir().map_err(|e| format!("create temp history dir: {e}"))?;
+    let history_path = dir.path().join(format!("{session_id}.jsonl"));
+    std::fs::write(&history_path, history)
+        .map_err(|e| format!("write history {}: {e}", history_path.display()))?;
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
+        .map_err(|e| format!("write session id: {e}"))?;
+    guest_agent::paths::write_private(
+        guest_agent::paths::session_history_path_file(),
+        history_path.to_string_lossy().as_ref(),
+    )
+    .map_err(|e| format!("write session history marker: {e}"))?;
+    Ok(dir)
+}
+
+// =========================================================================
+// Success checkpoint
+// =========================================================================
+
+#[tokio::test]
+async fn success_checkpoint_uploads_non_utf8_session_history() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let history = b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n".to_vec();
+    let _history_dir = write_literal_session_history("success-non-utf8-session", &history).unwrap();
+
+    let history_hash = hex::encode(Sha256::digest(&history));
+    let history_size = history.len();
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body(json!({
+                "runId": "test-run-001",
+                "hash": history_hash,
+                "size": history_size,
+            }));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url("/test/success-non-utf8-history-upload"),
+                "existing": false
+            }));
+    });
+    let upload_len = history_size.to_string();
+    let upload_body = history.clone();
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/success-non-utf8-history-upload")
+            .header("Content-Type", "application/octet-stream");
+        then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionId":"success-non-utf8-session"}"#)
+            .json_body_includes(format!(
+                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+            ));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-success-non-utf8"}));
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
 }
 
 // =========================================================================
@@ -190,7 +267,50 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Session history line 2 is not valid JSON"),
+        "expected recovery checkpoint to fail on partial JSONL history, got: {err}"
+    );
+    assert!(
+        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        "recovery checkpoint must not write the success-path checkpoint error file"
+    );
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_rejects_non_utf8_session_history() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let _history_dir = write_literal_session_history(
+        "recovery-non-utf8-session",
+        b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n",
+    )
+    .unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Session history is not valid UTF-8"),
+        "expected recovery checkpoint to fail on invalid UTF-8 history, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
@@ -218,7 +338,11 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("No session ID found"),
+        "expected recovery checkpoint to fail on missing session ID, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
@@ -248,7 +372,11 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("Failed to read session history"),
+        "expected recovery checkpoint to fail on missing derived history, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
@@ -278,7 +406,12 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Failed to derive session history marker from session ID"),
+        "expected recovery checkpoint to fail on invalid session ID, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"

@@ -7,6 +7,7 @@ import {
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
   isModelSupportedByProvider,
+  isLimitedFree1RestrictedRunModel,
   type ModelProviderCredentialScope,
   type ModelProviderType,
   type OrgModelPoliciesResponse,
@@ -16,8 +17,10 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
+import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 
@@ -31,7 +34,11 @@ interface ProviderRouteInfo {
 
 type ServiceResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly message: string };
+  | { readonly ok: false; readonly message: string }
+  | {
+      readonly ok: false;
+      readonly response: ReturnType<typeof insufficientCredits>;
+    };
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -41,6 +48,10 @@ function ok<T>(data: T): ServiceResult<T> {
 
 function bad<T>(message: string): ServiceResult<T> {
   return { ok: false, message };
+}
+
+function limitedFree1Restricted<T>(): ServiceResult<T> {
+  return { ok: false, response: insufficientCredits() };
 }
 
 function isOAuthMemberProviderType(type: ModelProviderType): boolean {
@@ -73,6 +84,22 @@ function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
         inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
       ),
     );
+}
+
+async function orgHasLimitedFree1Restrictions(
+  db: Db,
+  orgId: string,
+): Promise<boolean> {
+  const [org] = await db
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return org?.tier === "limited-free-1";
+}
+
+function modelAllowedForOrgTier(model: string, limitedFree1: boolean): boolean {
+  return !limitedFree1 || !isLimitedFree1RestrictedRunModel(model);
 }
 
 function getSupportedModelRank(model: string): number {
@@ -239,6 +266,7 @@ async function validateUpdatePolicies(
   db: Db,
   orgId: string,
   policies: UpdateOrgModelPolicy[],
+  limitedFree1: boolean,
 ): Promise<ServiceResult<UpdateOrgModelPolicy[]>> {
   if (policies.length === 0) {
     return bad("Request must include at least one model");
@@ -250,6 +278,9 @@ async function validateUpdatePolicies(
   for (const policy of policies) {
     if (!parseSupportedModel(policy.model)) {
       return bad(`Unknown model "${policy.model}"`);
+    }
+    if (!modelAllowedForOrgTier(policy.model, limitedFree1)) {
+      return limitedFree1Restricted();
     }
     if (!parseProviderType(policy.defaultProviderType)) {
       return bad(`Unknown model provider type "${policy.defaultProviderType}"`);
@@ -428,18 +459,21 @@ export const updateOrgModelPolicies$ = command(
     signal: AbortSignal,
   ): Promise<ServiceResult<OrgModelPoliciesResponse>> => {
     const db = set(writeDb$);
-    await ensureOrgModelPolicies(db, params.orgId, params.userId);
+    const limitedFree1 = await orgHasLimitedFree1Restrictions(db, params.orgId);
     signal.throwIfAborted();
-
     const validation = await validateUpdatePolicies(
       db,
       params.orgId,
       params.policies,
+      limitedFree1,
     );
     signal.throwIfAborted();
     if (!validation.ok) {
       return validation;
     }
+
+    await ensureOrgModelPolicies(db, params.orgId, params.userId);
+    signal.throwIfAborted();
 
     const now = nowDate();
     await db.transaction(async (tx) => {

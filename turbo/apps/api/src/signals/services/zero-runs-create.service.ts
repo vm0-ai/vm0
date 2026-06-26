@@ -7,7 +7,10 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import type { UnattendedTriggerPermissionPolicy } from "@vm0/api-contracts/contracts/zero-workflows";
+import type {
+  UnattendedTriggerConnectorRefs,
+  UnattendedTriggerPermissionPolicy,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type {
@@ -467,15 +470,43 @@ function coerceUnattendedPolicyAsks(
   return result;
 }
 
+function connectorRefsToConnectorTypes(
+  connectorRefs: readonly string[],
+): readonly ConnectorType[] {
+  return connectorRefs.flatMap((connectorRef) => {
+    const parsed = connectorTypeSchema.safeParse(connectorRef);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+function filterUnattendedPolicyForConnectorRefs(
+  policy: UnattendedTriggerPermissionPolicy | null,
+  connectorRefs: readonly string[],
+): FirewallPolicies {
+  if (!policy) {
+    return {};
+  }
+  const enabled = new Set(connectorRefs);
+  const stored: FirewallPolicies = {};
+  for (const [connectorRef, connectorPolicy] of Object.entries(policy)) {
+    if (enabled.has(connectorRef)) {
+      stored[connectorRef] = connectorPolicy;
+    }
+  }
+  return stored;
+}
+
 async function loadTriggerRunContext(
   db: Db,
   args: { readonly orgId: string; readonly triggerId: string },
 ): Promise<{
+  readonly connectorRefs: UnattendedTriggerConnectorRefs;
   readonly policy: UnattendedTriggerPermissionPolicy | null;
   readonly workflowId: string;
 } | null> {
   const [row] = await db
     .select({
+      connectorRefs: zeroWorkflowTriggers.unattendedConnectorRefs,
       policy: zeroWorkflowTriggers.unattendedPermissionPolicy,
       workflowId: zeroWorkflowTriggers.workflowId,
     })
@@ -488,7 +519,11 @@ async function loadTriggerRunContext(
     )
     .limit(1);
   return row
-    ? { policy: row.policy ?? null, workflowId: row.workflowId }
+    ? {
+        connectorRefs: row.connectorRefs ?? [],
+        policy: row.policy ?? null,
+        workflowId: row.workflowId,
+      }
     : null;
 }
 
@@ -506,7 +541,10 @@ async function resolveTriggerRunContext(
   signal: AbortSignal,
 ): Promise<{
   readonly unattended:
-    | { readonly policy: UnattendedTriggerPermissionPolicy | null }
+    | {
+        readonly connectorRefs: UnattendedTriggerConnectorRefs;
+        readonly policy: UnattendedTriggerPermissionPolicy | null;
+      }
     | undefined;
   readonly environment: Record<string, string>;
 }> {
@@ -520,7 +558,10 @@ async function resolveTriggerRunContext(
   });
   signal.throwIfAborted();
   return {
-    unattended: { policy: context?.policy ?? null },
+    unattended: {
+      connectorRefs: context?.connectorRefs ?? [],
+      policy: context?.policy ?? null,
+    },
     environment: {
       ZERO_WORKFLOW_TRIGGER_ID: workflowTriggerId,
       ...(context?.workflowId ? { ZERO_WORKFLOW_ID: context.workflowId } : {}),
@@ -560,15 +601,19 @@ async function resolveZeroRunPermissionPolicies(
     readonly allowedConnectorTypes: readonly ConnectorType[];
     readonly checkedAt: Date;
     readonly unattended?: {
+      readonly connectorRefs: UnattendedTriggerConnectorRefs;
       readonly policy: UnattendedTriggerPermissionPolicy | null;
     };
   },
   signal: AbortSignal,
 ): Promise<FirewallPolicies | null> {
   if (args.unattended) {
-    const stored: FirewallPolicies = args.unattended.policy ?? {};
+    const stored = filterUnattendedPolicyForConnectorRefs(
+      args.unattended.policy,
+      args.unattended.connectorRefs,
+    );
     const resolved = await resolveFirewallServerMetadataPolicies(stored, [
-      ...args.allowedConnectorTypes,
+      ...args.unattended.connectorRefs,
     ]);
     signal.throwIfAborted();
     return coerceUnattendedPolicyAsks(resolved);
@@ -873,27 +918,10 @@ export const createZeroRun$ = command(
     const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
     signal.throwIfAborted();
 
-    const allowedConnectorTypes = await loadAllowedConnectorTypes(db, {
-      userId: args.auth.userId,
-      orgId: args.auth.orgId,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
-    const allowedCustomConnectorIds = await loadAllowedCustomConnectorIds(db, {
-      userId: args.auth.userId,
-      orgId: args.auth.orgId,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
-    const workflows = await loadWorkflowsForRun(db, {
-      userId: args.auth.userId,
-      orgId: args.auth.orgId,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
     // Trigger-fired runs resolve from the trigger's own isolated unattended
-    // policy (never the caller's grants) and expose their trigger/workflow ids
-    // so the in-sandbox permission-change deep-link targets the trigger editor.
+    // connector scope and policy (never the caller's grants) and expose their
+    // trigger/workflow ids so the in-sandbox permission-change deep-link
+    // targets the trigger editor.
     const triggerRun = await resolveTriggerRunContext(
       db,
       {
@@ -902,6 +930,28 @@ export const createZeroRun$ = command(
       },
       signal,
     );
+    const allowedConnectorTypes = triggerRun.unattended
+      ? connectorRefsToConnectorTypes(triggerRun.unattended.connectorRefs)
+      : await loadAllowedConnectorTypes(db, {
+          userId: args.auth.userId,
+          orgId: args.auth.orgId,
+          agentId: agent.id,
+        });
+    signal.throwIfAborted();
+    const allowedCustomConnectorIds = triggerRun.unattended
+      ? []
+      : await loadAllowedCustomConnectorIds(db, {
+          userId: args.auth.userId,
+          orgId: args.auth.orgId,
+          agentId: agent.id,
+        });
+    signal.throwIfAborted();
+    const workflows = await loadWorkflowsForRun(db, {
+      userId: args.auth.userId,
+      orgId: args.auth.orgId,
+      agentId: agent.id,
+    });
+    signal.throwIfAborted();
     const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
