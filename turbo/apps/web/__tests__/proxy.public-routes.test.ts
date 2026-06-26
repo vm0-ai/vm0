@@ -496,21 +496,26 @@ describe("proxy middleware: public routes", () => {
     await expect(response.text()).resolves.toBe("locale action proxied");
   });
 
-  it("does not proxy app-only functional routes when so forwarding is enabled", async () => {
+  it("proxies migrated functional routes when so forwarding is enabled", async () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", "https://so.vm0.ai");
     reloadEnv();
     const forwardedRequests = captureForwardedRequests(
       "post",
       "https://so.vm0.ai/connector/success",
-      new HttpResponse("unexpected proxy", { status: 500 }),
+      new HttpResponse("functional route proxied", { status: 202 }),
     );
     const request = new NextRequest("https://www.vm0.ai/connector/success", {
       method: "POST",
     });
 
-    await middleware(request, createMockEvent());
+    const response = await middleware(request, createMockEvent());
 
-    expect(forwardedRequests).toEqual([]);
+    expect(forwardedRequests).toHaveLength(1);
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error("Expected functional route proxy response");
+    }
+    expect(response.status).toBe(202);
   });
 
   it("keeps locale-less web design gallery public", async () => {

@@ -41,6 +41,16 @@ const SO_FRONTEND_AUTH_PATHS = [
   "/sign-up/:path*",
 ];
 
+const SO_FRONTEND_FUNCTIONAL_PATHS = [
+  "/cli-auth",
+  "/cli-auth/:path*",
+  "/connector/:path*",
+  "/desktop-auth/:path*",
+  "/export",
+  "/sign-in-token",
+  "/monday-app-association.json",
+];
+
 const SO_FRONTEND_ASSET_PATHS = [
   "/assets/:path*",
   "/images/:path*",
@@ -142,6 +152,9 @@ function rewriteSourceDefinitions(env) {
     ...authRewritePaths(env).map((source) => {
       return { source, destination: source };
     }),
+    ...SO_FRONTEND_FUNCTIONAL_PATHS.map((source) => {
+      return { source, destination: source };
+    }),
     ...SO_FRONTEND_ASSET_PATHS.map((source) => {
       return { source, destination: source };
     }),
@@ -188,6 +201,9 @@ export function buildSoFrontendRewrites(env) {
       });
     }),
     ...authRewritePaths(env).map((source) => {
+      return exactRewrite(source, destinationPrefix);
+    }),
+    ...SO_FRONTEND_FUNCTIONAL_PATHS.map((source) => {
       return exactRewrite(source, destinationPrefix);
     }),
     ...SO_FRONTEND_ASSET_PATHS.map((source) => {
