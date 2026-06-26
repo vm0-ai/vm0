@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.129.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.27...runner-rs-v0.129.28) (2026-06-26)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound jsonl shutdown control waits ([#19024](https://github.com/vm0-ai/vm0/issues/19024)) ([6c862d1](https://github.com/vm0-ai/vm0/commit/6c862d1a45c947d5f757a523154b851f7fb7c822))
+* **runner:** treat duplicate drain signals as idempotent ([#19026](https://github.com/vm0-ai/vm0/issues/19026)) ([270f616](https://github.com/vm0-ai/vm0/commit/270f616112016f75870050f0d879db1a5746286c))
+* silence jsonl writes after shutdown ([#19029](https://github.com/vm0-ai/vm0/issues/19029)) ([ed601d9](https://github.com/vm0-ai/vm0/commit/ed601d9b38183ac60fbf226d10852ce6610d7799))
+
+
+### Performance Improvements
+
+* **runner:** restore ably direct candidates ([#19028](https://github.com/vm0-ai/vm0/issues/19028)) ([b148317](https://github.com/vm0-ai/vm0/commit/b1483176ef8f1cb5b29347a4b13e4effb6fce1b9))
+
 ## [0.129.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.26...runner-rs-v0.129.27) (2026-06-26)
 
 ## [0.129.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.25...runner-rs-v0.129.26) (2026-06-26)
