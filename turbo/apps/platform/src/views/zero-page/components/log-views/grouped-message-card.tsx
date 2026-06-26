@@ -37,6 +37,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isFailedTaskStatus(status: string | undefined): boolean {
+  switch (status?.toLowerCase()) {
+    case "aborted":
+    case "cancelled":
+    case "canceled":
+    case "error":
+    case "failed":
+    case "interrupted":
+    case "timed_out":
+    case "timeout": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
 function nextOccurrenceKey(counts: Map<string, number>, base: string): string {
   const occurrence = counts.get(base) ?? 0;
   counts.set(base, occurrence + 1);
@@ -209,7 +227,7 @@ function TaskMessageCard({
     stringValue(taskData?.task_summary) ??
     "";
   const taskStatus = stringValue(taskData?.task_status);
-  const isFailed = taskStatus === "error" || taskStatus === "failed";
+  const isFailed = isFailedTaskStatus(taskStatus);
   const isRunning = !taskStatus;
   const timestamp = formatEventTime(message.createdAt);
   const children = message.childMessages ?? [];

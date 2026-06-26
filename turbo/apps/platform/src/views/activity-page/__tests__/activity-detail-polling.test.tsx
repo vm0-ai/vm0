@@ -2611,6 +2611,72 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Raw result failed")).not.toHaveLength(0);
   });
 
+  it("marks cancelled task notifications as failed task rows", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000304";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Cancelled Task Status",
+          status: "failed",
+          prompt: "Render cancelled task status",
+          startedAt: "2026-03-10T16:15:01Z",
+          completedAt: "2026-03-10T16:15:02Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "cancelled-task",
+              },
+              createdAt: "2026-03-10T16:15:01Z",
+            },
+            {
+              sequenceNumber: 1,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "cancelled-task",
+                status: "cancelled",
+                summary: "Task was cancelled",
+              },
+              createdAt: "2026-03-10T16:15:02Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Cancelled Task Status" }),
+      ).toBeInTheDocument();
+    });
+
+    const taskSummary = screen.getByText("Task was cancelled");
+    expect(
+      taskSummary.parentElement?.querySelector('[data-variant="error"]'),
+    ).toBeTruthy();
+  });
+
   it("keeps rendering activity details when event payloads are malformed", async () => {
     const runId = "a0000000-0000-4000-a000-000000000303";
 
