@@ -27,7 +27,7 @@ const PRIVATE_ARCHIVE_FIXTURES = [
   {
     id: "tool:presentation-deck-tools",
     versionId:
-      "82cf61753b7e7d81cf2c457ea1ac970b266dcbec8b2d253d462b7dd035843e87",
+      "3c4f3323dcf5d8a03a9780c3a46906706efbdc9f845d50c0d882e05d5ff1828f",
   },
   {
     id: "design-system:business-data",
