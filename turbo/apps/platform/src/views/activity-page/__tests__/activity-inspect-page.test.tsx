@@ -343,7 +343,7 @@ function malformedInspectFile(): File {
                 ],
               },
             },
-            createdAt: "2026-03-10T17:00:02Z",
+            createdAt: "bad-created-at",
           },
         ],
         context: { bad: true },
@@ -620,6 +620,8 @@ describe("activity inspect page", () => {
       screen.queryByText("Invalid event is dropped."),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+    expect(screen.getAllByText("bad-created-at").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Invalid Date")).not.toBeInTheDocument();
 
     click(getTabByText("Context"));
 

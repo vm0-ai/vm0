@@ -21,6 +21,9 @@ type ModelUsage = Record<
 // Exported for reuse
 export function formatEventTime(isoString: string): string {
   const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return isoString.trim().length > 0 ? isoString : "—";
+  }
   const now = nowDate();
   const isToday = date.toDateString() === now.toDateString();
 
