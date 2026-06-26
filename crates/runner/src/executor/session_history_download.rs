@@ -79,7 +79,7 @@ impl SessionHistoryMaterializer {
         }
     }
 
-    pub(crate) fn is_downloading(&self) -> bool {
+    pub(super) fn is_downloading(&self) -> bool {
         matches!(
             self.state,
             SessionHistoryMaterializerState::Downloading { .. }
