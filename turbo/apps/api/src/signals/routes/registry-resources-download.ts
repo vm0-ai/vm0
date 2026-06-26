@@ -45,7 +45,7 @@ function storageServiceNotConfigured() {
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "tool:presentation-deck-tools":
-    "82cf61753b7e7d81cf2c457ea1ac970b266dcbec8b2d253d462b7dd035843e87",
+    "3c4f3323dcf5d8a03a9780c3a46906706efbdc9f845d50c0d882e05d5ff1828f",
   "design-system:business-data":
     "c9f7a6246c31da8a50f8e0bedee769416af83fdea4047ec59ccf926b78f18fe9",
   "design-system:botane-organic":
