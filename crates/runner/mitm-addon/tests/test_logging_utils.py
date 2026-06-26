@@ -240,19 +240,25 @@ class TestJsonlWriterBehavior:
         assert entry["level"] == "info"
         assert entry["message"] == "before shutdown"
 
-    def test_write_after_shutdown_warns_without_appending(self, tmp_path):
+    def test_write_after_shutdown_is_noop_without_warning(self, tmp_path):
+        network_path = tmp_path / "network.jsonl"
         proxy_path = tmp_path / "proxy.jsonl"
         log = MagicMock()
 
+        logging_utils.log_network_entry(str(network_path), {"action": "ALLOW"})
         logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
         logging_utils.shutdown_log_writer()
+        before_network_entries = _read_jsonl_entries_without_flush(network_path)
         before_entries = _read_jsonl_entries_without_flush(proxy_path)
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_network_entry(str(network_path), {"action": "DENY"})
             logging_utils.log_proxy_entry(str(proxy_path), "warn", "after shutdown")
 
-        log.warn.assert_called_once_with("Skipping proxy log write after JSONL writer shutdown")
+        log.warn.assert_not_called()
+        after_network_entries = _read_jsonl_entries_without_flush(network_path)
         after_entries = _read_jsonl_entries_without_flush(proxy_path)
+        assert after_network_entries == before_network_entries
         assert after_entries == before_entries
 
 
