@@ -49,6 +49,8 @@ const SO_FRONTEND_FUNCTIONAL_PATHS = [
   "/export",
   "/sign-in-token",
   "/monday-app-association.json",
+  "/robots.txt",
+  "/sitemap.xml",
 ];
 
 const SO_FRONTEND_ASSET_PATHS = [

@@ -103,6 +103,8 @@ describe("so frontend rewrites", () => {
     expect(sources.has("/export")).toBe(true);
     expect(sources.has("/sign-in-token")).toBe(true);
     expect(sources.has("/monday-app-association.json")).toBe(true);
+    expect(sources.has("/robots.txt")).toBe(true);
+    expect(sources.has("/sitemap.xml")).toBe(true);
   });
 
   it("matches configured so frontend rewrite paths", () => {
@@ -126,6 +128,8 @@ describe("so frontend rewrites", () => {
     expect(matchesSoFrontendRewritePath("/monday-app-association.json")).toBe(
       true,
     );
+    expect(matchesSoFrontendRewritePath("/robots.txt")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sitemap.xml")).toBe(true);
     expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(
       false,
     );
@@ -163,5 +167,7 @@ describe("so frontend rewrites", () => {
     expect(resolveSoFrontendRewritePath("/monday-app-association.json")).toBe(
       "/monday-app-association.json",
     );
+    expect(resolveSoFrontendRewritePath("/robots.txt")).toBe("/robots.txt");
+    expect(resolveSoFrontendRewritePath("/sitemap.xml")).toBe("/sitemap.xml");
   });
 });
