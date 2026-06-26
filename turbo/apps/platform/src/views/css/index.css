@@ -64,27 +64,13 @@
   }
 }
 
-:root:has(
-  :is(
-    input,
-    textarea,
-    select,
-    [contenteditable]:not([contenteditable="false"])
-  ):focus-visible
-) {
+:root[data-keyboard-open="true"] {
   --sab: 0px;
 }
 
 @supports (height: 100lvh) {
   @media (display-mode: standalone) {
-    :root:has(
-      :is(
-        input,
-        textarea,
-        select,
-        [contenteditable]:not([contenteditable="false"])
-      ):focus-visible
-    ) {
+    :root[data-keyboard-open="true"] {
       --zero-viewport-height: 100dvh;
     }
   }
