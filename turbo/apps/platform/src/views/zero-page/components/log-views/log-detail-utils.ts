@@ -713,12 +713,18 @@ function processAssistantEvent(
 
   // Separate TodoWrite from other tools
   const otherToolOps: ToolOperation[] = [];
-  const todoWriteOps: ToolOperation[] = [];
+  const todoWriteSnapshots: {
+    operation: ToolOperation;
+    todoState: TodoItem[];
+  }[] = [];
 
   for (const op of toolOperations) {
     if (op.toolName.toLowerCase() === "todowrite") {
       processTodoWrite(op, ctx.todoState);
-      todoWriteOps.push(op);
+      todoWriteSnapshots.push({
+        operation: op,
+        todoState: Array.from(ctx.todoState.values()),
+      });
     } else {
       otherToolOps.push(op);
     }
@@ -727,7 +733,12 @@ function processAssistantEvent(
   const hasOtherTools = otherToolOps.length > 0;
 
   // Rule: Tools without text get appended to the previous assistant card
-  if (!hasThinking && !hasText && hasOtherTools && todoWriteOps.length === 0) {
+  if (
+    !hasThinking &&
+    !hasText &&
+    hasOtherTools &&
+    todoWriteSnapshots.length === 0
+  ) {
     const lastAssistant = getLastMergeableAssistant(ctx.grouped);
     if (lastAssistant) {
       appendToolsToMessage(lastAssistant, otherToolOps, ctx.pendingToolUses);
@@ -753,17 +764,20 @@ function processAssistantEvent(
   }
 
   // Create standalone todo card for each TodoWrite
-  for (const todoOp of todoWriteOps) {
+  for (const [todoIndex, snapshot] of todoWriteSnapshots.entries()) {
     const todoMessage: GroupedMessage = {
       type: "todo",
-      sequenceNumber: event.sequenceNumber + 0.01,
+      sequenceNumber: sequenceNumberWithContentOffset(
+        event.sequenceNumber,
+        todoIndex,
+      ),
       createdAt: event.createdAt,
-      todoState: Array.from(ctx.todoState.values()),
+      todoState: snapshot.todoState,
       eventData: {},
     };
     ctx.grouped.push(todoMessage);
-    ctx.pendingToolUses.set(todoOp.toolUseId, {
-      operation: todoOp,
+    ctx.pendingToolUses.set(snapshot.operation.toolUseId, {
+      operation: snapshot.operation,
       message: todoMessage,
     });
   }

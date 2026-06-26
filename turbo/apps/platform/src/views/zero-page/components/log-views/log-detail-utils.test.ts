@@ -451,4 +451,59 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
       }),
     ).toEqual(["orphan-9-0", "orphan-9-1"]);
   });
+
+  it("keeps multiple TodoWrite cards from one event addressable", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-1",
+                name: "TodoWrite",
+                input: {
+                  todos: [{ content: "First task", status: "in_progress" }],
+                },
+              },
+              {
+                type: "tool_use",
+                id: "todo-2",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "First task", status: "completed" },
+                    { content: "Second task", status: "in_progress" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.sequenceNumber;
+      }),
+    ).toEqual([7 + 1 / 1_000_000, 7 + 2 / 1_000_000]);
+    expect(
+      new Set(
+        messages.map((message) => {
+          return groupedMessageKey(message);
+        }),
+      ).size,
+    ).toBe(2);
+    expect(messages[0]?.todoState).toEqual([
+      { content: "First task", status: "in_progress" },
+    ]);
+    expect(messages[1]?.todoState).toEqual([
+      { content: "First task", status: "completed" },
+      { content: "Second task", status: "in_progress" },
+    ]);
+  });
 });
