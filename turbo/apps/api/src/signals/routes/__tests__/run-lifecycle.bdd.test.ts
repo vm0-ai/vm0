@@ -123,6 +123,22 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_build_stored_execution_context",
 ] as const;
+const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_direct_parse_body",
+  "api_dispatch_pre_create_direct_prepare_args",
+] as const;
+const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_parse_body",
+  "api_dispatch_pre_create_zero_prepare_args",
+  "api_dispatch_pre_create_zero_resolve_agent_id",
+  "api_dispatch_pre_create_zero_load_agent",
+  "api_dispatch_pre_create_zero_load_user_info",
+  "api_dispatch_pre_create_zero_resolve_trigger_context",
+  "api_dispatch_pre_create_zero_load_connector_scopes",
+  "api_dispatch_pre_create_zero_load_workflows",
+  "api_dispatch_pre_create_zero_resolve_permission_policies",
+  "api_dispatch_pre_create_zero_build_create_run_args",
+] as const;
 const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_rows",
   "api_dispatch_prepare_context_filter_stored_connector_rows",
@@ -388,6 +404,24 @@ function expectNoApiDispatchActions(
   }
 }
 
+function expectApiDispatchSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(1);
+    expect(matchingEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: spanKind,
+      }),
+    );
+  }
+}
+
 function expectApiDispatchTimingEventsNotToLeak(
   events: readonly Record<string, unknown>[],
   forbiddenValues: readonly string[],
@@ -529,6 +563,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
     expectApiDispatchActions(
       timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
     );
     expectApiDispatchActions(timingEvents, [
@@ -589,6 +636,63 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(["top_level", "nested"]).toContain(event.span_kind);
     }
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
+  });
+
+  it("emits api dispatch timing for direct create route runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor } = await entitledRunActor();
+    const prompt = "direct route api dispatch timing should not leak prompt";
+    const composeName = `bdd-direct-route-timing-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const [composeRow] = await writeDb
+      .select({ headVersionId: agentComposes.headVersionId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, compose.composeId))
+      .limit(1);
+    const headVersionId = composeRow?.headVersionId;
+    if (!headVersionId) {
+      throw new Error("Expected created compose to have a head version id");
+    }
+
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt,
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_pre_create_agent_run"],
+      "top_level",
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      headVersionId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
   });
 
   it("emits compose resolution timing for direct compose version runs", async () => {
