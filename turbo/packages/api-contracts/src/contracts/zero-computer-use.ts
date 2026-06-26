@@ -408,6 +408,7 @@ export const computerUseAuthorizationRequestResponseSchema = z.object({
   source: computerUseAuthorizationSourceSchema,
   expiresAt: z.string(),
   completedAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
   hosts: z.array(computerUseHostSchema),
 });
 

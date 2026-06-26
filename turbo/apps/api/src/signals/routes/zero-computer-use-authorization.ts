@@ -176,6 +176,7 @@ const getAuthorizationRequestInner$ = command(
         source: result.source,
         expiresAt: result.expiresAt,
         completedAt: result.completedAt,
+        computerUseHostId: result.computerUseHostId,
         hosts: result.hosts,
       },
     };
