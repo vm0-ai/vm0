@@ -1482,7 +1482,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             flow.kill()
             return None
-        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        try:
+            auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
+        except BaseException:
+            auth_base_forwarder.release_forward_request_admission(admission)
+            raise
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         return None
 
@@ -1587,12 +1591,12 @@ async def request(flow: http.HTTPFlow) -> None:
     3. Firewall match (inject auth headers for allowed requests)
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
-        _release_auth_base_forward_admission(flow)
+        auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
     if flow.response is not None or flow.error is not None:
-        _release_auth_base_forward_admission(flow)
+        auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
@@ -1660,7 +1664,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 # Local firewall/auth errors never reach a provider. They only
                 # need pre-tracking to keep shutdown from racing while auth is
                 # resolving, so release as soon as the local response exists.
-                _release_auth_base_forward_admission(flow)
+                auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 _release_tracked_usage_flow(flow)
             return
 
@@ -1678,7 +1682,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
-        _release_auth_base_forward_admission(flow)
+        auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         _release_tracked_usage_flow(flow)
         raise
     finally:
@@ -1716,12 +1720,6 @@ def _maybe_track_usage_flow(
 def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
     if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
         usage.decrement_in_flight_flows()
-
-
-def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
-    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
-    if isinstance(admission, auth_base_forwarder.AuthBaseForwardingAdmission):
-        auth_base_forwarder.release_forward_request_admission(admission)
 
 
 def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
@@ -1864,7 +1862,7 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
     return response_size
 
 
-def _release_usage_hook_state(
+def _release_terminal_flow_state(
     flow: http.HTTPFlow,
     *,
     release_tracking: bool,
@@ -1877,7 +1875,7 @@ def _release_usage_hook_state(
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
-    _release_auth_base_forward_admission(flow)
+    auth_base_forwarder.release_forward_request_admission_from_flow(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
 
@@ -1894,7 +1892,7 @@ def _track_usage_flow(fn):
         try:
             return fn(flow, *args, **kwargs)
         finally:
-            _release_usage_hook_state(flow, release_tracking=True)
+            _release_terminal_flow_state(flow, release_tracking=True)
 
     return wrapper
 
@@ -1910,7 +1908,7 @@ def _track_response_usage_flow(fn):
             release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
             return result
         finally:
-            _release_usage_hook_state(flow, release_tracking=release_tracking)
+            _release_terminal_flow_state(flow, release_tracking=release_tracking)
 
     return wrapper
 

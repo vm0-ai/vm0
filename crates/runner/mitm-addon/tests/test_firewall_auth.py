@@ -1452,7 +1452,7 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
         admission = auth_base_forwarder.reserve_forward_request_admission(42)
-        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
 
         with mitm_ctx():
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1479,7 +1479,7 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         admission = auth_base_forwarder.reserve_forward_request_admission(42)
-        flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+        auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
         auth_resolution_entered = asyncio.Event()
         release_auth_resolution = asyncio.Event()
 

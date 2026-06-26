@@ -17,15 +17,15 @@ import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
-    AuthBaseForwardingAdmission,
     AuthBaseForwardingSaturatedError,
     ForwardedRequestTooLargeError,
     InvalidResolvedAuthHeaderError,
     forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
-    release_forward_request_admission,
+    release_forward_request_admission_from_flow,
     resolved_auth_header_pairs,
+    take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 from firewall_auth_cache import InvalidBillableAuthExpiryError, get_firewall_headers
@@ -694,19 +694,6 @@ def _set_invalid_resolved_auth_header_response(
     )
 
 
-def _take_auth_base_forward_admission(
-    flow: http.HTTPFlow,
-) -> AuthBaseForwardingAdmission | None:
-    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
-    return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
-
-
-def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
-    admission = _take_auth_base_forward_admission(flow)
-    if admission is not None:
-        release_forward_request_admission(admission)
-
-
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -765,7 +752,7 @@ async def _apply_url_rewrite(
             return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
-        admission = _take_auth_base_forward_admission(flow)
+        admission = take_forward_request_admission_from_flow(flow)
         status, resp_body, resp_headers = await forward_request(
             new_url,
             flow.request.method,
@@ -838,7 +825,7 @@ async def _apply_resolved_firewall_auth(
                 proxy_log_path=proxy_log_path,
             )
 
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
         _apply_header_query_injection(
             flow,
             headers=headers,
@@ -896,7 +883,7 @@ def _finish_firewall_auth_result(
     flow: http.HTTPFlow, result: FirewallAuthHandlingResult
 ) -> FirewallAuthHandlingResult:
     if result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
     return result
 
 
@@ -937,7 +924,7 @@ async def handle_firewall_request(
         _finalize_firewall_auth_success(flow, context, token_meta)
         return auth_result
     except BaseException:
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
         raise
 
 
