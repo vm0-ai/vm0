@@ -59,6 +59,8 @@ struct ClaimRequestTelemetry {
     poll_reason: Option<String>,
 }
 
+const CLAIM_TELEMETRY_DURATION_MS_MAX: u64 = 9_007_199_254_740_991;
+
 #[derive(Debug)]
 struct PollApiResult {
     job: Option<Job>,
@@ -584,18 +586,28 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
     ClaimRequestBody {
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
-            job_discovered_to_claim_request_ms: duration_ms(candidate.job_discovered_elapsed()),
+            job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
+                candidate.job_discovered_elapsed(),
+            ),
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
-                .map(duration_ms),
+                .map(claim_telemetry_duration_ms),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
-                .map(duration_ms),
-            poll_http_request_ms: candidate.poll_http_request_elapsed().map(duration_ms),
+                .map(claim_telemetry_duration_ms),
+            poll_http_request_ms: candidate
+                .poll_http_request_elapsed()
+                .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
         capabilities: [ClaimCapability::ResumeSessionHistoryRef],
     }
+}
+
+fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
+    // The TypeScript claim route validates these fields with z.number().int(),
+    // which rejects values above Number.MAX_SAFE_INTEGER.
+    duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
 fn poll_request_body(
@@ -1090,6 +1102,27 @@ mod tests {
         assert_eq!(
             body["capabilities"],
             serde_json::json!(["resumeSessionHistoryRef"])
+        );
+    }
+
+    #[test]
+    fn claim_request_body_saturates_wire_timing_to_js_safe_integer() {
+        let candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_poll_timing(
+                    Duration::MAX,
+                    Duration::from_millis(CLAIM_TELEMETRY_DURATION_MS_MAX + 1),
+                );
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(
+            body["telemetry"]["pollDueToJobDiscoveredMs"],
+            CLAIM_TELEMETRY_DURATION_MS_MAX
+        );
+        assert_eq!(
+            body["telemetry"]["pollHttpRequestMs"],
+            CLAIM_TELEMETRY_DURATION_MS_MAX
         );
     }
 
