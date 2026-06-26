@@ -757,6 +757,44 @@ class TestHandleFirewallRequest:
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
+    async def test_auth_cache_identity_tracks_request_auth_inputs(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """Same run/api entries must not share headers across auth input changes."""
+        api_entry = _api_entry(
+            api_id="run-1:0",
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        )
+        allow = _allow(api_entry)
+        first_flow = _firewall_flow(real_flow, run_id="run-1")
+        second_flow = _firewall_flow(real_flow, run_id="run-1")
+        first_vm_info = _vm_info(tmp_path, run_id="run-1", encrypted_secrets="encrypted-first")
+        second_vm_info = _vm_info(tmp_path, run_id="run-1", encrypted_secrets="encrypted-second")
+        mock_fetch = AsyncMock(
+            side_effect=[
+                _auth_success(headers={"Authorization": "Bearer first"}),
+                _auth_success(headers={"Authorization": "Bearer second"}),
+            ]
+        )
+
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch), mitm_ctx():
+            first_result = await auth.handle_firewall_request(first_flow, allow, first_vm_info)
+            second_result = await auth.handle_firewall_request(second_flow, allow, second_vm_info)
+
+        assert first_result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert second_result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert first_flow.request.headers["Authorization"] == "Bearer first"
+        assert second_flow.request.headers["Authorization"] == "Bearer second"
+        assert mock_fetch.call_count == 2
+
+        first_cache_key = first_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        second_cache_key = second_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        assert first_cache_key.run_id == "run-1"
+        assert first_cache_key.api_id == "run-1:0"
+        assert second_cache_key.run_id == "run-1"
+        assert second_cache_key.api_id == "run-1:0"
+        assert first_cache_key.auth_identity != second_cache_key.auth_identity
+
     async def test_standard_auth_filters_unsafe_resolved_headers(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
