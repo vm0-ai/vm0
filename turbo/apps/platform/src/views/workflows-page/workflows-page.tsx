@@ -1,14 +1,9 @@
 // Read-only workflow lists. Rows link into the agent-scoped detail page; there
 // are no write actions here.
-import { useGet, useSet } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { IconChevronRight, IconSearch } from "@tabler/icons-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 
-import {
-  setWorkflowSearch$,
-  workflowSearch$,
-} from "../../signals/workflows-page/workflows-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import {
@@ -21,31 +16,6 @@ const WORKFLOW_LIST_GRID_WITH_AGENT =
   "grid grid-cols-[minmax(11rem,1.05fr)_minmax(16rem,1.55fr)_9rem_7rem_2.5rem] gap-x-5 items-center";
 const WORKFLOW_LIST_GRID_AGENT_SCOPED =
   "grid grid-cols-[minmax(11rem,1.05fr)_minmax(16rem,1.65fr)_7rem_2.5rem] gap-x-5 items-center";
-
-export function WorkflowsSearch() {
-  const search = useGet(workflowSearch$);
-  const setSearch = useSet(setWorkflowSearch$);
-
-  return (
-    <div className="relative w-full sm:w-64">
-      <IconSearch
-        size={15}
-        stroke={1.5}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-      />
-      <input
-        aria-label="Search workflows"
-        type="text"
-        value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
-        }}
-        placeholder="Search workflows"
-        className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
-      />
-    </div>
-  );
-}
 
 export function WorkflowListPanel({
   workflows,

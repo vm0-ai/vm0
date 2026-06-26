@@ -402,13 +402,7 @@ describe("agent workflows tab", () => {
     expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
     expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
     expect(screen.getByText("private")).toBeInTheDocument();
-
-    const searchInput = screen.getByLabelText("Search workflows");
-    await fill(searchInput, "ops");
-    await waitFor(() => {
-      expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
-    });
-    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Search workflows")).not.toBeInTheDocument();
 
     const opsLink = screen.getByText("Ops Playbook").closest("a");
     expect(opsLink).toHaveAttribute(
