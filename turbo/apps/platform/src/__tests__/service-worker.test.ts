@@ -181,7 +181,7 @@ async function dispatchFetch(
 }
 
 const REVALIDATED_STATIC_ASSET_URLS = [
-  "https://app.test/firewall-metadata/v1/gmail.generated.js",
+  "https://app.test/firewall-metadata/permission-details/v1/gmail.generated.js",
 ] as const;
 
 describe("platform service worker", () => {

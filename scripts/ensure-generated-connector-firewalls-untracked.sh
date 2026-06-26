@@ -19,6 +19,7 @@ tracked_disallowed_firewall_metadata="$(
         "$firewall_metadata_dir"/*.generated.ts) printf '%s\n' "$tracked_file" ;;
         "$firewall_metadata_dir"/.*.previous-* | "$firewall_metadata_dir"/.*.previous-*/*) printf '%s\n' "$tracked_file" ;;
         "$firewall_metadata_dir"/.metadata-* | "$firewall_metadata_dir"/.metadata-*/*) printf '%s\n' "$tracked_file" ;;
+        "$firewall_metadata_dir/permission-details/"*) printf '%s\n' "$tracked_file" ;;
         "$firewall_metadata_dir/details/"*) printf '%s\n' "$tracked_file" ;;
         "$firewall_metadata_dir/routing-details/"*) printf '%s\n' "$tracked_file" ;;
       esac

@@ -4,9 +4,9 @@ import {
   type FirewallPolicy,
   type FirewallPolicyValue,
 } from "../firewall-types";
-import { loadGeneratedFirewallPermissionMetadata } from "./loader.generated";
+import { loadGeneratedFirewallPermissionMetadata } from "./permission-detail-loader.generated";
 import { createFirewallMetadataPolicyResolver } from "./policy-resolver";
-import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./summary.generated";
+import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./permission-summaries.generated";
 import type {
   FirewallPermissionDetailMetadata,
   FirewallPermissionSummaryMetadata,

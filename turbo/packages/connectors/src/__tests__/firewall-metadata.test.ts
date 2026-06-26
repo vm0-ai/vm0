@@ -314,9 +314,9 @@ describe("firewall metadata", () => {
 
     expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
       "../firewall-types",
-      "./loader.generated",
+      "./permission-detail-loader.generated",
+      "./permission-summaries.generated",
       "./policy-resolver",
-      "./summary.generated",
       "./types",
     ]);
     expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
@@ -329,24 +329,28 @@ describe("firewall metadata", () => {
   it("keeps permission detail metadata behind connector-specific dynamic imports", () => {
     const loader = path.resolve(
       import.meta.dirname,
-      "../firewall-metadata/loader.generated.ts",
+      "../firewall-metadata/permission-detail-loader.generated.ts",
     );
     const source = fs.readFileSync(loader, "utf-8");
     const dynamicSpecifiers = dynamicImportSpecifiers(source);
 
     expect(staticImportSpecifiers(source)).toStrictEqual(["./types"]);
-    expect(dynamicSpecifiers).toContain("./details/slack.generated");
-    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(dynamicSpecifiers).toContain("./permission-details/slack.generated");
+    expect(dynamicSpecifiers).toContain(
+      "./permission-details/github.generated",
+    );
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     for (const specifier of dynamicSpecifiers) {
-      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+      expect(specifier).toMatch(
+        /^\.\/permission-details\/[a-z0-9][a-z0-9-]*\.generated$/,
+      );
     }
   });
 
   it("keeps generated permission detail modules runtime-free", () => {
     const detailsDir = path.resolve(
       import.meta.dirname,
-      "../firewall-metadata/details",
+      "../firewall-metadata/permission-details",
     );
     const files = listTsFiles(detailsDir);
 
