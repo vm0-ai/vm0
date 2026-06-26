@@ -3,12 +3,12 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { collectAndValidatePermissions } from "../../connectors/src/firewall-expander";
+import { collectAndValidatePermissions } from "@vm0/connectors/firewall-expander";
 import {
   firewallConfigSchema,
   type FirewallConfig,
   type FirewallPolicyValue,
-} from "../../connectors/src/firewall-types";
+} from "@vm0/connectors/firewall-types";
 import {
   BILLABLE_FIREWALL_CONNECTOR_TYPES,
   FIREWALL_CONNECTOR_TYPES,

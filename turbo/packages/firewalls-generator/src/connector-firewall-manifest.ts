@@ -1,4 +1,4 @@
-import type { ConnectorType } from "../../connectors/src/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 
 export const FIREWALL_CONNECTOR_TYPES = [
   "agentmail",

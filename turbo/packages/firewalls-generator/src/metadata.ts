@@ -1,21 +1,23 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { ConnectorType } from "../../connectors/src/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
-  FirewallConfig,
-  FirewallPolicy,
-  FirewallPolicyValue,
-} from "../../connectors/src/firewall-types";
-import type {
-  FirewallExecutionMetadata,
   FirewallPermissionDefaultPolicyMetadata,
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
   FirewallPermissionSummaryMetadata,
+} from "@vm0/connectors/firewall-metadata";
+import type {
   FirewallRoutingIndexMetadata,
   FirewallRoutingMetadata,
-} from "../../connectors/src/firewall-metadata/types";
+} from "@vm0/connectors/firewall-metadata/routing";
+import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import type {
+  FirewallConfig,
+  FirewallPolicy,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
   generatedConnectorMetadataFileName,

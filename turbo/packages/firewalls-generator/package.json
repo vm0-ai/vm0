@@ -299,7 +299,8 @@
     "generate:reducto": "tsx src/index.ts reducto"
   },
   "dependencies": {
-    "@vm0/api-contracts": "workspace:*"
+    "@vm0/api-contracts": "workspace:*",
+    "@vm0/connectors": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

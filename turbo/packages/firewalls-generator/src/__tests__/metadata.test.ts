@@ -33,9 +33,13 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
 const GENERATOR_RENDERER_BOUNDARY_FILES = [
   "../python-builtin-firewall-catalog.ts",
 ] as const;
-const ALLOWED_GENERATOR_CONNECTOR_VALIDATOR_IMPORTS = new Set([
-  "../../connectors/src/firewall-expander",
-  "../../connectors/src/firewall-types",
+const ALLOWED_GENERATOR_CONNECTOR_IMPORTS = new Set([
+  "@vm0/connectors/connectors",
+  "@vm0/connectors/firewall-expander",
+  "@vm0/connectors/firewall-metadata",
+  "@vm0/connectors/firewall-metadata/routing",
+  "@vm0/connectors/firewall-metadata/server",
+  "@vm0/connectors/firewall-types",
 ]);
 
 function staticValueImportSpecifiers(source: string): string[] {
@@ -55,6 +59,21 @@ function staticValueExportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
     /^\s*export(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function staticTypeModuleSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*import\s+type\s+[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(
+    /^\s*export\s+type(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
   )) {
     specifiers.push(match[1]!);
   }
@@ -145,8 +164,15 @@ describe("firewall metadata generator", () => {
       expect(staticValueModuleSpecifiers(source), file).not.toContain(
         "../../connectors/src" + "/firewalls",
       );
-      for (const specifier of staticValueModuleSpecifiers(source)) {
-        if (ALLOWED_GENERATOR_CONNECTOR_VALIDATOR_IMPORTS.has(specifier)) {
+      const specifiers = [
+        ...staticValueModuleSpecifiers(source),
+        ...staticTypeModuleSpecifiers(source),
+      ];
+      for (const specifier of specifiers) {
+        if (specifier.startsWith("@vm0/connectors")) {
+          expect(ALLOWED_GENERATOR_CONNECTOR_IMPORTS.has(specifier), file).toBe(
+            true,
+          );
           continue;
         }
         expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
