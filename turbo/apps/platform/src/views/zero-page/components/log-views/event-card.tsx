@@ -9,57 +9,14 @@ import { nowDate } from "../../../../lib/time.ts";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
-// Type definitions for EventData
-interface MessageData {
-  content: unknown[] | null;
-  id: string | null;
-  model: string | null;
-  role: string | null;
-  stop_reason: string | null;
-  usage?: {
-    input_tokens: number | null;
-    output_tokens: number | null;
-    cache_read_input_tokens: number | null;
-  };
-}
-
-interface ToolResultMeta {
-  bytes?: number | null;
-  code?: number | null;
-  codeText?: string | null;
-  durationMs?: number | null;
-  url?: string | null;
-  filePath?: string | null;
-  query?: string | null;
-  result?: string | null;
-}
-
-export interface EventData {
-  type?: string;
-  subtype?: string;
-  message?: MessageData;
-  tool_use_result?: ToolResultMeta;
-  model?: string;
-  session_id?: string;
-  tools?: string[];
-  agents?: string[];
-  slash_commands?: string[];
-  total_cost_usd?: number | null;
-  duration_ms?: number | null;
-  duration_api_ms?: number | null;
-  num_turns?: number | null;
-  modelUsage?: Record<
-    string,
-    {
-      costUSD?: number | null;
-      inputTokens?: number | null;
-      outputTokens?: number | null;
-    }
-  >;
-  is_error?: boolean;
-  success?: boolean;
-  result?: string | null;
-}
+type ModelUsage = Record<
+  string,
+  {
+    costUSD?: number | null;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+  }
+>;
 
 // Exported for reuse
 export function formatEventTime(isoString: string): string {
@@ -156,9 +113,7 @@ function toNullableNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function toModelUsage(
-  value: unknown,
-): NonNullable<EventData["modelUsage"]> | undefined {
+function toModelUsage(value: unknown): ModelUsage | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -183,10 +138,11 @@ function toModelUsage(
 }
 
 // Exported for use in GroupedMessageCard
-export function SystemInitContent({ eventData }: { eventData: EventData }) {
-  const tools = toStringList(eventData.tools);
-  const agents = toStringList(eventData.agents);
-  const slashCommands = toStringList(eventData.slash_commands);
+export function SystemInitContent({ eventData }: { eventData: unknown }) {
+  const data = isRecord(eventData) ? eventData : {};
+  const tools = toStringList(data.tools);
+  const agents = toStringList(data.agents);
+  const slashCommands = toStringList(data.slash_commands);
 
   const hasAnyItems =
     tools.length > 0 || agents.length > 0 || slashCommands.length > 0;
@@ -229,18 +185,7 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
 
 // ============ RESULT EVENT (Final stats) ============
 
-function ModelUsagePopover({
-  modelUsage,
-}: {
-  modelUsage: Record<
-    string,
-    {
-      costUSD?: number | null;
-      inputTokens?: number | null;
-      outputTokens?: number | null;
-    }
-  >;
-}) {
+function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
   const entries = Object.entries(modelUsage).filter(([, usage]) => {
     return usage.inputTokens || usage.outputTokens;
   });
@@ -282,13 +227,13 @@ function ModelUsagePopover({
 }
 
 // Exported for use in GroupedMessageCard
-export function ResultEventContent({ eventData }: { eventData: EventData }) {
+export function ResultEventContent({ eventData }: { eventData: unknown }) {
+  const data = isRecord(eventData) ? eventData : {};
   const durationMs =
-    typeof eventData.duration_ms === "number" ? eventData.duration_ms : null;
-  const numTurns =
-    typeof eventData.num_turns === "number" ? eventData.num_turns : null;
-  const modelUsage = toModelUsage(eventData.modelUsage);
-  const result = typeof eventData.result === "string" ? eventData.result : null;
+    typeof data.duration_ms === "number" ? data.duration_ms : null;
+  const numTurns = typeof data.num_turns === "number" ? data.num_turns : null;
+  const modelUsage = toModelUsage(data.modelUsage);
+  const result = typeof data.result === "string" ? data.result : null;
 
   return (
     <div className="space-y-2">

@@ -10,7 +10,6 @@ import {
   SystemInitContent,
   ResultEventContent,
   formatEventTime,
-  type EventData,
 } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
@@ -31,6 +30,10 @@ function MarkdownContent({ text }: { text: string }) {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function CollapsibleText({ text }: { text: string }) {
@@ -141,14 +144,11 @@ export function GroupedMessageCard({
   matchStartIndex = 0,
   showConnector = false,
 }: GroupedMessageCardProps) {
-  const eventData = message.eventData as EventData;
-
   // System event
   if (message.type === "system") {
     return (
       <SystemMessageCard
         message={message}
-        eventData={eventData}
         searchTerm={searchTerm}
         showConnector={showConnector}
       />
@@ -158,11 +158,7 @@ export function GroupedMessageCard({
   // Result event
   if (message.type === "result") {
     return (
-      <ResultMessageCard
-        message={message}
-        eventData={eventData}
-        showConnector={showConnector}
-      />
+      <ResultMessageCard message={message} showConnector={showConnector} />
     );
   }
 
@@ -309,15 +305,14 @@ function TaskMessageCard({
 
 function SystemMessageCard({
   message,
-  eventData,
   searchTerm,
   showConnector = false,
 }: {
   message: GroupedMessage;
-  eventData: EventData;
   searchTerm?: string;
   showConnector?: boolean;
 }) {
+  const eventData = isRecord(message.eventData) ? message.eventData : {};
   const subtype =
     typeof eventData.subtype === "string" ? eventData.subtype : undefined;
 
@@ -362,13 +357,12 @@ function SystemMessageCard({
 
 function ResultMessageCard({
   message,
-  eventData,
   showConnector = false,
 }: {
   message: GroupedMessage;
-  eventData: EventData;
   showConnector?: boolean;
 }) {
+  const eventData = isRecord(message.eventData) ? message.eventData : {};
   const timestamp = formatEventTime(message.createdAt);
   const isError = eventData.is_error === true || eventData.success === false;
   return (
