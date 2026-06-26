@@ -212,6 +212,18 @@ def log_usage_underbilling(
     /,
     **extra: object,
 ) -> None:
+    """Log a usage-underbilling signal with the underbilling field contract.
+
+    ``type``, ``reason``, ``underbilling_class``, and ``component`` are owned
+    by this helper and cannot be overridden by caller context.  Without a
+    proxy log path, the stderr fallback additionally applies key-based secret
+    redaction, exact-``url`` sanitization, escaping, and truncation.
+
+    When a proxy log path is available, this still writes structured JSONL
+    through ``log_proxy_entry``.  In that path, the proxy-log extra-field
+    contract still applies; callers must not assume broad proxy-log redaction
+    for arbitrary context.
+    """
     fields = underbilling_fields(reason, underbilling_class, **extra)
     if not proxy_log_path:
         parts = [
