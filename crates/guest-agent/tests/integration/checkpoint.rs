@@ -267,7 +267,12 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Session history is not valid UTF-8"),
+        "expected recovery checkpoint to fail on invalid UTF-8 history, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
