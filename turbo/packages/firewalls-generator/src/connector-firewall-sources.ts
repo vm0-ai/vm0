@@ -95,6 +95,124 @@ function isPolicyValue(value: unknown): value is FirewallPolicyValue {
   return value === "allow" || value === "deny" || value === "ask";
 }
 
+function firewallPermissionNames(firewall: FirewallConfig): Set<string> {
+  const names = new Set<string>();
+  for (const api of firewall.apis) {
+    for (const permission of api.permissions ?? []) {
+      names.add(permission.name);
+    }
+  }
+  return names;
+}
+
+function duplicateStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value);
+    }
+    seen.add(value);
+  }
+  return [...duplicates].sort(compareStrings);
+}
+
+function unknownStrings(
+  values: Iterable<string>,
+  knownValues: ReadonlySet<string>,
+): string[] {
+  const unknown = new Set<string>();
+  for (const value of values) {
+    if (!knownValues.has(value)) {
+      unknown.add(value);
+    }
+  }
+  return [...unknown].sort(compareStrings);
+}
+
+function validateGeneratedDefaultAllowed(
+  type: FirewallConnectorType,
+  permissionNames: ReadonlySet<string>,
+  defaultAllowed: readonly string[] | null,
+): void {
+  if (defaultAllowed === null) {
+    return;
+  }
+
+  const duplicates = duplicateStrings(defaultAllowed);
+  if (duplicates.length > 0) {
+    throw new Error(
+      `Generated default allowed permissions contain duplicates for ${type}: ${duplicates.join(", ")}`,
+    );
+  }
+
+  const unknownPermissions = unknownStrings(defaultAllowed, permissionNames);
+  if (unknownPermissions.length > 0) {
+    throw new Error(
+      `Generated default allowed permissions reference unknown permissions for ${type}: ${unknownPermissions.join(", ")}`,
+    );
+  }
+}
+
+function validateGeneratedCategories(
+  type: FirewallConnectorType,
+  permissionNames: ReadonlySet<string>,
+  categories: ConnectorCategories | null,
+): void {
+  if (categories === null) {
+    return;
+  }
+
+  const categoryPermissionNames = new Set(Object.keys(categories.categories));
+  const uncategorizedPermissions = unknownStrings(
+    permissionNames,
+    categoryPermissionNames,
+  );
+  if (uncategorizedPermissions.length > 0) {
+    throw new Error(
+      `Generated categories are missing permissions for ${type}: ${uncategorizedPermissions.join(", ")}`,
+    );
+  }
+
+  const unknownPermissions = unknownStrings(
+    categoryPermissionNames,
+    permissionNames,
+  );
+  if (unknownPermissions.length > 0) {
+    throw new Error(
+      `Generated categories reference unknown permissions for ${type}: ${unknownPermissions.join(", ")}`,
+    );
+  }
+
+  const duplicateDisplayOrder = duplicateStrings([...categories.displayOrder]);
+  if (duplicateDisplayOrder.length > 0) {
+    throw new Error(
+      `Generated category display order contains duplicates for ${type}: ${duplicateDisplayOrder.join(", ")}`,
+    );
+  }
+
+  const displayOrder = new Set(categories.displayOrder);
+  const unknownCategories = unknownStrings(
+    Object.values(categories.categories),
+    displayOrder,
+  );
+  if (unknownCategories.length > 0) {
+    throw new Error(
+      `Generated categories reference display-order categories missing for ${type}: ${unknownCategories.join(", ")}`,
+    );
+  }
+
+  const unusedCategories = unknownStrings(
+    displayOrder,
+    new Set(Object.values(categories.categories)),
+  );
+  if (unusedCategories.length > 0) {
+    throw new Error(
+      `Generated category display order has unused categories for ${type}: ${unusedCategories.join(", ")}`,
+    );
+  }
+}
+
 function generatedExportCandidates(
   moduleExports: Readonly<Record<string, unknown>>,
   suffix: string,
@@ -485,6 +603,17 @@ async function loadGeneratedFirewallSource(
       `Firewall metadata categories are incomplete for connector: ${type}`,
     );
   }
+  const connectorCategories =
+    categories && displayOrder ? { categories, displayOrder } : null;
+  const defaultAllowed = getOptionalGeneratedExport(
+    moduleExports,
+    type,
+    "DefaultAllowed",
+    isStringArray,
+  );
+  const permissionNames = firewallPermissionNames(firewall);
+  validateGeneratedCategories(type, permissionNames, connectorCategories);
+  validateGeneratedDefaultAllowed(type, permissionNames, defaultAllowed);
 
   return {
     type,
@@ -492,14 +621,8 @@ async function loadGeneratedFirewallSource(
     firewall,
     label: connectorMetadata.label,
     envBindingEntries: connectorMetadata.envBindingEntries,
-    categories:
-      categories && displayOrder ? { categories, displayOrder } : null,
-    defaultAllowed: getOptionalGeneratedExport(
-      moduleExports,
-      type,
-      "DefaultAllowed",
-      isStringArray,
-    ),
+    categories: connectorCategories,
+    defaultAllowed,
     defaultUnknownPolicy:
       getOptionalGeneratedExport(
         moduleExports,
