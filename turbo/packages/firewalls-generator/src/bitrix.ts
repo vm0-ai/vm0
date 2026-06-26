@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Bitrix24 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bitrix", ts, import.meta.dirname);
+  writeOutput("bitrix", ts);
 }

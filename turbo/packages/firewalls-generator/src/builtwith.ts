@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating BuiltWith firewall config...");
   const ts = generateTypeScript();
-  writeOutput("builtwith", ts, import.meta.dirname);
+  writeOutput("builtwith", ts);
 }

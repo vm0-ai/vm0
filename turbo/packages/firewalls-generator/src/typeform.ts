@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Typeform firewall config...");
   const ts = generateTypeScript();
-  writeOutput("typeform", ts, import.meta.dirname);
+  writeOutput("typeform", ts);
 }

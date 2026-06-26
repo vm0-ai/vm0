@@ -21,8 +21,9 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { search } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { PLACEHOLDER } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -646,6 +647,31 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("prefills a new agent chat with the workflow slash command", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Use this"));
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(search()).toBe("");
+    expect(textarea).toHaveValue("/sales-research");
   });
 
   it("orders workflow actions menu sections with audit metadata last", async () => {

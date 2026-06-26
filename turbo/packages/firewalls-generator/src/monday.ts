@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Monday.com firewall config...");
   const ts = generateTypeScript();
-  writeOutput("monday", ts, import.meta.dirname);
+  writeOutput("monday", ts);
 }

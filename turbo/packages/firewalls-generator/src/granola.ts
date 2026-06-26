@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Granola firewall config...");
   const ts = generateTypeScript();
-  writeOutput("granola", ts, import.meta.dirname);
+  writeOutput("granola", ts);
 }

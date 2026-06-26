@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Linear firewall config...");
   const ts = generateTypeScript();
-  writeOutput("linear", ts, import.meta.dirname);
+  writeOutput("linear", ts);
 }

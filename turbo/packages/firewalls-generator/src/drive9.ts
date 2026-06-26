@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating drive9 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("drive9", ts, import.meta.dirname);
+  writeOutput("drive9", ts);
 }

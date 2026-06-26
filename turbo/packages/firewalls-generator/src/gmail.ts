@@ -466,5 +466,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("gmail", ts, import.meta.dirname);
+  writeOutput("gmail", ts);
 }

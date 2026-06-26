@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Crustdata firewall config...");
   const ts = generateTypeScript();
-  writeOutput("crustdata", ts, import.meta.dirname);
+  writeOutput("crustdata", ts);
 }

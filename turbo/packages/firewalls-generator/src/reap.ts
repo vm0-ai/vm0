@@ -57,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Reap firewall config...");
   const ts = generateTypeScript();
-  writeOutput("reap", ts, import.meta.dirname);
+  writeOutput("reap", ts);
 }

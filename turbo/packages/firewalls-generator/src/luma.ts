@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Luma firewall config...");
   const ts = generateTypeScript();
-  writeOutput("luma", ts, import.meta.dirname);
+  writeOutput("luma", ts);
 }

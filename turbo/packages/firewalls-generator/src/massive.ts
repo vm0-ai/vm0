@@ -64,5 +64,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Massive firewall config...");
   const ts = generateTypeScript();
-  writeOutput("massive", ts, import.meta.dirname);
+  writeOutput("massive", ts);
 }

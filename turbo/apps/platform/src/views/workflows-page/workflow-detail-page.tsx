@@ -1,6 +1,6 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
-// triggers, visibility controls, metadata editing, run-once, copy, and delete.
+// triggers, visibility controls, metadata editing, slash use, copy, and delete.
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -70,7 +70,6 @@ import {
   deleteWorkflowTrigger$,
   editingGmailTriggerId$,
   reloadWorkflows$,
-  runWorkflow$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
   setCreatedWorkflowWebhookTrigger$,
@@ -483,7 +482,7 @@ function DetailHeader({
         </div>
         {detail ? (
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <WorkflowRunOnceButton detail={detail} />
+            <WorkflowUseThisButton detail={detail} />
             <button
               type="button"
               className={cn(
@@ -515,42 +514,26 @@ function DetailHeader({
   );
 }
 
-function WorkflowRunOnceButton({
+function WorkflowUseThisButton({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
-  const [runLoadable, runWorkflow] = useLoadableSet(runWorkflow$);
-  const running = runLoadable.state === "loading";
 
   return (
     <button
       type="button"
-      disabled={running}
-      className={cn(
-        "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
-        running ? "cursor-not-allowed opacity-60" : "",
-      )}
+      className="zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm"
       onClick={() => {
-        detach(
-          (async () => {
-            const result = await runWorkflow(detail.id, pageSignal);
-            navigate(ROUTES.chat, {
-              pathParams: { threadId: result.chatThreadId },
-            });
-          })(),
-          Reason.DomCallback,
-        );
+        navigate(ROUTES.agentChat, {
+          pathParams: { agentId: detail.agentId },
+          searchParams: new URLSearchParams({ prompt: `/${detail.name}` }),
+        });
       }}
     >
-      {running ? (
-        <IconLoader2 size={14} className="animate-spin" />
-      ) : (
-        <IconClock size={14} stroke={1.5} />
-      )}
-      <span className="hidden sm:inline">Run once</span>
+      <IconPlus size={14} stroke={1.5} />
+      <span className="hidden sm:inline">Use this</span>
     </button>
   );
 }

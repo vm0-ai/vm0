@@ -58,5 +58,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Alchemy firewall config...");
   const ts = generateTypeScript();
-  writeOutput("alchemy", ts, import.meta.dirname);
+  writeOutput("alchemy", ts);
 }

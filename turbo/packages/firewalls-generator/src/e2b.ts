@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating E2B firewall config...");
   const ts = generateTypeScript();
-  writeOutput("e2b", ts, import.meta.dirname);
+  writeOutput("e2b", ts);
 }

@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Bright Data firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bright-data", ts, import.meta.dirname);
+  writeOutput("bright-data", ts);
 }

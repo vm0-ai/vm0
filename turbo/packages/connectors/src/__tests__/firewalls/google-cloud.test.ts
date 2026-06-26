@@ -3,17 +3,44 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import type { FirewallConfig } from "../../firewall-types";
 import {
+  isNumberRecord,
+  isStringArray,
+  isStringRecord,
   loadDefaultFirewallPolicies,
+  loadRequiredGeneratedConnectorFirewallExport,
   loadRequiredConnectorFirewall,
 } from "../firewall-test-helpers";
-import {
-  googleCloudCategories,
-  googleCloudCategoryOrder,
-  googleCloudDefaultAllowed,
-  googleCloudGenerationStats,
-} from "../../firewalls/google-cloud.generated";
 
 let googleCloudFirewall: FirewallConfig;
+let googleCloudCategories: Record<string, string>;
+let googleCloudCategoryOrder: readonly string[];
+let googleCloudDefaultAllowed: readonly string[];
+let googleCloudGenerationStats: GoogleCloudGenerationStats;
+
+interface GoogleCloudGenerationStats {
+  readonly totalOperations: number;
+  readonly mappedOperations: number;
+  readonly explicitlyUnmappedOperations: number;
+  readonly unexpectedUnmappedOperations: number;
+  readonly permissionCount: number;
+}
+
+function isGoogleCloudGenerationStats(
+  value: unknown,
+): value is GoogleCloudGenerationStats {
+  if (!isNumberRecord(value)) {
+    return false;
+  }
+  return [
+    "totalOperations",
+    "mappedOperations",
+    "explicitlyUnmappedOperations",
+    "unexpectedUnmappedOperations",
+    "permissionCount",
+  ].every((key) => {
+    return typeof value[key] === "number";
+  });
+}
 
 function findPermissions(
   apiBase: string,
@@ -38,6 +65,29 @@ function permissionNames(): string[] {
 describe("google-cloud firewall", () => {
   beforeAll(async () => {
     googleCloudFirewall = await loadRequiredConnectorFirewall("google-cloud");
+    googleCloudCategories = await loadRequiredGeneratedConnectorFirewallExport(
+      "google-cloud",
+      "googleCloudCategories",
+      isStringRecord,
+    );
+    googleCloudCategoryOrder =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "google-cloud",
+        "googleCloudCategoryOrder",
+        isStringArray,
+      );
+    googleCloudDefaultAllowed =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "google-cloud",
+        "googleCloudDefaultAllowed",
+        isStringArray,
+      );
+    googleCloudGenerationStats =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "google-cloud",
+        "googleCloudGenerationStats",
+        isGoogleCloudGenerationStats,
+      );
   });
 
   it("keeps the existing Google Cloud host coverage", () => {

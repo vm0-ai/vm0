@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Ticketmaster firewall config...");
   const ts = generateTypeScript();
-  writeOutput("ticketmaster", ts, import.meta.dirname);
+  writeOutput("ticketmaster", ts);
 }

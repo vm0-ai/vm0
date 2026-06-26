@@ -213,50 +213,6 @@ function expectNoGeneratedRuntimeImports(source: string): void {
   }
 }
 
-function isEagerRegistryIndexSpecifier(
-  sourceFilePath: string,
-  specifier: string,
-): boolean {
-  if (
-    /^@vm0\/connectors\/firewalls(?:\/(?:index(?:\.(?:d\.)?[cm]?[jt]sx?)?)?)?$/.test(
-      specifier,
-    )
-  ) {
-    return true;
-  }
-
-  if (!specifier.startsWith(".")) {
-    return false;
-  }
-
-  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
-  const resolvedSpecifier = path.resolve(
-    path.dirname(sourceFilePath),
-    specifier,
-  );
-  const relativeSpecifier = path.relative(firewallsDir, resolvedSpecifier);
-  return (
-    relativeSpecifier === "" ||
-    /^index(?:\.(?:d\.)?[cm]?[jt]sx?)?$/.test(relativeSpecifier)
-  );
-}
-
-function generatedFirewallSourceFiles(): string[] {
-  const firewallsDir = path.resolve(import.meta.dirname, "../firewalls");
-  return fs
-    .readdirSync(firewallsDir)
-    .filter((fileName) => {
-      return (
-        fileName.endsWith(".generated.ts") &&
-        fileName !== "runtime-loader.generated.ts"
-      );
-    })
-    .map((fileName) => {
-      return path.join(firewallsDir, fileName);
-    })
-    .sort(compareStrings);
-}
-
 describe("firewall runtime surface", () => {
   it("does not expose the runtime loader package subpath", () => {
     const packageJson = JSON.parse(
@@ -388,26 +344,10 @@ describe("firewall runtime surface", () => {
     ).toBe(false);
   });
 
-  it("keeps generated firewall configs independent from the eager registry index", () => {
-    const offenders: string[] = [];
-    const generatedFiles = generatedFirewallSourceFiles();
-
-    expect(generatedFiles.length).toBeGreaterThan(0);
-    for (const filePath of generatedFiles) {
-      const source = fs.readFileSync(filePath, "utf-8");
-      const eagerIndexSpecifiers = moduleSpecifiers(source).filter(
-        (specifier) => {
-          return isEagerRegistryIndexSpecifier(filePath, specifier);
-        },
-      );
-      if (eagerIndexSpecifiers.length > 0) {
-        offenders.push(
-          `${path.basename(filePath)}: ${eagerIndexSpecifiers.join(", ")}`,
-        );
-      }
-    }
-
-    expect(offenders).toStrictEqual([]);
+  it("does not keep generated connector firewall source files", () => {
+    expect(
+      fs.existsSync(path.resolve(import.meta.dirname, "../firewalls")),
+    ).toBe(false);
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Greenhouse firewall config...");
   const ts = generateTypeScript();
-  writeOutput("greenhouse", ts, import.meta.dirname);
+  writeOutput("greenhouse", ts);
 }

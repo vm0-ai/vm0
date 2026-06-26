@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Render firewall config...");
   const ts = generateTypeScript();
-  writeOutput("render", ts, import.meta.dirname);
+  writeOutput("render", ts);
 }

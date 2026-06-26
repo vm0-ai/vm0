@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating RentCast firewall config...");
   const ts = generateTypeScript();
-  writeOutput("rentcast", ts, import.meta.dirname);
+  writeOutput("rentcast", ts);
 }

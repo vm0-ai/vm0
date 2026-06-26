@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ZeptoMail firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zeptomail", ts, import.meta.dirname);
+  writeOutput("zeptomail", ts);
 }

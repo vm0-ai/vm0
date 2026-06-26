@@ -233,5 +233,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("notion", ts, import.meta.dirname);
+  writeOutput("notion", ts);
 }

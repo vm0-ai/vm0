@@ -63,5 +63,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Jotform firewall config...");
   const ts = generateTypeScript();
-  writeOutput("jotform", ts, import.meta.dirname);
+  writeOutput("jotform", ts);
 }

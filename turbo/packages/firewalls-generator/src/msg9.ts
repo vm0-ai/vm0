@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating msg9 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("msg9", ts, import.meta.dirname);
+  writeOutput("msg9", ts);
 }
