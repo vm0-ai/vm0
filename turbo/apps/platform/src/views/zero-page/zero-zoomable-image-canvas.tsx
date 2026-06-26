@@ -171,7 +171,11 @@ export function ZoomableArtifactImageCanvas({
       }}
       pinch={{ allowPanning: false }}
       smooth={false}
-      wheel={{ activationKeys: ["Control"] }}
+      trackPadPanning={{ disabled: false }}
+      wheel={{
+        activationKeys: ["Control"],
+        wheelDisabled: true,
+      }}
     >
       {({ resetTransform, zoomIn, zoomOut }) => {
         const controls = controlsFromTransformState({
