@@ -392,6 +392,16 @@ function getTurnStatus(eventData: Record<string, unknown>): string | undefined {
   );
 }
 
+function getTurnSuccess(
+  eventData: Record<string, unknown>,
+): boolean | undefined {
+  const turn = getTurnRecord(eventData);
+  const value =
+    (turn && typeof turn.success === "boolean" ? turn.success : undefined) ??
+    eventData.success;
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function getUsage(eventData: Record<string, unknown>): CodexUsage | undefined {
   const turn = getTurnRecord(eventData);
   const value = isRecord(eventData.usage)
@@ -874,6 +884,7 @@ function normalizeCodexRunEvent(
     case "turn.completed": {
       const status = getTurnStatus(eventData);
       const failed =
+        getTurnSuccess(eventData) === false ||
         isUnsuccessfulTurnCompletionStatus(status) ||
         hasTurnCompletionError(eventData);
       const result = failed
@@ -985,7 +996,7 @@ function normalizeCodexCommandEvent(
       getFirstNonBlankString(item, ["output"]) ??
       "";
     const status = getItemStatus(item);
-    const exitCode = numberValue(item.exit_code);
+    const exitCode = getFirstNumber(item, ["exit_code", "exitCode"]);
     const errorMessage = getItemErrorMessage(item);
     const isError =
       (exitCode !== undefined ? exitCode !== 0 : false) ||

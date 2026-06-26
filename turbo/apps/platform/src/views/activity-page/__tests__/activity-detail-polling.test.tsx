@@ -1221,6 +1221,35 @@ function codexAdapterActivityEvents(): AgentEvent[] {
       createdAt: "2026-03-10T16:00:11Z",
     },
     {
+      sequenceNumber: 20,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-camel-exit",
+          type: "command_execution",
+          command: "node scripts/fail-with-camel-exit.js",
+        },
+      },
+      createdAt: "2026-03-10T16:00:21Z",
+    },
+    {
+      sequenceNumber: 21,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-camel-exit",
+          type: "command_execution",
+          exitCode: 7,
+          output: "camel exit failure",
+        },
+      },
+      createdAt: "2026-03-10T16:00:22Z",
+    },
+    {
       sequenceNumber: 11,
       eventType: "error",
       eventData: {
@@ -1370,6 +1399,19 @@ function codexAdapterActivityEvents(): AgentEvent[] {
         },
       },
       createdAt: "2026-03-10T16:00:20Z",
+    },
+    {
+      sequenceNumber: 22,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-success-false",
+          success: false,
+        },
+      },
+      createdAt: "2026-03-10T16:00:23Z",
     },
   ];
 }
@@ -2836,6 +2878,16 @@ describe("activity detail polling", () => {
         );
       }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "PRE" &&
+          typeof element.className === "string" &&
+          element.className.includes("text-red-600") &&
+          element.textContent === "camel exit failure"
+        );
+      }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Read")).not.toHaveLength(0);
     expect(screen.getByText("src/secret.ts")).toBeInTheDocument();
     expect(screen.getAllByText("Read declined by sandbox")).not.toHaveLength(0);
@@ -2884,6 +2936,7 @@ describe("activity detail polling", () => {
       screen.getByText(/Different turn interrupted \(user interrupt\)/u),
     ).toBeInTheDocument();
     expect(screen.getByText("Deep nested adapter failure")).toBeInTheDocument();
+    expect(screen.getByText(/^Turn failed$/u)).toBeInTheDocument();
     expect(screen.getByText("Recoverable adapter error")).toBeInTheDocument();
     const detailText = document.body.textContent ?? "";
     expect(detailText.indexOf("Recoverable adapter error")).toBeGreaterThan(-1);
