@@ -5,6 +5,7 @@ import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
+  GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
@@ -54,6 +55,7 @@ import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowScheduleTrigger$,
   currentWorkflowId$,
@@ -74,6 +76,7 @@ import {
   setWorkflowTriggerEnabled$,
   setWorkflowTriggerPermissionsDrawerTriggerId$,
   updateWorkflowGmailNewMessageTrigger$,
+  updateWorkflowGmailLabelAppliedTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
   workflowTriggerCreateDialog$,
@@ -1370,6 +1373,20 @@ function buildGmailNewMessageEventConfig(
     : { provider: "gmail", event: "new_message" };
 }
 
+function buildGmailLabelAppliedEventConfig(
+  form: FormData,
+): GmailLabelAppliedEventConfig | null {
+  const labelName = formTextValue(form, "labelName");
+  if (!labelName) {
+    return null;
+  }
+  return {
+    provider: "gmail",
+    event: "label_applied",
+    labelName,
+  };
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -1416,12 +1433,112 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
+function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind === "schedule") {
+    return trigger.scheduleSummary;
+  }
+  return trigger.eventType === "gmail-label-applied"
+    ? "Gmail label applied"
+    : "Gmail new message";
+}
+
+function gmailTriggerSummary(
+  trigger: ZeroWorkflowTriggerSummary,
+): string | null {
+  if (trigger.kind !== "event") {
+    return null;
+  }
+  return trigger.eventType === "gmail-label-applied"
+    ? `Label ${quote(trigger.eventConfig.labelName)}`
+    : formatGmailMatchSummary(trigger.eventConfig);
+}
+
 function gmailMatcherDefaultValue(
   config: GmailNewMessageEventConfig,
   field: GmailTextField,
   key: "contains" | "doesNotContain",
 ): string {
   return config.match?.[field]?.[key] ?? "";
+}
+
+type TriggerCreateDialogKind = "schedule" | "gmail" | "gmail-label";
+
+function TriggerCreateMenu({
+  onSelect,
+}: {
+  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
+        >
+          <IconPlus size={13} stroke={1.5} />
+          <span>Add trigger</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuItem
+          className="items-start gap-2 py-2"
+          onSelect={() => {
+            onSelect("schedule");
+          }}
+        >
+          <IconClock
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Schedule</span>
+            <span className="block text-xs text-muted-foreground">
+              Run this workflow from a time rule.
+            </span>
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="items-start gap-2 py-2"
+          onSelect={() => {
+            onSelect("gmail");
+          }}
+        >
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Gmail new message</span>
+            <span className="block text-xs text-muted-foreground">
+              Run this workflow from matching email.
+            </span>
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="items-start gap-2 py-2"
+          onSelect={() => {
+            onSelect("gmail-label");
+          }}
+        >
+          <IconMail
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">
+              Gmail label applied
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Run when a named Gmail label is applied.
+            </span>
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function TriggersSection({
@@ -1450,57 +1567,7 @@ function TriggersSection({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
-              >
-                <IconPlus size={13} stroke={1.5} />
-                <span>Add trigger</span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem
-                className="items-start gap-2 py-2"
-                onSelect={() => {
-                  setCreateDialog("schedule");
-                }}
-              >
-                <IconClock
-                  size={15}
-                  stroke={1.5}
-                  className="mt-0.5 shrink-0 text-muted-foreground"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium">Schedule</span>
-                  <span className="block text-xs text-muted-foreground">
-                    Run this workflow from a time rule.
-                  </span>
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="items-start gap-2 py-2"
-                onSelect={() => {
-                  setCreateDialog("gmail");
-                }}
-              >
-                <IconMail
-                  size={15}
-                  stroke={1.5}
-                  className="mt-0.5 shrink-0 text-muted-foreground"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium">
-                    Gmail new message
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Run this workflow from matching email.
-                  </span>
-                </span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TriggerCreateMenu onSelect={setCreateDialog} />
           <button
             type="button"
             aria-label="Close trigger sidebar"
@@ -1543,6 +1610,13 @@ function TriggersSection({
         open={createDialog === "gmail"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail" : null);
+        }}
+      />
+      <CreateGmailLabelAppliedTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "gmail-label"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "gmail-label" : null);
         }}
       />
     </aside>
@@ -1801,6 +1875,87 @@ function CreateGmailNewMessageTriggerDialog({
   );
 }
 
+function CreateGmailLabelAppliedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createGmailLabelTrigger] = useLoadableSet(
+    createWorkflowGmailLabelAppliedTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Gmail label trigger</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a named Gmail label is applied.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Gmail label trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const eventConfig = buildGmailLabelAppliedEventConfig(form);
+            if (!eventConfig) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createGmailLabelTrigger(
+                  { workflowId, eventConfig },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Label name
+            <input
+              name="labelName"
+              aria-label="Label name"
+              required
+              disabled={creating}
+              placeholder="Support"
+              className={FIELD_CLASS}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add label trigger
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TriggerRow({
   trigger,
   canManage,
@@ -1813,12 +1968,8 @@ function TriggerRow({
   const editingTriggerId = useGet(editingGmailTriggerId$);
   const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
   const editingMatch = editingTriggerId === trigger.id;
-  const title =
-    trigger.kind === "schedule" ? trigger.scheduleSummary : "Gmail new message";
-  const matchSummary =
-    trigger.kind === "event"
-      ? formatGmailMatchSummary(trigger.eventConfig)
-      : null;
+  const title = gmailTriggerTitle(trigger);
+  const matchSummary = gmailTriggerSummary(trigger);
   const TriggerIcon = trigger.kind === "schedule" ? IconClock : IconMail;
 
   return (
@@ -1866,8 +2017,22 @@ function TriggerRow({
             onOpenPermissions={onOpenPermissions}
           />
         ) : null}
-        {canManage && trigger.kind === "event" && editingMatch ? (
+        {canManage &&
+        trigger.kind === "event" &&
+        trigger.eventType === "gmail-new-message" &&
+        editingMatch ? (
           <UpdateGmailNewMessageTriggerForm
+            trigger={trigger}
+            onCancel={() => {
+              setEditingTriggerId(null);
+            }}
+          />
+        ) : null}
+        {canManage &&
+        trigger.kind === "event" &&
+        trigger.eventType === "gmail-label-applied" &&
+        editingMatch ? (
+          <UpdateGmailLabelAppliedTriggerForm
             trigger={trigger}
             onCancel={() => {
               setEditingTriggerId(null);
@@ -1921,7 +2086,9 @@ function TriggerControls({
             setEditingTriggerId(trigger.id);
           }}
         >
-          Edit match
+          {trigger.eventType === "gmail-label-applied"
+            ? "Edit label"
+            : "Edit match"}
         </button>
       ) : null}
       <button
@@ -1958,7 +2125,10 @@ function UpdateGmailNewMessageTriggerForm({
   trigger,
   onCancel,
 }: {
-  readonly trigger: Extract<ZeroWorkflowTriggerSummary, { kind: "event" }>;
+  readonly trigger: Extract<
+    ZeroWorkflowTriggerSummary,
+    { eventType: "gmail-new-message" }
+  >;
   readonly onCancel: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -2039,6 +2209,89 @@ function UpdateGmailNewMessageTriggerForm({
             <IconMail size={13} stroke={1.5} />
           )}
           <span>Save match</span>
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function UpdateGmailLabelAppliedTriggerForm({
+  trigger,
+  onCancel,
+}: {
+  readonly trigger: Extract<
+    ZeroWorkflowTriggerSummary,
+    { eventType: "gmail-label-applied" }
+  >;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateGmailLabelTrigger] = useLoadableSet(
+    updateWorkflowGmailLabelAppliedTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      aria-label="Update Gmail label trigger"
+      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const eventConfig = buildGmailLabelAppliedEventConfig(form);
+        if (!eventConfig) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateGmailLabelTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig,
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Label name
+        <input
+          name="labelName"
+          aria-label="Label name"
+          required
+          defaultValue={trigger.eventConfig.labelName}
+          disabled={saving}
+          placeholder="Support"
+          className={TRIGGER_FIELD_CLASS}
+        />
+      </label>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className={cn(
+            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
+            saving ? "cursor-not-allowed opacity-60" : "",
+          )}
+        >
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconMail size={13} stroke={1.5} />
+          )}
+          <span>Save label</span>
         </button>
         <button
           type="button"

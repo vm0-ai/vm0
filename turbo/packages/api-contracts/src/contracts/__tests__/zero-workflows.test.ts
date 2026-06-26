@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { gmailNewMessageEventConfigSchema } from "../zero-workflows";
+import {
+  gmailLabelAppliedEventConfigSchema,
+  gmailNewMessageEventConfigSchema,
+  zeroWorkflowTriggerCreateRequestSchema,
+} from "../zero-workflows";
 
 describe("Gmail new message workflow trigger contract", () => {
   it("accepts only explicit text match fields", () => {
@@ -35,5 +39,32 @@ describe("Gmail new message workflow trigger contract", () => {
 
       expect(parsed.success).toBe(false);
     }
+  });
+});
+
+describe("Gmail label applied workflow trigger contract", () => {
+  it("accepts a label name and optional resolved label id", () => {
+    const parsed = gmailLabelAppliedEventConfigSchema.safeParse({
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Support",
+      resolvedLabelId: "Label_123",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts label applied trigger create requests", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.safeParse({
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: {
+        provider: "gmail",
+        event: "label_applied",
+        labelName: "Support",
+      },
+    });
+
+    expect(parsed.success).toBe(true);
   });
 });

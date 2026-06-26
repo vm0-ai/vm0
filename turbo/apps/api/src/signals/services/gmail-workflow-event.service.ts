@@ -2,12 +2,15 @@ import { Buffer } from "node:buffer";
 
 import { OAuth2Client } from "google-auth-library";
 import { command, computed } from "ccstate";
-import { and, eq, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GmailWorkflowEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -65,6 +68,15 @@ const gmailProfileResponseSchema = z.object({
   historyId: z.string().optional(),
 });
 
+const gmailLabelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+const gmailLabelsResponseSchema = z.object({
+  labels: z.array(gmailLabelSchema).optional(),
+});
+
 const gmailHistoryMessageSchema = z.object({
   id: z.string(),
   threadId: z.string().optional(),
@@ -80,6 +92,14 @@ const gmailHistoryResponseSchema = z.object({
           .array(
             z.object({
               message: gmailHistoryMessageSchema,
+            }),
+          )
+          .optional(),
+        labelsAdded: z
+          .array(
+            z.object({
+              message: gmailHistoryMessageSchema,
+              labelIds: z.array(z.string()).optional(),
             }),
           )
           .optional(),
@@ -194,6 +214,17 @@ interface GmailHistoryMessageAdded {
   readonly labelIds: readonly string[];
 }
 
+interface GmailHistoryLabelAdded {
+  readonly historyId: string;
+  readonly messageId: string;
+  readonly threadId: string | null;
+  readonly labelIds: readonly string[];
+}
+
+type GmailHistoryMessageEvent =
+  | GmailHistoryMessageAdded
+  | GmailHistoryLabelAdded;
+
 interface GmailMessageContext {
   readonly messageId: string;
   readonly threadId: string | null;
@@ -209,6 +240,7 @@ type GmailHistoryResult =
   | {
       readonly kind: "ok";
       readonly messagesAdded: readonly GmailHistoryMessageAdded[];
+      readonly labelsAdded: readonly GmailHistoryLabelAdded[];
     }
   | { readonly kind: "stale_cursor" }
   | { readonly kind: "gmail_error"; readonly message: string };
@@ -528,6 +560,81 @@ async function fetchGmailProfile(
   );
 }
 
+async function fetchGmailLabels(
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<GmailFetchResult<z.infer<typeof gmailLabelsResponseSchema>>> {
+  return await gmailFetchJson(
+    gmailLabelsResponseSchema,
+    accessToken,
+    `${GMAIL_API_BASE}/labels`,
+    { method: "GET" },
+    signal,
+  );
+}
+
+type GmailLabelResolveResult =
+  | {
+      readonly kind: "ok";
+      readonly labelId: string;
+      readonly labelName: string;
+    }
+  | { readonly kind: "bad_request"; readonly message: string };
+
+async function resolveGmailLabelByName(args: {
+  readonly accessToken: string;
+  readonly labelName: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailLabelResolveResult> {
+  const labels = await fetchGmailLabels(args.accessToken, args.signal);
+  args.signal.throwIfAborted();
+  if (labels.kind !== "ok") {
+    return {
+      kind: "bad_request",
+      message: "Failed to read Gmail labels",
+    };
+  }
+
+  const matches = (labels.value.labels ?? []).filter((label) => {
+    return label.name === args.labelName;
+  });
+  if (matches.length === 0) {
+    return {
+      kind: "bad_request",
+      message: `Gmail label not found: ${args.labelName}`,
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      kind: "bad_request",
+      message: `Multiple Gmail labels matched name: ${args.labelName}`,
+    };
+  }
+
+  const label = matches[0]!;
+  return { kind: "ok", labelId: label.id, labelName: label.name };
+}
+
+export async function resolveGmailLabelForUser(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly labelName: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailLabelResolveResult> {
+  const accessResult = await resolveGmailAccess(args);
+  args.signal.throwIfAborted();
+  if (accessResult.kind !== "ok") {
+    return accessResult;
+  }
+
+  return await resolveGmailLabelByName({
+    accessToken: accessResult.access.accessToken,
+    labelName: args.labelName,
+    signal: args.signal,
+  });
+}
+
 async function watchGmailMailbox(args: {
   readonly accessToken: string;
   readonly topicName: string;
@@ -634,18 +741,18 @@ export async function ensureGmailWatchForUser(args: {
   return { kind: "ok" };
 }
 
-async function listGmailMessageHistory(args: {
+async function listGmailHistory(args: {
   readonly accessToken: string;
   readonly startHistoryId: string;
   readonly signal: AbortSignal;
 }): Promise<GmailHistoryResult> {
   let pageToken: string | null = null;
   const messagesAdded: GmailHistoryMessageAdded[] = [];
+  const labelsAdded: GmailHistoryLabelAdded[] = [];
 
   do {
     const url = new URL(`${GMAIL_API_BASE}/history`);
     url.searchParams.set("startHistoryId", args.startHistoryId);
-    url.searchParams.set("historyTypes", "messageAdded");
     if (pageToken) {
       url.searchParams.set("pageToken", pageToken);
     }
@@ -674,11 +781,22 @@ async function listGmailMessageHistory(args: {
           labelIds: added.message.labelIds ?? [],
         });
       }
+      for (const added of history.labelsAdded ?? []) {
+        labelsAdded.push({
+          historyId: history.id ?? args.startHistoryId,
+          messageId: added.message.id,
+          threadId: added.message.threadId ?? null,
+          labelIds:
+            added.labelIds && added.labelIds.length > 0
+              ? added.labelIds
+              : (added.message.labelIds ?? []),
+        });
+      }
     }
     pageToken = result.value.nextPageToken ?? null;
   } while (pageToken);
 
-  return { kind: "ok", messagesAdded };
+  return { kind: "ok", messagesAdded, labelsAdded };
 }
 
 function headerValues(
@@ -744,7 +862,7 @@ function messageIsInbound(message: GmailMessageContext): boolean {
 
 async function fetchGmailMessageContext(args: {
   readonly accessToken: string;
-  readonly event: GmailHistoryMessageAdded;
+  readonly event: GmailHistoryMessageEvent;
   readonly signal: AbortSignal;
 }): Promise<GmailMessageContext | null> {
   const url = new URL(`${GMAIL_API_BASE}/messages/${args.event.messageId}`);
@@ -969,7 +1087,7 @@ interface GmailEventTriggerRow {
   readonly trigger: TriggerRow;
   readonly agentId: string;
   readonly workflowName: string;
-  readonly config: GmailNewMessageEventConfig;
+  readonly config: GmailWorkflowEventConfig;
 }
 
 type GmailFeatureGateChecker = (
@@ -1092,16 +1210,20 @@ async function loadGmailEventTriggers(args: {
         eq(zeroWorkflowTriggers.ownerUserId, args.state.userId),
         eq(zeroWorkflowTriggers.enabled, true),
         eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.eventType, "gmail-new-message"),
+        inArray(zeroWorkflowTriggers.eventType, [
+          "gmail-new-message",
+          "gmail-label-applied",
+        ]),
         isNotNull(zeroWorkflowTriggers.chatThreadId),
       ),
     );
   args.signal.throwIfAborted();
 
   return triggerRows.flatMap((row) => {
-    const config = gmailNewMessageEventConfigSchema.safeParse(
-      row.trigger.eventConfig,
-    );
+    const config =
+      row.trigger.eventType === "gmail-label-applied"
+        ? gmailLabelAppliedEventConfigSchema.safeParse(row.trigger.eventConfig)
+        : gmailNewMessageEventConfigSchema.safeParse(row.trigger.eventConfig);
     return config.success ? [{ ...row, config: config.data }] : [];
   });
 }
@@ -1109,7 +1231,7 @@ async function loadGmailEventTriggers(args: {
 async function cachedGmailMessageContext(args: {
   readonly cache: Map<string, GmailMessageContext | null>;
   readonly accessToken: string;
-  readonly event: GmailHistoryMessageAdded;
+  readonly event: GmailHistoryMessageEvent;
   readonly signal: AbortSignal;
 }): Promise<GmailMessageContext | null> {
   const cached = args.cache.get(args.event.messageId);
@@ -1133,7 +1255,7 @@ async function insertGmailProcessedEvent(args: {
   readonly state: GmailWatchStateRow;
   readonly trigger: GmailEventTriggerRow;
   readonly decoded: DecodedGmailPubSubPush;
-  readonly event: GmailHistoryMessageAdded;
+  readonly event: GmailHistoryMessageEvent;
   readonly message: GmailMessageContext;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
@@ -1157,12 +1279,17 @@ async function insertGmailProcessedEvent(args: {
 
 function buildGmailWorkflowEventSystemPrompt(args: {
   readonly triggerId: string;
+  readonly triggerConfig: GmailWorkflowEventConfig;
   readonly emailAddress: string;
   readonly message: GmailMessageContext;
 }): string {
+  const triggerContext =
+    args.triggerConfig.event === "label_applied"
+      ? `You are running because the Gmail label "${args.triggerConfig.labelName}" was applied to a message.`
+      : "You are running because a Gmail new-message workflow event trigger matched a new inbound email.";
   return [
     "# Current context",
-    "You are running because a Gmail new-message workflow event trigger matched a new inbound email.",
+    triggerContext,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
     "Use connected Gmail tools to inspect the message or thread if the workflow needs more detail.",
@@ -1172,6 +1299,11 @@ function buildGmailWorkflowEventSystemPrompt(args: {
     JSON.stringify(
       {
         triggerId: args.triggerId,
+        event: args.triggerConfig.event,
+        labelName:
+          args.triggerConfig.event === "label_applied"
+            ? args.triggerConfig.labelName
+            : undefined,
         emailAddress: args.emailAddress,
         messageId: args.message.messageId,
         threadId: args.message.threadId,
@@ -1219,7 +1351,98 @@ async function dispatchGmailTriggerEvent(args: {
   return "dispatched";
 }
 
-async function dispatchGmailHistoryEvent(args: {
+function isGmailNewMessageTrigger(
+  trigger: GmailEventTriggerRow,
+): trigger is GmailEventTriggerRow & {
+  readonly config: GmailNewMessageEventConfig;
+} {
+  return trigger.config.event === "new_message";
+}
+
+function isGmailLabelAppliedTrigger(
+  trigger: GmailEventTriggerRow,
+): trigger is GmailEventTriggerRow & {
+  readonly config: GmailLabelAppliedEventConfig;
+} {
+  return trigger.config.event === "label_applied";
+}
+
+async function updateResolvedGmailLabelId(args: {
+  readonly db: Db;
+  readonly trigger: GmailEventTriggerRow & {
+    readonly config: GmailLabelAppliedEventConfig;
+  };
+  readonly labelId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.trigger.config.resolvedLabelId === args.labelId) {
+    return;
+  }
+
+  await args.db
+    .update(zeroWorkflowTriggers)
+    .set({
+      eventConfig: {
+        ...args.trigger.config,
+        resolvedLabelId: args.labelId,
+      },
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflowTriggers.id, args.trigger.trigger.id));
+  args.signal.throwIfAborted();
+}
+
+async function labelAppliedTriggerMatchesEvent(args: {
+  readonly db: Db;
+  readonly accessToken: string;
+  readonly trigger: GmailEventTriggerRow & {
+    readonly config: GmailLabelAppliedEventConfig;
+  };
+  readonly event: GmailHistoryLabelAdded;
+  readonly labelCache: Map<string, GmailLabelResolveResult>;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const eventLabelIds = new Set(args.event.labelIds);
+  const resolvedLabelId = args.trigger.config.resolvedLabelId;
+  if (resolvedLabelId && eventLabelIds.has(resolvedLabelId)) {
+    return true;
+  }
+
+  const labelName = args.trigger.config.labelName;
+  const cached = args.labelCache.get(labelName);
+  const label =
+    cached ??
+    (await resolveGmailLabelByName({
+      accessToken: args.accessToken,
+      labelName,
+      signal: args.signal,
+    }));
+  args.signal.throwIfAborted();
+  if (!cached) {
+    args.labelCache.set(labelName, label);
+  }
+  if (label.kind !== "ok") {
+    log.warn("Gmail label event skipped because label lookup failed", {
+      triggerId: args.trigger.trigger.id,
+      labelName,
+      message: label.message,
+    });
+    return false;
+  }
+  if (!eventLabelIds.has(label.labelId)) {
+    return false;
+  }
+
+  await updateResolvedGmailLabelId({
+    db: args.db,
+    trigger: args.trigger,
+    labelId: label.labelId,
+    signal: args.signal,
+  });
+  return true;
+}
+
+async function dispatchGmailNewMessageHistoryEvent(args: {
   readonly db: Db;
   readonly state: GmailWatchStateRow;
   readonly decoded: DecodedGmailPubSubPush;
@@ -1241,9 +1464,84 @@ async function dispatchGmailHistoryEvent(args: {
   }
 
   const matchingTriggers = args.triggers.filter((trigger) => {
+    if (!isGmailNewMessageTrigger(trigger)) {
+      return false;
+    }
     return gmailMessageMatchesConfig(message, trigger.config);
   });
   if (matchingTriggers.length === 0) {
+    return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
+
+  let dispatched = 0;
+  let duplicates = 0;
+
+  for (const trigger of matchingTriggers) {
+    const result = await dispatchGmailTriggerEvent({
+      db: args.db,
+      state: args.state,
+      trigger,
+      decoded: args.decoded,
+      event: args.event,
+      message,
+      startRun: args.startRun,
+      signal: args.signal,
+    });
+    if (typeof result !== "string") {
+      return {
+        kind: "run_error",
+        message: "Failed to start Gmail event workflow run",
+      };
+    }
+    dispatched += result === "dispatched" ? 1 : 0;
+    duplicates += result === "duplicate" ? 1 : 0;
+  }
+
+  return { kind: "ok", dispatched, duplicates };
+}
+
+async function dispatchGmailLabelAppliedHistoryEvent(args: {
+  readonly db: Db;
+  readonly state: GmailWatchStateRow;
+  readonly decoded: DecodedGmailPubSubPush;
+  readonly accessToken: string;
+  readonly triggers: readonly GmailEventTriggerRow[];
+  readonly event: GmailHistoryLabelAdded;
+  readonly messageCache: Map<string, GmailMessageContext | null>;
+  readonly labelCache: Map<string, GmailLabelResolveResult>;
+  readonly startRun: GmailRunStarter;
+  readonly signal: AbortSignal;
+}): Promise<GmailDispatchStateResult> {
+  const labelTriggers = args.triggers.filter(isGmailLabelAppliedTrigger);
+  if (labelTriggers.length === 0 || args.event.labelIds.length === 0) {
+    return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
+
+  const matchingTriggers: typeof labelTriggers = [];
+  for (const trigger of labelTriggers) {
+    const matches = await labelAppliedTriggerMatchesEvent({
+      db: args.db,
+      accessToken: args.accessToken,
+      trigger,
+      event: args.event,
+      labelCache: args.labelCache,
+      signal: args.signal,
+    });
+    if (matches) {
+      matchingTriggers.push(trigger);
+    }
+  }
+  if (matchingTriggers.length === 0) {
+    return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
+
+  const message = await cachedGmailMessageContext({
+    cache: args.messageCache,
+    accessToken: args.accessToken,
+    event: args.event,
+    signal: args.signal,
+  });
+  if (!message) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
@@ -1285,11 +1583,12 @@ async function dispatchGmailHistoryEvents(args: {
   readonly signal: AbortSignal;
 }): Promise<GmailDispatchStateResult> {
   const messageCache = new Map<string, GmailMessageContext | null>();
+  const labelCache = new Map<string, GmailLabelResolveResult>();
   let dispatched = 0;
   let duplicates = 0;
 
   for (const event of args.history.messagesAdded) {
-    const result = await dispatchGmailHistoryEvent({
+    const result = await dispatchGmailNewMessageHistoryEvent({
       db: args.db,
       state: args.state,
       decoded: args.decoded,
@@ -1297,6 +1596,26 @@ async function dispatchGmailHistoryEvents(args: {
       triggers: args.triggers,
       event,
       messageCache,
+      startRun: args.startRun,
+      signal: args.signal,
+    });
+    if (result.kind !== "ok") {
+      return result;
+    }
+    dispatched += result.dispatched;
+    duplicates += result.duplicates;
+  }
+
+  for (const event of args.history.labelsAdded) {
+    const result = await dispatchGmailLabelAppliedHistoryEvent({
+      db: args.db,
+      state: args.state,
+      decoded: args.decoded,
+      accessToken: args.accessToken,
+      triggers: args.triggers,
+      event,
+      messageCache,
+      labelCache,
       startRun: args.startRun,
       signal: args.signal,
     });
@@ -1344,7 +1663,7 @@ async function dispatchGmailWatchState(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const history = await listGmailMessageHistory({
+  const history = await listGmailHistory({
     accessToken: access.access.accessToken,
     startHistoryId: args.state.lastHistoryId,
     signal: args.signal,
@@ -1468,6 +1787,7 @@ export const dispatchGmailPubSubPush$ = command(
               triggerSource: "workflow-event",
               appendSystemPrompt: buildGmailWorkflowEventSystemPrompt({
                 triggerId: trigger.trigger.id,
+                triggerConfig: trigger.config,
                 emailAddress: decoded.emailAddress,
                 message,
               }),

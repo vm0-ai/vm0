@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
+  type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -26,6 +27,7 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+type WorkflowTriggerCreateDialog = "schedule" | "gmail" | "gmail-label" | null;
 const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
 const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 
@@ -57,9 +59,8 @@ const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
-const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
-  null,
-);
+const internalWorkflowTriggerCreateDialog$ =
+  state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
 
 export const workflowSearch$ = computed((get) => {
@@ -155,7 +156,7 @@ export const workflowTriggerCreateDialog$ = computed((get) => {
 });
 
 export const setWorkflowTriggerCreateDialog$ = command(
-  ({ set }, dialog: "schedule" | "gmail" | null) => {
+  ({ set }, dialog: WorkflowTriggerCreateDialog) => {
     set(internalWorkflowTriggerCreateDialog$, dialog);
     if (dialog === "schedule") {
       set(internalScheduleTriggerType$, "cron");
@@ -470,12 +471,62 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
+export const createWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const updateWorkflowGmailNewMessageTrigger$ = command(
   async (
     { get, set },
     input: {
       readonly triggerId: string;
       readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {

@@ -68,6 +68,9 @@ function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
   if (trigger.kind === "event") {
+    if (trigger.eventType === "gmail-label-applied") {
+      return `Gmail label applied: ${quote(trigger.eventConfig.labelName)}`;
+    }
     return `Gmail new message: ${formatGmailMatchSummary(trigger.eventConfig)}`;
   }
 
@@ -145,14 +148,19 @@ export function printWorkflowTriggerDetails(
   console.log(
     `${"Trigger:".padEnd(14)}${
       trigger.kind === "event"
-        ? "Gmail new message"
+        ? trigger.eventType === "gmail-label-applied"
+          ? "Gmail label applied"
+          : "Gmail new message"
         : formatWorkflowTriggerEntry(trigger)
     }`,
   );
-  if (trigger.kind === "event") {
+  if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     console.log(
       `${"Match:".padEnd(14)}${formatGmailMatchSummary(trigger.eventConfig)}`,
     );
+  }
+  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
+    console.log(`${"Label:".padEnd(14)}${trigger.eventConfig.labelName}`);
   }
   console.log(`${"Owner:".padEnd(14)}${trigger.ownerUserId}`);
   console.log(

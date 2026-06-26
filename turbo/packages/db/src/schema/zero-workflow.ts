@@ -99,7 +99,7 @@ export const zeroWorkflows = pgTable(
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";
-export type ZeroWorkflowEventType = "gmail-new-message";
+export type ZeroWorkflowEventType = "gmail-new-message" | "gmail-label-applied";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
 /**
@@ -198,7 +198,7 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type = 'gmail-new-message'
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL

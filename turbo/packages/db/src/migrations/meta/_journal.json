@@ -3522,6 +3522,13 @@
       "when": 1782381315622,
       "tag": "0502_bouncy_triton",
       "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1782454617470,
+      "tag": "0503_past_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

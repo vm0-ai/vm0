@@ -61,6 +61,28 @@ function triggerSummary(
       unattendedPermissionPolicy: null,
     };
   }
+  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
+    return {
+      id: trigger.id,
+      ownerUserId: "test-user-123",
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: {
+        provider: "gmail",
+        event: "label_applied",
+        labelName: "Support",
+        resolvedLabelId: "Label_support",
+      },
+      schedule: null,
+      scheduleSummary: null,
+      unattendedConnectorRefs: ["gmail"],
+      unattendedPermissionPolicy: null,
+    };
+  }
 
   return {
     id: trigger.id,

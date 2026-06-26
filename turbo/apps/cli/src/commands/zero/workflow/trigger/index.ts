@@ -22,7 +22,9 @@ import {
   printWorkflowTriggersTable,
 } from "./display";
 import {
+  buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
+  hasGmailLabelOption,
   hasGmailTriggerOptions,
   type GmailTriggerOptions,
 } from "./gmail-config";
@@ -49,10 +51,10 @@ interface WorkflowRefOptions {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
-const EVENT_KINDS = ["gmail-new-message"] as const;
+const EVENT_KINDS = ["gmail-new-message", "gmail-label-applied"] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), or provide Gmail match options";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, or --label";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -60,6 +62,7 @@ function addGmailTriggerOptions(command: Command): Command {
       "--config <path>",
       "Path to a Gmail new message trigger config JSON",
     )
+    .option("--label <name>", "Gmail label name for label-applied triggers")
     .option("--from-contains <text>", "Require the From header to contain text")
     .option(
       "--from-not-contains <text>",
@@ -275,6 +278,9 @@ function buildCreateRequest(
         "--expr, --at, --every, and --timezone only apply to schedule triggers",
       );
     }
+    if (hasGmailLabelOption(options)) {
+      throw new Error("--label only applies to gmail-label-applied triggers");
+    }
     return {
       kind: "event",
       eventType: "gmail-new-message",
@@ -282,10 +288,26 @@ function buildCreateRequest(
     };
   }
 
-  if (hasGmailTriggerOptions(options)) {
-    throw new Error(
-      "Gmail match flags and --config only apply to gmail-new-message triggers",
-    );
+  if (kind === "gmail-label-applied") {
+    if (hasScheduleAddOptions(options)) {
+      throw new Error(
+        "--expr, --at, --every, and --timezone only apply to schedule triggers",
+      );
+    }
+    if (hasGmailTriggerOptions(options)) {
+      throw new Error(
+        "Gmail match flags and --config only apply to gmail-new-message triggers",
+      );
+    }
+    return {
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: buildGmailLabelAppliedEventConfig(options),
+    };
+  }
+
+  if (hasGmailTriggerOptions(options) || hasGmailLabelOption(options)) {
+    throw new Error("Gmail trigger flags only apply to Gmail event triggers");
   }
 
   return { schedule: buildSchedule(kind, options) };
@@ -298,6 +320,16 @@ function buildUpdate(options: UpdateOptions): ZeroWorkflowTriggerUpdateRequest {
     },
   ).length;
   const hasGmailOptions = hasGmailTriggerOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
+  if (hasGmailOptions && hasLabelOption) {
+    throw new Error("Use either Gmail match options or --label");
+  }
+  if (hasLabelOption) {
+    if (flagCount > 0 || options.timezone !== undefined) {
+      throw new Error("Use either schedule flags or --label");
+    }
+    return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
+  }
   if (hasGmailOptions) {
     if (flagCount > 0 || options.timezone !== undefined) {
       throw new Error("Use either schedule flags or Gmail match options");
@@ -373,6 +405,7 @@ Examples:
   zero workflow trigger add tell-a-joke loop --every 15m
   zero workflow trigger add triage gmail-new-message --from-contains "@example.com"
   zero workflow trigger add triage gmail-new-message --config ./gmail-trigger.json
+  zero workflow trigger add triage gmail-label-applied --label "Support"
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID, then all visible workflows
@@ -420,7 +453,8 @@ Examples:
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --every 10m
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
-  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --config ./gmail-trigger.json`,
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --config ./gmail-trigger.json
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --label "Support"`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
