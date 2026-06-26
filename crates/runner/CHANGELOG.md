@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.33...runner-rs-v0.129.34) (2026-06-26)
+
+
+### Refactoring
+
+* **mitm-addon:** clarify body limit semantics ([#19125](https://github.com/vm0-ai/vm0/issues/19125)) ([4539b49](https://github.com/vm0-ai/vm0/commit/4539b4936a64197009c7b78224afbaedd5d1a285))
+
 ## [0.129.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.32...runner-rs-v0.129.33) (2026-06-26)
 
 ## [0.129.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.31...runner-rs-v0.129.32) (2026-06-26)

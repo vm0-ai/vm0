@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.182.3](https://github.com/vm0-ai/vm0/compare/api-v1.182.2...api-v1.182.3) (2026-06-26)
+
+
+### Performance Improvements
+
+* parallelize stored connector secret decrypts ([#19134](https://github.com/vm0-ai/vm0/issues/19134)) ([d863945](https://github.com/vm0-ai/vm0/commit/d863945607c699fb8b3d5e9b1b6c0217023c68c1))
+
 ## [1.182.2](https://github.com/vm0-ai/vm0/compare/api-v1.182.1...api-v1.182.2) (2026-06-26)
 
 
