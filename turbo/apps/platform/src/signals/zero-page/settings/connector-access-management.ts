@@ -49,7 +49,7 @@ export const connectorAccessManagementPermissionAgentId$ = computed((get) => {
   return get(connectorAccessManagementPermissionAgentIdState$);
 });
 
-export const reloadConnectorAccessManagement$ = command(({ set }) => {
+const reloadConnectorAccessManagement$ = command(({ set }) => {
   set(internalConnectorAccessManagementReload$, (value) => {
     return value + 1;
   });
