@@ -9,6 +9,7 @@ import {
   HTML_DOM_NODE_ID_ATTR,
   instrumentHtmlDomEditDocument,
   stripHtmlDomEditOverlays,
+  stripHtmlDomEditOverlaysFromDocument,
   stripHtmlDomEditInstrumentation,
 } from "../html-dom-edit-protocol.ts";
 
@@ -223,6 +224,24 @@ function elementHasAttributeValue(
   });
 }
 
+function frameDocumentWithEditOverlays(): Document {
+  const doc = document.implementation.createHTMLDocument("Editing");
+  const main = doc.createElement("main");
+  main.setAttribute(HTML_DOM_NODE_ID_ATTR, "vm0-node-1");
+  main.setAttribute(HTML_DOM_EDIT_SELECTED_ATTR, "true");
+  const title = doc.createElement("h1");
+  title.setAttribute(HTML_DOM_NODE_ID_ATTR, "vm0-node-2");
+  title.textContent = "Title";
+  const overlay = doc.createElement("div");
+  overlay.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
+  overlay.textContent = "Editor UI";
+
+  main.append(title, overlay);
+  doc.body.append(main);
+
+  return doc;
+}
+
 describe("instrumentHtmlDomEditDocument", () => {
   it("injects unique node ids into selectable HTML elements", () => {
     const result = instrumentHtmlDomEditDocument({
@@ -374,6 +393,20 @@ describe("stripHtmlDomEditInstrumentation", () => {
     expect(stripped).toContain(`${HTML_DOM_NODE_ID_ATTR}="vm0-node-2"`);
     expect(stripped).not.toContain(HTML_DOM_EDIT_OVERLAY_ATTR);
     expect(stripped).not.toContain(HTML_DOM_EDIT_SELECTED_ATTR);
+  });
+
+  it("removes overlay state from a cloned frame document", () => {
+    const doc = frameDocumentWithEditOverlays();
+    const stripped = stripHtmlDomEditOverlaysFromDocument(doc);
+
+    expect(stripped).toContain(`${HTML_DOM_NODE_ID_ATTR}="vm0-node-1"`);
+    expect(stripped).toContain(`${HTML_DOM_NODE_ID_ATTR}="vm0-node-2"`);
+    expect(stripped).not.toContain(HTML_DOM_EDIT_OVERLAY_ATTR);
+    expect(stripped).not.toContain(HTML_DOM_EDIT_SELECTED_ATTR);
+    expect(doc.querySelector(`[${HTML_DOM_EDIT_OVERLAY_ATTR}]`)).not.toBeNull();
+    expect(
+      doc.querySelector(`[${HTML_DOM_EDIT_SELECTED_ATTR}]`),
+    ).not.toBeNull();
   });
 
   it("removes VM0 edit metadata and overlay nodes", () => {

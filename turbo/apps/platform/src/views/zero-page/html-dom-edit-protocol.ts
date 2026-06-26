@@ -144,6 +144,13 @@ export function stripHtmlDomEditOverlays(html: string): string {
   return serializeHtmlDocument(doc);
 }
 
+export function stripHtmlDomEditOverlaysFromDocument(doc: Document): string {
+  const snapshot = doc.cloneNode(true) as Document;
+  stripDomEditPresentationAttributes(snapshot);
+  removeEditOverlayElements(snapshot);
+  return serializeHtmlDocument(snapshot);
+}
+
 function parseHtml(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
 }

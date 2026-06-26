@@ -19,7 +19,7 @@ import {
   HTML_DOM_EDIT_SELECTED_ATTR,
   HTML_DOM_NODE_ID_ATTR,
   instrumentHtmlDomEditDocument,
-  stripHtmlDomEditOverlays,
+  stripHtmlDomEditOverlaysFromDocument,
 } from "../../views/zero-page/html-dom-edit-protocol.ts";
 import type {
   HtmlDomEditComment,
@@ -317,11 +317,6 @@ function commentPopoverAnchorForElement(params: {
   };
 }
 
-function serializeFrameDocument(doc: Document): string {
-  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>\n` : "";
-  return `${doctype}${doc.documentElement.outerHTML}`;
-}
-
 function htmlWithEditOverlaysRemoved(params: {
   readonly fallbackHtml: string;
   readonly frameDocument: Document | null | undefined;
@@ -329,7 +324,7 @@ function htmlWithEditOverlaysRemoved(params: {
   if (!params.frameDocument) {
     return params.fallbackHtml;
   }
-  return stripHtmlDomEditOverlays(serializeFrameDocument(params.frameDocument));
+  return stripHtmlDomEditOverlaysFromDocument(params.frameDocument);
 }
 
 function restoreFrameDocumentHtml(params: {
