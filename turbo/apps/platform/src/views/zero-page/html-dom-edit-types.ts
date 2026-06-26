@@ -4,12 +4,17 @@ export interface HtmlDomEditComment {
   readonly id: string;
   readonly targetNodeIds: readonly string[];
   readonly comment: string;
-  readonly selectedText?: string;
 }
 
 export interface HtmlDomEditPayload {
   readonly type: typeof HTML_DOM_EDIT_PAYLOAD_TYPE;
-  readonly originalUrl: string;
-  readonly workingCopyUrl: string;
+  readonly editRequestId: string;
+  readonly htmlSnapshotUrl: string;
   readonly comments: readonly HtmlDomEditComment[];
+}
+
+export interface HtmlDomEditDraft {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly editRequestId: string;
+  readonly html: string;
 }

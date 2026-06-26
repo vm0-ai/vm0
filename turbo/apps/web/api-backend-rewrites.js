@@ -928,6 +928,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/presentation-html/redeploy",
     "/api/zero/host/presentation-html/redeploy",
   ],
+  ["/api/zero/host/html-edit-draft", "/api/zero/host/html-edit-draft"],
+  ["/api/zero/host/html/redeploy", "/api/zero/host/html/redeploy"],
   [
     "/api/zero/host/presentation-html/speaker-notes",
     "/api/zero/host/presentation-html/speaker-notes",
@@ -1273,6 +1275,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/telegram/upload-file/init",
   ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
+  [
+    "/api/zero/uploads/html-dom-edit-snapshot",
+    "/api/zero/uploads/html-dom-edit-snapshot",
+  ],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
   ["/api/zero/user-permission-grants", "/api/zero/user-permission-grants"],
   [

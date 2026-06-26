@@ -108,7 +108,7 @@ import {
   previewPresentationHtml,
   type PresentationEditDraft,
 } from "./presentation-html-edit-protocol.ts";
-import { readablePresentationResourceUrl } from "./presentation-html-pptx-download.ts";
+import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -1973,7 +1973,7 @@ async function loadPresentationTemplateHtmlPreview(params: {
   readonly item: PresentationTemplateItem;
 }): Promise<PresentationEditDraft | null> {
   const response = await fetch(
-    readablePresentationResourceUrl(params.item.embedUrl),
+    readableAttachmentResourceUrl(params.item.embedUrl),
     {
       credentials: "omit",
       mode: "cors",

@@ -55,6 +55,7 @@ import {
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
+  openArtifactSidebarHtmlEdit$,
   openArtifactSidebarPreview$,
   openPresentationEditor$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -320,6 +321,14 @@ function ArtifactDialogEditPresentationButton({
 }) {
   return (
     <DialogIconButton ariaLabel="Edit presentation" onClick={onClick}>
+      <IconPencil size={18} stroke={1.8} />
+    </DialogIconButton>
+  );
+}
+
+function ArtifactDialogEditHtmlButton({ onClick }: { onClick: () => void }) {
+  return (
+    <DialogIconButton ariaLabel="Edit page" onClick={onClick}>
       <IconPencil size={18} stroke={1.8} />
     </DialogIconButton>
   );
@@ -894,6 +903,7 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const openArtifactSidebarHtmlEdit = useSet(openArtifactSidebarHtmlEdit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
   const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -905,6 +915,10 @@ function ArtifactPreviewDialogActions({
     preview.kind === "html" &&
     artifact?.artifactKind === "presentation-html" &&
     Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+  const showHtmlEdit =
+    preview.kind === "html" &&
+    artifact?.artifactKind === "hosted-site" &&
+    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -921,6 +935,10 @@ function ArtifactPreviewDialogActions({
       );
     }
     openArtifactSidebarPreview(preview.url);
+    closeLightboxWithDialogExit();
+  };
+  const openHtmlEditInSplitView = () => {
+    openArtifactSidebarHtmlEdit({ fullscreen, url: preview.url });
     closeLightboxWithDialogExit();
   };
 
@@ -944,6 +962,12 @@ function ArtifactPreviewDialogActions({
               openPresentationEditor(preview.url);
             }}
           />
+          <ArtifactActionSeparator />
+        </>
+      )}
+      {showHtmlEdit && (
+        <>
+          <ArtifactDialogEditHtmlButton onClick={openHtmlEditInSplitView} />
           <ArtifactActionSeparator />
         </>
       )}

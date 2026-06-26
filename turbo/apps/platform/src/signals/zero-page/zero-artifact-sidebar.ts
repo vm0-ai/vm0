@@ -1,9 +1,14 @@
 import { command, computed, state } from "ccstate";
+import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   replaceSearchParams$,
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { resetSignal, withCleanup } from "../utils.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import {
   classifyChatAttachment,
@@ -18,22 +23,24 @@ import {
 } from "./zero-attachment-chips.ts";
 import {
   ARTIFACT_FULLSCREEN_PARAM,
+  ARTIFACT_HTML_EDIT_PARAM,
   ARTIFACT_INBOX_QUERY_PARAM,
   ARTIFACT_QUERY_PARAM,
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
   PRESENTATION_EDITOR_QUERY_PARAM,
 } from "./right-sidebar-search-params.ts";
+import { refreshPresentationHtmlPreviews$ } from "./presentation-html-cache-bust.ts";
 
 // ---------------------------------------------------------------------------
 // Artifact sidebar — URL-routed page-level slot for previewing a single
 // attachment next to the chat thread area.
 //
-// Sidebar state lives in search params: `?artifacts=<threadId>` opens the
-// artifact inbox, `?artifact=<url>` opens a detail preview, and
-// `?artifact-fullscreen=1` expands whichever artifact surface is active.
-// There is no in-memory state — opening is a search-param write, closing is a
-// search-param delete, and components read pure computeds over `searchParams$`.
+// Most sidebar navigation state lives in search params: `?artifacts=<threadId>`
+// opens the artifact inbox, `?artifact=<url>` opens a detail preview, and
+// `?artifact-fullscreen=1` expands whichever artifact surface is active. HTML
+// edit drafts keep URL-keyed in-memory state so generated previews can survive
+// sidebar remounts before the user publishes or discards them.
 // ---------------------------------------------------------------------------
 
 const IMAGE_ID_PREFIX = "image:";
@@ -43,6 +50,12 @@ export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
 const internalArtifactInboxSection$ = state<ArtifactInboxSection>("all");
 const internalArtifactInboxQuery$ = state("");
 const internalArtifactInboxSearchOpen$ = state(false);
+const internalHtmlDomEditPendingUrl$ = state<string | null>(null);
+const internalHtmlDomEditPublishingUrl$ = state<string | null>(null);
+const internalHtmlDomEditPreviewHtmlByUrl$ = state<
+  Readonly<Record<string, string>>
+>({});
+const resetHtmlDomEditPublishSignal$ = resetSignal();
 
 export type ArtifactPreviewKind =
   | "markdown"
@@ -119,13 +132,58 @@ export const currentPresentationEditorUrl$ = computed((get) => {
   return get(searchParams$).get(PRESENTATION_EDITOR_QUERY_PARAM);
 });
 
+function setArtifactPreviewParams(
+  params: URLSearchParams,
+  args: {
+    readonly fullscreen: boolean;
+    readonly htmlEdit: boolean;
+    readonly url: string;
+  },
+): void {
+  params.set(ARTIFACT_QUERY_PARAM, args.url);
+  if (args.htmlEdit) {
+    params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
+  } else {
+    params.delete(ARTIFACT_HTML_EDIT_PARAM);
+  }
+  params.delete(ARTIFACT_INBOX_QUERY_PARAM);
+  if (args.fullscreen) {
+    params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
+  } else {
+    params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  }
+  clearChatAutomationSidebarParams(params);
+}
+
 export const openArtifactSidebarPreview$ = command(
   ({ get, set }, url: string) => {
     const params = new URLSearchParams(get(searchParams$));
-    params.set(ARTIFACT_QUERY_PARAM, url);
-    params.delete(ARTIFACT_INBOX_QUERY_PARAM);
-    params.delete(ARTIFACT_FULLSCREEN_PARAM);
-    clearChatAutomationSidebarParams(params);
+    setArtifactPreviewParams(params, {
+      fullscreen: false,
+      htmlEdit: false,
+      url,
+    });
+    set(updateSearchParams$, params);
+  },
+);
+
+type OpenArtifactSidebarHtmlEditArgs =
+  | string
+  | {
+      readonly fullscreen: boolean;
+      readonly url: string;
+    };
+
+export const openArtifactSidebarHtmlEdit$ = command(
+  ({ get, set }, value: OpenArtifactSidebarHtmlEditArgs) => {
+    const params = new URLSearchParams(get(searchParams$));
+    const args =
+      typeof value === "string" ? { fullscreen: false, url: value } : value;
+    setArtifactPreviewParams(params, {
+      fullscreen: args.fullscreen,
+      htmlEdit: true,
+      url: args.url,
+    });
     set(updateSearchParams$, params);
   },
 );
@@ -136,6 +194,7 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
   params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_INBOX_QUERY_PARAM);
+  params.delete(ARTIFACT_HTML_EDIT_PARAM);
   clearChatAutomationSidebarParams(params);
   set(updateSearchParams$, params);
 });
@@ -155,6 +214,7 @@ export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   params.set(ARTIFACT_INBOX_QUERY_PARAM, threadId);
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  params.delete(ARTIFACT_HTML_EDIT_PARAM);
   clearChatAutomationSidebarParams(params);
   set(internalArtifactInboxSection$, "all");
   set(internalArtifactInboxQuery$, "");
@@ -186,6 +246,7 @@ export const openArtifactFromInbox$ = command(
     params.set(ARTIFACT_INBOX_QUERY_PARAM, args.threadId);
     params.set(ARTIFACT_QUERY_PARAM, args.url);
     params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    params.delete(ARTIFACT_HTML_EDIT_PARAM);
     clearChatAutomationSidebarParams(params);
     set(updateSearchParams$, params);
   },
@@ -195,6 +256,7 @@ export const backToArtifactInbox$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  params.delete(ARTIFACT_HTML_EDIT_PARAM);
   set(replaceSearchParams$, params);
 });
 
@@ -217,6 +279,110 @@ export const clearArtifactPreview$ = command(({ set }) => {
 
 export const artifactFullscreen$ = computed((get) => {
   return get(searchParams$).get(ARTIFACT_FULLSCREEN_PARAM) === "1";
+});
+
+export const artifactHtmlEditMode$ = computed((get) => {
+  return get(searchParams$).get(ARTIFACT_HTML_EDIT_PARAM) === "1";
+});
+
+export const htmlDomEditPendingUrl$ = computed((get) => {
+  return get(internalHtmlDomEditPendingUrl$);
+});
+
+export const htmlDomEditPublishingUrl$ = computed((get) => {
+  return get(internalHtmlDomEditPublishingUrl$);
+});
+
+export const htmlDomEditPreviewHtmlByUrl$ = computed((get) => {
+  return get(internalHtmlDomEditPreviewHtmlByUrl$);
+});
+
+export const markHtmlDomEditPending$ = command(({ set }, url: string) => {
+  set(internalHtmlDomEditPendingUrl$, url);
+});
+
+export const applyHtmlDomEditPreview$ = command(
+  ({ get, set }, params: { readonly url: string; readonly html: string }) => {
+    set(internalHtmlDomEditPreviewHtmlByUrl$, {
+      ...get(internalHtmlDomEditPreviewHtmlByUrl$),
+      [params.url]: params.html,
+    });
+    set(internalHtmlDomEditPendingUrl$, null);
+  },
+);
+
+export const discardHtmlDomEditPreviewDraft$ = command(
+  ({ get, set }, url: string) => {
+    const next = { ...get(internalHtmlDomEditPreviewHtmlByUrl$) };
+    delete next[url];
+    set(internalHtmlDomEditPreviewHtmlByUrl$, next);
+
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const publishHtmlDomEditPreviewDraft$ = command(
+  async ({ get, set }, url: string, _parentSignal: AbortSignal) => {
+    const html = get(internalHtmlDomEditPreviewHtmlByUrl$)[url];
+    if (!html || get(internalHtmlDomEditPublishingUrl$) === url) {
+      return;
+    }
+
+    const signal = set(resetHtmlDomEditPublishSignal$);
+    set(internalHtmlDomEditPublishingUrl$, url);
+    const publish = async () => {
+      const client = get(zeroClient$)(zeroHostContract, { apiBase: "api" });
+      await accept(
+        client.redeployHtml({
+          body: { url, html },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+
+      const next = { ...get(internalHtmlDomEditPreviewHtmlByUrl$) };
+      delete next[url];
+      set(internalHtmlDomEditPreviewHtmlByUrl$, next);
+      set(internalHtmlDomEditPendingUrl$, null);
+
+      const params = new URLSearchParams(get(searchParams$));
+      params.delete(ARTIFACT_HTML_EDIT_PARAM);
+      set(replaceSearchParams$, params);
+      set(refreshPresentationHtmlPreviews$);
+      toast.success("Site published");
+    };
+
+    await withCleanup(publish(), () => {
+      if (!signal.aborted && get(internalHtmlDomEditPublishingUrl$) === url) {
+        set(internalHtmlDomEditPublishingUrl$, null);
+      }
+    });
+  },
+);
+
+export const clearHtmlDomEditPending$ = command(
+  ({ get, set }, url?: string) => {
+    const pendingUrl = get(internalHtmlDomEditPendingUrl$);
+    if (url && pendingUrl !== url) {
+      return;
+    }
+    set(internalHtmlDomEditPendingUrl$, null);
+  },
+);
+
+export const openArtifactHtmlEditMode$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
+  set(replaceSearchParams$, params);
+});
+
+export const closeArtifactHtmlEditMode$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.delete(ARTIFACT_HTML_EDIT_PARAM);
+  set(replaceSearchParams$, params);
 });
 
 export const toggleArtifactFullscreen$ = command(({ get, set }) => {

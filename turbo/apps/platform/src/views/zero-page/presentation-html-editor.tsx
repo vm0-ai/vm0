@@ -19,10 +19,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
-import {
-  downloadPresentationHtmlStringPptx,
-  readablePresentationResourceUrl,
-} from "./presentation-html-pptx-download.ts";
+import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
   applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
@@ -35,6 +32,7 @@ import {
 import {
   attachmentFilenameFromUrl,
   publicAttachmentUrl,
+  readableAttachmentResourceUrl,
 } from "./zero-attachment-url.ts";
 import { fallbackHtmlPreviewTitle } from "./zero-attachment-preview.tsx";
 
@@ -91,7 +89,7 @@ function createPresentationEditorSession(
 const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
   async (url, signal) => {
     const publicUrl = publicAttachmentUrl(url);
-    const response = await fetch(readablePresentationResourceUrl(publicUrl), {
+    const response = await fetch(readableAttachmentResourceUrl(publicUrl), {
       cache: "reload",
       mode: "cors",
       signal,
