@@ -5,11 +5,12 @@ import urllib.parse
 import pytest
 
 import auth
+import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
-from tests.auth_state_helpers import set_cached_headers
+from tests.auth_state_helpers import auth_cache_key, set_cached_headers
 from url_utils import get_original_url
 
 
@@ -72,6 +73,28 @@ def _prepare_firewall_request(flow, *, original_url: str | None = None) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         get_original_url(flow) if original_url is None else original_url
+    )
+
+
+def _aws_auth_cache_key(tmp_path, api_entry: dict | None = None):
+    resolved_api_entry = api_entry or _api_entry()
+    vm_info = _vm_info(tmp_path)
+    auth_config = resolved_api_entry["auth"]
+    auth_request = auth_client.FirewallAuthRequest(
+        encrypted_secrets=vm_info["encryptedSecrets"],
+        auth_headers=auth_config["headers"],
+        sandbox_token=vm_info["sandboxToken"],
+        auth_aws_sigv4=auth_config["awsSigv4"],
+        vars_map=vm_info["vars"],
+    )
+    return auth_cache_key(
+        run_id=vm_info["runId"],
+        api_id=resolved_api_entry["base"],
+        auth_identity=auth._build_firewall_auth_identity(
+            firewall_name="aws",
+            firewall_base=resolved_api_entry["base"],
+            auth_request=auth_request,
+        ),
     )
 
 
@@ -806,7 +829,7 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     )
     _prepare_firewall_request(flow)
     set_cached_headers(
-        ("run-1", "https://sts.amazonaws.com"),
+        _aws_auth_cache_key(tmp_path),
         headers={},
         aws_sigv4=AwsSigV4Credentials("AKIDEXAMPLE", ""),
     )
@@ -846,7 +869,7 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     )
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
     set_cached_headers(
-        ("run-1", "https://sts.amazonaws.com"),
+        _aws_auth_cache_key(tmp_path),
         headers={},
         aws_sigv4=AwsSigV4Credentials(
             "AKIDEXAMPLE",
@@ -898,7 +921,7 @@ async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
     _prepare_firewall_request(flow)
     flow.request.path = request_path
     set_cached_headers(
-        ("run-1", "https://sts.amazonaws.com"),
+        _aws_auth_cache_key(tmp_path),
         headers={},
         aws_sigv4=AwsSigV4Credentials(
             "AKIDEXAMPLE",
@@ -941,7 +964,7 @@ async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
     )
     _prepare_firewall_request(flow)
     set_cached_headers(
-        ("run-1", "https://sts.amazonaws.com"),
+        _aws_auth_cache_key(tmp_path),
         headers={},
         aws_sigv4=AwsSigV4Credentials(
             "AKIDEXAMPLE",

@@ -20,6 +20,7 @@ import platform_api
 from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
+    auth_cache_key,
     cached_headers,
     force_refresh_pending,
     last_force_refresh_at,
@@ -207,12 +208,12 @@ class TestGetFirewallHeaders:
         mock_result = _auth_success(headers=mock_headers)
         encrypted = "iv:tag:data"
         auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        cache_key = auth_cache_key(api_id="https://api.github.com")
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
             headers = await auth_cache.get_firewall_headers(
-                "run-1",
-                "https://api.github.com",
+                cache_key,
                 _firewall_auth_request(
                     encrypted_secrets=encrypted,
                     auth_headers=auth_templates,
@@ -232,21 +233,17 @@ class TestGetFirewallHeaders:
         )
         assert mock_fetch.call_args.kwargs == {"force_refresh": False}
 
-        # Verify the cache was populated
-        cache_key = ("run-1", "https://api.github.com")
         assert cached_headers(cache_key)
         assert require_cached_headers(cache_key).payload.headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
-        cache_key = ("run-1", "https://api.github.com")
+        cache_key = auth_cache_key(api_id="https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
         set_cached_headers(cache_key, headers=cached_headers)
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            headers = await auth_cache.get_firewall_headers(
-                "run-1", "https://api.github.com", _firewall_auth_request()
-            )
+            headers = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert headers["headers"] == cached_headers
         assert headers["cache_hit"] is True
@@ -254,7 +251,7 @@ class TestGetFirewallHeaders:
 
     async def test_cache_hit_with_valid_ttl_returns_cached(self, headers):
         """Cached entry with expiresAt in the future should be returned without fetching."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         cached_headers = {"Authorization": "Bearer valid-token"}
         set_cached_headers(
             cache_key,
@@ -264,9 +261,7 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            headers = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            headers = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert headers["headers"] == cached_headers
         assert headers["cache_hit"] is True
@@ -274,7 +269,7 @@ class TestGetFirewallHeaders:
 
     async def test_cache_evicted_when_ttl_expired(self, headers):
         """Cached entry with expiresAt in the past should trigger a re-fetch."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer stale-token"},
@@ -286,9 +281,7 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            headers = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            headers = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert headers["headers"] == fresh_headers
         assert headers["cache_hit"] is False
@@ -299,30 +292,27 @@ class TestGetFirewallHeaders:
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         cached_headers = {"Authorization": "Bearer permanent-token"}
         set_cached_headers(cache_key, headers=cached_headers, expires_at=None)
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            headers = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            headers = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert headers["headers"] == cached_headers
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
     async def test_billable_cache_hit_requires_valid_expiry(self, headers):
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         cached_headers = {"Authorization": "Bearer cached-token"}
         set_cached_headers(cache_key, headers=cached_headers, expires_at=time.time() + 30)
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
             headers = await auth_cache.get_firewall_headers(
-                "run-1",
-                "api-1",
+                cache_key,
                 _firewall_auth_request(firewall_billable=True),
             )
 
@@ -347,7 +337,7 @@ class TestGetFirewallHeaders:
 
     @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
     async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer malformed-token"},
@@ -357,16 +347,14 @@ class TestGetFirewallHeaders:
         mock_fetch = AsyncMock(return_value=_auth_success(headers=fresh_headers, expires_at=None))
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            headers = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            headers = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert headers["headers"] == fresh_headers
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
 
     async def test_billable_cache_without_expiry_refetches(self, headers):
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer stale-token"},
@@ -380,8 +368,7 @@ class TestGetFirewallHeaders:
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
             headers = await auth_cache.get_firewall_headers(
-                "run-1",
-                "api-1",
+                cache_key,
                 _firewall_auth_request(firewall_billable=True),
             )
 
@@ -392,7 +379,7 @@ class TestGetFirewallHeaders:
         assert require_cached_headers(cache_key).expires_at == expires_at
 
     async def test_billable_cache_with_expired_expiry_refetches(self, headers):
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer stale-token"},
@@ -405,8 +392,7 @@ class TestGetFirewallHeaders:
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
             headers = await auth_cache.get_firewall_headers(
-                "run-1",
-                "api-1",
+                cache_key,
                 _firewall_auth_request(firewall_billable=True),
             )
 
@@ -426,7 +412,7 @@ class TestGetFirewallHeaders:
         ],
     )
     async def test_billable_fetch_with_invalid_expiry_fails_closed(self, expires_at):
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         mock_fetch = AsyncMock(
             return_value=_auth_success(
                 headers={"Authorization": "Bearer token"},
@@ -439,15 +425,14 @@ class TestGetFirewallHeaders:
             pytest.raises(auth_cache.InvalidBillableAuthExpiryError),
         ):
             await auth_cache.get_firewall_headers(
-                "run-1",
-                "api-1",
+                cache_key,
                 _firewall_auth_request(firewall_billable=True),
             )
         assert cached_headers(cache_key) is None
 
     async def test_cache_hit_includes_base_when_present(self, headers):
         """Cached entry with 'base' returns it on cache hit."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={},
@@ -458,9 +443,7 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            result = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            result = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         assert result["cache_hit"] is True
@@ -468,7 +451,7 @@ class TestGetFirewallHeaders:
 
     async def test_query_is_cached_and_returned_on_cache_hit(self):
         """auth.query is cached after a fetch and returned on cache hit."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         cached_query = {"api_key": "cached-key", "empty_auth": ""}
         mock_fetch = AsyncMock(
             return_value=_auth_success(
@@ -479,12 +462,8 @@ class TestGetFirewallHeaders:
         )
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            first = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
-            second = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            first = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            second = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert first["query"] == cached_query
         assert first["cache_hit"] is False
@@ -495,7 +474,7 @@ class TestGetFirewallHeaders:
 
     async def test_base_and_query_are_cached_together(self):
         """auth.base and auth.query survive the same cache entry."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         cached_base = "https://example.com/webhook/secret"
         cached_query = {"api_key": "cached-key", "empty_auth": ""}
         mock_fetch = AsyncMock(
@@ -507,12 +486,8 @@ class TestGetFirewallHeaders:
         )
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            first = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
-            second = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            first = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            second = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert first["base"] == cached_base
         assert first["query"] == cached_query
@@ -527,7 +502,7 @@ class TestGetFirewallHeaders:
 
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer tok"},
@@ -537,9 +512,7 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            result = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            result = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert "base" not in result
         assert result["cache_hit"] is True
@@ -548,13 +521,13 @@ class TestGetFirewallHeaders:
         """When a force-refresh marker is set, the next fetch passes
         force_refresh=True, the marker is cleared, and the consume timestamp
         is recorded so the cooldown can suppress re-marking (#9860)."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         mark_force_refresh(cache_key)
         before = time.time()
 
         mock_fetch = AsyncMock(return_value=_auth_success(headers={"Authorization": "Bearer new"}))
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            await auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
+            await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         # force_refresh kwarg must be True
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
@@ -565,7 +538,7 @@ class TestGetFirewallHeaders:
 
     async def test_force_refresh_fetch_failure_still_consumes_marker(self, headers):
         """A failed forced refresh burns the cooldown and does not cache headers."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         mark_force_refresh(cache_key)
         before = time.time()
 
@@ -574,7 +547,7 @@ class TestGetFirewallHeaders:
             patch.object(auth_cache, "fetch_firewall_headers", mock_fetch),
             pytest.raises(ConnectionError),
         ):
-            await auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
+            await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
         assert not force_refresh_pending(cache_key)
@@ -583,7 +556,7 @@ class TestGetFirewallHeaders:
 
     async def test_non_forced_fetch_does_not_cache_if_marker_appears_in_flight(self, headers):
         """A 401 marker during a non-forced fetch must win over the cache write."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         fetch_entered = asyncio.Event()
         allow_fetch_return = asyncio.Event()
         first_force_refresh_values = []
@@ -600,7 +573,7 @@ class TestGetFirewallHeaders:
 
         with patch.object(auth_cache, "fetch_firewall_headers", side_effect=delayed_fetch):
             task = asyncio.create_task(
-                auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
+                auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
             )
             try:
                 await asyncio.wait_for(fetch_entered.wait(), timeout=5)
@@ -625,7 +598,7 @@ class TestGetFirewallHeaders:
 
         with patch.object(auth_cache, "fetch_firewall_headers", forced_fetch):
             forced_result = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
+                cache_key, _firewall_auth_request()
             )
 
         assert forced_fetch.call_args.kwargs["force_refresh"] is True
@@ -637,7 +610,7 @@ class TestGetFirewallHeaders:
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
         """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         first_fetch_entered = asyncio.Event()
         allow_first_fetch_return = asyncio.Event()
         force_refresh_values = []
@@ -661,13 +634,13 @@ class TestGetFirewallHeaders:
             auth_cache, "fetch_firewall_headers", side_effect=fetch_with_blocked_leader
         ):
             leader = asyncio.create_task(
-                auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
+                auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
             )
             waiter = None
             try:
                 await asyncio.wait_for(first_fetch_entered.wait(), timeout=5)
                 waiter = asyncio.create_task(
-                    auth_cache.get_firewall_headers("run-1", "api-1", _firewall_auth_request())
+                    auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
                 )
                 auth_cache.request_force_refresh(cache_key)
                 allow_first_fetch_return.set()
@@ -687,18 +660,32 @@ class TestGetFirewallHeaders:
 
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
+        cache_key = auth_cache_key(api_id="api-2")
         mock_fetch = AsyncMock(return_value=_auth_success(headers={}))
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            await auth_cache.get_firewall_headers("run-1", "api-2", _firewall_auth_request())
+            await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is False
         # No consume timestamp written when force-refresh didn't happen
-        assert last_force_refresh_at(("run-1", "api-2")) == 0.0
+        assert last_force_refresh_at(cache_key) == 0.0
+
+    async def test_force_refresh_marker_is_scoped_to_auth_identity(self, headers):
+        old_key = auth_cache_key(auth_identity="old-auth")
+        new_key = auth_cache_key(auth_identity="new-auth")
+        mark_force_refresh(old_key)
+
+        mock_fetch = AsyncMock(return_value=_auth_success(headers={}))
+        with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
+            await auth_cache.get_firewall_headers(new_key, _firewall_auth_request())
+
+        assert mock_fetch.call_args.kwargs["force_refresh"] is False
+        assert force_refresh_pending(old_key)
+        assert not force_refresh_pending(new_key)
 
     async def test_force_refresh_marker_ignored_on_cache_hit(self, headers):
         """Fast-path cache hit does NOT consume the force-refresh marker —
         marker survives until the next actual fetch (#9860)."""
-        cache_key = ("run-1", "api-1")
+        cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer cached"},
@@ -708,9 +695,7 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            result = await auth_cache.get_firewall_headers(
-                "run-1", "api-1", _firewall_auth_request()
-            )
+            result = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
 
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
@@ -1074,7 +1059,7 @@ class TestHandleFirewallRequest:
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
-        assert cached_headers(("test-run", "https://api.github.com")) is None
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_failed"
         assert body["permission"] == "github"
@@ -1118,7 +1103,7 @@ class TestHandleFirewallRequest:
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
-        assert cached_headers(("test-run", "https://api.github.com")) is None
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_failed"
         assert "Firewall auth response body too large" in body["message"]
@@ -1157,7 +1142,7 @@ class TestHandleFirewallRequest:
         assert "Authorization" not in flow.request.headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["existing"] == "1"
-        assert cached_headers(("test-run", "https://api.github.com")) is None
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_failed"
         assert _MALFORMED_SUCCESS_PREFIX in body["message"]
@@ -1278,7 +1263,7 @@ class TestHandleFirewallRequest:
         assert "Authorization" not in flow.request.headers
         assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert "api_key" not in flow.request.query
-        assert cached_headers(("test-run", "https://api.github.com")) is None
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_auth_expiry"
         assert "valid cache expiry" in body["message"]
