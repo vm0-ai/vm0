@@ -177,6 +177,11 @@ function eventDedupeKey(event: AgentEvent): string {
   });
 }
 
+interface SeenSequenceEvents {
+  events: AgentEvent[];
+  keys?: Set<string>;
+}
+
 /**
  * Extract the key parameter from tool input for display in summary
  */
@@ -755,13 +760,29 @@ export function groupEventsIntoMessages(
     return a.sequenceNumber - b.sequenceNumber;
   });
 
-  const seen = new Set<string>();
+  const seen = new Map<number, SeenSequenceEvents>();
   const deduped = sorted.filter((e) => {
+    const existing = seen.get(e.sequenceNumber);
+    if (!existing) {
+      seen.set(e.sequenceNumber, { events: [e] });
+      return true;
+    }
+
+    const keys =
+      existing.keys ??
+      new Set(
+        existing.events.map((event) => {
+          return eventDedupeKey(event);
+        }),
+      );
+    existing.keys = keys;
+
     const key = eventDedupeKey(e);
-    if (seen.has(key)) {
+    if (keys.has(key)) {
       return false;
     }
-    seen.add(key);
+    existing.events.push(e);
+    keys.add(key);
     return true;
   });
 
