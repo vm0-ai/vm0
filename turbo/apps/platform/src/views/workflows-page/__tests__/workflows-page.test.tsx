@@ -32,6 +32,7 @@ const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
+const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 
 type WorkflowScheduleTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
@@ -39,7 +40,11 @@ type WorkflowScheduleTriggerSummary = Extract<
 >;
 type WorkflowGmailNewMessageTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
-  { kind: "event" }
+  { eventType: "gmail-new-message" }
+>;
+type WorkflowGmailLabelAppliedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { eventType: "gmail-label-applied" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -84,6 +89,29 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_gmail_new_message",
+    nextRunAt: null,
+    lastRunAt: null,
+    unattendedConnectorRefs: ["gmail"],
+    unattendedPermissionPolicy: null,
+  };
+}
+
+function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
+  return {
+    id: GMAIL_LABEL_TRIGGER_ID,
+    kind: "event",
+    eventType: "gmail-label-applied",
+    eventConfig: {
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Support",
+      resolvedLabelId: "Label_support",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_gmail_label_applied",
     nextRunAt: null,
     lastRunAt: null,
     unattendedConnectorRefs: ["gmail"],
@@ -297,6 +325,12 @@ function mockCreateWorkflowTrigger(
       if (body.kind !== "event") {
         return respond(201, weekdayWorkflowTrigger());
       }
+      if (body.eventType === "gmail-label-applied") {
+        return respond(201, {
+          ...gmailLabelWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
       return respond(201, {
         ...gmailWorkflowTrigger(),
         eventConfig: body.eventConfig,
@@ -313,6 +347,13 @@ function mockUpdateWorkflowTrigger(
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
+        if (body.eventConfig.event === "label_applied") {
+          return respond(200, {
+            ...gmailLabelWorkflowTrigger(),
+            id: params.id,
+            eventConfig: body.eventConfig,
+          });
+        }
         return respond(200, {
           ...gmailWorkflowTrigger(),
           id: params.id,
@@ -587,6 +628,65 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("creates a Gmail label applied trigger with a label name", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+    const addTriggerButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Add trigger";
+    });
+    expect(addTriggerButton).toBeDefined();
+    click(addTriggerButton!);
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((item) => {
+          return item.textContent?.includes("Gmail label applied");
+        }),
+      ).toBeTruthy();
+    });
+    const gmailLabelMenuItem = queryAllByRoleFast("menuitem").find((item) => {
+      return item.textContent?.includes("Gmail label applied");
+    });
+    expect(gmailLabelMenuItem).toBeDefined();
+    click(gmailLabelMenuItem!);
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Gmail label trigger",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("Label name"),
+      "Support",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+      });
+    });
+  });
+
   it("updates a Gmail new message trigger with text match rules", async () => {
     const updateBodies: {
       readonly triggerId: string;
@@ -660,6 +760,60 @@ describe("workflow detail page", () => {
               subject: { doesNotContain: "newsletter" },
               body: { contains: "invoice" },
             },
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail label applied trigger with a label name", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const workflow = {
+      ...salesResearch(),
+      triggers: [gmailLabelWorkflowTrigger()],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
+    });
+    click(screen.getByText("Edit label"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update Gmail label trigger",
+    });
+    await fill(
+      within(updateTriggerForm).getByLabelText("Label name"),
+      "Escalated",
+    );
+    fireEvent.submit(updateTriggerForm);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: GMAIL_LABEL_TRIGGER_ID,
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Escalated",
           },
         },
       });

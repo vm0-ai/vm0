@@ -93,6 +93,21 @@ const gmailTrigger = {
   nextRunAt: null,
 };
 
+const gmailLabelTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "gmail-label-applied",
+  eventConfig: {
+    provider: "gmail",
+    event: "label_applied",
+    labelName: "Support",
+    resolvedLabelId: "Label_support",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 describe("zero workflow trigger commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -325,6 +340,33 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
+    it("should add a Gmail label applied trigger by label name", async () => {
+      const captured = captureCreateTrigger(gmailLabelTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "gmail-label-applied",
+        "--label",
+        "Support",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Gmail label applied");
+      expect(logCalls).toContain("Support");
+    });
+
     it.each([
       {
         field: "hasAttachment",
@@ -397,7 +439,28 @@ describe("zero workflow trigger commands", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("only apply to gmail-new-message triggers"),
+        expect.stringContaining("only apply to Gmail event triggers"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject label flags on schedule triggers", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "cron",
+          "--expr",
+          "0 9 * * *",
+          "--label",
+          "Support",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("only apply to Gmail event triggers"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -504,6 +567,40 @@ describe("zero workflow trigger commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(`Trigger ${TRIGGER_ID} updated`);
       expect(logCalls).toContain('subject does not contain "marketing"');
+    });
+
+    it("should update a Gmail label applied trigger by label name", async () => {
+      const updated = {
+        ...gmailLabelTrigger,
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Escalated",
+          resolvedLabelId: "Label_escalated",
+        },
+      };
+      const captured = captureUpdateTrigger(updated);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--label",
+        "Escalated",
+      ]);
+
+      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Escalated",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Gmail label applied");
+      expect(logCalls).toContain("Escalated");
     });
 
     it("should update a Gmail new message trigger from a config file", async () => {

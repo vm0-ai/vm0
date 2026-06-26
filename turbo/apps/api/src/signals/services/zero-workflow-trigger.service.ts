@@ -1,10 +1,13 @@
 import { command } from "ccstate";
 import {
+  gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  type GmailLabelAppliedEventConfig,
   type ChatThreadWorkflowTrigger,
-  type GmailNewMessageEventConfig,
+  type GmailWorkflowEventConfig,
   type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
+  type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -32,6 +35,7 @@ import {
 import {
   ensureGmailWatchForUser,
   gmailWorkflowEventTriggersEnabledForOwner,
+  resolveGmailLabelForUser,
 } from "./gmail-workflow-event.service";
 
 type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
@@ -183,6 +187,14 @@ function rowToSchedule(row: TriggerRow): ZeroWorkflowSchedule {
   };
 }
 
+function supportedGmailEventType(
+  eventType: string | null,
+): eventType is ZeroWorkflowEventType {
+  return (
+    eventType === "gmail-new-message" || eventType === "gmail-label-applied"
+  );
+}
+
 function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
   if (row.kind === "event" && row.eventType === "gmail-new-message") {
     return {
@@ -190,6 +202,23 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
       kind: "event",
       eventType: "gmail-new-message",
       eventConfig: gmailNewMessageEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+      ownerUserId: row.ownerUserId,
+      enabled: row.enabled,
+      chatThreadId: row.chatThreadId,
+      nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
+      lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+      unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
+      unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
+    };
+  }
+  if (row.kind === "event" && row.eventType === "gmail-label-applied") {
+    return {
+      id: row.id,
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: gmailLabelAppliedEventConfigSchema.parse(row.eventConfig),
       schedule: null,
       scheduleSummary: null,
       ownerUserId: row.ownerUserId,
@@ -220,7 +249,7 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
 function rowToPublicSummary(
   row: TriggerRow,
 ): ZeroWorkflowTriggerSummary | null {
-  if (row.kind === "event" && row.eventType !== "gmail-new-message") {
+  if (row.kind === "event" && !supportedGmailEventType(row.eventType)) {
     return null;
   }
   return rowToSummary(row);
@@ -456,8 +485,8 @@ interface CreateGmailEventTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: "gmail-new-message";
-  readonly eventConfig: GmailNewMessageEventConfig;
+  readonly eventType: ZeroWorkflowEventType;
+  readonly eventConfig: GmailWorkflowEventConfig;
   readonly enabled: boolean;
 }
 
@@ -506,6 +535,12 @@ async function insertGmailEventTrigger(
     readonly currentTime: Date;
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
+  const threadTitle =
+    args.input.eventType === "gmail-label-applied"
+      ? `Gmail label: ${
+          (args.input.eventConfig as GmailLabelAppliedEventConfig).labelName
+        }`
+      : "Gmail new message";
   return await db.transaction(async (tx) => {
     await ensureAgentGmailConnector(tx, {
       orgId: args.input.orgId,
@@ -523,7 +558,7 @@ async function insertGmailEventTrigger(
       .values({
         userId: args.input.member.userId,
         agentComposeId: args.agentId,
-        title: "Gmail new message",
+        title: threadTitle,
         lastMessageAt: args.currentTime,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
@@ -560,6 +595,58 @@ async function insertGmailEventTrigger(
     }
     return rowToSummary(row);
   });
+}
+
+async function prepareGmailEventConfigForPersist(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly eventType: ZeroWorkflowEventType;
+    readonly eventConfig: GmailWorkflowEventConfig;
+    readonly signal: AbortSignal;
+  },
+): Promise<
+  | { readonly kind: "ok"; readonly eventConfig: GmailWorkflowEventConfig }
+  | { readonly kind: "bad-request"; readonly message: string }
+> {
+  if (args.eventType === "gmail-new-message") {
+    if (args.eventConfig.event !== "new_message") {
+      return {
+        kind: "bad-request",
+        message: "eventConfig must be a Gmail new message config",
+      };
+    }
+    return { kind: "ok", eventConfig: args.eventConfig };
+  }
+
+  if (args.eventConfig.event !== "label_applied") {
+    return {
+      kind: "bad-request",
+      message: "eventConfig must be a Gmail label applied config",
+    };
+  }
+
+  const label = await resolveGmailLabelForUser({
+    db,
+    orgId: args.orgId,
+    userId: args.userId,
+    labelName: args.eventConfig.labelName,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (label.kind !== "ok") {
+    return { kind: "bad-request", message: label.message };
+  }
+
+  return {
+    kind: "ok",
+    eventConfig: {
+      ...args.eventConfig,
+      labelName: label.labelName,
+      resolvedLabelId: label.labelId,
+    },
+  };
 }
 
 async function insertScheduleTrigger(
@@ -677,6 +764,18 @@ export const createWorkflowTrigger$ = command(
         };
       }
 
+      const preparedConfig = await prepareGmailEventConfigForPersist(writeDb, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        eventType: args.eventType,
+        eventConfig: args.eventConfig,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (preparedConfig.kind !== "ok") {
+        return preparedConfig;
+      }
+
       const watchResult = await ensureGmailWatchForUser({
         db: writeDb,
         orgId: args.orgId,
@@ -689,7 +788,7 @@ export const createWorkflowTrigger$ = command(
       }
 
       const summary = await insertGmailEventTrigger(writeDb, {
-        input: args,
+        input: { ...args, eventConfig: preparedConfig.eventConfig },
         workflowId: workflow.id,
         agentId: agent.id,
         currentTime: nowDate(),
@@ -749,7 +848,7 @@ async function loadOwnedTrigger(
   if (!trigger) {
     return { kind: "not-found" };
   }
-  if (trigger.kind === "event" && trigger.eventType !== "gmail-new-message") {
+  if (trigger.kind === "event" && !supportedGmailEventType(trigger.eventType)) {
     return { kind: "not-found" };
   }
   const visible = await loadVisibleWorkflowById(db, {
@@ -774,7 +873,7 @@ interface UpdateTriggerInput {
   readonly member: WorkflowMember;
   readonly triggerId: string;
   readonly schedule?: ZeroWorkflowSchedule;
-  readonly eventConfig?: GmailNewMessageEventConfig;
+  readonly eventConfig?: GmailWorkflowEventConfig;
 }
 
 export const updateWorkflowTrigger$ = command(
@@ -802,9 +901,26 @@ export const updateWorkflowTrigger$ = command(
           message: "eventConfig is required for Gmail event triggers",
         };
       }
+      if (!supportedGmailEventType(trigger.eventType)) {
+        return { kind: "not-found" };
+      }
+      const preparedConfig = await prepareGmailEventConfigForPersist(writeDb, {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        eventType: trigger.eventType,
+        eventConfig: args.eventConfig,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (preparedConfig.kind !== "ok") {
+        return preparedConfig;
+      }
       const [row] = await writeDb
         .update(zeroWorkflowTriggers)
-        .set({ eventConfig: args.eventConfig, updatedAt: nowDate() })
+        .set({
+          eventConfig: preparedConfig.eventConfig,
+          updatedAt: nowDate(),
+        })
         .where(eq(zeroWorkflowTriggers.id, trigger.id))
         .returning();
       signal.throwIfAborted();
