@@ -64,28 +64,20 @@ export interface GroupedMessage {
 }
 
 export function groupedMessageKey(message: GroupedMessage): string {
-  const parts = [
+  return JSON.stringify([
     message.type,
     String(message.sequenceNumber),
     message.createdAt,
-    message.thinkingBlocks?.join("\n"),
-    message.textBefore,
-    message.textAfter,
-    message.toolOperations
-      ?.map((operation) => {
-        return operation.toolUseId;
-      })
-      .join("|"),
-    message.todoState
-      ?.map((todo) => {
-        return `${todo.status}:${todo.content}`;
-      })
-      .join("|"),
-  ].filter((part): part is string => {
-    return typeof part === "string" && part.length > 0;
-  });
-
-  return parts.join("\u001f");
+    message.thinkingBlocks ?? null,
+    message.textBefore ?? null,
+    message.textAfter ?? null,
+    message.toolOperations?.map((operation) => {
+      return operation.toolUseId;
+    }) ?? null,
+    message.todoState?.map((todo) => {
+      return [todo.status, todo.content];
+    }) ?? null,
+  ]);
 }
 
 interface GroupEventsIntoMessagesOptions {
