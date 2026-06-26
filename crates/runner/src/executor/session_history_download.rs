@@ -12,7 +12,11 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 // Must stay in sync with RESUME_SESSION_HISTORY_MAX_BYTES in the API contracts.
 const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
-pub(crate) enum SessionHistoryMaterializer {
+pub(crate) struct SessionHistoryMaterializer {
+    state: SessionHistoryMaterializerState,
+}
+
+enum SessionHistoryMaterializerState {
     Missing,
     Ready,
     Downloading {
@@ -21,7 +25,7 @@ pub(crate) enum SessionHistoryMaterializer {
     },
 }
 
-pub(crate) enum SessionHistoryMaterialization {
+pub(super) enum SessionHistoryMaterialization {
     Missing,
     Ready,
     Downloaded {
@@ -34,7 +38,7 @@ pub(crate) enum SessionHistoryMaterialization {
     },
 }
 
-pub(crate) struct SessionHistoryDownloadTaskResult {
+struct SessionHistoryDownloadTaskResult {
     elapsed: Duration,
     result: RunnerResult<ResumeSession>,
 }
@@ -58,46 +62,55 @@ impl SessionHistoryMaterializer {
         cancel: Option<CancellationToken>,
     ) -> Self {
         let Some(session) = session else {
-            return Self::Missing;
+            return Self {
+                state: SessionHistoryMaterializerState::Missing,
+            };
         };
         if session.history_ref().is_none() {
-            return Self::Ready;
+            return Self {
+                state: SessionHistoryMaterializerState::Ready,
+            };
         }
 
         let http = http.clone();
         let session = session.clone();
         let started_at = Instant::now();
-        Self::Downloading {
-            started_at,
-            task: Some(tokio::spawn(async move {
-                match cancel {
-                    Some(cancel) => {
-                        tokio::select! {
-                            biased;
-                            _ = cancel.cancelled() => {
-                                SessionHistoryDownloadTaskResult::cancelled(started_at)
+        Self {
+            state: SessionHistoryMaterializerState::Downloading {
+                started_at,
+                task: Some(tokio::spawn(async move {
+                    match cancel {
+                        Some(cancel) => {
+                            tokio::select! {
+                                biased;
+                                _ = cancel.cancelled() => {
+                                    SessionHistoryDownloadTaskResult::cancelled(started_at)
+                                }
+                                result = download_resume_session_history_timed(http, session) => result,
                             }
-                            result = download_resume_session_history_timed(http, session) => result,
                         }
+                        None => download_resume_session_history_timed(http, session).await,
                     }
-                    None => download_resume_session_history_timed(http, session).await,
-                }
-            })),
+                })),
+            },
         }
     }
 
     pub(crate) fn is_downloading(&self) -> bool {
-        matches!(self, Self::Downloading { .. })
+        matches!(
+            self.state,
+            SessionHistoryMaterializerState::Downloading { .. }
+        )
     }
 
-    pub(crate) async fn finish(
+    pub(super) async fn finish(
         mut self,
         cancel: &CancellationToken,
     ) -> SessionHistoryMaterialization {
-        match &mut self {
-            Self::Missing => SessionHistoryMaterialization::Missing,
-            Self::Ready => SessionHistoryMaterialization::Ready,
-            Self::Downloading { started_at, task } => {
+        match &mut self.state {
+            SessionHistoryMaterializerState::Missing => SessionHistoryMaterialization::Missing,
+            SessionHistoryMaterializerState::Ready => SessionHistoryMaterialization::Ready,
+            SessionHistoryMaterializerState::Downloading { started_at, task } => {
                 let started_at = *started_at;
                 if cancel.is_cancelled() {
                     return SessionHistoryDownloadTaskResult::cancelled(started_at)
@@ -161,9 +174,9 @@ impl SessionHistoryDownloadTaskResult {
 
 impl Drop for SessionHistoryMaterializer {
     fn drop(&mut self) {
-        if let Self::Downloading {
+        if let SessionHistoryMaterializerState::Downloading {
             task: Some(task), ..
-        } = self
+        } = &mut self.state
         {
             task.abort();
         }
@@ -618,9 +631,11 @@ mod tests {
         }
         let cancel = CancellationToken::new();
         cancel.cancel();
-        let materializer = SessionHistoryMaterializer::Downloading {
-            started_at: Instant::now(),
-            task: Some(task),
+        let materializer = SessionHistoryMaterializer {
+            state: SessionHistoryMaterializerState::Downloading {
+                started_at: Instant::now(),
+                task: Some(task),
+            },
         };
 
         let result = materializer.finish(&cancel).await;
