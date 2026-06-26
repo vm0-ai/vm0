@@ -54,11 +54,19 @@ pub struct JobCandidate {
 
 impl JobCandidate {
     pub fn new(run_id: RunId, profile_name: String) -> Self {
+        Self::new_with_discovered_at(run_id, profile_name, Instant::now())
+    }
+
+    pub(crate) fn new_with_discovered_at(
+        run_id: RunId,
+        profile_name: String,
+        discovered_at: Instant,
+    ) -> Self {
         Self {
             run_id,
             profile_name,
             local_job_path: None,
-            discovered_at: Instant::now(),
+            discovered_at,
             local_admission_started_at: None,
             discovery_source: None,
             poll_reason: None,

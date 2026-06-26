@@ -27,14 +27,25 @@ pub(super) struct DirectJobCandidate {
     run_id: RunId,
     profile_name: String,
     targeted: bool,
+    discovered_at: StdInstant,
 }
 
 impl DirectJobCandidate {
     pub(super) fn new(run_id: RunId, profile_name: String, targeted: bool) -> Self {
+        Self::new_with_discovered_at(run_id, profile_name, targeted, StdInstant::now())
+    }
+
+    pub(super) fn new_with_discovered_at(
+        run_id: RunId,
+        profile_name: String,
+        targeted: bool,
+        discovered_at: StdInstant,
+    ) -> Self {
         Self {
             run_id,
             profile_name,
             targeted,
+            discovered_at,
         }
     }
 
@@ -51,7 +62,7 @@ impl DirectJobCandidate {
     }
 
     pub(super) fn into_job_candidate(self) -> JobCandidate {
-        JobCandidate::new(self.run_id, self.profile_name)
+        JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_discovery_source(JobDiscoverySource::Ably)
     }
 }
@@ -739,8 +750,16 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             return None;
         }
     };
-    let profile = msg.data.get("profile").and_then(|v| v.as_str());
-    let target_runner_id = msg.data.get("targetRunnerId").and_then(|v| v.as_str());
+    let profile = msg
+        .data
+        .get("profile")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
+    let target_runner_id = msg
+        .data
+        .get("targetRunnerId")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     Some(JobNotification {
         run_id,
         profile,
@@ -1557,6 +1576,33 @@ mod tests {
             Some("job"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001"
+            }),
+        );
+
+        handle_ably_message(&msg, "runner-1", &profiles, &wakeups, &direct_tx, &tokens).await;
+
+        assert!(direct_rx.try_recv().is_err());
+        assert!(wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn empty_profile_job_notification_wakes_poll() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let (direct_tx, mut direct_rx) = direct_candidate_channel();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": ""
             }),
         );
 

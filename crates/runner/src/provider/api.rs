@@ -1154,12 +1154,16 @@ mod tests {
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
         );
+        let discovered_at = Instant::now()
+            .checked_sub(Duration::from_millis(25))
+            .unwrap();
         provider
             ._direct_candidate_tx
-            .try_send(DirectJobCandidate::new(
+            .try_send(DirectJobCandidate::new_with_discovered_at(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
                 true,
+                discovered_at,
             ))
             .unwrap();
 
@@ -1174,6 +1178,7 @@ mod tests {
             discovered.discovery_source(),
             Some(JobDiscoverySource::Ably)
         );
+        assert!(discovered.job_discovered_elapsed() >= Duration::from_millis(25));
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_none());
         assert!(discovered.poll_http_request_elapsed().is_none());
         poll_mock.assert_calls_async(0).await;
