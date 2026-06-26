@@ -466,48 +466,65 @@ export async function listThreadBoundWorkflowTriggers(
     }),
   );
 
-  return summaries.flatMap(({ trigger, workflow, summary }) => {
-    if (!summary || trigger.chatThreadId === null) {
-      return [];
-    }
-    const base = {
-      id: summary.id,
-      enabled: summary.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: summary.nextRunAt,
-      lastRunAt: summary.lastRunAt,
-      ownerUserId: summary.ownerUserId,
-      unattendedConnectorRefs: summary.unattendedConnectorRefs,
-      unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
-      workflow: {
-        id: workflow.id,
-        agentId: workflow.agentId,
-        name: workflow.name,
-        displayName: workflow.displayName,
-        description: workflow.description,
-      },
-    };
-    if (summary.kind === "schedule") {
+  return summaries.flatMap(
+    ({ trigger, workflow, summary }): readonly ChatThreadWorkflowTrigger[] => {
+      if (!summary || trigger.chatThreadId === null) {
+        return [];
+      }
+      const base = {
+        id: summary.id,
+        enabled: summary.enabled,
+        chatThreadId: trigger.chatThreadId,
+        nextRunAt: summary.nextRunAt,
+        lastRunAt: summary.lastRunAt,
+        ownerUserId: summary.ownerUserId,
+        unattendedConnectorRefs: summary.unattendedConnectorRefs,
+        unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
+        workflow: {
+          id: workflow.id,
+          agentId: workflow.agentId,
+          name: workflow.name,
+          displayName: workflow.displayName,
+          description: workflow.description,
+        },
+      };
+      if (summary.kind === "schedule") {
+        return [
+          {
+            ...base,
+            kind: "schedule",
+            schedule: summary.schedule,
+            scheduleSummary: summary.scheduleSummary,
+          },
+        ];
+      }
+      if (summary.eventType === "webhook-received") {
+        return [];
+      }
+      if (summary.eventType === "gmail-new-message") {
+        return [
+          {
+            ...base,
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: summary.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          },
+        ];
+      }
       return [
         {
           ...base,
-          kind: "schedule",
-          schedule: summary.schedule,
-          scheduleSummary: summary.scheduleSummary,
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: summary.eventConfig,
+          schedule: null,
+          scheduleSummary: null,
         },
       ];
-    }
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: summary.eventType,
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  });
+    },
+  );
 }
 
 /**
