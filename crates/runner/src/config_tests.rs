@@ -68,19 +68,23 @@ firecracker:
     }
 
     fn yaml_with_default_profile(&self, extra: &str) -> String {
-        self.yaml(&format!(
-            r#"profiles:
-  vm0/default:
-    rootfs_hash: {rootfs_hash}
-    snapshot_hash: {snapshot_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-{extra}"#,
-            rootfs_hash = TEST_ROOTFS_HASH,
-            snapshot_hash = TEST_SNAPSHOT_HASH,
-        ))
+        self.yaml_with_profile("vm0/default", default_profile_config(), extra)
+    }
+
+    fn yaml_with_profile(&self, name: &str, profile: ProfileConfig, extra: &str) -> String {
+        let mut profiles = BTreeMap::new();
+        profiles.insert(name.to_string(), profile);
+        let profiles_yaml = serde_yaml_ng::to_string(&profiles).unwrap();
+        let profiles_yaml = profiles_yaml
+            .strip_prefix("---\n")
+            .unwrap_or(&profiles_yaml);
+        let mut indented_profiles = String::new();
+        for line in profiles_yaml.lines() {
+            indented_profiles.push_str("  ");
+            indented_profiles.push_str(line);
+            indented_profiles.push('\n');
+        }
+        self.yaml(&format!("profiles:\n{indented_profiles}{extra}"))
     }
 
     async fn write_config(&self, yaml: &str) -> std::path::PathBuf {
@@ -141,18 +145,19 @@ async fn test_home_with_artifacts(dir: &std::path::Path, hashes: &[(&str, &str)]
 
 fn make_profiles() -> BTreeMap<String, ProfileConfig> {
     let mut profiles = BTreeMap::new();
-    profiles.insert(
-        "vm0/default".into(),
-        ProfileConfig {
-            rootfs_hash: TEST_ROOTFS_HASH.into(),
-            snapshot_hash: TEST_SNAPSHOT_HASH.into(),
-            vcpu: 2,
-            memory_mb: 4096,
-            rootfs_disk_mb: 8192,
-            workspace_disk_mb: 16384,
-        },
-    );
+    profiles.insert("vm0/default".into(), default_profile_config());
     profiles
+}
+
+fn default_profile_config() -> ProfileConfig {
+    ProfileConfig {
+        rootfs_hash: TEST_ROOTFS_HASH.into(),
+        snapshot_hash: TEST_SNAPSHOT_HASH.into(),
+        vcpu: 2,
+        memory_mb: 4096,
+        rootfs_disk_mb: 8192,
+        workspace_disk_mb: 16384,
+    }
 }
 
 #[cfg(unix)]
@@ -346,20 +351,7 @@ async fn load_rejects_empty_profiles() {
 #[tokio::test]
 async fn load_rejects_invalid_profile_name() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  bad-name:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile("bad-name", default_profile_config(), "");
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(
@@ -375,19 +367,14 @@ async fn load_rejects_invalid_rootfs_hash() {
     // `../etc` would escape `images_dir()` if joined unchecked. The
     // validator must reject this at config-load time, before any
     // filesystem I/O on the bad path.
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: ../etc
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            rootfs_hash: "../etc".into(),
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("invalid image hash"), "got: {err}");
@@ -396,19 +383,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_invalid_snapshot_hash() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: ../etc
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            snapshot_hash: "../etc".into(),
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("invalid image hash"), "got: {err}");
@@ -417,20 +399,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_zero_vcpu_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 0
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            vcpu: 0,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("non-zero"), "got: {err}");
@@ -439,20 +415,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_zero_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 0
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            rootfs_disk_mb: 0,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("non-zero"), "got: {err}");
@@ -461,20 +431,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_zero_workspace_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 0
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            workspace_disk_mb: 0,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("non-zero"), "got: {err}");
@@ -483,20 +447,14 @@ profiles:
 #[tokio::test]
 async fn load_accepts_vcpu_at_maximum() {
     let fixture = ConfigFixture::new().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 1024
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            vcpu: 1024,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     // vcpu == MAX_VCPU should be accepted (validation uses >, not >=)
     let result = fixture.load_config(&yaml, true).await;
@@ -506,20 +464,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_excessive_vcpu_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2048
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            vcpu: 2048,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
@@ -528,20 +480,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_excessive_memory_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 2000000
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            memory_mb: 2000000,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
@@ -550,20 +496,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_excessive_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 2000000
-    workspace_disk_mb: 16384
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            rootfs_disk_mb: 2000000,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
@@ -572,20 +512,14 @@ profiles:
 #[tokio::test]
 async fn load_rejects_excessive_workspace_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
-    let yaml = fixture.yaml(&format!(
-        r#"
-profiles:
-  vm0/default:
-    rootfs_hash: {hash}
-    snapshot_hash: {snap_hash}
-    vcpu: 2
-    memory_mb: 4096
-    rootfs_disk_mb: 8192
-    workspace_disk_mb: 2000000
-"#,
-        hash = TEST_ROOTFS_HASH,
-        snap_hash = TEST_SNAPSHOT_HASH,
-    ));
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            workspace_disk_mb: 2000000,
+            ..default_profile_config()
+        },
+        "",
+    );
 
     let err = fixture.load_config(&yaml, true).await.unwrap_err();
     assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
