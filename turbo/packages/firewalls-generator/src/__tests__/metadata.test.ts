@@ -365,6 +365,53 @@ describe("firewall metadata generator", () => {
   );
 
   it(
+    "rejects provider-owned host policies without fixed host ownership",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://${{ vars.GITHUB_HOST }}",',
+          '      hostPolicy: { kind: "providerOwned", suffixes: ["com"] },',
+          "      auth: {",
+          "        headers: {",
+          '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+          "        },",
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "rejects generated optional metadata exports with the wrong connector prefix",
     async () => {
       await loadGeneratedConnectorFirewallSource("github", {

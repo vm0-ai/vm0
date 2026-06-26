@@ -3,6 +3,9 @@ import { z } from "zod";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
+const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[/?#@\\:{}]/u;
+
 /**
  * Proxy-side firewall configuration for token replacement.
  *
@@ -55,6 +58,29 @@ const firewallAuthSchema = z
     }
   });
 
+function hostPolicyHostHasFixedOwnership(value: string): boolean {
+  const normalized = value
+    .replace(/^[.]+/u, "")
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .toLowerCase();
+  const withoutTrailingDot = normalized.endsWith(".")
+    ? normalized.slice(0, -1)
+    : normalized;
+  if (
+    withoutTrailingDot === "" ||
+    HOST_POLICY_HOST_FORBIDDEN_PATTERN.test(withoutTrailingDot)
+  ) {
+    return false;
+  }
+  const labels = withoutTrailingDot.split(".");
+  return (
+    labels.length >= 2 &&
+    labels.every((label) => {
+      return label !== "";
+    })
+  );
+}
+
 const firewallProviderOwnedHostPolicySchema = z
   .object({
     kind: z.literal("providerOwned"),
@@ -72,6 +98,26 @@ const firewallProviderOwnedHostPolicySchema = z
         code: "custom",
         message: "providerOwned host policy requires exactHosts or suffixes",
       });
+    }
+    for (const [index, exactHost] of (policy.exactHosts ?? []).entries()) {
+      if (!hostPolicyHostHasFixedOwnership(exactHost)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["exactHosts", index],
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        });
+      }
+    }
+    for (const [index, suffix] of (policy.suffixes ?? []).entries()) {
+      if (!hostPolicyHostHasFixedOwnership(suffix)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["suffixes", index],
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        });
+      }
     }
   });
 
@@ -1787,7 +1833,6 @@ function errMsg(base: string, svc: string, detail: string): string {
 }
 
 const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
-const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
 const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
 const REQUIRED_AUTH_BASE_URL_SCHEME = "https";

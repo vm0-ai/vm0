@@ -40,6 +40,7 @@ _PATH_VAR_STRUCTURE_CHARS = frozenset(("/", "?", "#", "\\"))
 _PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
 _DEFAULT_HTTPS_PORT = 443
 _MAX_PATH_VAR_PERCENT_DECODE_PASSES = 5
+_MIN_FIXED_HOST_OWNERSHIP_LABELS = 2
 _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
     {
         "\u3002": ".",
@@ -47,6 +48,7 @@ _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
         "\uff61": ".",
     }
 )
+_HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("/?#@\\:{}")
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
     (0x0A000000, 0x0AFFFFFF),
@@ -700,6 +702,14 @@ def _normalize_host_policy_suffix(suffix: str) -> str:
     return _normalize_host_policy_hostname(without_leading_dot)
 
 
+def _host_policy_host_has_fixed_ownership(hostname: str) -> bool:
+    normalized = _normalize_host_policy_hostname(hostname.lstrip("."))
+    if not normalized or any(char in normalized for char in _HOST_POLICY_HOST_FORBIDDEN_CHARS):
+        return False
+    labels = normalized.split(".")
+    return len(labels) >= _MIN_FIXED_HOST_OWNERSHIP_LABELS and all(labels)
+
+
 def _provider_owned_host_matches(
     hostname: str,
     *,
@@ -738,6 +748,18 @@ def _validate_provider_owned_host_policy(
             f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
             "requires exactHosts or suffixes"
         )
+    for exact_host in exact_hosts:
+        if not _host_policy_host_has_fixed_ownership(exact_host):
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+                "exactHosts must be fixed hostnames with at least two labels"
+            )
+    for suffix in suffixes:
+        if not _host_policy_host_has_fixed_ownership(suffix):
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+                "suffixes must be fixed hostnames with at least two labels"
+            )
     if not _provider_owned_host_matches(
         hostname,
         exact_hosts=exact_hosts,

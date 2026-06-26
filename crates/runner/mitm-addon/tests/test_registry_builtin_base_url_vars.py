@@ -195,6 +195,31 @@ class TestRegistryBuiltinBaseUrlVars:
             assert invalid_vm.reason == "invalid_firewalls"
             assert "host policy does not allow resolved host" in invalid_vm.message
 
+    def test_builtin_provider_owned_rejects_overbroad_suffix_policy(self, tmp_path, monkeypatch):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="provider-owned-overbroad",
+            base="https://${{ vars.API_HOST }}",
+            host_policy={"kind": "providerOwned", "suffixes": ["com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-provider-owned-overbroad",
+            name="provider-owned-overbroad",
+            base_url_vars={"API_HOST": "attacker.com"},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "suffixes must be fixed hostnames with at least two labels" in invalid_vm.message
+
     def test_builtin_provider_owned_whole_authority_rejects_non_default_port(
         self, tmp_path, monkeypatch
     ):
