@@ -697,14 +697,14 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
-  it("keeps the agent chat composer at three-line height when the mobile single-line switch is on", async () => {
+  it("keeps the agent chat composer at three-line height", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
 
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.MobileSingleLineComposer]: true },
+      featureSwitches: {},
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -713,7 +713,7 @@ describe("chat composer models", () => {
     expect(textarea).not.toHaveClass("min-h-[44px]");
   });
 
-  it("uses the mobile single-line height in chat thread composers when the switch is on", async () => {
+  it("uses the mobile single-line height in chat thread composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -721,7 +721,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.MobileSingleLineComposer]: true },
+      featureSwitches: {},
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -729,7 +729,7 @@ describe("chat composer models", () => {
     expect(textarea).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
-  it("keeps the agent chat slash composer at three-line height when the mobile single-line switch is on", async () => {
+  it("keeps the agent chat slash composer at three-line height", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
@@ -741,7 +741,6 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
         [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
-        [FeatureSwitchKey.MobileSingleLineComposer]: true,
       },
     });
 
@@ -750,7 +749,7 @@ describe("chat composer models", () => {
     expect(editor).not.toHaveClass("min-h-[44px]");
   });
 
-  it("uses the mobile single-line height in chat thread slash composers when the switch is on", async () => {
+  it("uses the mobile single-line height in chat thread slash composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -763,7 +762,6 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
-        [FeatureSwitchKey.MobileSingleLineComposer]: true,
       },
     });
 
