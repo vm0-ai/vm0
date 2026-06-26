@@ -682,4 +682,33 @@ describe("activity inspect page", () => {
       ),
     ).not.toBeInTheDocument();
   });
+
+  it("shows an upload error for non-object JSON files", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(
+      getFileInput(),
+      new File(["[]"], "array-log.json", {
+        type: "application/json",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid JSON file. Upload an exported activity log JSON file.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Imported Log" }),
+    ).not.toBeInTheDocument();
+  });
 });

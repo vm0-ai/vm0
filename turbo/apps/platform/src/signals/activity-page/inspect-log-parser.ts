@@ -75,12 +75,14 @@ export function parseInspectLog(jsonText: string): {
   if (rawValue === INVALID_JSON) {
     return null;
   }
-  const raw = isRecord(rawValue) ? rawValue : {};
+  if (!isRecord(rawValue)) {
+    return null;
+  }
 
   return {
-    meta: isRecord(raw.meta) ? raw.meta : null,
-    events: parseAgentEvents(raw.events),
-    context: parseRunContext(raw.context),
-    networkLogs: parseNetworkLogs(raw.networkLogs),
+    meta: isRecord(rawValue.meta) ? rawValue.meta : null,
+    events: parseAgentEvents(rawValue.events),
+    context: parseRunContext(rawValue.context),
+    networkLogs: parseNetworkLogs(rawValue.networkLogs),
   };
 }
