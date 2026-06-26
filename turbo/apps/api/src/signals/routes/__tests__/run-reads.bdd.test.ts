@@ -102,11 +102,58 @@ function s3CommandKey(command: unknown): string | undefined {
   return (command as { readonly input?: { readonly Key?: string } }).input?.Key;
 }
 
+interface S3NotFoundError extends Error {
+  Code: string;
+  $metadata: { httpStatusCode: number };
+}
+
+function s3ObjectNotFoundError(): S3NotFoundError {
+  const error = new Error("NotFound") as S3NotFoundError;
+  error.name = "NotFound";
+  error.Code = "NoSuchKey";
+  error.$metadata = { httpStatusCode: 404 };
+  return error;
+}
+
 function countSessionHistoryBlobReads(hash: string): number {
   const blobKey = `blobs/${hash}.blob`;
   return context.mocks.s3.send.mock.calls.filter(([command]) => {
     return s3CommandKey(command) === blobKey;
   }).length;
+}
+
+async function createHashBackedResumeRun(
+  actor: ApiTestUser,
+  composeId: string,
+  historyHash: string,
+  prefix: string,
+): Promise<{ readonly runId: string }> {
+  const first = await api.createDirectRun(actor, {
+    agentComposeId: composeId,
+    prompt: `${prefix} first run`,
+  });
+  const firstClaim = await api.claimRunnerJob(first.runId);
+  const checkpoint = await webhooks.requestAgentCheckpoint(
+    {
+      runId: first.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-cli-${first.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    sandboxHeaders(firstClaim.sandboxToken),
+    [200],
+  );
+  mustOk(checkpoint, "checkpoint webhook");
+  await webhooks.requestAgentComplete(
+    { runId: first.runId, exitCode: 0 },
+    sandboxHeaders(firstClaim.sandboxToken),
+    [200],
+  );
+
+  return await api.createDirectRun(actor, {
+    checkpointId: checkpoint.body.checkpointId,
+    prompt: `${prefix} resume run`,
+  });
 }
 
 /**
@@ -1198,6 +1245,84 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       missingRootPolicy: "preserveParentVersion",
     });
     await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+
+  it("fails a hash-backed resume run instead of leaving old runner claims pending when history is missing", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-missing-history");
+    const missingHistoryHash = createHash("sha256")
+      .update(`missing resume history ${randomUUID()}`)
+      .digest("hex");
+
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === `blobs/${missingHistoryHash}.blob`) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const resumed = await createHashBackedResumeRun(
+      actor,
+      compose.composeId,
+      missingHistoryHash,
+      "missing history",
+    );
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [400],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe(
+      "Runner job missing resume session history",
+    );
+
+    const [failedRun] = await store
+      .set(writeDb$)
+      .select({ status: agentRuns.status, error: agentRuns.error })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, resumed.runId))
+      .limit(1);
+    expect(failedRun).toStrictEqual({
+      status: "failed",
+      error: "Runner job missing resume session history",
+    });
+    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+  });
+
+  it("keeps a hash-backed resume run pending when old runner history read fails transiently", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-transient-history");
+    const historyHash = createHash("sha256")
+      .update(`transient resume history ${randomUUID()}`)
+      .digest("hex");
+
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === `blobs/${historyHash}.blob`) {
+        return Promise.reject(new Error("transient S3 timeout"));
+      }
+      return Promise.resolve({});
+    });
+
+    const resumed = await createHashBackedResumeRun(
+      actor,
+      compose.composeId,
+      historyHash,
+      "transient history",
+    );
+    await api.requestClaimRunnerJob(true, resumed.runId, [500]);
+
+    const [pendingRun] = await store
+      .set(writeDb$)
+      .select({ status: agentRuns.status, error: agentRuns.error })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, resumed.runId))
+      .limit(1);
+    expect(pendingRun).toStrictEqual({
+      status: "pending",
+      error: null,
+    });
+    await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 });
 

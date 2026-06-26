@@ -37,7 +37,7 @@ import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
-import { tapError } from "../utils";
+import { settle, tapError } from "../utils";
 
 const L = logger("Runners");
 
@@ -52,6 +52,62 @@ const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
 const RESUME_SESSION_HISTORY_REF_CAPABILITY =
   "resumeSessionHistoryRef" satisfies RunnerClaimCapability;
+const RESUME_SESSION_HISTORY_LOAD_ERROR =
+  "Runner job missing resume session history";
+const EMPTY_S3_BODY_MESSAGE = "S3 object body is empty";
+
+interface ClaimFailedSideEffectArgs {
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly error: string;
+}
+
+class ResumeSessionHistoryLoadError extends Error {
+  constructor(
+    readonly hash: string,
+    readonly cause: unknown,
+  ) {
+    super(RESUME_SESSION_HISTORY_LOAD_ERROR);
+    this.name = "ResumeSessionHistoryLoadError";
+  }
+}
+
+function isResumeSessionHistoryLoadError(
+  error: unknown,
+): error is ResumeSessionHistoryLoadError {
+  return error instanceof ResumeSessionHistoryLoadError;
+}
+
+function errorField(error: unknown, field: string): unknown {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  return Reflect.get(error, field);
+}
+
+function errorStringField(error: unknown, field: string): string | undefined {
+  const value = errorField(error, field);
+  return typeof value === "string" ? value : undefined;
+}
+
+function isMissingResumeSessionHistoryError(error: unknown): boolean {
+  const code =
+    errorStringField(error, "Code") ??
+    errorStringField(error, "code") ??
+    errorStringField(error, "name");
+  const metadata = errorField(error, "$metadata");
+  const status =
+    typeof metadata === "object" && metadata !== null
+      ? errorField(metadata, "httpStatusCode")
+      : undefined;
+  return (
+    code === "NoSuchKey" ||
+    code === "NotFound" ||
+    status === 404 ||
+    errorStringField(error, "message") === EMPTY_S3_BODY_MESSAGE
+  );
+}
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
 type ClaimRouteTimingActionType =
@@ -872,9 +928,21 @@ async function resolveResumeSessionForClaim(args: {
 
   const { sessionId, historyRef } = resumeSession;
   if (!args.supportsResumeSessionHistoryRef) {
+    const sessionHistoryResult = await settle(
+      args.loadResumeSessionHistory(historyRef.hash),
+    );
+    if (!sessionHistoryResult.ok) {
+      if (!isMissingResumeSessionHistoryError(sessionHistoryResult.error)) {
+        throw sessionHistoryResult.error;
+      }
+      throw new ResumeSessionHistoryLoadError(
+        historyRef.hash,
+        sessionHistoryResult.error,
+      );
+    }
     return {
       sessionId,
-      sessionHistory: await args.loadResumeSessionHistory(historyRef.hash),
+      sessionHistory: sessionHistoryResult.value,
     };
   }
 
@@ -1160,15 +1228,7 @@ function claimTimingOperation(
 }
 
 const scheduleClaimFailedSideEffects$ = command(
-  (
-    { set },
-    args: {
-      readonly runId: string;
-      readonly userId: string;
-      readonly orgId: string;
-      readonly error: string;
-    },
-  ): void => {
+  ({ set }, args: ClaimFailedSideEffectArgs): void => {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
       publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -1198,6 +1258,65 @@ const scheduleClaimFailedSideEffects$ = command(
   },
 );
 
+async function failClaimForResumeSessionHistoryLoad(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly hash: string;
+  readonly cause: unknown;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  L.warn("session history R2 object is missing during claim", {
+    runId: args.runId,
+    hash: args.hash,
+    error: args.cause,
+  });
+  const poisonResult = await failPoisonQueuedJob(
+    args.db,
+    args.runId,
+    RESUME_SESSION_HISTORY_LOAD_ERROR,
+    args.signal,
+  );
+  if (poisonResult.status !== "failed") {
+    return poisonJobErrorResponse(poisonResult);
+  }
+  args.scheduleFailedSideEffects({
+    runId: args.runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    error: RESUME_SESSION_HISTORY_LOAD_ERROR,
+  });
+  return badRequestMessage(RESUME_SESSION_HISTORY_LOAD_ERROR);
+}
+
+async function failClaimForInvalidStoredExecutionContext(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  const poisonResult = await failPoisonQueuedJob(
+    args.db,
+    args.runId,
+    INVALID_EXECUTION_CONTEXT_ERROR,
+    args.signal,
+  );
+  if (poisonResult.status !== "failed") {
+    return poisonJobErrorResponse(poisonResult);
+  }
+  args.scheduleFailedSideEffects({
+    runId: args.runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    error: INVALID_EXECUTION_CONTEXT_ERROR,
+  });
+  return badRequestMessage("Job missing execution context");
+}
+
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const claimRequestStartedAtMs = now();
   const claimRouteTiming = new ClaimRouteTimingCollector();
@@ -1213,8 +1332,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const params = get(pathParamsOf(runnersJobClaimContract.claim));
-  const runId = params.id;
+  const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -1251,42 +1369,57 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!storedContextResult.success) {
     warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
-    const poisonResult = await failPoisonQueuedJob(
+    return await failClaimForInvalidStoredExecutionContext({
       db,
-      runId,
-      INVALID_EXECUTION_CONTEXT_ERROR,
-      signal,
-    );
-    if (poisonResult.status !== "failed") {
-      return poisonJobErrorResponse(poisonResult);
-    }
-
-    set(scheduleClaimFailedSideEffects$, {
       runId,
       userId: run.userId,
       orgId: run.orgId,
-      error: INVALID_EXECUTION_CONTEXT_ERROR,
+      signal,
+      scheduleFailedSideEffects(args) {
+        set(scheduleClaimFailedSideEffects$, args);
+      },
     });
-    return badRequestMessage("Job missing execution context");
   }
   const storedContext = storedContextResult.data;
 
-  const responseBody = await buildClaimResponseBody({
-    db,
-    run,
-    storedContext,
-    timing: claimRouteTiming,
+  const responseBodyResult = await settle(
+    buildClaimResponseBody({
+      db,
+      run,
+      storedContext,
+      timing: claimRouteTiming,
+      signal,
+      supportsResumeSessionHistoryRef: runnerSupportsResumeSessionHistoryRef(
+        body.data.capabilities,
+      ),
+      generateResumeSessionHistoryUrl(hash: string) {
+        return set(generateResumeSessionHistoryUrl$, hash);
+      },
+      loadResumeSessionHistory(hash: string) {
+        return set(loadResumeSessionHistory$, hash);
+      },
+    }),
     signal,
-    supportsResumeSessionHistoryRef: runnerSupportsResumeSessionHistoryRef(
-      body.data.capabilities,
-    ),
-    generateResumeSessionHistoryUrl(hash: string) {
-      return set(generateResumeSessionHistoryUrl$, hash);
-    },
-    loadResumeSessionHistory(hash: string) {
-      return set(loadResumeSessionHistory$, hash);
-    },
-  });
+  );
+  if (!responseBodyResult.ok) {
+    const error = responseBodyResult.error;
+    if (!isResumeSessionHistoryLoadError(error)) {
+      throw error;
+    }
+    return await failClaimForResumeSessionHistoryLoad({
+      db,
+      runId,
+      hash: error.hash,
+      userId: run.userId,
+      orgId: run.orgId,
+      cause: error.cause,
+      signal,
+      scheduleFailedSideEffects(args) {
+        set(scheduleClaimFailedSideEffects$, args);
+      },
+    });
+  }
+  const responseBody = responseBodyResult.value;
   signal.throwIfAborted();
 
   const claimResult = await claimRouteTiming.measure(
