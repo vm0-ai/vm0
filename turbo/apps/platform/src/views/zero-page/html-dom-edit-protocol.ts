@@ -149,7 +149,7 @@ function parseHtml(html: string): Document {
 }
 
 function serializeHtmlDocument(doc: Document): string {
-  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>\n` : "";
+  const doctype = doc.doctype ? "<!doctype html>\n" : "";
   return `${doctype}${doc.documentElement.outerHTML}`;
 }
 

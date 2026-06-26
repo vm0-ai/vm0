@@ -12,20 +12,194 @@ import {
   stripHtmlDomEditInstrumentation,
 } from "../html-dom-edit-protocol.ts";
 
-function htmlDoc(html: string): Document {
-  return new DOMParser().parseFromString(html, "text/html");
+interface ParsedStartTag {
+  readonly source: string;
+  readonly tagName: string;
 }
 
-function elementsByTagName(html: string, tagName: string): Element[] {
-  return Array.from(htmlDoc(html).getElementsByTagName(tagName));
+function isWhitespaceChar(char: string | undefined): boolean {
+  return (
+    char === " " ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\t" ||
+    char === "\f"
+  );
+}
+
+function isTagNameStartChar(char: string | undefined): boolean {
+  return (
+    char !== undefined &&
+    ((char >= "A" && char <= "Z") || (char >= "a" && char <= "z"))
+  );
+}
+
+function isTagNameChar(char: string | undefined): boolean {
+  return (
+    isTagNameStartChar(char) ||
+    (char !== undefined && char >= "0" && char <= "9") ||
+    char === ":" ||
+    char === "-" ||
+    char === "_"
+  );
+}
+
+function isAttributeNameChar(char: string | undefined): boolean {
+  return (
+    char !== undefined &&
+    !isWhitespaceChar(char) &&
+    char !== "=" &&
+    char !== "/" &&
+    char !== ">"
+  );
+}
+
+function findTagEnd(html: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = start; index < html.length; index += 1) {
+    const char = html[index];
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ">") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function parseStartTagSource(tagSource: string): ParsedStartTag | null {
+  let index = 1;
+  while (isWhitespaceChar(tagSource[index])) {
+    index += 1;
+  }
+  if (tagSource[index] === "/") {
+    return null;
+  }
+  if (!isTagNameStartChar(tagSource[index])) {
+    return null;
+  }
+
+  const nameStart = index;
+  index += 1;
+  while (isTagNameChar(tagSource[index])) {
+    index += 1;
+  }
+
+  return {
+    source: tagSource,
+    tagName: tagSource.slice(nameStart, index),
+  };
+}
+
+function startTagAttributeValue(
+  tagSource: string,
+  attributeName: string,
+): string | null {
+  const parsed = parseStartTagSource(tagSource);
+  if (!parsed) {
+    return null;
+  }
+
+  let index = 1 + parsed.tagName.length;
+  while (index < tagSource.length) {
+    while (isWhitespaceChar(tagSource[index])) {
+      index += 1;
+    }
+    if (tagSource[index] === "/" || tagSource[index] === ">") {
+      return null;
+    }
+
+    const nameStart = index;
+    while (isAttributeNameChar(tagSource[index])) {
+      index += 1;
+    }
+    const name = tagSource.slice(nameStart, index);
+    while (isWhitespaceChar(tagSource[index])) {
+      index += 1;
+    }
+
+    let value = "";
+    if (tagSource[index] === "=") {
+      index += 1;
+      while (isWhitespaceChar(tagSource[index])) {
+        index += 1;
+      }
+      const quote = tagSource[index];
+      if (quote === '"' || quote === "'") {
+        index += 1;
+        const valueStart = index;
+        while (index < tagSource.length && tagSource[index] !== quote) {
+          index += 1;
+        }
+        value = tagSource.slice(valueStart, index);
+        if (tagSource[index] === quote) {
+          index += 1;
+        }
+      } else {
+        const valueStart = index;
+        while (
+          index < tagSource.length &&
+          !isWhitespaceChar(tagSource[index]) &&
+          tagSource[index] !== ">"
+        ) {
+          index += 1;
+        }
+        value = tagSource.slice(valueStart, index);
+      }
+    }
+
+    if (name === attributeName) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function startTags(html: string): ParsedStartTag[] {
+  const tags: ParsedStartTag[] = [];
+  let searchStart = 0;
+  while (searchStart < html.length) {
+    const start = html.indexOf("<", searchStart);
+    if (start === -1) {
+      return tags;
+    }
+    const end = findTagEnd(html, start);
+    if (end === -1) {
+      return tags;
+    }
+    const parsed = parseStartTagSource(html.slice(start, end + 1));
+    if (parsed) {
+      tags.push(parsed);
+    }
+    searchStart = end + 1;
+  }
+  return tags;
+}
+
+function startTagsByTagName(html: string, tagName: string): ParsedStartTag[] {
+  const normalizedTagName = tagName.toLowerCase();
+  return startTags(html).filter((tag) => {
+    return tag.tagName.toLowerCase() === normalizedTagName;
+  });
 }
 
 function nodeIds(html: string): string[] {
-  return Array.from(
-    htmlDoc(html).querySelectorAll(`[${HTML_DOM_NODE_ID_ATTR}]`),
-  ).map((element) => {
-    return element.getAttribute(HTML_DOM_NODE_ID_ATTR) ?? "";
-  });
+  return startTags(html)
+    .map((tag) => {
+      return startTagAttributeValue(tag.source, HTML_DOM_NODE_ID_ATTR);
+    })
+    .filter((value): value is string => {
+      return value !== null;
+    });
 }
 
 function elementHasAttribute(
@@ -33,8 +207,8 @@ function elementHasAttribute(
   tagName: string,
   attribute: string,
 ): boolean {
-  return elementsByTagName(html, tagName).some((element) => {
-    return element.hasAttribute(attribute);
+  return startTagsByTagName(html, tagName).some((tag) => {
+    return startTagAttributeValue(tag.source, attribute) !== null;
   });
 }
 
@@ -44,8 +218,8 @@ function elementHasAttributeValue(
   attribute: string,
   value: string,
 ): boolean {
-  return elementsByTagName(html, tagName).some((element) => {
-    return element.getAttribute(attribute) === value;
+  return startTagsByTagName(html, tagName).some((tag) => {
+    return startTagAttributeValue(tag.source, attribute) === value;
   });
 }
 
@@ -119,18 +293,18 @@ describe("instrumentHtmlDomEditDocument", () => {
       elementHasAttribute(result.html, "style", HTML_DOM_NODE_ID_ATTR),
     ).toBeFalsy();
     expect(
-      elementsByTagName(result.html, "p").some((element) => {
+      startTagsByTagName(result.html, "p").some((tag) => {
         return (
-          element.hasAttribute("hidden") &&
-          element.hasAttribute(HTML_DOM_NODE_ID_ATTR)
+          startTagAttributeValue(tag.source, "hidden") !== null &&
+          startTagAttributeValue(tag.source, HTML_DOM_NODE_ID_ATTR) !== null
         );
       }),
     ).toBeFalsy();
     expect(
-      elementsByTagName(result.html, "p").some((element) => {
+      startTagsByTagName(result.html, "p").some((tag) => {
         return (
-          element.getAttribute("aria-hidden") === "true" &&
-          element.hasAttribute(HTML_DOM_NODE_ID_ATTR)
+          startTagAttributeValue(tag.source, "aria-hidden") === "true" &&
+          startTagAttributeValue(tag.source, HTML_DOM_NODE_ID_ATTR) !== null
         );
       }),
     ).toBeFalsy();
