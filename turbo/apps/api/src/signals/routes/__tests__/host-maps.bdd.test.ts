@@ -283,6 +283,75 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     );
   });
 
+  it("redeploys hosted-site HTML in place and rejects presentation sites [HOST-C]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    api.captureHostedSitesS3();
+
+    const site = `bdd-html-${randomUUID().slice(0, 8)}`;
+    const prepared = await api.prepareHostedSite(actor, {
+      site,
+      slugSuffix: "release-01",
+      artifactKind: "hosted-site",
+      spaFallback: false,
+      files: [
+        hostedTextFile("/index.html", "<main>original site</main>"),
+        hostedTextFile("/styles.css", "body { color: black; }", "text/css"),
+      ],
+    });
+    await api.completeHostedSite(actor, prepared.deploymentId);
+
+    const capture = api.captureHostedSitesS3();
+    const redeployed = await api.redeployHtml(actor, {
+      url: prepared.url,
+      html: "<!doctype html><html><body>edited site</body></html>",
+    });
+    expect(redeployed.url).toBe(prepared.url);
+    expect(redeployed.publicSlug).toBe(prepared.publicSlug);
+    expect(redeployed.siteId).toBe(prepared.siteId);
+    expect(redeployed.deploymentId).not.toBe(prepared.deploymentId);
+    expect(redeployed.status).toBe("ready");
+
+    const newPrefix = `sites/${prepared.publicSlug}/deployments/${redeployed.deploymentId}`;
+    expect(capture.copies).toStrictEqual([
+      {
+        key: `${newPrefix}/styles.css`,
+        copySource: `test-hosted-sites/sites/${prepared.publicSlug}/deployments/${prepared.deploymentId}/styles.css`,
+      },
+    ]);
+    expect(capture.puts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          key: `${newPrefix}/index.html`,
+          body: "<!doctype html><html><body>edited site</body></html>",
+        },
+      ]),
+    );
+
+    const listed = await api.readHostedSiteFiles(actor, prepared.publicSlug);
+    expect(listed.deploymentId).toBe(redeployed.deploymentId);
+
+    const deckSite = `bdd-html-deck-${randomUUID().slice(0, 8)}`;
+    const deck = await api.prepareHostedSite(actor, {
+      site: deckSite,
+      slugSuffix: "release-01",
+      artifactKind: "presentation-html",
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>deck</main>")],
+    });
+    await api.completeHostedSite(actor, deck.deploymentId);
+    const rejected = await api.requestRedeployHtml(
+      actor,
+      { url: deck.url, html: "<p>edited</p>" },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Hosted site is not a hosted-site HTML artifact",
+    );
+  });
+
   it("rejects unauthenticated prepares and oversized public slugs [HOST-D]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
@@ -393,6 +462,182 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expectApiError(invalid.body);
     expect(invalid.body.error.message).toBe(
       "Speaker notes generation returned invalid JSON",
+    );
+  });
+
+  it("creates an HTML edit draft through OpenRouter without deploying [HOST-F]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    let upstreamAuthorization: string | null = null;
+    let upstreamPrompt: string | null = null;
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, async ({ request }) => {
+        upstreamAuthorization = request.headers.get("authorization");
+        const requestBody = (await request.json()) as {
+          readonly messages?: readonly { readonly content?: string }[];
+        };
+        upstreamPrompt = requestBody.messages?.at(-1)?.content ?? null;
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: "<h1>Launch sooner</h1>",
+                    },
+                    {
+                      commentId: "comment-2",
+                      targetNodeId: "vm0-node-2",
+                      operation: "remove",
+                    },
+                    {
+                      commentId: "comment-3",
+                      targetNodeId: "vm0-node-main",
+                      operation: "insert",
+                      position: "append_child",
+                      html: "<p>Ship the first version today.</p>",
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: '<!doctype html><html><body><main data-vm0-node-id="vm0-node-main"><h1 data-vm0-node-id="vm0-node-1">Launch faster</h1><p data-vm0-node-id="vm0-node-2">Remove this line.</p></main></body></html>',
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Make the headline calmer",
+          },
+          {
+            id: "comment-2",
+            targetNodeIds: ["vm0-node-2"],
+            comment: "Remove this paragraph",
+          },
+          {
+            id: "comment-3",
+            targetNodeIds: ["vm0-node-main"],
+            comment: "Add a supporting sentence",
+          },
+        ],
+      },
+      [200],
+    );
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
+    });
+    expect(upstreamAuthorization).toBe("Bearer bdd-html-edit-key");
+    expect(upstreamPrompt).toContain("vm0-node-1");
+    expect(upstreamPrompt).toContain("html-dom-edit-patch");
+    expect(upstreamPrompt).toContain('"operation":"update"');
+    expect(upstreamPrompt).toContain("color, background, icon");
+    expect(upstreamPrompt).toContain("Do not add comment markers");
+    expect(upstreamPrompt).toContain("Do not return the complete HTML");
+    expect(upstreamPrompt).not.toContain("zero host");
+
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/user_bdd/html-edit-snapshot/page.html";
+    server.use(
+      http.get(snapshotUrl, () => {
+        return new Response(
+          '<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Snapshot headline</h1></body></html>',
+          { headers: { "Content-Type": "text/html" } },
+        );
+      }),
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, async ({ request }) => {
+        const requestBody = (await request.json()) as {
+          readonly messages?: readonly { readonly content?: string }[];
+        };
+        upstreamPrompt = requestBody.messages?.at(-1)?.content ?? null;
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: "<h1>Snapshot headline updated</h1>",
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const snapshotGenerated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        htmlSnapshotUrl: snapshotUrl,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the snapshot headline",
+          },
+        ],
+      },
+      [200],
+    );
+    expect(snapshotGenerated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: "<!doctype html><html><body><h1>Snapshot headline updated</h1></body></html>",
+    });
+    expect(upstreamPrompt).toContain("Snapshot headline");
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            { finish_reason: "stop", message: { content: "not json" } },
+          ],
+        });
+      }),
+    );
+    const invalid = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: "<!doctype html><html><body><h1>Launch faster</h1></body></html>",
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Make the headline calmer",
+          },
+        ],
+      },
+      [400],
+    );
+    expectApiError(invalid.body);
+    expect(invalid.body.error.message).toBe(
+      "HTML edit generation returned invalid patch JSON",
     );
   });
 });

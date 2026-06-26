@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
 
 import { command } from "ccstate";
+import { z } from "zod";
 import {
   type GeneratePresentationSpeakerNotesRequest,
+  type CreateHtmlEditDraftRequest,
   type HostedArtifactKind,
+  type HtmlEditDraftResponse,
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
+  type HostedSiteRedeployHtmlRequest,
   type HostedSiteRedeployPresentationHtmlRequest,
   type PresentationSpeakerNotesPatch,
+  htmlEditDraftResponseSchema,
   presentationSpeakerNotesPatchSchema,
 } from "@vm0/api-contracts/contracts/zero-host";
 import {
@@ -38,6 +43,47 @@ const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
 const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
+const HTML_DOM_EDIT_MODEL = "openai/gpt-4.1-mini";
+const HTML_DOM_NODE_ID_ATTR = "data-vm0-node-id";
+const MAX_HTML_EDIT_SNAPSHOT_BYTES = 5 * 1024 * 1024;
+
+const htmlDomEditPatchSchema = z.discriminatedUnion("operation", [
+  z.object({
+    commentId: z.string().min(1),
+    targetNodeId: z.string().min(1),
+    operation: z.literal("update"),
+    outerHTML: z.string().min(1),
+  }),
+  z.object({
+    commentId: z.string().min(1),
+    targetNodeId: z.string().min(1),
+    operation: z.literal("insert"),
+    position: z.enum(["before", "after", "append_child", "prepend_child"]),
+    html: z.string().min(1),
+  }),
+  z.object({
+    commentId: z.string().min(1),
+    targetNodeId: z.string().min(1),
+    operation: z.literal("remove"),
+  }),
+]);
+
+const htmlDomEditPatchResultSchema = z.object({
+  kind: z.literal("html-dom-edit-patch"),
+  version: z.literal(1),
+  patches: z.array(htmlDomEditPatchSchema).min(1).max(100),
+});
+
+type HtmlDomEditPatch = z.infer<typeof htmlDomEditPatchSchema>;
+type HtmlDomEditPatchResult = z.infer<typeof htmlDomEditPatchResultSchema>;
+
+interface HtmlElementSpan {
+  readonly start: number;
+  readonly startTagEnd: number;
+  readonly closeTagStart: number | null;
+  readonly end: number;
+  readonly tagName: string;
+}
 
 interface PrepareDeploymentArgs {
   readonly orgId: string;
@@ -57,8 +103,30 @@ interface RedeployPresentationHtmlArgs {
   readonly body: HostedSiteRedeployPresentationHtmlRequest;
 }
 
+interface RedeployHtmlArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: HostedSiteRedeployHtmlRequest;
+}
+
+interface RedeployHostedSiteIndexHtmlArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: HostedSiteRedeployHtmlRequest;
+  readonly artifactKind: HostedArtifactKind;
+}
+
 interface GeneratePresentationSpeakerNotesArgs {
   readonly body: GeneratePresentationSpeakerNotesRequest;
+}
+
+interface CreateHtmlEditDraftArgs {
+  readonly body: CreateHtmlEditDraftRequest;
+}
+
+interface HtmlEditDraftDocument {
+  readonly comments: CreateHtmlEditDraftRequest["comments"];
+  readonly html: string;
 }
 
 interface GetHostedSiteFilesArgs {
@@ -101,9 +169,15 @@ type CompleteDeploymentResult =
   | { readonly status: "config_error"; readonly message: string };
 
 type RedeployPresentationHtmlResult = CompleteDeploymentResult;
+type RedeployHtmlResult = CompleteDeploymentResult;
 
 type GeneratePresentationSpeakerNotesResult =
   | { readonly status: "ok"; readonly body: PresentationSpeakerNotesPatch }
+  | { readonly status: "bad_request"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
+
+type CreateHtmlEditDraftResult =
+  | { readonly status: "ok"; readonly body: HtmlEditDraftResponse }
   | { readonly status: "bad_request"; readonly message: string }
   | { readonly status: "config_error"; readonly message: string };
 
@@ -116,7 +190,7 @@ type GetHostedSiteFilesResult =
   | { readonly status: "conflict"; readonly message: string }
   | { readonly status: "config_error"; readonly message: string };
 
-type RedeployPresentationTargetResult =
+type RedeployHostedSiteTargetResult =
   | {
       readonly status: "ok";
       readonly activeDeployment: HostedDeploymentRow;
@@ -225,6 +299,119 @@ ${html}`,
   ];
 }
 
+function htmlDomEditPrompt(body: HtmlEditDraftDocument): readonly {
+  readonly role: "system" | "user";
+  readonly content: string;
+}[] {
+  const comments = body.comments
+    .map((comment, index) => {
+      return [
+        `${index + 1}. Comment ID: ${comment.id}`,
+        `   Target node IDs: ${comment.targetNodeIds.join(", ")}`,
+        `   Requested change: ${comment.comment}`,
+      ].join("\n");
+    })
+    .join("\n\n");
+
+  return [
+    {
+      role: "system",
+      content:
+        "You edit the user's own HTML document by returning compact DOM patches. Return valid JSON matching the requested schema. Do not deploy, publish, host, upload, or describe commands. Preserve existing scripts, styles, assets, layout, and language unless a comment asks for a change.",
+    },
+    {
+      role: "user",
+      content: `Create DOM patches for these comments on the existing HTML document.
+
+Output:
+- Return only JSON.
+- Output shape: {"kind":"html-dom-edit-patch","version":1,"patches":[...]}.
+- Each patch must include commentId, targetNodeId, operation, and the operation-specific field.
+- Supported operations:
+  - {"operation":"update","outerHTML":"<tag>...</tag>"} replaces the target DOM node with the updated DOM node.
+  - {"operation":"insert","position":"before","html":"..."} inserts HTML before the target element.
+  - {"operation":"insert","position":"after","html":"..."} inserts HTML after the target element.
+  - {"operation":"insert","position":"append_child","html":"..."} appends HTML inside the target element.
+  - {"operation":"insert","position":"prepend_child","html":"..."} prepends HTML inside the target element.
+  - {"operation":"remove"} removes the target element.
+- Use update for any change to an existing DOM node, including text, color, background, icon, attributes, classes, or nested markup.
+- For update, keep the same tag when possible and include all attributes and children that should remain.
+- Prefer the smallest target node that satisfies the comment.
+- Do not return the complete HTML document.
+- Do not include vm0-only editing attributes such as data-vm0-node-id or data-vm0-html-edit-* in returned HTML fragments.
+- Do not add comment markers, overlays, annotations, explanations, or deployment commands.
+- Do not add script tags in new HTML fragments.
+
+Editing rules:
+- Use the target node IDs to locate the intended elements in the HTML.
+- Apply every requested change exactly once.
+- Keep unrelated content and formatting as stable as practical.
+- Preserve relative and absolute asset URLs.
+- Preserve the page's primary language and tone.
+
+Comments:
+${comments}
+
+HTML:
+${body.html}`,
+    },
+  ];
+}
+
+function isHtmlEditSnapshotUrl(url: string): boolean {
+  const baseUrl = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
+  if (!URL.canParse(url)) {
+    return false;
+  }
+  const parsed = new URL(url);
+  return (
+    parsed.origin === baseUrl.origin &&
+    parsed.pathname.startsWith("/artifacts/")
+  );
+}
+
+async function loadHtmlEditDraftDocument(
+  body: CreateHtmlEditDraftRequest,
+  signal: AbortSignal,
+): Promise<HtmlEditDraftDocument | { readonly message: string }> {
+  if (body.html !== undefined) {
+    return {
+      comments: body.comments,
+      html: body.html,
+    };
+  }
+
+  if (!isHtmlEditSnapshotUrl(body.htmlSnapshotUrl)) {
+    return { message: "HTML edit snapshot URL is not supported" };
+  }
+
+  const response = await fetch(body.htmlSnapshotUrl, { signal });
+  signal.throwIfAborted();
+  if (!response.ok) {
+    return {
+      message: `HTML edit snapshot could not be loaded (${response.status})`,
+    };
+  }
+
+  const contentLength = Number(response.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_HTML_EDIT_SNAPSHOT_BYTES) {
+    return { message: "HTML edit snapshot is too large" };
+  }
+
+  const html = await response.text();
+  signal.throwIfAborted();
+  if (
+    new TextEncoder().encode(html).byteLength > MAX_HTML_EDIT_SNAPSHOT_BYTES
+  ) {
+    return { message: "HTML edit snapshot is too large" };
+  }
+
+  return {
+    comments: body.comments,
+    html,
+  };
+}
+
 function jsonObjectText(value: string): string {
   const trimmed = value.trim();
   if (safeJsonParse(trimmed) !== null) {
@@ -244,6 +431,218 @@ function parsePresentationSpeakerNotesPatch(
   const parsed = safeJsonParse(jsonObjectText(text));
   const result = presentationSpeakerNotesPatchSchema.safeParse(parsed);
   return result.success ? result.data : null;
+}
+
+function parseHtmlDomEditPatchResult(
+  text: string,
+): HtmlDomEditPatchResult | null {
+  const parsed = safeJsonParse(jsonObjectText(text));
+  const result = htmlDomEditPatchResultSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+function findTagEnd(html: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = start; index < html.length; index += 1) {
+    const char = html[index];
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ">") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function isSelfClosingStartTag(tagSource: string): boolean {
+  return /\/\s*>$/.test(tagSource);
+}
+
+function isVoidElement(tagName: string): boolean {
+  return [
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+  ].includes(tagName.toLowerCase());
+}
+
+function findHtmlElementSpan(
+  html: string,
+  targetNodeId: string,
+): HtmlElementSpan | null {
+  const attrPattern = new RegExp(
+    `${HTML_DOM_NODE_ID_ATTR}\\s*=\\s*["']${escapeRegExp(targetNodeId)}["']`,
+  );
+  const attrMatch = attrPattern.exec(html);
+  if (!attrMatch) {
+    return null;
+  }
+
+  const start = html.lastIndexOf("<", attrMatch.index);
+  if (start === -1) {
+    return null;
+  }
+  const startTagEnd = findTagEnd(html, start);
+  if (startTagEnd === -1) {
+    return null;
+  }
+  const startTag = html.slice(start, startTagEnd + 1);
+  const tagName = /^<\s*([A-Za-z][\w:-]*)/.exec(startTag)?.[1];
+  if (!tagName) {
+    return null;
+  }
+  if (isVoidElement(tagName) || isSelfClosingStartTag(startTag)) {
+    return {
+      start,
+      startTagEnd,
+      closeTagStart: null,
+      end: startTagEnd + 1,
+      tagName,
+    };
+  }
+
+  const tagPattern = new RegExp(
+    `<\\s*(/?)\\s*${escapeRegExp(tagName)}\\b[^>]*>`,
+    "gi",
+  );
+  tagPattern.lastIndex = startTagEnd + 1;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = tagPattern.exec(html)) !== null) {
+    const source = match[0];
+    if (match[1] === "/") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          start,
+          startTagEnd,
+          closeTagStart: match.index,
+          end: match.index + source.length,
+          tagName,
+        };
+      }
+      continue;
+    }
+    if (!isSelfClosingStartTag(source) && !isVoidElement(tagName)) {
+      depth += 1;
+    }
+  }
+  return null;
+}
+
+function assertSafeHtmlFragment(html: string): string | null {
+  if (/<\s*script\b/i.test(html)) {
+    return "HTML DOM edit patches cannot add script tags";
+  }
+  return null;
+}
+
+function applyHtmlDomEditPatch(
+  html: string,
+  patch: HtmlDomEditPatch,
+): { readonly html: string } | { readonly message: string } {
+  const span = findHtmlElementSpan(html, patch.targetNodeId);
+  if (!span) {
+    return {
+      message: `HTML edit target was not found: ${patch.targetNodeId}`,
+    };
+  }
+
+  if (patch.operation === "update") {
+    const unsafe = assertSafeHtmlFragment(patch.outerHTML);
+    if (unsafe) {
+      return { message: unsafe };
+    }
+    return {
+      html: `${html.slice(0, span.start)}${patch.outerHTML}${html.slice(
+        span.end,
+      )}`,
+    };
+  }
+  if (patch.operation === "remove") {
+    return {
+      html: `${html.slice(0, span.start)}${html.slice(span.end)}`,
+    };
+  }
+
+  const unsafe = assertSafeHtmlFragment(patch.html);
+  if (unsafe) {
+    return { message: unsafe };
+  }
+  if (patch.position === "before") {
+    return {
+      html: `${html.slice(0, span.start)}${patch.html}${html.slice(
+        span.start,
+      )}`,
+    };
+  }
+  if (patch.position === "after") {
+    return {
+      html: `${html.slice(0, span.end)}${patch.html}${html.slice(span.end)}`,
+    };
+  }
+  if (span.closeTagStart === null) {
+    return {
+      message: `HTML edit target cannot contain children: ${patch.targetNodeId}`,
+    };
+  }
+  if (patch.position === "append_child") {
+    return {
+      html: `${html.slice(0, span.closeTagStart)}${patch.html}${html.slice(
+        span.closeTagStart,
+      )}`,
+    };
+  }
+  return {
+    html: `${html.slice(0, span.startTagEnd + 1)}${patch.html}${html.slice(
+      span.startTagEnd + 1,
+    )}`,
+  };
+}
+
+function stripHtmlDomEditAttributes(html: string): string {
+  return html.replace(
+    /\s+data-vm0-(?:node-id|html-edit-[\w-]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+    "",
+  );
+}
+
+function applyHtmlDomEditPatches(params: {
+  readonly html: string;
+  readonly patchResult: HtmlDomEditPatchResult;
+}): { readonly html: string } | { readonly message: string } {
+  let html = params.html;
+  for (const patch of params.patchResult.patches) {
+    const result = applyHtmlDomEditPatch(html, patch);
+    if ("message" in result) {
+      return result;
+    }
+    html = result.html;
+  }
+  return { html: stripHtmlDomEditAttributes(html) };
 }
 
 function publicUrl(publicSlug: string): string {
@@ -339,14 +738,15 @@ function hostedSiteFileForContent(
   };
 }
 
-async function findPresentationRedeployTarget(
+async function findHostedSiteRedeployTarget(
   writeDb: Db,
   args: {
+    readonly artifactKind: HostedArtifactKind;
     readonly orgId: string;
     readonly publicSlug: string;
   },
   signal: AbortSignal,
-): Promise<RedeployPresentationTargetResult> {
+): Promise<RedeployHostedSiteTargetResult> {
   const [site] = await writeDb
     .select()
     .from(hostedSites)
@@ -388,10 +788,14 @@ async function findPresentationRedeployTarget(
       message: "Active hosted deployment not found",
     };
   }
-  if (activeDeployment.manifest.artifactKind !== "presentation-html") {
+  if (activeDeployment.manifest.artifactKind !== args.artifactKind) {
+    const label =
+      args.artifactKind === "presentation-html"
+        ? "presentation HTML artifact"
+        : "hosted-site HTML artifact";
     return {
       status: "bad_request",
-      message: "Hosted site is not a presentation HTML artifact",
+      message: `Hosted site is not a ${label}`,
     };
   }
   return { status: "ok", activeDeployment, site };
@@ -892,12 +1296,12 @@ export const getHostedSiteFiles$ = command(
   },
 );
 
-export const redeployPresentationHtml$ = command(
+const redeployHostedSiteIndexHtml$ = command(
   async (
     { get, set },
-    args: RedeployPresentationHtmlArgs,
+    args: RedeployHostedSiteIndexHtmlArgs,
     signal: AbortSignal,
-  ): Promise<RedeployPresentationHtmlResult> => {
+  ): Promise<CompleteDeploymentResult> => {
     const hostedR2 = hostedR2Config();
     if (hostedR2.status === "config_error") {
       return hostedR2;
@@ -912,9 +1316,10 @@ export const redeployPresentationHtml$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const target = await findPresentationRedeployTarget(
+    const target = await findHostedSiteRedeployTarget(
       writeDb,
       {
+        artifactKind: args.artifactKind,
         orgId: args.orgId,
         publicSlug,
       },
@@ -949,7 +1354,7 @@ export const redeployPresentationHtml$ = command(
         userId: args.userId,
         body: {
           site: site.slug,
-          artifactKind: "presentation-html",
+          artifactKind: args.artifactKind,
           spaFallback: activeDeployment.spaFallback,
           files,
         },
@@ -1008,6 +1413,40 @@ export const redeployPresentationHtml$ = command(
   },
 );
 
+export const redeployPresentationHtml$ = command(
+  (
+    { set },
+    args: RedeployPresentationHtmlArgs,
+    signal: AbortSignal,
+  ): Promise<RedeployPresentationHtmlResult> => {
+    return set(
+      redeployHostedSiteIndexHtml$,
+      {
+        ...args,
+        artifactKind: "presentation-html",
+      },
+      signal,
+    );
+  },
+);
+
+export const redeployHtml$ = command(
+  (
+    { set },
+    args: RedeployHtmlArgs,
+    signal: AbortSignal,
+  ): Promise<RedeployHtmlResult> => {
+    return set(
+      redeployHostedSiteIndexHtml$,
+      {
+        ...args,
+        artifactKind: "hosted-site",
+      },
+      signal,
+    );
+  },
+);
+
 export const generatePresentationSpeakerNotes$ = command(
   async (
     _,
@@ -1034,5 +1473,57 @@ export const generatePresentationSpeakerNotes$ = command(
       };
     }
     return { status: "ok", body: patch };
+  },
+);
+
+export const createHtmlEditDraft$ = command(
+  async (
+    _,
+    args: CreateHtmlEditDraftArgs,
+    signal: AbortSignal,
+  ): Promise<CreateHtmlEditDraftResult> => {
+    const document = await loadHtmlEditDraftDocument(args.body, signal);
+    if ("message" in document) {
+      return {
+        status: "bad_request",
+        message: document.message,
+      };
+    }
+
+    const generated = await generateText(
+      HTML_DOM_EDIT_MODEL,
+      htmlDomEditPrompt(document),
+      8192,
+    );
+    signal.throwIfAborted();
+    if (!generated) {
+      return {
+        status: "config_error",
+        message: "HTML edit generation is not configured",
+      };
+    }
+    const patchResult = parseHtmlDomEditPatchResult(generated);
+    if (!patchResult) {
+      return {
+        status: "bad_request",
+        message: "HTML edit generation returned invalid patch JSON",
+      };
+    }
+    const applied = applyHtmlDomEditPatches({
+      html: document.html,
+      patchResult,
+    });
+    if ("message" in applied) {
+      return {
+        status: "bad_request",
+        message: applied.message,
+      };
+    }
+    const result = htmlEditDraftResponseSchema.parse({
+      kind: "html-edit-draft",
+      version: 1,
+      html: applied.html,
+    });
+    return { status: "ok", body: result };
   },
 );

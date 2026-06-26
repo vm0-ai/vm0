@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconDots,
+  IconEye,
   IconExternalLink,
   IconLoader2,
   IconPencil,
+  IconUpload,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
@@ -26,10 +27,21 @@ import {
   DropdownMenuTrigger,
 } from "@vm0/ui";
 import {
+  artifactHtmlEditMode$,
   artifactFullscreen$,
   type ArtifactRef,
+  applyHtmlDomEditPreview$,
+  clearHtmlDomEditPending$,
+  closeArtifactHtmlEditMode$,
   closeArtifact$,
+  discardHtmlDomEditPreviewDraft$,
+  htmlDomEditPreviewHtmlByUrl$,
+  htmlDomEditPendingUrl$,
+  htmlDomEditPublishingUrl$,
+  markHtmlDomEditPending$,
+  openArtifactHtmlEditMode$,
   openPresentationEditor$,
+  publishHtmlDomEditPreviewDraft$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -40,7 +52,7 @@ import {
 } from "./zero-attachment-chips.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { jsonParseOr } from "../../signals/utils.ts";
+import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
@@ -66,6 +78,8 @@ import {
   presentationHtmlPreviewUrl,
   presentationHtmlRefreshVersion$,
 } from "../../signals/zero-page/presentation-html-cache-bust.ts";
+import { HtmlDomCommentEditor } from "./html-dom-comment-editor.tsx";
+import type { HtmlDomEditDraft } from "./html-dom-edit-types.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -114,6 +128,18 @@ type ArtifactSidebarItem = {
   file: ChatThreadArtifactFile;
 };
 
+type ArtifactSidebarContentProps = {
+  agentId?: string | null;
+  artifactRef: ArtifactRef;
+  item?: ArtifactSidebarItem;
+  onBack?: () => void;
+  onClose?: () => void;
+  onSyncSuccess?: () => void;
+  threadId?: string;
+};
+
+type HtmlArtifactHeaderState = "idle" | "editing" | "working" | "preview";
+
 function ArtifactSidebarWithThreadData({
   artifactRef,
   onBack,
@@ -147,6 +173,38 @@ function noop() {
   return undefined;
 }
 
+function artifactSidebarSyncTargetForItem({
+  agentId,
+  item,
+  onSyncSuccess,
+  threadId,
+}: {
+  agentId?: string | null;
+  item?: ArtifactSidebarItem;
+  onSyncSuccess?: () => void;
+  threadId?: string;
+}): ArtifactDownloadSyncTarget | undefined {
+  return item && threadId
+    ? artifactSidebarSyncTarget({
+        agentId,
+        item,
+        onSyncSuccess: onSyncSuccess ?? noop,
+        threadId,
+      })
+    : undefined;
+}
+
+function shouldOpenHtmlCommentMode(
+  display: ArtifactDisplay | null,
+  requested: boolean,
+): boolean {
+  return (
+    requested &&
+    display?.kind === "html" &&
+    display.artifactKind === "hosted-site"
+  );
+}
+
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
@@ -155,93 +213,94 @@ function ArtifactSidebarContent({
   onClose,
   onSyncSuccess,
   threadId,
-}: {
-  agentId?: string | null;
-  artifactRef: ArtifactRef;
-  item?: ArtifactSidebarItem;
-  onBack?: () => void;
-  onClose?: () => void;
-  onSyncSuccess?: () => void;
-  threadId?: string;
-}) {
+}: ArtifactSidebarContentProps) {
   const fullscreen = useGet(artifactFullscreen$);
+  const requestedHtmlCommentMode = useGet(artifactHtmlEditMode$);
+  const htmlDomEditPreviewHtmlByUrl = useGet(htmlDomEditPreviewHtmlByUrl$);
+  const htmlDomEditPendingUrl = useGet(htmlDomEditPendingUrl$);
+  const htmlDomEditPublishingUrl = useGet(htmlDomEditPublishingUrl$);
+  const applyHtmlDomEditPreview = useSet(applyHtmlDomEditPreview$);
   const close = useSet(closeArtifact$);
+  const clearHtmlDomEditPending = useSet(clearHtmlDomEditPending$);
+  const closeHtmlCommentMode = useSet(closeArtifactHtmlEditMode$);
+  const markHtmlDomEditPending = useSet(markHtmlDomEditPending$);
+  const openHtmlCommentMode = useSet(openArtifactHtmlEditMode$);
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
   const openPresentationEditor = useSet(openPresentationEditor$);
+  const features = useLastResolved(featureSwitch$);
+  const htmlEditFeatureEnabled = Boolean(
+    features?.[FeatureSwitchKey.HtmlArtifactCommentEditing],
+  );
 
   const display = resolveArtifactDisplay(artifactRef, item);
-  const syncTarget =
-    item && threadId
-      ? artifactSidebarSyncTarget({
-          agentId,
-          item,
-          onSyncSuccess: onSyncSuccess ?? noop,
-          threadId,
-        })
-      : undefined;
+  const htmlCommentMode =
+    htmlEditFeatureEnabled &&
+    shouldOpenHtmlCommentMode(display, requestedHtmlCommentMode);
+  const syncTarget = artifactSidebarSyncTargetForItem({
+    agentId,
+    item,
+    onSyncSuccess,
+    threadId,
+  });
+  const htmlEditState = createHtmlEditState({
+    applyPreview: applyHtmlDomEditPreview,
+    clearPending: clearHtmlDomEditPending,
+    closeCommentMode: closeHtmlCommentMode,
+    display,
+    pendingUrl: htmlDomEditPendingUrl,
+    publishingUrl: htmlDomEditPublishingUrl,
+    previewHtmlByUrl: htmlDomEditPreviewHtmlByUrl,
+    markPending: markHtmlDomEditPending,
+  });
+  const htmlHeaderState = htmlArtifactHeaderState({
+    display,
+    htmlCommentMode,
+    previewHtml: htmlEditState.previewHtml,
+    status: htmlEditState.status,
+  });
 
   if (!display) {
-    const sidebar = (
-      <div
-        className={cn(
-          fullscreen
-            ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-            : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-          "animate-in fade-in duration-[180ms] ease",
-        )}
-        data-testid="artifact-sidebar"
-      >
-        <ArtifactSidebarHeader
-          title="Artifact unavailable"
-          subtitle="Unavailable"
-          fullscreen={fullscreen}
-          onBack={onBack}
-          onToggleFullscreen={toggleFullscreen}
-          onClose={closePreview}
-        />
-        <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-          Unsupported artifact reference.
-        </div>
-      </div>
+    return (
+      <ArtifactUnavailableSidebar
+        fullscreen={fullscreen}
+        onBack={onBack}
+        onClose={closePreview}
+        onToggleFullscreen={toggleFullscreen}
+      />
     );
-    return fullscreen && typeof document !== "undefined"
-      ? createPortal(sidebar, document.body)
-      : sidebar;
   }
 
+  const editPresentation =
+    display.artifactKind === "presentation-html"
+      ? () => {
+          openPresentationEditor(display.url);
+        }
+      : undefined;
+  const editHtml =
+    display.kind === "html" &&
+    display.artifactKind === "hosted-site" &&
+    !htmlCommentMode &&
+    htmlHeaderState === "idle"
+      ? openHtmlCommentMode
+      : undefined;
   const toggleFullscreenWithImageReset = () => {
-    if (display.kind === "image") {
-      resetZoomableImageCanvasZoom(
-        zoomableArtifactImageKey(
-          "artifact-sidebar",
-          display.url,
-          fullscreen ? "fullscreen" : "sidebar",
-        ),
-      );
-      resetZoomableImageCanvasZoom(
-        zoomableArtifactImageKey(
-          "artifact-sidebar",
-          display.url,
-          fullscreen ? "sidebar" : "fullscreen",
-        ),
-      );
-    }
+    resetArtifactSidebarImageZoom({
+      display,
+      fullscreen,
+      resetZoomableImageCanvasZoom,
+    });
     toggleFullscreen();
   };
+  const exitHtmlEdit = htmlEditExitAction(
+    htmlHeaderState,
+    closeHtmlCommentMode,
+  );
 
-  const sidebar = (
-    <div
-      className={cn(
-        fullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-        "animate-in fade-in duration-[180ms] ease",
-      )}
-      data-testid="artifact-sidebar"
-    >
+  return (
+    <ArtifactSidebarSurface fullscreen={fullscreen}>
       <ArtifactSidebarHeader
         title={display.filename}
         kind={display.kind}
@@ -250,13 +309,10 @@ function ArtifactSidebarContent({
         syncTarget={syncTarget}
         url={display.url}
         fullscreen={fullscreen}
-        onEditPresentation={
-          display.artifactKind === "presentation-html"
-            ? () => {
-                openPresentationEditor(display.url);
-              }
-            : undefined
-        }
+        htmlState={htmlHeaderState}
+        onEditPresentation={editPresentation}
+        onEditHtml={editHtml}
+        onExitHtmlEdit={exitHtmlEdit}
         onBack={onBack}
         onToggleFullscreen={toggleFullscreenWithImageReset}
         onClose={closePreview}
@@ -267,14 +323,182 @@ function ArtifactSidebarContent({
           kind={display.kind}
           filename={display.filename}
           artifactKind={display.artifactKind}
+          htmlEditStatus={htmlEditState.status}
+          htmlPreviewHtml={htmlEditState.previewHtml}
+          htmlCommentMode={htmlCommentMode}
+          onCloseHtmlCommentMode={closeHtmlCommentMode}
+          onApplyHtmlEditDraft={htmlEditState.apply}
+          onHtmlEditRequestFailed={htmlEditState.fail}
+          onHtmlEditRequestStarted={htmlEditState.start}
           pageSignal={pageSignal}
         />
       </div>
+    </ArtifactSidebarSurface>
+  );
+}
+
+function ArtifactUnavailableSidebar({
+  fullscreen,
+  onBack,
+  onClose,
+  onToggleFullscreen,
+}: {
+  fullscreen: boolean;
+  onBack?: () => void;
+  onClose: () => void;
+  onToggleFullscreen: () => void;
+}) {
+  return (
+    <ArtifactSidebarSurface fullscreen={fullscreen}>
+      <ArtifactSidebarHeader
+        title="Artifact unavailable"
+        subtitle="Unavailable"
+        fullscreen={fullscreen}
+        onBack={onBack}
+        onToggleFullscreen={onToggleFullscreen}
+        onClose={onClose}
+      />
+      <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
+        Unsupported artifact reference.
+      </div>
+    </ArtifactSidebarSurface>
+  );
+}
+
+function createHtmlEditState({
+  applyPreview,
+  clearPending,
+  closeCommentMode,
+  display,
+  markPending,
+  pendingUrl,
+  publishingUrl,
+  previewHtmlByUrl,
+}: {
+  applyPreview: (params: {
+    readonly url: string;
+    readonly html: string;
+  }) => void;
+  clearPending: (url: string) => void;
+  closeCommentMode: () => void;
+  display: ArtifactDisplay | null;
+  markPending: (url: string) => void;
+  pendingUrl: string | null;
+  publishingUrl: string | null;
+  previewHtmlByUrl: Readonly<Record<string, string>>;
+}) {
+  if (!display) {
+    return {};
+  }
+  const status =
+    display.kind === "html" &&
+    (pendingUrl === display.url || publishingUrl === display.url)
+      ? ("working" as const)
+      : undefined;
+  const previewHtml =
+    display.kind === "html" ? previewHtmlByUrl[display.url] : undefined;
+  return {
+    apply: (draft: HtmlDomEditDraft) => {
+      applyPreview({ url: display.url, html: draft.html });
+      closeCommentMode();
+      return Promise.resolve();
+    },
+    fail: () => {
+      clearPending(display.url);
+    },
+    start: () => {
+      markPending(display.url);
+    },
+    previewHtml,
+    status,
+  };
+}
+
+function htmlArtifactHeaderState({
+  display,
+  htmlCommentMode,
+  previewHtml,
+  status,
+}: {
+  display: ArtifactDisplay | null;
+  htmlCommentMode: boolean;
+  previewHtml?: string;
+  status?: "working";
+}): HtmlArtifactHeaderState | undefined {
+  if (
+    !display ||
+    display.kind !== "html" ||
+    display.artifactKind !== "hosted-site"
+  ) {
+    return undefined;
+  }
+  if (status === "working") {
+    return "working";
+  }
+  if (htmlCommentMode) {
+    return "editing";
+  }
+  if (previewHtml) {
+    return "preview";
+  }
+  return "idle";
+}
+
+function htmlEditExitAction(
+  state: HtmlArtifactHeaderState | undefined,
+  closeHtmlCommentMode: () => void,
+): (() => void) | undefined {
+  return state === "editing" ? closeHtmlCommentMode : undefined;
+}
+
+function resetArtifactSidebarImageZoom({
+  display,
+  fullscreen,
+  resetZoomableImageCanvasZoom,
+}: {
+  display: ArtifactDisplay;
+  fullscreen: boolean;
+  resetZoomableImageCanvasZoom: (key: string) => void;
+}) {
+  if (display.kind !== "image") {
+    return;
+  }
+  resetZoomableImageCanvasZoom(
+    zoomableArtifactImageKey(
+      "artifact-sidebar",
+      display.url,
+      fullscreen ? "fullscreen" : "sidebar",
+    ),
+  );
+  resetZoomableImageCanvasZoom(
+    zoomableArtifactImageKey(
+      "artifact-sidebar",
+      display.url,
+      fullscreen ? "sidebar" : "fullscreen",
+    ),
+  );
+}
+
+function ArtifactSidebarSurface({
+  children,
+  fullscreen,
+}: {
+  children: ReactNode;
+  fullscreen: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        fullscreen
+          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
+        "animate-in fade-in duration-[180ms] ease",
+      )}
+      data-testid="artifact-sidebar"
+    >
+      {children}
     </div>
   );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(sidebar, document.body)
-    : sidebar;
 }
 
 interface ArtifactDisplay {
@@ -361,8 +585,11 @@ function ArtifactSidebarHeader({
   syncTarget,
   url,
   fullscreen,
+  htmlState,
   onBack,
+  onEditHtml,
   onEditPresentation,
+  onExitHtmlEdit,
   onToggleFullscreen,
   onClose,
 }: {
@@ -373,8 +600,11 @@ function ArtifactSidebarHeader({
   syncTarget?: ArtifactDownloadSyncTarget;
   url?: string;
   fullscreen: boolean;
+  htmlState?: HtmlArtifactHeaderState;
   onBack?: () => void;
+  onEditHtml?: () => void;
   onEditPresentation?: () => void;
+  onExitHtmlEdit?: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
@@ -408,9 +638,12 @@ function ArtifactSidebarHeader({
         compactActions={compactActions}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
+        htmlState={htmlState}
         kind={kind}
         onClose={onClose}
+        onEditHtml={onEditHtml}
         onEditPresentation={onEditPresentation}
+        onExitHtmlEdit={onExitHtmlEdit}
         onToggleFullscreen={onToggleFullscreen}
         syncTarget={syncTarget}
         title={title}
@@ -424,9 +657,12 @@ function ArtifactSidebarActions({
   artifactKind,
   compactActions,
   fullscreen,
+  htmlState,
   kind,
   onClose,
+  onEditHtml,
   onEditPresentation,
+  onExitHtmlEdit,
   onToggleFullscreen,
   syncTarget,
   title,
@@ -435,9 +671,12 @@ function ArtifactSidebarActions({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
+  htmlState?: HtmlArtifactHeaderState;
   kind?: ArtifactKindForBody;
   onClose: () => void;
+  onEditHtml?: () => void;
   onEditPresentation?: () => void;
+  onExitHtmlEdit?: () => void;
   onToggleFullscreen: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
@@ -448,24 +687,46 @@ function ArtifactSidebarActions({
     artifactKind === "presentation-html" &&
     Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]) &&
     onEditPresentation !== undefined;
+  const showHtmlControls =
+    kind === "html" &&
+    artifactKind === "hosted-site" &&
+    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]) &&
+    htmlState !== undefined;
+  const htmlEditActive = showHtmlControls && htmlState !== "idle";
 
   return (
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <>
-          {kind === "html" && <ArtifactOpenExternalAction url={url} />}
-          <ArtifactShareButton ariaLabel="Share artifact" url={url} />
-          <ArtifactDownloadMenu
-            ariaLabel="Download artifact"
-            artifactKind={artifactKind}
-            filename={title}
-            syncTarget={syncTarget}
-            url={url}
-          />
-          <ArtifactActionSeparator />
-          {showPresentationEdit && (
+          {!htmlEditActive && (
             <>
-              <ArtifactEditPresentationAction onClick={onEditPresentation} />
+              {kind === "html" && <ArtifactOpenExternalAction url={url} />}
+              <ArtifactShareButton ariaLabel="Share artifact" url={url} />
+              <ArtifactDownloadMenu
+                ariaLabel="Download artifact"
+                artifactKind={artifactKind}
+                filename={title}
+                syncTarget={syncTarget}
+                url={url}
+              />
+              <ArtifactActionSeparator />
+              {showPresentationEdit && (
+                <>
+                  <ArtifactEditPresentationAction
+                    onClick={onEditPresentation}
+                  />
+                  <ArtifactActionSeparator />
+                </>
+              )}
+            </>
+          )}
+          {showHtmlControls && (
+            <>
+              <ArtifactHtmlEditStatus state={htmlState} />
+              {htmlState === "editing" && onExitHtmlEdit && (
+                <ArtifactExitHtmlEditAction onClick={onExitHtmlEdit} />
+              )}
+              {onEditHtml && <ArtifactEditHtmlAction onClick={onEditHtml} />}
               <ArtifactActionSeparator />
             </>
           )}
@@ -475,11 +736,12 @@ function ArtifactSidebarActions({
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
       />
-      {compactActions ? (
-        <ArtifactMoreActions onClose={onClose} />
-      ) : (
-        <ArtifactCloseAction onClose={onClose} />
-      )}
+      {!htmlEditActive &&
+        (compactActions ? (
+          <ArtifactMoreActions onClose={onClose} />
+        ) : (
+          <ArtifactCloseAction onClose={onClose} />
+        ))}
     </div>
   );
 }
@@ -497,6 +759,86 @@ function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
       </button>
     </ArtifactActionTooltip>
   );
+}
+
+function ArtifactEditHtmlAction({ onClick }: { onClick: () => void }) {
+  return (
+    <ArtifactActionTooltip label="Edit page">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Edit page"
+        data-testid="artifact-sidebar-edit-html"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconPencil size={16} stroke={1.5} />
+      </button>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactExitHtmlEditAction({ onClick }: { onClick: () => void }) {
+  return (
+    <ArtifactActionTooltip label="Exit editing and keep preview open">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Exit editing and keep preview open"
+        data-testid="artifact-sidebar-exit-html-edit"
+        className="inline-flex h-8 items-center rounded-full border border-border/80 bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60"
+      >
+        Exit
+      </button>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactHtmlEditStatus({
+  state,
+}: {
+  state?: HtmlArtifactHeaderState;
+}) {
+  if (!state || state === "idle") {
+    return null;
+  }
+
+  const content = htmlEditStatusContent(state);
+  return (
+    <span
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium",
+        content.className,
+      )}
+      data-testid="artifact-sidebar-html-edit-status"
+    >
+      {content.icon}
+      <span>{content.label}</span>
+    </span>
+  );
+}
+
+function htmlEditStatusContent(
+  state: Exclude<HtmlArtifactHeaderState, "idle">,
+) {
+  if (state === "editing") {
+    return {
+      className: "border-blue-200 bg-blue-50 text-blue-700",
+      icon: <IconPencil size={14} stroke={1.9} />,
+      label: "Editing",
+    };
+  }
+  if (state === "working") {
+    return {
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+      icon: <IconLoader2 size={14} className="animate-spin" />,
+      label: "Working",
+    };
+  }
+  return {
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <IconEye size={14} stroke={1.9} />,
+    label: "Preview draft",
+  };
 }
 
 function ArtifactOpenExternalAction({ url }: { url: string }) {
@@ -586,12 +928,26 @@ function ArtifactBody({
   kind,
   filename,
   artifactKind,
+  htmlEditStatus,
+  htmlPreviewHtml,
+  htmlCommentMode,
+  onCloseHtmlCommentMode,
+  onApplyHtmlEditDraft,
+  onHtmlEditRequestFailed,
+  onHtmlEditRequestStarted,
   pageSignal,
 }: {
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  htmlEditStatus?: "working";
+  htmlPreviewHtml?: string;
+  htmlCommentMode: boolean;
+  onCloseHtmlCommentMode: () => void;
+  onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
+  onHtmlEditRequestFailed?: () => void;
+  onHtmlEditRequestStarted?: () => void;
   pageSignal: AbortSignal;
 }) {
   if (kind === "markdown") {
@@ -613,12 +969,29 @@ function ArtifactBody({
     return <ArtifactAudioBody url={url} filename={filename} />;
   }
   if (kind === "html" || kind === "pdf") {
+    if (kind === "html" && artifactKind === "hosted-site" && htmlCommentMode) {
+      return (
+        <HtmlDomCommentEditor
+          key={url}
+          filename={filename}
+          onApplyEditDraft={onApplyHtmlEditDraft}
+          onClose={onCloseHtmlCommentMode}
+          onEditRequestFailed={onHtmlEditRequestFailed}
+          onEditRequestStarted={onHtmlEditRequestStarted}
+          pageSignal={pageSignal}
+          status={htmlEditStatus}
+          url={url}
+        />
+      );
+    }
     return (
       <ArtifactIframeBody
         url={url}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
+        htmlEditStatus={htmlEditStatus}
+        htmlPreviewHtml={htmlPreviewHtml}
       />
     );
   }
@@ -994,11 +1367,15 @@ function ArtifactIframeBody({
   kind,
   filename,
   artifactKind,
+  htmlEditStatus,
+  htmlPreviewHtml,
 }: {
   url: string;
   kind: "html" | "pdf";
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  htmlEditStatus?: "working";
+  htmlPreviewHtml?: string;
 }) {
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -1006,6 +1383,13 @@ function ArtifactIframeBody({
   const publicUrl = publicAttachmentUrl(url);
   const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
   const fullscreen = useGet(artifactFullscreen$);
+  const pageSignal = useGet(pageSignal$);
+  const discardHtmlDomEditPreviewDraft = useSet(
+    discardHtmlDomEditPreviewDraft$,
+  );
+  const publishHtmlDomEditPreviewDraft = useSet(
+    publishHtmlDomEditPreviewDraft$,
+  );
   const htmlRefreshVersion = useGet(presentationHtmlRefreshVersion$);
   const isPresentationHtml =
     kind === "html" && artifactKind === "presentation-html";
@@ -1015,16 +1399,35 @@ function ArtifactIframeBody({
       htmlRefreshVersion,
     );
     return (
-      <AutoFocusedArtifactIframe
-        focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
-        focusOnMount={fullscreen && !isPresentationHtml}
-        src={versionedSrc}
-        title={`${filename} preview`}
-        sandbox="allow-same-origin allow-scripts"
-        tabIndex={isPresentationHtml ? -1 : undefined}
-        className="h-full w-full border-0 bg-background"
-        data-testid={`artifact-sidebar-body-${kind}`}
-      />
+      <div className="relative h-full w-full">
+        <AutoFocusedArtifactIframe
+          focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusOnMount={fullscreen && !isPresentationHtml}
+          {...(htmlPreviewHtml
+            ? { srcDoc: htmlPreviewHtml }
+            : { src: versionedSrc })}
+          title={`${filename} preview`}
+          sandbox="allow-same-origin allow-scripts"
+          tabIndex={isPresentationHtml ? -1 : undefined}
+          className="h-full w-full border-0 bg-background"
+          data-testid={`artifact-sidebar-body-${kind}`}
+        />
+        {htmlPreviewHtml ? (
+          <HtmlEditDraftToolbar
+            disabled={htmlEditStatus === "working"}
+            onDiscard={() => {
+              discardHtmlDomEditPreviewDraft(url);
+            }}
+            onPublish={() => {
+              detach(
+                publishHtmlDomEditPreviewDraft(url, pageSignal),
+                Reason.DomCallback,
+                "publishHtmlDomEditPreviewDraft",
+              );
+            }}
+          />
+        ) : null}
+      </div>
     );
   }
 
@@ -1039,6 +1442,45 @@ function ArtifactIframeBody({
         />
       </div>
     </ArtifactStageShell>
+  );
+}
+
+function HtmlEditDraftToolbar({
+  disabled,
+  onDiscard,
+  onPublish,
+}: {
+  disabled: boolean;
+  onDiscard: () => void;
+  onPublish: () => void;
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4"
+      data-testid="html-dom-draft-toolbar"
+    >
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border/70 bg-background/95 px-2 py-2 shadow-xl backdrop-blur">
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={disabled}
+          onClick={onDiscard}
+          data-testid="html-dom-draft-discard"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={disabled}
+          onClick={onPublish}
+          data-testid="html-dom-draft-publish"
+        >
+          <IconUpload size={16} stroke={1.9} />
+          Publish
+        </button>
+      </div>
+    </div>
   );
 }
 

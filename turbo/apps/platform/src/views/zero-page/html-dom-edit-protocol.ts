@@ -9,6 +9,8 @@ export { HTML_DOM_EDIT_PAYLOAD_TYPE } from "./html-dom-edit-types.ts";
 export const HTML_DOM_NODE_ID_ATTR = "data-vm0-node-id";
 export const HTML_DOM_EDIT_OVERLAY_ATTR = "data-vm0-html-edit-overlay";
 export const HTML_DOM_EDIT_TEMP_BASE_ATTR = "data-vm0-html-edit-base";
+export const HTML_DOM_EDIT_HOVER_ATTR = "data-vm0-html-edit-hover";
+export const HTML_DOM_EDIT_SELECTED_ATTR = "data-vm0-html-edit-selected";
 
 const DEFAULT_NODE_ID_PREFIX = "vm0-node";
 const IGNORED_TAG_NAMES = [
@@ -71,33 +73,33 @@ const STRUCTURAL_SELECTOR = [
   "ul",
 ].join(",");
 
-export interface InstrumentHtmlDomEditWorkingCopyParams {
+export interface InstrumentHtmlDomEditDocumentParams {
   readonly baseHref?: string;
   readonly html: string;
   readonly nodeIdPrefix?: string;
 }
 
-export interface InstrumentedHtmlDomEditWorkingCopy {
+export interface InstrumentedHtmlDomEditDocument {
   readonly html: string;
   readonly nodeIds: readonly string[];
 }
 
 export function createHtmlDomEditPayload(params: {
   readonly comments: readonly HtmlDomEditComment[];
-  readonly originalUrl: string;
-  readonly workingCopyUrl: string;
+  readonly editRequestId: string;
+  readonly htmlSnapshotUrl: string;
 }): HtmlDomEditPayload {
   return {
     type: HTML_DOM_EDIT_PAYLOAD_TYPE,
-    originalUrl: params.originalUrl,
-    workingCopyUrl: params.workingCopyUrl,
+    editRequestId: params.editRequestId,
+    htmlSnapshotUrl: params.htmlSnapshotUrl,
     comments: params.comments,
   };
 }
 
-export function instrumentHtmlDomEditWorkingCopy(
-  params: InstrumentHtmlDomEditWorkingCopyParams,
-): InstrumentedHtmlDomEditWorkingCopy {
+export function instrumentHtmlDomEditDocument(
+  params: InstrumentHtmlDomEditDocumentParams,
+): InstrumentedHtmlDomEditDocument {
   const doc = parseHtml(params.html);
   stripDomEditAttributes(doc);
   removeEditOverlayElements(doc);
@@ -135,6 +137,13 @@ export function stripHtmlDomEditInstrumentation(html: string): string {
   return serializeHtmlDocument(doc);
 }
 
+export function stripHtmlDomEditOverlays(html: string): string {
+  const doc = parseHtml(html);
+  stripDomEditPresentationAttributes(doc);
+  removeEditOverlayElements(doc);
+  return serializeHtmlDocument(doc);
+}
+
 function parseHtml(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
 }
@@ -145,10 +154,24 @@ function serializeHtmlDocument(doc: Document): string {
 }
 
 function stripDomEditAttributes(doc: Document): void {
+  stripDomEditPresentationAttributes(doc);
   for (const element of Array.from(
     doc.querySelectorAll<HTMLElement>(`[${HTML_DOM_NODE_ID_ATTR}]`),
   )) {
     element.removeAttribute(HTML_DOM_NODE_ID_ATTR);
+  }
+}
+
+function stripDomEditPresentationAttributes(doc: Document): void {
+  const selector = [
+    `[${HTML_DOM_EDIT_HOVER_ATTR}]`,
+    `[${HTML_DOM_EDIT_SELECTED_ATTR}]`,
+  ].join(",");
+  for (const element of Array.from(
+    doc.querySelectorAll<HTMLElement>(selector),
+  )) {
+    element.removeAttribute(HTML_DOM_EDIT_HOVER_ATTR);
+    element.removeAttribute(HTML_DOM_EDIT_SELECTED_ATTR);
   }
 }
 
