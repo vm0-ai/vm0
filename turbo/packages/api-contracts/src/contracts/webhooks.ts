@@ -79,6 +79,12 @@ const gmailWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const workflowTriggerWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  duplicate: z.boolean(),
+  runId: z.string().uuid().optional(),
+});
+
 /**
  * Gmail Pub/Sub push webhook contract for /api/webhooks/gmail.
  */
@@ -95,6 +101,31 @@ export const webhookGmailContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Workflow trigger inbound webhook contract for
+ * /api/webhooks/workflow-triggers/:token.
+ */
+export const webhookWorkflowTriggerContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/workflow-triggers/:token",
+    pathParams: z.object({
+      token: z.string().min(1),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: workflowTriggerWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      404: thirdPartyWebhookErrorSchema,
+      413: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      500: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle inbound workflow trigger webhooks",
   },
 });
 
@@ -684,7 +715,10 @@ export const webhookStoragesCommitContract = c.router({
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
+export type WebhookGmailContract = typeof webhookGmailContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookWorkflowTriggerContract =
+  typeof webhookWorkflowTriggerContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =

@@ -115,6 +115,19 @@ async function enableGmailWorkflowTriggers(
     });
 }
 
+async function enableWebhookWorkflowTriggers(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+    });
+}
+
 async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
   const db = store.set(writeDb$);
   const [connector] = await db
@@ -552,6 +565,90 @@ describe("zero workflow triggers", () => {
     expect(rejected.body.error.message).toBe(
       "Gmail workflow event triggers are not enabled",
     );
+  });
+
+  it("rejects webhook event triggers before the feature is enabled", async () => {
+    const { workflowId } = await setupFixture();
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Workflow webhook triggers are not enabled",
+    );
+  });
+
+  it("creates webhook event triggers with a signed endpoint secret shown once", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      lastReceivedAt: null,
+    });
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected a webhook trigger");
+    }
+    expect(created.body.webhookUrl).toContain(
+      "/api/webhooks/workflow-triggers/whk_",
+    );
+    expect(created.body.webhookSecret).toBeTruthy();
+    expect(created.body.secretLastFour).toBe(
+      created.body.webhookSecret?.slice(-4),
+    );
+
+    const listed = await accept(
+      triggersClient().list({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    const listedWebhook = listed.body.find((trigger) => {
+      return trigger.id === created.body.id;
+    });
+    if (
+      !listedWebhook ||
+      listedWebhook.kind !== "event" ||
+      listedWebhook.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected created webhook trigger to be listed");
+    }
+    expect(listedWebhook.webhookUrl).toBe(created.body.webhookUrl);
+    expect(listedWebhook.secretLastFour).toBe(created.body.secretLastFour);
+    expect(listedWebhook.webhookSecret).toBeUndefined();
   });
 
   it("requires a connected Gmail account for Gmail event triggers", async () => {

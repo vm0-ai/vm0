@@ -18,6 +18,17 @@ const GMAIL_TEXT_FIELDS: readonly GmailTextField[] = [
   "cc",
 ];
 
+type WorkflowWebhookTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "webhook-received" }
+>;
+
+function isWebhookTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowWebhookTriggerSummary {
+  return trigger.kind === "event" && trigger.eventType === "webhook-received";
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -67,8 +78,11 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
 function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
-  if (trigger.kind === "event") {
+  if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     return `Gmail new message: ${formatGmailMatchSummary(trigger.eventConfig)}`;
+  }
+  if (isWebhookTrigger(trigger)) {
+    return `Webhook: ${trigger.webhookUrl}`;
   }
 
   const { schedule } = trigger;
@@ -84,6 +98,20 @@ function formatWorkflowTriggerEntry(
 
 function formatRunTime(value: string | null): string {
   return value ? formatRelativeTime(value) : chalk.dim("-");
+}
+
+function signedCurlExample(trigger: WorkflowWebhookTriggerSummary): string {
+  const secret = trigger.webhookSecret ?? "<signing-secret>";
+  return [
+    `BODY='{"hello":"world"}'`,
+    "TIMESTAMP=$(date +%s)",
+    `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
+    `curl -X POST "${trigger.webhookUrl}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
+    '  -H "X-VM0-Signature: $SIGNATURE" \\',
+    '  --data "$BODY"',
+  ].join("\n");
 }
 
 export function printWorkflowTriggersTable(
@@ -145,14 +173,35 @@ export function printWorkflowTriggerDetails(
   console.log(
     `${"Trigger:".padEnd(14)}${
       trigger.kind === "event"
-        ? "Gmail new message"
+        ? trigger.eventType === "gmail-new-message"
+          ? "Gmail new message"
+          : "Webhook"
         : formatWorkflowTriggerEntry(trigger)
     }`,
   );
-  if (trigger.kind === "event") {
+  if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     console.log(
       `${"Match:".padEnd(14)}${formatGmailMatchSummary(trigger.eventConfig)}`,
     );
+  }
+  if (isWebhookTrigger(trigger)) {
+    console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);
+    console.log(
+      `${"Secret:".padEnd(14)}${chalk.dim(`ends with ${trigger.secretLastFour}`)}`,
+    );
+    console.log(
+      `${"Last received:".padEnd(14)}${formatRunTime(trigger.lastReceivedAt)}`,
+    );
+    if (trigger.webhookSecret) {
+      console.log(
+        `${"Signing key:".padEnd(14)}${trigger.webhookSecret} ${chalk.dim(
+          "(shown only once)",
+        )}`,
+      );
+      console.log("");
+      console.log(chalk.bold("Signed curl example:"));
+      console.log(signedCurlExample(trigger));
+    }
   }
   console.log(`${"Owner:".padEnd(14)}${trigger.ownerUserId}`);
   console.log(

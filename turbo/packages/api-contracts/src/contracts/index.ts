@@ -206,6 +206,8 @@ export {
   webhookEventsContract,
   webhookFirewallAuthContract,
   webhookGithubContract,
+  webhookGmailContract,
+  webhookWorkflowTriggerContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
@@ -237,6 +239,8 @@ export {
   type WebhookModelUsageObservationContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
+  type WebhookGmailContract,
+  type WebhookWorkflowTriggerContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";

@@ -24,10 +24,13 @@ export function agentLabel(workflow: {
   return workflow.agentDisplayName ?? workflow.agentName ?? workflow.agentId;
 }
 
-export function triggerKindLabel(
-  kind: ZeroWorkflowTriggerSummary["kind"],
-): string {
-  return kind === "schedule" ? "Schedule trigger" : "Event trigger";
+export function triggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind === "schedule") {
+    return "Schedule trigger";
+  }
+  return trigger.eventType === "webhook-received"
+    ? "Webhook trigger"
+    : "Event trigger";
 }
 
 export function VisibilityBadge({

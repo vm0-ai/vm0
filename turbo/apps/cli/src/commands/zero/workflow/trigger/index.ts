@@ -49,7 +49,7 @@ interface WorkflowRefOptions {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
-const EVENT_KINDS = ["gmail-new-message"] as const;
+const EVENT_KINDS = ["gmail-new-message", "webhook"] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
   "Provide exactly one of --expr (cron), --at (once), --every (loop), or provide Gmail match options";
@@ -282,6 +282,28 @@ function buildCreateRequest(
     };
   }
 
+  if (kind === "webhook") {
+    if (hasScheduleAddOptions(options)) {
+      throw new Error(
+        "--expr, --at, --every, and --timezone only apply to schedule triggers",
+      );
+    }
+    if (hasGmailTriggerOptions(options)) {
+      throw new Error(
+        "Gmail match flags and --config only apply to gmail-new-message triggers",
+      );
+    }
+    return {
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+    };
+  }
+
   if (hasGmailTriggerOptions(options)) {
     throw new Error(
       "Gmail match flags and --config only apply to gmail-new-message triggers",
@@ -373,10 +395,12 @@ Examples:
   zero workflow trigger add tell-a-joke loop --every 15m
   zero workflow trigger add triage gmail-new-message --from-contains "@example.com"
   zero workflow trigger add triage gmail-new-message --config ./gmail-trigger.json
+  zero workflow trigger add triage webhook
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID, then all visible workflows
   - Gmail triggers match all inbound messages when no text match rules are provided
+  - Webhook triggers print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
   .action(
@@ -525,6 +549,7 @@ export const triggerCommand = new Command()
     `
 Examples:
   Add a trigger:      zero workflow trigger add <workflow> cron --expr "0 9 * * *"
+  Add a webhook:      zero workflow trigger add <workflow> webhook
   Update a schedule:  zero workflow trigger update <trigger-id> --every 10m
   List triggers:      zero workflow trigger list <workflow>
   Inspect a trigger:  zero workflow trigger show <trigger-id>

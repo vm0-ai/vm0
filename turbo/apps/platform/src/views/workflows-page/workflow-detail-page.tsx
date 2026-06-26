@@ -21,6 +21,7 @@ import {
   IconCopy,
   IconDotsVertical,
   IconFileText,
+  IconLink,
   IconLoader2,
   IconMail,
   IconPencil,
@@ -31,6 +32,7 @@ import {
   IconUsers,
   IconX,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   cn,
@@ -56,15 +58,19 @@ import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
   createWorkflowGmailNewMessageTrigger$,
+  createWorkflowWebhookTrigger$,
   createWorkflowScheduleTrigger$,
+  createdWorkflowWebhookTrigger$,
   currentWorkflowId$,
   copyWorkflow$,
   deleteWorkflow$,
   deleteWorkflowTrigger$,
   editingGmailTriggerId$,
+  reloadWorkflows$,
   runWorkflow$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
+  setCreatedWorkflowWebhookTrigger$,
   setScheduleTriggerType$,
   setEditingGmailTriggerId$,
   setSelectedWorkflowFilePath$,
@@ -83,10 +89,12 @@ import {
   workflowDetail,
   workflowTriggerPermissionsDrawerTriggerId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { Link } from "../router/link.tsx";
 import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
@@ -108,6 +116,14 @@ const WORKFLOW_SIDEBAR_WIDTH = "min(520px, 42vw)";
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+type GmailWorkflowTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "gmail-new-message" }
+>;
+type WebhookWorkflowTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "webhook-received" }
+>;
 
 const GMAIL_TEXT_FIELDS: readonly {
   readonly field: GmailTextField;
@@ -119,6 +135,22 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "to", label: "To" },
   { field: "cc", label: "Cc" },
 ];
+
+function isGmailWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is GmailWorkflowTriggerSummary {
+  return trigger.kind === "event" && trigger.eventType === "gmail-new-message";
+}
+
+function isWebhookWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WebhookWorkflowTriggerSummary {
+  return trigger.kind === "event" && trigger.eventType === "webhook-received";
+}
+
+function copyText(value: string): void {
+  detach(writeToClipboard(value), Reason.DomCallback);
+}
 
 export function WorkflowDetailPage() {
   const workflowId = useGet(currentWorkflowId$);
@@ -1444,10 +1476,13 @@ function TriggersSection({
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+  const features = useGet(featureSwitch$);
   const userLoadable = useLoadable(user$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const triggers = detail.triggers;
+  const webhookTriggersEnabled =
+    features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
 
   return (
     <aside className="flex min-h-0 w-full flex-col bg-background">
@@ -1508,6 +1543,26 @@ function TriggersSection({
                   </span>
                 </span>
               </DropdownMenuItem>
+              {webhookTriggersEnabled ? (
+                <DropdownMenuItem
+                  className="items-start gap-2 py-2"
+                  onSelect={() => {
+                    setCreateDialog("webhook");
+                  }}
+                >
+                  <IconLink
+                    size={15}
+                    stroke={1.5}
+                    className="mt-0.5 shrink-0 text-muted-foreground"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Webhook</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Run this workflow from a signed POST.
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
           <button
@@ -1552,6 +1607,13 @@ function TriggersSection({
         open={createDialog === "gmail"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail" : null);
+        }}
+      />
+      <CreateWebhookTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "webhook"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "webhook" : null);
         }}
       />
     </aside>
@@ -1810,6 +1872,186 @@ function CreateGmailNewMessageTriggerDialog({
   );
 }
 
+function signedWebhookCurlExample(
+  trigger: WebhookWorkflowTriggerSummary,
+): string {
+  const secret = trigger.webhookSecret ?? "<signing-secret>";
+  return [
+    `BODY='{"hello":"world"}'`,
+    "TIMESTAMP=$(date +%s)",
+    `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
+    `curl -X POST "${trigger.webhookUrl}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
+    '  -H "X-VM0-Signature: $SIGNATURE" \\',
+    '  --data "$BODY"',
+  ].join("\n");
+}
+
+function CreateWebhookTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const createdTrigger = useGet(createdWorkflowWebhookTrigger$);
+  const setCreatedTrigger = useSet(setCreatedWorkflowWebhookTrigger$);
+  const reloadWorkflows = useSet(reloadWorkflows$);
+  const [createLoadable, createWebhookTrigger] = useLoadableSet(
+    createWorkflowWebhookTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+  const curlExample = createdTrigger
+    ? signedWebhookCurlExample(createdTrigger)
+    : "";
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          if (createdTrigger) {
+            reloadWorkflows();
+          }
+          setCreatedTrigger(null);
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add webhook trigger</DialogTitle>
+          <DialogDescription>
+            Create a signed endpoint for this workflow.
+          </DialogDescription>
+        </DialogHeader>
+        {createdTrigger ? (
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Webhook URL
+              <div className="flex min-w-0 gap-2">
+                <input
+                  readOnly
+                  value={createdTrigger.webhookUrl}
+                  className={FIELD_CLASS}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    copyText(createdTrigger.webhookUrl);
+                  }}
+                >
+                  <IconCopy size={14} />
+                  Copy
+                </Button>
+              </div>
+            </label>
+            {createdTrigger.webhookSecret ? (
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                Signing secret
+                <div className="flex min-w-0 gap-2">
+                  <input
+                    readOnly
+                    value={createdTrigger.webhookSecret}
+                    className={FIELD_CLASS}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      copyText(createdTrigger.webhookSecret ?? "");
+                    }}
+                  >
+                    <IconCopy size={14} />
+                    Copy
+                  </Button>
+                </div>
+              </label>
+            ) : null}
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Signed curl
+              <div className="relative">
+                <pre className="max-h-56 overflow-auto rounded-md border border-border/60 bg-muted/40 p-3 text-xs leading-5 text-foreground">
+                  {curlExample}
+                </pre>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="absolute right-2 top-2 h-7 px-2 text-xs"
+                  onClick={() => {
+                    copyText(curlExample);
+                  }}
+                >
+                  <IconCopy size={13} />
+                  Copy
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  reloadWorkflows();
+                  setCreatedTrigger(null);
+                  onOpenChange(false);
+                }}
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              The signing secret is shown only after creation.
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={creating}
+                onClick={() => {
+                  onOpenChange(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={creating}
+                onClick={() => {
+                  detach(
+                    (async () => {
+                      const trigger = await createWebhookTrigger(
+                        { workflowId },
+                        pageSignal,
+                      );
+                      if (isWebhookWorkflowTrigger(trigger)) {
+                        setCreatedTrigger(trigger);
+                      }
+                    })(),
+                    Reason.DomCallback,
+                  );
+                }}
+              >
+                {creating ? (
+                  <IconLoader2 size={14} className="animate-spin" />
+                ) : null}
+                Create webhook
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TriggerRow({
   trigger,
   canManage,
@@ -1821,14 +2063,23 @@ function TriggerRow({
 }) {
   const editingTriggerId = useGet(editingGmailTriggerId$);
   const setEditingTriggerId = useSet(setEditingGmailTriggerId$);
-  const editingMatch = editingTriggerId === trigger.id;
+  const editingMatch =
+    isGmailWorkflowTrigger(trigger) && editingTriggerId === trigger.id;
   const title =
-    trigger.kind === "schedule" ? trigger.scheduleSummary : "Gmail new message";
-  const matchSummary =
-    trigger.kind === "event"
-      ? formatGmailMatchSummary(trigger.eventConfig)
-      : null;
-  const TriggerIcon = trigger.kind === "schedule" ? IconClock : IconMail;
+    trigger.kind === "schedule"
+      ? trigger.scheduleSummary
+      : isGmailWorkflowTrigger(trigger)
+        ? "Gmail new message"
+        : "Webhook";
+  const matchSummary = isGmailWorkflowTrigger(trigger)
+    ? formatGmailMatchSummary(trigger.eventConfig)
+    : null;
+  const TriggerIcon =
+    trigger.kind === "schedule"
+      ? IconClock
+      : isGmailWorkflowTrigger(trigger)
+        ? IconMail
+        : IconLink;
 
   return (
     <div className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5">
@@ -1852,11 +2103,16 @@ function TriggerRow({
           </span>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {triggerKindLabel(trigger.kind)}
+          {triggerKindLabel(trigger)}
         </p>
         {matchSummary ? (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {matchSummary}
+          </p>
+        ) : null}
+        {isWebhookWorkflowTrigger(trigger) ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {trigger.webhookUrl}
           </p>
         ) : null}
         {trigger.chatThreadId ? (
@@ -1875,7 +2131,7 @@ function TriggerRow({
             onOpenPermissions={onOpenPermissions}
           />
         ) : null}
-        {canManage && trigger.kind === "event" && editingMatch ? (
+        {canManage && isGmailWorkflowTrigger(trigger) && editingMatch ? (
           <UpdateGmailNewMessageTriggerForm
             trigger={trigger}
             onCancel={() => {
@@ -1921,7 +2177,7 @@ function TriggerControls({
         <IconShieldLock size={13} stroke={1.5} />
         <span>Permissions</span>
       </button>
-      {trigger.kind === "event" && !editingMatch ? (
+      {isGmailWorkflowTrigger(trigger) && !editingMatch ? (
         <button
           type="button"
           disabled={busy}
@@ -1967,7 +2223,7 @@ function UpdateGmailNewMessageTriggerForm({
   trigger,
   onCancel,
 }: {
-  readonly trigger: Extract<ZeroWorkflowTriggerSummary, { kind: "event" }>;
+  readonly trigger: GmailWorkflowTriggerSummary;
   readonly onCancel: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);

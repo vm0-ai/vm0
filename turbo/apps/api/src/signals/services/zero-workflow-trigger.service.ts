@@ -1,10 +1,12 @@
 import { command } from "ccstate";
 import {
   gmailNewMessageEventConfigSchema,
+  webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailNewMessageEventConfig,
   type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
+  type WebhookReceivedEventConfig,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -15,6 +17,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   zeroWorkflowTriggers,
+  zeroWorkflowWebhookTriggers,
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
@@ -33,6 +36,16 @@ import {
   ensureGmailWatchForUser,
   gmailWorkflowEventTriggersEnabledForOwner,
 } from "./gmail-workflow-event.service";
+import {
+  buildWorkflowWebhookSummaryFields,
+  defaultWebhookReceivedEventConfig,
+  encryptWorkflowWebhookSecret,
+  encryptWorkflowWebhookToken,
+  hashWorkflowWebhookToken,
+  mintWorkflowWebhookSecret,
+  mintWorkflowWebhookToken,
+  workflowWebhookTriggersEnabledForOwner,
+} from "./workflow-webhook-trigger.service";
 
 type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 
@@ -183,7 +196,11 @@ function rowToSchedule(row: TriggerRow): ZeroWorkflowSchedule {
   };
 }
 
-function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
+async function rowToSummary(
+  db: ReadonlyDb,
+  row: TriggerRow,
+  options: { readonly webhookSecret?: string } = {},
+): Promise<ZeroWorkflowTriggerSummary> {
   if (row.kind === "event" && row.eventType === "gmail-new-message") {
     return {
       id: row.id,
@@ -199,6 +216,27 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
       lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
       unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
       unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
+    };
+  }
+  if (row.kind === "event" && row.eventType === "webhook-received") {
+    return {
+      id: row.id,
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: webhookReceivedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+      ownerUserId: row.ownerUserId,
+      enabled: row.enabled,
+      chatThreadId: row.chatThreadId,
+      nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
+      lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+      unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
+      unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
+      ...(await buildWorkflowWebhookSummaryFields(db, {
+        trigger: row,
+        webhookSecret: options.webhookSecret,
+      })),
     };
   }
   const schedule = rowToSchedule(row);
@@ -217,13 +255,18 @@ function rowToSummary(row: TriggerRow): ZeroWorkflowTriggerSummary {
   };
 }
 
-function rowToPublicSummary(
+async function rowToPublicSummary(
+  db: ReadonlyDb,
   row: TriggerRow,
-): ZeroWorkflowTriggerSummary | null {
-  if (row.kind === "event" && row.eventType !== "gmail-new-message") {
+): Promise<ZeroWorkflowTriggerSummary | null> {
+  if (
+    row.kind === "event" &&
+    row.eventType !== "gmail-new-message" &&
+    row.eventType !== "webhook-received"
+  ) {
     return null;
   }
-  return rowToSummary(row);
+  return await rowToSummary(db, row);
 }
 
 interface UsableAgent {
@@ -354,8 +397,12 @@ export async function loadWorkflowTriggers(
       ),
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
-  return rows.flatMap((row) => {
-    const summary = rowToPublicSummary(row);
+  const summaries = await Promise.all(
+    rows.map((row) => {
+      return rowToPublicSummary(db, row);
+    }),
+  );
+  return summaries.flatMap((summary) => {
     return summary ? [summary] : [];
   });
 }
@@ -388,8 +435,14 @@ export async function listThreadBoundWorkflowTriggers(
     )
     .orderBy(asc(zeroWorkflowTriggers.createdAt));
 
-  return rows.flatMap(({ trigger, workflow }) => {
-    const summary = rowToPublicSummary(trigger);
+  const summaries = await Promise.all(
+    rows.map(async ({ trigger, workflow }) => {
+      const summary = await rowToPublicSummary(db, trigger);
+      return { trigger, workflow, summary };
+    }),
+  );
+
+  return summaries.flatMap(({ trigger, workflow, summary }) => {
     if (!summary || trigger.chatThreadId === null) {
       return [];
     }
@@ -441,7 +494,7 @@ export async function getWorkflowTrigger(
   if (!visible) {
     return null;
   }
-  return rowToPublicSummary(trigger);
+  return await rowToPublicSummary(db, trigger);
 }
 
 interface CreateScheduleTriggerInput {
@@ -461,9 +514,19 @@ interface CreateGmailEventTriggerInput {
   readonly enabled: boolean;
 }
 
+interface CreateWebhookEventTriggerInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: "webhook-received";
+  readonly eventConfig?: WebhookReceivedEventConfig;
+  readonly enabled: boolean;
+}
+
 type CreateTriggerInput =
   | CreateScheduleTriggerInput
-  | CreateGmailEventTriggerInput;
+  | CreateGmailEventTriggerInput
+  | CreateWebhookEventTriggerInput;
 
 function triggerCreateInputIsSchedule(
   args: CreateTriggerInput,
@@ -558,7 +621,87 @@ async function insertGmailEventTrigger(
     if (!row) {
       throw new Error("Failed to create workflow trigger");
     }
-    return rowToSummary(row);
+    return await rowToSummary(tx, row);
+  });
+}
+
+async function insertWebhookEventTrigger(
+  db: Db,
+  args: {
+    readonly input: CreateWebhookEventTriggerInput;
+    readonly workflowId: string;
+    readonly agentId: string;
+    readonly currentTime: Date;
+  },
+): Promise<ZeroWorkflowTriggerSummary> {
+  return await db.transaction(async (tx) => {
+    const connectorRefs = await loadAgentConnectorRefs(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      agentId: args.agentId,
+    });
+
+    const [thread] = await tx
+      .insert(chatThreads)
+      .values({
+        userId: args.input.member.userId,
+        agentComposeId: args.agentId,
+        title: "Webhook",
+        lastMessageAt: args.currentTime,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to create trigger chat thread");
+    }
+
+    const [row] = await tx
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: args.input.orgId,
+        workflowId: args.workflowId,
+        ownerUserId: args.input.member.userId,
+        kind: "event",
+        eventType: args.input.eventType,
+        eventConfig:
+          args.input.eventConfig ?? defaultWebhookReceivedEventConfig(),
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: args.input.enabled,
+        chatThreadId: thread.id,
+        nextRunAt: null,
+        unattendedConnectorRefs: connectorRefs,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+    if (!row) {
+      throw new Error("Failed to create workflow trigger");
+    }
+
+    const token = mintWorkflowWebhookToken();
+    const secret = mintWorkflowWebhookSecret();
+    await tx.insert(zeroWorkflowWebhookTriggers).values({
+      triggerId: row.id,
+      tokenHash: hashWorkflowWebhookToken(token),
+      encryptedToken: await encryptWorkflowWebhookToken(token, {
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+      }),
+      encryptedSecret: await encryptWorkflowWebhookSecret(secret, {
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+      }),
+      secretLastFour: secret.slice(-4),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
+
+    return await rowToSummary(tx, row, { webhookSecret: secret });
   });
 }
 
@@ -620,7 +763,7 @@ async function insertScheduleTrigger(
     if (!row) {
       throw new Error("Failed to create workflow trigger");
     }
-    return rowToSummary(row);
+    return await rowToSummary(tx, row);
   });
 }
 
@@ -663,32 +806,54 @@ export const createWorkflowTrigger$ = command(
     }
 
     if (!triggerCreateInputIsSchedule(args)) {
+      if (args.eventType === "gmail-new-message") {
+        const featureEnabled = await get(
+          gmailWorkflowEventTriggersEnabledForOwner(
+            args.orgId,
+            args.member.userId,
+          ),
+        );
+        signal.throwIfAborted();
+        if (!featureEnabled) {
+          return {
+            kind: "bad-request",
+            message: "Gmail workflow event triggers are not enabled",
+          };
+        }
+
+        const watchResult = await ensureGmailWatchForUser({
+          db: writeDb,
+          orgId: args.orgId,
+          userId: args.member.userId,
+          signal,
+        });
+        signal.throwIfAborted();
+        if (watchResult.kind !== "ok") {
+          return { kind: "bad-request", message: watchResult.message };
+        }
+
+        const summary = await insertGmailEventTrigger(writeDb, {
+          input: args,
+          workflowId: workflow.id,
+          agentId: agent.id,
+          currentTime: nowDate(),
+        });
+        signal.throwIfAborted();
+        return { kind: "ok", summary };
+      }
+
       const featureEnabled = await get(
-        gmailWorkflowEventTriggersEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
+        workflowWebhookTriggersEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
         return {
           kind: "bad-request",
-          message: "Gmail workflow event triggers are not enabled",
+          message: "Workflow webhook triggers are not enabled",
         };
       }
 
-      const watchResult = await ensureGmailWatchForUser({
-        db: writeDb,
-        orgId: args.orgId,
-        userId: args.member.userId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-
-      const summary = await insertGmailEventTrigger(writeDb, {
+      const summary = await insertWebhookEventTrigger(writeDb, {
         input: args,
         workflowId: workflow.id,
         agentId: agent.id,
@@ -749,7 +914,11 @@ async function loadOwnedTrigger(
   if (!trigger) {
     return { kind: "not-found" };
   }
-  if (trigger.kind === "event" && trigger.eventType !== "gmail-new-message") {
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType !== "gmail-new-message" &&
+    trigger.eventType !== "webhook-received"
+  ) {
     return { kind: "not-found" };
   }
   const visible = await loadVisibleWorkflowById(db, {
@@ -796,6 +965,12 @@ export const updateWorkflowTrigger$ = command(
     const { trigger } = owned;
 
     if (trigger.kind === "event") {
+      if (trigger.eventType === "webhook-received") {
+        return {
+          kind: "bad-request",
+          message: "Webhook event triggers cannot be updated",
+        };
+      }
       if (args.eventConfig === undefined) {
         return {
           kind: "bad-request",
@@ -811,7 +986,7 @@ export const updateWorkflowTrigger$ = command(
       if (!row) {
         throw new Error("Failed to update workflow trigger");
       }
-      return { kind: "ok", summary: rowToSummary(row) };
+      return { kind: "ok", summary: await rowToSummary(writeDb, row) };
     }
 
     if (args.schedule === undefined) {
@@ -845,7 +1020,7 @@ export const updateWorkflowTrigger$ = command(
     if (!row) {
       throw new Error("Failed to update workflow trigger");
     }
-    return { kind: "ok", summary: rowToSummary(row) };
+    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },
 );
 
@@ -951,7 +1126,7 @@ export const setWorkflowTriggerPermissionPolicy$ = command(
     if (!row) {
       throw new Error("Failed to update workflow trigger permission policy");
     }
-    return { kind: "ok", summary: rowToSummary(row) };
+    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },
 );
 
@@ -1034,7 +1209,7 @@ export const enableWorkflowTrigger$ = command(
       trigger.kind === "schedule"
         ? resolveNextRunAt(rowToSchedule(trigger), true, now)
         : trigger.nextRunAt;
-    if (trigger.kind === "event") {
+    if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
       const featureEnabled = await get(
         gmailWorkflowEventTriggersEnabledForOwner(
           args.orgId,
@@ -1074,6 +1249,18 @@ export const enableWorkflowTrigger$ = command(
       });
       signal.throwIfAborted();
     }
+    if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
+      const featureEnabled = await get(
+        workflowWebhookTriggersEnabledForOwner(args.orgId, args.member.userId),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Workflow webhook triggers are not enabled",
+        };
+      }
+    }
     const [row] = await writeDb
       .update(zeroWorkflowTriggers)
       .set({ enabled: true, nextRunAt, consecutiveFailures: 0, updatedAt: now })
@@ -1088,7 +1275,7 @@ export const enableWorkflowTrigger$ = command(
       row.chatThreadId,
     );
     signal.throwIfAborted();
-    return { kind: "ok", summary: rowToSummary(row) };
+    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },
 );
 
@@ -1121,6 +1308,6 @@ export const disableWorkflowTrigger$ = command(
       row.chatThreadId,
     );
     signal.throwIfAborted();
-    return { kind: "ok", summary: rowToSummary(row) };
+    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },
 );

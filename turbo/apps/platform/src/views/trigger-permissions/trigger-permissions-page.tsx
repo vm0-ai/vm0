@@ -121,6 +121,9 @@ function triggerContextText(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "gmail-new-message") {
     return "Gmail new message";
   }
+  if (trigger.eventType === "webhook-received") {
+    return "Webhook";
+  }
   return "Event trigger";
 }
 

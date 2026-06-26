@@ -9,6 +9,7 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
   type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
@@ -56,10 +57,17 @@ const internalEditingGmailTriggerId$ = state<string | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
-const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
-  null,
-);
+type WorkflowTriggerCreateDialog = "schedule" | "gmail" | "webhook" | null;
+type WorkflowWebhookTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "webhook-received" }
+>;
+
+const internalWorkflowTriggerCreateDialog$ =
+  state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
+const internalCreatedWorkflowWebhookTrigger$ =
+  state<WorkflowWebhookTriggerSummary | null>(null);
 
 export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
   return (
@@ -83,10 +91,15 @@ export const setWorkflowDetailTriggerSidebarOpen$ = command(
       return;
     }
 
+    const createdWebhookTrigger = get(internalCreatedWorkflowWebhookTrigger$);
+    if (createdWebhookTrigger) {
+      set(reloadWorkflows$);
+    }
     params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
     set(internalEditingGmailTriggerId$, null);
     set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
     set(internalWorkflowTriggerCreateDialog$, null);
+    set(internalCreatedWorkflowWebhookTrigger$, null);
     set(replaceSearchParams$, params);
   },
 );
@@ -118,6 +131,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalEditingGmailTriggerId$, null);
   set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
+  set(internalCreatedWorkflowWebhookTrigger$, null);
   set(internalScheduleTriggerType$, "cron");
 });
 
@@ -145,9 +159,22 @@ export const workflowTriggerCreateDialog$ = computed((get) => {
   return get(internalWorkflowTriggerCreateDialog$);
 });
 
+export const createdWorkflowWebhookTrigger$ = computed((get) => {
+  return get(internalCreatedWorkflowWebhookTrigger$);
+});
+
+export const setCreatedWorkflowWebhookTrigger$ = command(
+  ({ set }, trigger: WorkflowWebhookTriggerSummary | null) => {
+    set(internalCreatedWorkflowWebhookTrigger$, trigger);
+  },
+);
+
 export const setWorkflowTriggerCreateDialog$ = command(
-  ({ set }, dialog: "schedule" | "gmail" | null) => {
+  ({ set }, dialog: WorkflowTriggerCreateDialog) => {
     set(internalWorkflowTriggerCreateDialog$, dialog);
+    if (dialog !== "webhook") {
+      set(internalCreatedWorkflowWebhookTrigger$, null);
+    }
     if (dialog === "schedule") {
       set(internalScheduleTriggerType$, "cron");
     }
@@ -176,7 +203,7 @@ export const setSelectedWorkflowFilePath$ = command(
 );
 
 /** Bump to refetch every workflow list and detail. */
-const reloadWorkflows$ = command(({ set }) => {
+export const reloadWorkflows$ = command(({ set }) => {
   set(internalWorkflowReload$, (prev) => {
     return prev + 1;
   });
@@ -414,6 +441,34 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowWebhookTrigger$ = command(
+  async (
+    { get },
+    input: { readonly workflowId: string },
+    signal: AbortSignal,
+  ): Promise<ZeroWorkflowTriggerSummary> => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+          eventConfig: {
+            provider: "webhook",
+            event: "received",
+            auth: { mode: "hmac-sha256" },
+          },
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    return result.body;
   },
 );
 

@@ -39,7 +39,11 @@ type WorkflowScheduleTriggerSummary = Extract<
 >;
 type WorkflowGmailNewMessageTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
-  { kind: "event" }
+  { kind: "event"; eventType: "gmail-new-message" }
+>;
+type WorkflowWebhookTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "webhook-received" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -87,6 +91,31 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
     nextRunAt: null,
     lastRunAt: null,
     unattendedConnectorRefs: ["gmail"],
+    unattendedPermissionPolicy: null,
+  };
+}
+
+function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
+  return {
+    id: "workflow-trigger-webhook",
+    kind: "event",
+    eventType: "webhook-received",
+    eventConfig: {
+      provider: "webhook",
+      event: "received",
+      auth: { mode: "hmac-sha256" },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_webhook",
+    nextRunAt: null,
+    lastRunAt: null,
+    webhookUrl: "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
+    secretLastFour: "abcd",
+    lastReceivedAt: null,
+    unattendedConnectorRefs: [],
     unattendedPermissionPolicy: null,
   };
 }
@@ -296,6 +325,13 @@ function mockCreateWorkflowTrigger(
       onCreate(body);
       if (body.kind !== "event") {
         return respond(201, weekdayWorkflowTrigger());
+      }
+      if (body.eventType === "webhook-received") {
+        return respond(201, {
+          ...webhookWorkflowTrigger(),
+          eventConfig: body.eventConfig ?? webhookWorkflowTrigger().eventConfig,
+          webhookSecret: "webhook-secret",
+        });
       }
       return respond(201, {
         ...gmailWorkflowTrigger(),
@@ -585,6 +621,61 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("creates a webhook trigger and shows one-time signing details", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowsViewer]: true,
+        [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText(/trigger/i));
+    click(buttonByText("Add trigger"));
+
+    await waitFor(() => {
+      expect(menuItemByText(/^Webhook/)).toBeInTheDocument();
+    });
+    click(menuItemByText(/^Webhook/));
+    click(await screen.findByRole("button", { name: "Create webhook" }));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: {
+          provider: "webhook",
+          event: "received",
+          auth: { mode: "hmac-sha256" },
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
+    ).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
+      "webhook-secret",
+    );
+    expect(screen.getByText(/X-VM0-Signature/)).toBeInTheDocument();
   });
 
   it("updates a Gmail new message trigger with text match rules", async () => {

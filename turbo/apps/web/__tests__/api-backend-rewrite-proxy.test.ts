@@ -1642,6 +1642,20 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
   });
 
+  it("matches the workflow trigger webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/workflow-triggers/whk_test"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/workflow-triggers/whk_test/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/workflow-triggers"),
+    ).toBe(false);
+  });
+
   it("matches the agent checkpoint prepare-history webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
