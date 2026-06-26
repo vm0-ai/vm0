@@ -39,7 +39,14 @@ async fn setup_dispatch(
     tokio::task::JoinHandle<crate::error::Result<()>>,
     CancellationToken,
 ) {
-    setup_dispatch_with_observer(cow, DispatchReadObserver::none()).await
+    let shutdown = CancellationToken::new();
+    let (reader, writer, server_fd) = setup_dispatch_socket();
+
+    let cow_clone = cow.clone();
+    let shutdown_clone = shutdown.clone();
+    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
+
+    (reader, writer, task, shutdown)
 }
 
 async fn setup_observed_dispatch(
@@ -51,22 +58,30 @@ async fn setup_observed_dispatch(
     CancellationToken,
     tokio::sync::mpsc::UnboundedReceiver<DispatchReadEvent>,
 ) {
+    let shutdown = CancellationToken::new();
+    let (reader, writer, server_fd) = setup_dispatch_socket();
     let (event_sender, read_events) = tokio::sync::mpsc::unbounded_channel();
-    let (reader, writer, task, shutdown) =
-        setup_dispatch_with_observer(cow, DispatchReadObserver::new(event_sender)).await;
+
+    let cow_clone = cow.clone();
+    let shutdown_clone = shutdown.clone();
+    let task = tokio::spawn(async move {
+        dispatch_with_read_observer(
+            server_fd,
+            cow_clone,
+            shutdown_clone,
+            DispatchReadObserver::new(event_sender),
+        )
+        .await
+    });
+
     (reader, writer, task, shutdown, read_events)
 }
 
-async fn setup_dispatch_with_observer(
-    cow: Arc<RwLock<CowLayer>>,
-    read_observer: DispatchReadObserver,
-) -> (
+fn setup_dispatch_socket() -> (
     tokio::net::unix::OwnedReadHalf,
     tokio::net::unix::OwnedWriteHalf,
-    tokio::task::JoinHandle<crate::error::Result<()>>,
-    CancellationToken,
+    OwnedFd,
 ) {
-    let shutdown = CancellationToken::new();
     let (client_fd, server_fd) = {
         let mut fds = [0i32; 2];
         let ret =
@@ -74,12 +89,6 @@ async fn setup_dispatch_with_observer(
         assert_eq!(ret, 0);
         unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
     };
-
-    let cow_clone = cow.clone();
-    let shutdown_clone = shutdown.clone();
-    let task = tokio::spawn(async move {
-        dispatch_with_read_observer(server_fd, cow_clone, shutdown_clone, read_observer).await
-    });
 
     let client_std =
         unsafe { std::os::unix::net::UnixStream::from_raw_fd(client_fd.into_raw_fd()) };
@@ -93,7 +102,7 @@ async fn setup_dispatch_with_observer(
     );
 
     let (reader, writer) = client_stream.into_split();
-    (reader, writer, task, shutdown)
+    (reader, writer, server_fd)
 }
 
 async fn send_and_recv_reply(
