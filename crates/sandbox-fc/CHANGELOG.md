@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.68](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.67...sandbox-fc-v0.37.68) (2026-06-26)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** bound host command output capture ([#19097](https://github.com/vm0-ai/vm0/issues/19097)) ([3fbd964](https://github.com/vm0-ai/vm0/commit/3fbd964950ce06bb9b880e7915b6f117b8210457))
+
 ## [0.37.67](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.66...sandbox-fc-v0.37.67) (2026-06-26)
 
 ## [0.37.66](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.65...sandbox-fc-v0.37.66) (2026-06-26)

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.498.0](https://github.com/vm0-ai/vm0/compare/app-v0.497.0...app-v0.498.0) (2026-06-26)
+
+
+### Features
+
+* improve connector access management ([#19081](https://github.com/vm0-ai/vm0/issues/19081)) ([a82dd27](https://github.com/vm0-ai/vm0/commit/a82dd27967519c1c191af3233c4d7261c4a13efb))
+* prefill workflow slash command from detail ([#19089](https://github.com/vm0-ai/vm0/issues/19089)) ([24c9213](https://github.com/vm0-ai/vm0/commit/24c92132baf1b50be7a44e7554edebb1d520cb48))
+
+
+### Bug Fixes
+
+* prevent org switcher horizontal scroll ([#19082](https://github.com/vm0-ai/vm0/issues/19082)) ([f42aa9a](https://github.com/vm0-ai/vm0/commit/f42aa9a37b0e3481ee4178fc3ac794375972124d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.372.0
+
 ## [0.497.0](https://github.com/vm0-ai/vm0/compare/app-v0.496.0...app-v0.497.0) (2026-06-26)
 
 

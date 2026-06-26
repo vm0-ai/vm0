@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.129.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.31...runner-rs-v0.129.32) (2026-06-26)
+
+
+### Documentation
+
+* add axiom firewall permission descriptions ([#19074](https://github.com/vm0-ai/vm0/issues/19074)) ([31667a3](https://github.com/vm0-ai/vm0/commit/31667a3496c6e703b2ff1ed920f449cf7c642cbb))
+* document proxy log sanitization contract ([#19093](https://github.com/vm0-ai/vm0/issues/19093)) ([e17446b](https://github.com/vm0-ai/vm0/commit/e17446b04a024ca9a599505427351a37da5a22bc))
+* explain workspace mount lifecycle ([#19094](https://github.com/vm0-ai/vm0/issues/19094)) ([e77e898](https://github.com/vm0-ai/vm0/commit/e77e8987611c9268346be56ad777a560ffb92497))
+
 ## [0.129.31](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.30...runner-rs-v0.129.31) (2026-06-26)
 
 ## [0.129.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.29...runner-rs-v0.129.30) (2026-06-26)
