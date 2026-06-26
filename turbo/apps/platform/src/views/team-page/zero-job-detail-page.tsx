@@ -122,6 +122,12 @@ import {
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -147,10 +153,7 @@ function Breadcrumb({
   className?: string;
 }) {
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className={`hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
-    >
+    <DetailPageBreadcrumbBar className={className}>
       <Link
         pathname="/agents"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
@@ -162,24 +165,22 @@ function Breadcrumb({
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {currentName ?? "Agent"}
       </span>
-    </nav>
+    </DetailPageBreadcrumbBar>
   );
 }
 
 function DetailSkeleton() {
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <DetailPageShell scroll={false}>
       <Breadcrumb />
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
-        <div className="mx-auto max-w-[900px]">
-          <div className="animate-pulse space-y-3">
-            <div className="h-5 w-48 rounded bg-muted" />
-            <div className="h-4 w-72 rounded bg-muted" />
-            <div className="h-9 w-80 rounded bg-muted mt-4" />
-          </div>
+      <DetailPageHeader className="pb-3">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-4 w-72 rounded bg-muted" />
+          <div className="h-9 w-80 rounded bg-muted mt-4" />
         </div>
-      </header>
-    </div>
+      </DetailPageHeader>
+    </DetailPageShell>
   );
 }
 
@@ -190,7 +191,7 @@ function isNotFoundError(error: string): boolean {
 function DetailError({ error, agentId }: { error: string; agentId: string }) {
   if (isNotFoundError(error)) {
     return (
-      <div className="flex flex-1 flex-col min-h-0">
+      <DetailPageShell scroll={false}>
         <Breadcrumb />
         <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
           <div className="flex flex-col items-center text-center gap-4 max-w-sm">
@@ -212,12 +213,12 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </Link>
           </div>
         </main>
-      </div>
+      </DetailPageShell>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <DetailPageShell scroll={false}>
       <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
@@ -235,7 +236,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
           </Card>
         </div>
       </main>
-    </div>
+    </DetailPageShell>
   );
 }
 
@@ -927,72 +928,70 @@ function AgentHeader({
   const openMaker = useSet(openAvatarMaker$);
 
   return (
-    <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
-      <div className="mx-auto max-w-[900px]">
-        <div className="flex items-center gap-4">
-          <div className="group relative shrink-0">
-            <AgentAvatarImg
-              name={agentId}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
-            {showProfileAndInstructions && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onTabChange("profile");
-                        openMaker();
-                      }}
-                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
-                      aria-label="Customize avatar"
-                    >
-                      <IconWand size={12} stroke={1.5} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">Customize avatar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
-              {displayName}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
-              {description || "Your AI teammate, tuned to you"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 sm:mt-6 flex items-center gap-2">
-          <AgentTabNav
-            activeTab={activeTab}
-            onTabChange={onTabChange}
-            showProfileAndInstructions={showProfileAndInstructions}
-            showWorkflows={showWorkflows}
+    <DetailPageHeader>
+      <div className="flex items-center gap-4">
+        <div className="group relative shrink-0">
+          <AgentAvatarImg
+            name={agentId}
+            alt={displayName}
+            className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
           />
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 zero-btn-morandi gap-1.5"
-            onClick={() => {
-              nav("/agents/:agentId/chat", {
-                pathParams: { agentId: agentId },
-              });
-            }}
-            aria-label={`Chat with ${displayName}`}
-          >
-            <IconMessageCircle size={14} stroke={2} />
-            Chat with {displayName}
-          </Button>
+          {showProfileAndInstructions && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTabChange("profile");
+                      openMaker();
+                    }}
+                    className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                    aria-label="Customize avatar"
+                  >
+                    <IconWand size={12} stroke={1.5} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Customize avatar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+            {displayName}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+            {description || "Your AI teammate, tuned to you"}
+          </p>
         </div>
       </div>
-    </header>
+
+      <div className="mt-4 sm:mt-6 flex items-center gap-2">
+        <AgentTabNav
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          showProfileAndInstructions={showProfileAndInstructions}
+          showWorkflows={showWorkflows}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 zero-btn-morandi gap-1.5"
+          onClick={() => {
+            nav("/agents/:agentId/chat", {
+              pathParams: { agentId: agentId },
+            });
+          }}
+          aria-label={`Chat with ${displayName}`}
+        >
+          <IconMessageCircle size={14} stroke={2} />
+          Chat with {displayName}
+        </Button>
+      </div>
+    </DetailPageHeader>
   );
 }
 
@@ -1150,7 +1149,7 @@ export function ZeroJobDetailPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+    <DetailPageShell>
       <Breadcrumb currentName={fields.displayName} />
       <AgentHeader
         displayName={fields.displayName}
@@ -1161,7 +1160,7 @@ export function ZeroJobDetailPage() {
         showProfileAndInstructions={!hideProfileAndInstructions}
         showWorkflows={showWorkflows}
       />
-      <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
+      <DetailPageMain>
         <AgentTabContent
           activeTab={activeTab}
           agentId={fields.agentId}
@@ -1173,7 +1172,7 @@ export function ZeroJobDetailPage() {
           visibility={fields.visibility}
           canEditVisibility={isOwner}
         />
-      </main>
-    </div>
+      </DetailPageMain>
+    </DetailPageShell>
   );
 }
