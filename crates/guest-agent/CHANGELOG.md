@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.41.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.7...guest-agent-v0.41.8) (2026-06-26)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve non-UTF-8 success checkpoints ([#19009](https://github.com/vm0-ai/vm0/issues/19009)) ([46271a7](https://github.com/vm0-ai/vm0/commit/46271a7264be80e4d277e0687063787951a5f518))
+
+
+### Refactoring
+
+* centralize codex session history traversal ([#19022](https://github.com/vm0-ai/vm0/issues/19022)) ([02c3a2b](https://github.com/vm0-ai/vm0/commit/02c3a2bb16a233a4f6b4af9804ba368bb46464f3))
+
 ## [0.41.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.6...guest-agent-v0.41.7) (2026-06-25)
 
 

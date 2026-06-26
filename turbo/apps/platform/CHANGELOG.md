@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.493.3](https://github.com/vm0-ai/vm0/compare/app-v0.493.2...app-v0.493.3) (2026-06-26)
+
+
+### Bug Fixes
+
+* preserve mobile chat safe area ([#19017](https://github.com/vm0-ai/vm0/issues/19017)) ([169a5db](https://github.com/vm0-ai/vm0/commit/169a5db2d0c20ffffebc609c110106a6e0262a16))
+* render activity thinking blocks ([#19018](https://github.com/vm0-ai/vm0/issues/19018)) ([edd6970](https://github.com/vm0-ai/vm0/commit/edd6970463c295307aaca893973579aca87744b5))
+
+
+### Refactoring
+
+* remove MobileSingleLineComposer/CustomConnectorProposals switches and enable ChatRunGroupFolding ([#18995](https://github.com/vm0-ai/vm0/issues/18995)) ([1f74dc2](https://github.com/vm0-ai/vm0/commit/1f74dc21392f011239b88b3472092df4909762b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.3
+    * @vm0/connectors bumped to 1.108.5
+    * @vm0/core bumped to 8.370.8
+
 ## [0.493.2](https://github.com/vm0-ai/vm0/compare/app-v0.493.1...app-v0.493.2) (2026-06-26)
 
 

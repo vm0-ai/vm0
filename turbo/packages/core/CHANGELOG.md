@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.370.8](https://github.com/vm0-ai/vm0/compare/core-v8.370.7...core-v8.370.8) (2026-06-26)
+
+
+### Refactoring
+
+* remove MobileSingleLineComposer/CustomConnectorProposals switches and enable ChatRunGroupFolding ([#18995](https://github.com/vm0-ai/vm0/issues/18995)) ([1f74dc2](https://github.com/vm0-ai/vm0/commit/1f74dc21392f011239b88b3472092df4909762b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.115.3
+    * @vm0/connectors bumped to 1.108.5
+
 ## [8.370.7](https://github.com/vm0-ai/vm0/compare/core-v8.370.6...core-v8.370.7) (2026-06-26)
 
 
