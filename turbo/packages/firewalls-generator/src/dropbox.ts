@@ -257,5 +257,5 @@ export async function generate(): Promise<void> {
   const notifyPerms = hostGroups.get("notify")?.permissions ?? [];
   const allPerms = [...apiPerms, ...contentPerms, ...notifyPerms];
   logStats(allPerms);
-  writeOutput("dropbox", ts, import.meta.dirname);
+  writeOutput("dropbox", ts);
 }

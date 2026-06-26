@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Close CRM firewall config...");
   const ts = generateTypeScript();
-  writeOutput("close", ts, import.meta.dirname);
+  writeOutput("close", ts);
 }

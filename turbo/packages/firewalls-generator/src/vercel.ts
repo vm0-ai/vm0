@@ -369,5 +369,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("vercel", ts, import.meta.dirname);
+  writeOutput("vercel", ts);
 }

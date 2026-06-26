@@ -456,5 +456,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("clerk", ts, import.meta.dirname);
+  writeOutput("clerk", ts);
 }

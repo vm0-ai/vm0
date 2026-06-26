@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Canva firewall config...");
   const ts = generateTypeScript();
-  writeOutput("canva", ts, import.meta.dirname);
+  writeOutput("canva", ts);
 }

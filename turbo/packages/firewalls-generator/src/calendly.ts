@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Calendly firewall config...");
   const ts = generateTypeScript();
-  writeOutput("calendly", ts, import.meta.dirname);
+  writeOutput("calendly", ts);
 }

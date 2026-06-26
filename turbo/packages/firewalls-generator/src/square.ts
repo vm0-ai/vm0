@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Square firewall config...");
   const ts = generateTypeScript();
-  writeOutput("square", ts, import.meta.dirname);
+  writeOutput("square", ts);
 }

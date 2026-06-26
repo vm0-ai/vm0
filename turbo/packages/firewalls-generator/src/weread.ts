@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating WeRead firewall config...");
   const ts = generateTypeScript();
-  writeOutput("weread", ts, import.meta.dirname);
+  writeOutput("weread", ts);
 }

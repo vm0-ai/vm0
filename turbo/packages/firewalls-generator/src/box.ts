@@ -126,5 +126,5 @@ function generateTypeScript(): string {
 
 export async function generate(): Promise<void> {
   console.error("Generating Box firewall config...");
-  writeOutput("box", generateTypeScript(), import.meta.dirname);
+  writeOutput("box", generateTypeScript());
 }

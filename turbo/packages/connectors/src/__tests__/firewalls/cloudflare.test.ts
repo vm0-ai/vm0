@@ -6,17 +6,19 @@ import {
   type FirewallConfig,
 } from "../../firewall-types";
 import {
+  isNumberRecord,
+  isStringArray,
+  isStringRecord,
   loadDefaultFirewallPolicies,
+  loadRequiredGeneratedConnectorFirewallExport,
   loadRequiredConnectorFirewall,
 } from "../firewall-test-helpers";
-import {
-  cloudflareCategories,
-  cloudflareCategoryOrder,
-  cloudflareDefaultAllowed,
-  cloudflareGenerationStats,
-} from "../../firewalls/cloudflare.generated";
 
 let firewall: FirewallConfig;
+let cloudflareCategories: Record<string, string>;
+let cloudflareCategoryOrder: readonly string[];
+let cloudflareDefaultAllowed: readonly string[];
+let cloudflareGenerationStats: Record<string, number>;
 
 function getCloudflarePermission(name: string) {
   const permission = firewall.apis
@@ -50,6 +52,29 @@ function expectCloudflareMatches(
 describe("cloudflare firewall", () => {
   beforeAll(async () => {
     firewall = await loadRequiredConnectorFirewall("cloudflare");
+    cloudflareCategories = await loadRequiredGeneratedConnectorFirewallExport(
+      "cloudflare",
+      "cloudflareCategories",
+      isStringRecord,
+    );
+    cloudflareCategoryOrder =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "cloudflare",
+        "cloudflareCategoryOrder",
+        isStringArray,
+      );
+    cloudflareDefaultAllowed =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "cloudflare",
+        "cloudflareDefaultAllowed",
+        isStringArray,
+      );
+    cloudflareGenerationStats =
+      await loadRequiredGeneratedConnectorFirewallExport(
+        "cloudflare",
+        "cloudflareGenerationStats",
+        isNumberRecord,
+      );
   });
 
   it("registers the Cloudflare firewall with API token auth", () => {

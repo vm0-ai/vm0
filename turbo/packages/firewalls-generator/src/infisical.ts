@@ -57,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Infisical firewall config...");
   const ts = generateTypeScript();
-  writeOutput("infisical", ts, import.meta.dirname);
+  writeOutput("infisical", ts);
 }

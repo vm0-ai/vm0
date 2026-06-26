@@ -55,5 +55,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Checkr firewall config...");
   const ts = generateTypeScript();
-  writeOutput("checkr", ts, import.meta.dirname);
+  writeOutput("checkr", ts);
 }

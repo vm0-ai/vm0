@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Together AI firewall config...");
   const ts = generateTypeScript();
-  writeOutput("together", ts, import.meta.dirname);
+  writeOutput("together", ts);
 }

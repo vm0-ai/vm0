@@ -68,5 +68,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating fal.ai firewall config...");
   const ts = generateTypeScript();
-  writeOutput("fal", ts, import.meta.dirname);
+  writeOutput("fal", ts);
 }

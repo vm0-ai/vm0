@@ -469,5 +469,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-analytics", ts, import.meta.dirname);
+  writeOutput("google-analytics", ts);
 }

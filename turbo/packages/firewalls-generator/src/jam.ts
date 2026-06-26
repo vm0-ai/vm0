@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Jam firewall config...");
   const ts = generateTypeScript();
-  writeOutput("jam", ts, import.meta.dirname);
+  writeOutput("jam", ts);
 }

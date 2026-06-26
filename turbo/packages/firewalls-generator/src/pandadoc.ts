@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating PandaDoc firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pandadoc", ts, import.meta.dirname);
+  writeOutput("pandadoc", ts);
 }

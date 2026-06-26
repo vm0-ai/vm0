@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating InsForge firewall config...");
   const ts = generateTypeScript();
-  writeOutput("insforge", ts, import.meta.dirname);
+  writeOutput("insforge", ts);
 }

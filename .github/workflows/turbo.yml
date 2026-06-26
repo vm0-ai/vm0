@@ -1588,7 +1588,7 @@ jobs:
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install CLI dependencies
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli --filter @vm0/firewalls-generator...
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Verify CLI package contents

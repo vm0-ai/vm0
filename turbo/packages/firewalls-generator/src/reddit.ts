@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Reddit firewall config...");
   const ts = generateTypeScript();
-  writeOutput("reddit", ts, import.meta.dirname);
+  writeOutput("reddit", ts);
 }

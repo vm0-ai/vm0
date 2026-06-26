@@ -1,4 +1,4 @@
-import type { ConnectorType } from "../../connectors/src/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 
 export const FIREWALL_CONNECTOR_TYPES = [
   "agentmail",
@@ -53,6 +53,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "crustdata",
   "cursor",
   "customer-io",
+  "daytona",
   "deel",
   "defillama",
   "deepseek",
@@ -143,6 +144,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "minimax",
   "miro",
   "mixpanel",
+  "modal",
   "monday",
   "msg9",
   "n8n",
@@ -282,14 +284,12 @@ const NON_FIREWALL_CONNECTOR_TYPES = [
   "bentolabs-ai",
   "bloom",
   "chert",
-  "daytona",
   "interfaze",
   "inth",
   "keyframe-labs",
   "kugelaudio",
   "limrun",
   "minicor",
-  "modal",
   "netter",
   "oddpool",
   "primitive",

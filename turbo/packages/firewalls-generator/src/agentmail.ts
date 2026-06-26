@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating AgentMail firewall config...");
   const ts = generateTypeScript();
-  writeOutput("agentmail", ts, import.meta.dirname);
+  writeOutput("agentmail", ts);
 }

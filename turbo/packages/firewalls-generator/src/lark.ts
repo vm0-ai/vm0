@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Lark firewall config...");
   const ts = generateTypeScript();
-  writeOutput("lark", ts, import.meta.dirname);
+  writeOutput("lark", ts);
 }

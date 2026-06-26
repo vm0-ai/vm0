@@ -75,5 +75,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating AWS firewall config...");
   const ts = generateTypeScript();
-  writeOutput("aws", ts, import.meta.dirname);
+  writeOutput("aws", ts);
 }

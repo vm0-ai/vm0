@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Slack Webhook firewall config...");
   const ts = generateTypeScript();
-  writeOutput("slack-webhook", ts, import.meta.dirname);
+  writeOutput("slack-webhook", ts);
 }

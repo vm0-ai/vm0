@@ -51,6 +51,7 @@ const FORBIDDEN_EXECUTION_METADATA_KEYS = new Set([
 ]);
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 type FirewallConnectorType =
   keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
 let runtimeEntriesPromise: Promise<
@@ -514,54 +515,58 @@ describe("firewall metadata", () => {
     }
   });
 
-  it("keeps fixed builtin host owners synchronized with runtime hosts", async () => {
-    for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
-      expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
-        type,
-        label: connectorLabel(type),
-      });
-    }
+  it(
+    "keeps fixed builtin host owners synchronized with runtime hosts",
+    async () => {
+      for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
+        expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
+          type,
+          label: connectorLabel(type),
+        });
+      }
 
-    expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(
-      getBuiltinConnectorHostOwner("https://api.github.com/repos"),
-    ).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
-      type: "slack",
-      label: "Slack",
-    });
-    expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
-  });
+      expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(
+        getBuiltinConnectorHostOwner("https://api.github.com/repos"),
+      ).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
+        type: "slack",
+        label: "Slack",
+      });
+      expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("loads memoized server permission indexes from lazy detail metadata", async () => {
     expect(isFirewallServerMetadataConnectorType("slack")).toBe(true);

@@ -274,5 +274,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-meet", ts, import.meta.dirname);
+  writeOutput("google-meet", ts);
 }
