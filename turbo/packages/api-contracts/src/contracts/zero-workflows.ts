@@ -102,6 +102,7 @@ export type ZeroWorkflowTriggerKind = z.infer<
 export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
   "gmail-label-applied",
+  "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
 
@@ -163,6 +164,21 @@ export const gmailWorkflowEventConfigSchema = z.discriminatedUnion("event", [
 ]);
 export type GmailWorkflowEventConfig = z.infer<
   typeof gmailWorkflowEventConfigSchema
+>;
+
+export const webhookReceivedEventConfigSchema = z
+  .object({
+    provider: z.literal("webhook"),
+    event: z.literal("received"),
+    auth: z
+      .object({
+        mode: z.literal("hmac-sha256"),
+      })
+      .strict(),
+  })
+  .strict();
+export type WebhookReceivedEventConfig = z.infer<
+  typeof webhookReceivedEventConfigSchema
 >;
 
 /**
@@ -292,11 +308,25 @@ export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("webhook-received"),
+    eventConfig: webhookReceivedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    webhookUrl: z.url(),
+    secretLastFour: z.string().length(4),
+    lastReceivedAt: z.string().datetime().nullable(),
+    webhookSecret: z.string().min(1).optional(),
+  });
+
 export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
   "eventType",
   [
     zeroWorkflowGmailNewMessageTriggerSummarySchema,
     zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
+    zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
 
@@ -350,10 +380,18 @@ export const zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema = z.object(
   },
 );
 
+export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
+  kind: z.literal("event"),
+  eventType: z.literal("webhook-received"),
+  eventConfig: webhookReceivedEventConfigSchema.optional(),
+  enabled: z.boolean().optional(),
+});
+
 export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerCreateRequestSchema,
   zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
+  zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<
   typeof zeroWorkflowTriggerCreateRequestSchema

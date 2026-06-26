@@ -124,6 +124,9 @@ function triggerContextText(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "gmail-label-applied") {
     return `Gmail label applied: ${trigger.eventConfig.labelName}`;
   }
+  if (trigger.eventType === "webhook-received") {
+    return "Webhook";
+  }
   return "Event trigger";
 }
 
