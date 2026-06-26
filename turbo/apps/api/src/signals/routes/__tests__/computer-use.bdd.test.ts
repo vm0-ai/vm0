@@ -255,6 +255,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(readable).toMatchObject({
       source: "chat",
       completedAt: null,
+      computerUseHostId: null,
       hosts: [expect.objectContaining({ id: host.hostId })],
     });
 
@@ -281,6 +282,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       requestToken,
     );
     expect(completed.completedAt).not.toBeNull();
+    expect(completed.computerUseHostId).toBe(host.hostId);
   });
 
   it("only exposes online hosts for delegated authorization requests", async () => {
