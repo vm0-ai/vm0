@@ -1043,7 +1043,12 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         item: {
           id: "files-malformed",
           type: "file_change",
-          changes: [{}],
+          changes: [
+            ...Array.from({ length: 20 }, () => {
+              return {};
+            }),
+            { kind: "modify", path: "src/late-valid.ts" },
+          ],
         },
       },
       createdAt: "2026-03-10T15:30:10Z",
@@ -2485,8 +2490,10 @@ describe("activity detail polling", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("Codex item.completed")).toBeInTheDocument();
     expect(screen.queryByText(/Codex agent_message/u)).not.toBeInTheDocument();
-    expect(screen.queryByText("[files] Files changed")).not.toBeInTheDocument();
+    expect(screen.getByText(/\[files\] Files changed/u)).toBeInTheDocument();
     expect(screen.queryByText(/unknown path/u)).not.toBeInTheDocument();
+    expect(screen.getByText(/src\/late-valid\.ts/u)).toBeInTheDocument();
+    expect(screen.queryByText(/\+1 more changes/u)).not.toBeInTheDocument();
     expect(screen.getAllByText("Write")).not.toHaveLength(0);
     expect(screen.getByText("src/generated.ts")).toBeInTheDocument();
     expect(screen.getByText("File operation completed")).toBeInTheDocument();

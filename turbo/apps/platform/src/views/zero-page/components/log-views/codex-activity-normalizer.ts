@@ -17,6 +17,11 @@ interface CodexFileChange {
   diff?: string;
 }
 
+interface ParsedCodexFileChanges {
+  changes: CodexFileChange[];
+  totalChangeCount: number;
+}
+
 interface CodexNormalizedEvent {
   event: AgentEvent | null;
   codexType?: string;
@@ -510,26 +515,25 @@ function shouldRenderGenericItemFailure(
   );
 }
 
-function parseCodexChanges(value: unknown): CodexFileChange[] {
+function parseCodexChanges(value: unknown): ParsedCodexFileChanges {
   if (!Array.isArray(value)) {
-    return [];
+    return { changes: [], totalChangeCount: 0 };
   }
-  return value
-    .slice(0, MAX_FORMATTED_FILE_CHANGES)
-    .filter(isRecord)
-    .flatMap((change) => {
-      const parsed = {
-        kind: getFirstString(change, ["kind"]),
-        path: getFirstString(change, ["path"]),
-        diff: getFirstNonBlankString(change, ["diff"]),
-      };
-      if (!parsed.path && !parsed.diff) {
-        return [];
-      }
-      return {
-        ...parsed,
-      };
-    });
+  const parsedChanges = value.filter(isRecord).flatMap((change) => {
+    const parsed = {
+      kind: getFirstString(change, ["kind"]),
+      path: getFirstString(change, ["path"]),
+      diff: getFirstNonBlankString(change, ["diff"]),
+    };
+    if (!parsed.path && !parsed.diff) {
+      return [];
+    }
+    return [parsed];
+  });
+  return {
+    changes: parsedChanges.slice(0, MAX_FORMATTED_FILE_CHANGES),
+    totalChangeCount: parsedChanges.length,
+  };
 }
 
 function isUnambiguousCodexType(eventType: string): boolean {
@@ -1140,17 +1144,14 @@ function normalizeCodexFileChangeEvent(
     );
   }
 
-  const changes = parseCodexChanges(item.changes);
+  const { changes, totalChangeCount } = parseCodexChanges(item.changes);
   const status = getItemStatus(item);
   const errorMessage = getItemErrorMessage(item);
-  const originalChangeCount = Array.isArray(item.changes)
-    ? item.changes.length
-    : changes.length;
   const text = formatCodexFileChanges(
     changes,
     status,
     errorMessage,
-    originalChangeCount,
+    totalChangeCount,
   );
   return text ? makeCodexAssistantTextEvent(event, text) : null;
 }
