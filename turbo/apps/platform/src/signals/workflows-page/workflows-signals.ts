@@ -75,6 +75,13 @@ interface WorkflowDetailFileDraft {
   readonly content: string;
 }
 
+interface WorkflowEditDraft {
+  readonly workflowId: string;
+  readonly displayName: string;
+  readonly name: string;
+  readonly description: string;
+}
+
 /**
  * The workflow uuid for the active detail route, or null elsewhere.
  */
@@ -92,6 +99,7 @@ const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
+const internalWorkflowEditDraft$ = state<WorkflowEditDraft | null>(null);
 const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
   null,
 );
@@ -149,6 +157,9 @@ export const workflowActionDialog$ = computed((get) => {
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
+    if (dialog !== "edit") {
+      set(internalWorkflowEditDraft$, null);
+    }
   },
 );
 
@@ -162,11 +173,45 @@ export const setWorkflowFileDraft$ = command(
   },
 );
 
+export const workflowEditDraft$ = computed((get) => {
+  return get(internalWorkflowEditDraft$);
+});
+
+export const openWorkflowEditDialog$ = command(
+  ({ set }, detail: ZeroWorkflowDetailResponse) => {
+    set(internalWorkflowEditDraft$, {
+      workflowId: detail.id,
+      displayName: detail.displayName ?? "",
+      name: detail.name,
+      description: detail.description ?? "",
+    });
+    set(internalWorkflowActionDialog$, "edit");
+  },
+);
+
+export const patchWorkflowEditDraft$ = command(
+  (
+    { set },
+    input: {
+      readonly workflowId: string;
+      readonly patch: Partial<Omit<WorkflowEditDraft, "workflowId">>;
+    },
+  ) => {
+    set(internalWorkflowEditDraft$, (draft) => {
+      if (!draft || draft.workflowId !== input.workflowId) {
+        return draft;
+      }
+      return { ...draft, ...input.patch };
+    });
+  },
+);
+
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
+  set(internalWorkflowEditDraft$, null);
   set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);

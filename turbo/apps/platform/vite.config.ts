@@ -20,13 +20,13 @@ const STATIC_ASSETS_BASE_URL =
   process.env.VERCEL_ENV === "production"
     ? "https://static.vm0.io"
     : "https://static.vm7.io");
-const FIREWALL_METADATA_DETAIL_CHUNK_NAME_PREFIX =
-  "vm0-firewall-metadata-detail-";
-const FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION = "v1";
-const FIREWALL_METADATA_DETAIL_MODULE_ID_RE =
-  /\/packages\/connectors\/src\/firewall-metadata\/details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
-const FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE =
-  /^vm0-firewall-metadata-detail-([a-z0-9][a-z0-9-]*)\.generated$/;
+const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_PREFIX =
+  "vm0-firewall-permission-detail-metadata-";
+const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_PROTOCOL_VERSION = "v1";
+const FIREWALL_PERMISSION_DETAIL_METADATA_MODULE_ID_RE =
+  /\/packages\/connectors\/src\/firewall-metadata\/permission-details\/([a-z0-9][a-z0-9-]*)\.generated\.ts$/;
+const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE =
+  /^vm0-firewall-permission-detail-metadata-([a-z0-9][a-z0-9-]*)\.generated$/;
 
 process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
 
@@ -36,32 +36,37 @@ function normalizedModuleId(id: string): string {
   return pathname.replaceAll("\\", "/");
 }
 
-function firewallMetadataDetailChunkName(moduleId: string): string | null {
-  const match = FIREWALL_METADATA_DETAIL_MODULE_ID_RE.exec(
+function firewallPermissionDetailMetadataChunkName(
+  moduleId: string,
+): string | null {
+  const match = FIREWALL_PERMISSION_DETAIL_METADATA_MODULE_ID_RE.exec(
     normalizedModuleId(moduleId),
   );
   if (!match) {
     return null;
   }
-  return `${FIREWALL_METADATA_DETAIL_CHUNK_NAME_PREFIX}${match[1]}.generated`;
+  return `${FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_PREFIX}${match[1]}.generated`;
 }
 
-function firewallMetadataDetailChunkFileName(chunkName: string): string | null {
-  const match = FIREWALL_METADATA_DETAIL_CHUNK_NAME_RE.exec(chunkName);
+function firewallPermissionDetailMetadataChunkFileName(
+  chunkName: string,
+): string | null {
+  const match =
+    FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE.exec(chunkName);
   if (!match) {
     return null;
   }
-  return `firewall-metadata/${FIREWALL_METADATA_DETAIL_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
+  return `firewall-metadata/permission-details/${FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_PROTOCOL_VERSION}/${match[1]}.generated.js`;
 }
 
 function stableGeneratedFirewallChunkName(moduleId: string): string | null {
-  return firewallMetadataDetailChunkName(moduleId);
+  return firewallPermissionDetailMetadataChunkName(moduleId);
 }
 
 function stableGeneratedFirewallChunkFileName(
   chunkName: string,
 ): string | null {
-  return firewallMetadataDetailChunkFileName(chunkName);
+  return firewallPermissionDetailMetadataChunkFileName(chunkName);
 }
 
 function isAllowedDevArtifactFetchUrl(url: URL): boolean {

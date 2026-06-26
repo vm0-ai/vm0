@@ -2,5 +2,5 @@
 src/firewall-metadata/*.generated.ts
 src/firewall-metadata/.metadata-*
 src/firewall-metadata/.*.previous-*
-src/firewall-metadata/details/*
+src/firewall-metadata/permission-details/*
 src/firewall-metadata/routing-details/*

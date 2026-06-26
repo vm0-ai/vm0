@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  zeroWorkflowUpdateRequestSchema,
   zeroWorkflowTriggerCreateRequestSchema,
 } from "../zero-workflows";
 
@@ -66,5 +67,25 @@ describe("Gmail label applied workflow trigger contract", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe("workflow update contract", () => {
+  it("accepts slug metadata updates", () => {
+    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+      name: "follow-up",
+      displayName: "Follow up",
+      description: "Use when a prospect needs a next step.",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects invalid workflow slugs", () => {
+    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+      name: "Follow Up",
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

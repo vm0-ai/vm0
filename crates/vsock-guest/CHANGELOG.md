@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.10](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.9...vsock-guest-v0.19.10) (2026-06-26)
+
+
+### Performance Improvements
+
+* batch storage cache warm-hit staging ([#19077](https://github.com/vm0-ai/vm0/issues/19077)) ([3f6743f](https://github.com/vm0-ai/vm0/commit/3f6743f9fd4a6c8fa0cdc5e6c1e50ef2042c924c))
+
 ## [0.19.9](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.8...vsock-guest-v0.19.9) (2026-06-26)
 
 ## [0.19.8](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.7...vsock-guest-v0.19.8) (2026-06-26)

@@ -10,7 +10,10 @@ use crate::{
     operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 
-use super::diagnostics::{ExecOperationCloseSnapshot, ExecOperationDiagnostic};
+use super::diagnostics::{
+    ExecOperationCloseSnapshot, ExecOperationDiagnostic, ExecTerminalLogLifecycle,
+    exec_terminal_log_lifecycle,
+};
 use super::frame::remove_pending_exec_control;
 use super::types::{
     ExecControlOutcome, ExecOperationResult, ExecOutputEvent, exec_control_status_error,
@@ -56,6 +59,13 @@ impl Operations {
             self.control_targets.remove(request_seq);
         }
         Some(operation)
+    }
+
+    pub(in crate::exec_operation) fn take_terminal_exec_operation(
+        &mut self,
+        seq: u32,
+    ) -> io::Result<Option<TerminalExecOperation>> {
+        self.take(seq).map(ExecOperation::into_terminal).transpose()
     }
 
     pub(in crate::exec_operation) fn contains(&self, seq: u32) -> bool {
@@ -175,6 +185,15 @@ pub(in crate::exec_operation) enum ExecOperationNormalTracking {
     Composite(NormalOperationTransitionHandle),
 }
 
+pub(in crate::exec_operation) struct TerminalExecOperation {
+    pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
+    pub(in crate::exec_operation) result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
+    pub(in crate::exec_operation) start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+    pub(in crate::exec_operation) log_lifecycle: ExecTerminalLogLifecycle,
+    pub(in crate::exec_operation) stream_overflowed: bool,
+    pub(in crate::exec_operation) host_cancel_requested: bool,
+}
+
 impl ExecOperation {
     pub(in crate::exec_operation) fn allows_output(&self) -> bool {
         matches!(
@@ -230,6 +249,36 @@ impl ExecOperation {
                 ))
             }
         }
+    }
+
+    fn into_terminal(self) -> io::Result<TerminalExecOperation> {
+        let ExecOperation {
+            normal_operation,
+            lifecycle,
+            diagnostic,
+            result_tx,
+            stream_overflowed,
+            host_cancel_requested,
+            ..
+        } = self;
+        let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
+        let start_tx = match lifecycle {
+            ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => start_tx,
+            ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. } => {
+                None
+            }
+        };
+        if let Some(normal_operation) = normal_operation {
+            normal_operation.complete()?;
+        }
+        Ok(TerminalExecOperation {
+            diagnostic,
+            result_tx,
+            start_tx,
+            log_lifecycle,
+            stream_overflowed,
+            host_cancel_requested,
+        })
     }
 }
 

@@ -29,6 +29,7 @@ export const updateZeroWorkflow$ = command(
     const writeDb = set(writeDb$);
     const { workflow, body } = args;
 
+    const nextName = body.name !== undefined ? body.name : workflow.name;
     const nextInstruction =
       body.instruction !== undefined ? body.instruction : workflow.instruction;
     const nextDescription =
@@ -38,6 +39,9 @@ export const updateZeroWorkflow$ = command(
     await writeDb
       .update(zeroWorkflows)
       .set({
+        ...(body.name !== undefined && {
+          name: body.name,
+        }),
         ...(body.displayName !== undefined && {
           displayName: body.displayName,
         }),
@@ -56,7 +60,9 @@ export const updateZeroWorkflow$ = command(
     // Rebuild the volume whenever the synthesized SKILL.md or the attached
     // files change. The volume is fully derived: SKILL.md + attached files.
     const skillChanged =
-      body.instruction !== undefined || body.description !== undefined;
+      body.name !== undefined ||
+      body.instruction !== undefined ||
+      body.description !== undefined;
     if (body.files !== undefined || skillChanged) {
       const attachedFiles =
         body.files !== undefined
@@ -78,7 +84,7 @@ export const updateZeroWorkflow$ = command(
       signal.throwIfAborted();
 
       const skillMd = synthesizeWorkflowSkillMd({
-        name: workflow.name,
+        name: nextName,
         description: nextDescription,
         instruction: nextInstruction,
       });

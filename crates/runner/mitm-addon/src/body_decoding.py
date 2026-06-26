@@ -17,8 +17,8 @@ import zstandard
 from mitmproxy import ctx, http
 
 from body_limits import (
+    DEFAULT_BODY_DECODE_LIMIT,
     LARGE_RESPONSE_DECOMPRESS_LIMIT,
-    STREAM_BUFFER_LIMIT,
     STREAM_DECODE_CHUNK_LIMIT,
 )
 
@@ -241,7 +241,7 @@ def create_stream_decode_feed(
 
 
 def decompress_body(
-    data: bytes, headers: http.Headers, max_output: int = STREAM_BUFFER_LIMIT
+    data: bytes, headers: http.Headers, max_output: int = DEFAULT_BODY_DECODE_LIMIT
 ) -> bytes:
     """Decompress response body based on Content-Encoding header.
 

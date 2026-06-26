@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.372.1](https://github.com/vm0-ai/vm0/compare/core-v8.372.0...core-v8.372.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* sharpen artifact template thumbnails ([#18704](https://github.com/vm0-ai/vm0/issues/18704)) ([06935cd](https://github.com/vm0-ai/vm0/commit/06935cd7ca3b0e9ad76b3b365fe467d854cf5a1c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.119.0
+    * @vm0/connectors bumped to 1.110.0
+
 ## [8.372.0](https://github.com/vm0-ai/vm0/compare/core-v8.371.2...core-v8.372.0) (2026-06-26)
 
 

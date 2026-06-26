@@ -20,6 +20,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  hasFirewallMetadataPermissions,
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
@@ -248,6 +249,8 @@ function AgentAccessRow({
 }) {
   const name = agentName(row.agent);
   const canManage = row.authorized && metadata !== null;
+  const showPermissions =
+    row.authorized && hasFirewallMetadataPermissions(connectorType);
 
   return (
     <div className="flex flex-col gap-3 border-b border-border/50 px-1 py-4 last:border-b-0">
@@ -259,10 +262,10 @@ function AgentAccessRow({
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
-          <p className="text-xs text-muted-foreground">
-            {row.authorized ? "Authorized" : "Not authorized"}
-          </p>
         </div>
+        <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+          {row.authorized ? "Authorized" : "Not authorized"}
+        </p>
         <LoadingSwitch
           checked={row.authorized}
           loading={saving}
@@ -273,12 +276,9 @@ function AgentAccessRow({
         />
       </div>
 
-      {row.authorized && (
-        <div className="ml-12 flex items-start justify-between gap-3">
+      {showPermissions && (
+        <div className="ml-12 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Allowed
-            </p>
             <AuthorizedPermissionsPreview
               connectorType={connectorType}
               grants={row.grants}

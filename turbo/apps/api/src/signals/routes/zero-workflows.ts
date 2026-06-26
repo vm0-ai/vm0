@@ -334,6 +334,30 @@ const updateWorkflowInner$ = command(
       return permissionError;
     }
 
+    if (
+      bodyResult.data.name !== undefined &&
+      bodyResult.data.name !== visible.workflow.name
+    ) {
+      if (SEED_SKILLS.includes(bodyResult.data.name)) {
+        return conflict(
+          `Workflow name "${bodyResult.data.name}" conflicts with a built-in workflow`,
+        );
+      }
+
+      if (visible.workflow.visibility === "public") {
+        const slugConflict = await requirePublicWorkflowSlugAvailable(writeDb, {
+          orgId: auth.orgId,
+          agentId: visible.workflow.agentId,
+          name: bodyResult.data.name,
+          excludeWorkflowId: visible.workflow.id,
+        });
+        signal.throwIfAborted();
+        if (slugConflict) {
+          return slugConflict;
+        }
+      }
+    }
+
     await set(
       updateZeroWorkflow$,
       {

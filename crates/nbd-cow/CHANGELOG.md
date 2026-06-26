@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.49](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.48...nbd-cow-v0.4.49) (2026-06-26)
+
+
+### Refactoring
+
+* **nbd-cow:** simplify dispatch wire helpers ([#19124](https://github.com/vm0-ai/vm0/issues/19124)) ([34a778a](https://github.com/vm0-ai/vm0/commit/34a778a6f1b8df0be01ab049c8f82206d361aead))
+
 ## [0.4.48](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.47...nbd-cow-v0.4.48) (2026-06-26)
 
 

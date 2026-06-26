@@ -4,7 +4,7 @@ import base64
 import gzip
 
 from body_capture import add_capture_fields
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import BODY_CAPTURE_LIMIT
 
 
 class TestAddCaptureFields:
@@ -147,7 +147,7 @@ class TestAddCaptureFields:
         assert "response_headers" not in entry
 
     def test_truncates_large_request_body(self, real_flow):
-        body = b"x" * (STREAM_BUFFER_LIMIT + 1000)
+        body = b"x" * (BODY_CAPTURE_LIMIT + 1000)
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -159,12 +159,12 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
-        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
 
     def test_request_gzip_zip_bomb_capped_without_full_content_decode(self, real_flow, monkeypatch):
-        original = b"x" * (STREAM_BUFFER_LIMIT + 4096)
+        original = b"x" * (BODY_CAPTURE_LIMIT + 4096)
         compressed = gzip.compress(original)
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -185,13 +185,13 @@ class TestAddCaptureFields:
         add_capture_fields(flow, entry)
 
         assert entry["request_body_truncated"] is True
-        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
         assert set(entry["request_body"]) == {"x"}
 
     def test_request_gzip_exact_limit_not_truncated(self, real_flow):
-        original = b"x" * STREAM_BUFFER_LIMIT
+        original = b"x" * BODY_CAPTURE_LIMIT
         compressed = gzip.compress(original)
-        assert len(compressed) < STREAM_BUFFER_LIMIT
+        assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -206,10 +206,10 @@ class TestAddCaptureFields:
         add_capture_fields(flow, entry)
 
         assert "request_body_truncated" not in entry
-        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
 
     def test_truncates_large_response_body(self, real_flow):
-        body = b"y" * (STREAM_BUFFER_LIMIT + 1000)
+        body = b"y" * (BODY_CAPTURE_LIMIT + 1000)
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -221,7 +221,7 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_no_body_fields_when_empty(self, real_flow):
         flow = real_flow(
@@ -342,7 +342,7 @@ class TestAddCaptureFields:
             host="api.example.com",
             response_content_type="application/json",
             include_request_id=True,
-            request_body=b"\x89PNG" + b"\x00" * STREAM_BUFFER_LIMIT,
+            request_body=b"\x89PNG" + b"\x00" * BODY_CAPTURE_LIMIT,
             request_content_type="image/png",
         )
         entry = {}
@@ -373,7 +373,7 @@ class TestAddCaptureFields:
             host="api.example.com",
             request_content_type="application/json",
             include_request_id=True,
-            response_body=b"\x00" * (STREAM_BUFFER_LIMIT + 1),
+            response_body=b"\x00" * (BODY_CAPTURE_LIMIT + 1),
             response_content_type="application/octet-stream",
         )
         entry = {}
@@ -383,7 +383,7 @@ class TestAddCaptureFields:
         assert entry["response_body_truncated"] is True
 
     def test_request_body_exactly_at_limit_not_truncated(self, real_flow):
-        body = b"x" * STREAM_BUFFER_LIMIT
+        body = b"x" * BODY_CAPTURE_LIMIT
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -395,10 +395,10 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body_truncated" not in entry
-        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
 
     def test_response_body_exactly_at_limit_not_truncated(self, real_flow):
-        body = b"y" * STREAM_BUFFER_LIMIT
+        body = b"y" * BODY_CAPTURE_LIMIT
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -410,11 +410,11 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body_truncated" not in entry
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_truncation_preserves_utf8_boundary(self, real_flow):
-        # Body is STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
-        body = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
+        # Body is BODY_CAPTURE_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
+        body = b"x" * BODY_CAPTURE_LIMIT + "\u20ac".encode("utf-8")
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -428,7 +428,7 @@ class TestAddCaptureFields:
         assert entry["request_body_truncated"] is True
         # Should be valid UTF-8 (truncated at char boundary, not mid-char)
         assert entry["request_body_encoding"] == "utf-8"
-        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT  # all ASCII before the €
+        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT  # all ASCII before the €
 
     def test_text_request_with_binary_response(self, real_flow):
         flow = real_flow(
@@ -501,8 +501,8 @@ class TestAddCaptureFields:
         assert base64.b64decode(entry["response_body"]) == response_body
 
     def test_large_non_utf8_text_bodies_capture_truncated_base64(self, real_flow):
-        request_body = b"\xff" + b"r" * STREAM_BUFFER_LIMIT
-        response_body = b"\xfe" + b"s" * STREAM_BUFFER_LIMIT
+        request_body = b"\xff" + b"r" * BODY_CAPTURE_LIMIT
+        response_body = b"\xfe" + b"s" * BODY_CAPTURE_LIMIT
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -515,8 +515,8 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_encoding"] == "base64"
-        assert base64.b64decode(entry["request_body"]) == request_body[:STREAM_BUFFER_LIMIT]
+        assert base64.b64decode(entry["request_body"]) == request_body[:BODY_CAPTURE_LIMIT]
         assert entry["request_body_truncated"] is True
         assert entry["response_body_encoding"] == "base64"
-        assert base64.b64decode(entry["response_body"]) == response_body[:STREAM_BUFFER_LIMIT]
+        assert base64.b64decode(entry["response_body"]) == response_body[:BODY_CAPTURE_LIMIT]
         assert entry["response_body_truncated"] is True

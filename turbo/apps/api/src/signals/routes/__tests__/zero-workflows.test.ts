@@ -311,6 +311,82 @@ describe("zero workflows", () => {
     });
   });
 
+  it("renames workflow slugs through metadata update and protects public slugs", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Rename Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "existing-workflow",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "rename-source",
+        visibility: "public",
+        displayName: "Rename Source",
+        description: "Original description",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const renamed = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          name: "renamed-workflow",
+          displayName: "Renamed Workflow",
+          description: "Use when workflow metadata needs a new slug.",
+        },
+      }),
+      [200],
+    );
+    expect(renamed.body).toMatchObject({
+      name: "renamed-workflow",
+      displayName: "Renamed Workflow",
+      description: "Use when workflow metadata needs a new slug.",
+    });
+
+    const duplicate = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { name: "existing-workflow" },
+      }),
+      [409],
+    );
+    expect(duplicate.body).toStrictEqual({
+      error: {
+        message:
+          'A public workflow named "/existing-workflow" already exists on this agent. Rename this workflow or keep it private.',
+        code: "CONFLICT",
+      },
+    });
+  });
+
   it("marks same-slug workflows as shadowed by the runtime priority winner", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),

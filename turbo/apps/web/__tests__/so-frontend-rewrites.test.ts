@@ -86,7 +86,7 @@ describe("so frontend rewrites", () => {
     });
   });
 
-  it("does not rewrite app-only functional routes", () => {
+  it("rewrites migrated functional routes without rewriting API routes", () => {
     const rewrites = buildSoFrontendRewrites({
       PAID_ONBOARDING_URL: "https://so.vm0.ai",
     });
@@ -97,10 +97,14 @@ describe("so frontend rewrites", () => {
     );
 
     expect(sources.has("/api/:path*")).toBe(false);
-    expect(sources.has("/desktop-auth/:path*")).toBe(false);
-    expect(sources.has("/connector/:path*")).toBe(false);
-    expect(sources.has("/export")).toBe(false);
-    expect(sources.has("/sign-in-token")).toBe(false);
+    expect(sources.has("/cli-auth/:path*")).toBe(true);
+    expect(sources.has("/desktop-auth/:path*")).toBe(true);
+    expect(sources.has("/connector/:path*")).toBe(true);
+    expect(sources.has("/export")).toBe(true);
+    expect(sources.has("/sign-in-token")).toBe(true);
+    expect(sources.has("/monday-app-association.json")).toBe(true);
+    expect(sources.has("/robots.txt")).toBe(true);
+    expect(sources.has("/sitemap.xml")).toBe(true);
   });
 
   it("matches configured so frontend rewrite paths", () => {
@@ -116,8 +120,16 @@ describe("so frontend rewrites", () => {
     expect(matchesSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
       true,
     );
-    expect(matchesSoFrontendRewritePath("/connector/success")).toBe(false);
-    expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(false);
+    expect(matchesSoFrontendRewritePath("/connector/success")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/desktop-auth/start")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/cli-auth/success")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/export")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sign-in-token")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/monday-app-association.json")).toBe(
+      true,
+    );
+    expect(matchesSoFrontendRewritePath("/robots.txt")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/sitemap.xml")).toBe(true);
     expect(matchesSoFrontendRewritePath("/api/zero/billing/status")).toBe(
       false,
     );
@@ -139,6 +151,23 @@ describe("so frontend rewrites", () => {
     expect(resolveSoFrontendRewritePath("/sign-up/verify-email-address")).toBe(
       "/sign-up/verify-email-address",
     );
-    expect(resolveSoFrontendRewritePath("/connector/success")).toBeUndefined();
+    expect(resolveSoFrontendRewritePath("/connector/success")).toBe(
+      "/connector/success",
+    );
+    expect(resolveSoFrontendRewritePath("/desktop-auth/start")).toBe(
+      "/desktop-auth/start",
+    );
+    expect(resolveSoFrontendRewritePath("/cli-auth/success")).toBe(
+      "/cli-auth/success",
+    );
+    expect(resolveSoFrontendRewritePath("/export")).toBe("/export");
+    expect(resolveSoFrontendRewritePath("/sign-in-token")).toBe(
+      "/sign-in-token",
+    );
+    expect(resolveSoFrontendRewritePath("/monday-app-association.json")).toBe(
+      "/monday-app-association.json",
+    );
+    expect(resolveSoFrontendRewritePath("/robots.txt")).toBe("/robots.txt");
+    expect(resolveSoFrontendRewritePath("/sitemap.xml")).toBe("/sitemap.xml");
   });
 });

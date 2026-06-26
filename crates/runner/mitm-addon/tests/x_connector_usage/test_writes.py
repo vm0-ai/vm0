@@ -9,7 +9,7 @@ import pytest
 
 import flow_metadata_keys as metadata_keys
 import request_streaming
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import REQUEST_BODY_BILLING_INSPECTION_LIMIT, STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
@@ -137,7 +137,7 @@ def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
 
 def test_tweet_create_gzip_decoded_body_over_cap_stays_conservative(x_usage, tmp_path, real_flow):
     """A gzip body that expands beyond the billing inspection cap is not refined."""
-    long_text = "x" * STREAM_BUFFER_LIMIT
+    long_text = "x" * REQUEST_BODY_BILLING_INSPECTION_LIMIT
     request_body = gzip.compress(json.dumps({"text": long_text}).encode())
     flow = x_usage.make_flow(
         real_flow,
@@ -158,7 +158,7 @@ def test_tweet_create_gzip_decoded_body_over_cap_stays_conservative(x_usage, tmp
 
 def test_tweet_create_raw_body_over_cap_stays_conservative(x_usage, tmp_path, real_flow):
     """An oversized identity request body is not refined."""
-    request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
+    request_body = b"{" + b'"text":"' + b"x" * REQUEST_BODY_BILLING_INSPECTION_LIMIT + b'"}'
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,

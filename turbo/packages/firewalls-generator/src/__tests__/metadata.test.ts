@@ -429,16 +429,18 @@ describe("firewall metadata generator", () => {
     const loaderSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
-        "../../../connectors/src/firewall-metadata/loader.generated.ts",
+        "../../../connectors/src/firewall-metadata/permission-detail-loader.generated.ts",
       ),
       "utf-8",
     );
     const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
 
     expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
-    expect(dynamicSpecifiers).toContain("./details/slack.generated");
-    expect(dynamicSpecifiers).toContain("./details/github.generated");
-    expect(loaderSource).toContain("/firewall-metadata/v1/");
+    expect(dynamicSpecifiers).toContain("./permission-details/slack.generated");
+    expect(dynamicSpecifiers).toContain(
+      "./permission-details/github.generated",
+    );
+    expect(loaderSource).toContain("/firewall-metadata/permission-details/v1/");
     expect(loaderSource).toContain(
       "const FIREWALL_PERMISSION_METADATA_LOADERS",
     );
@@ -451,7 +453,9 @@ describe("firewall metadata generator", () => {
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     expect(dynamicSpecifiers.length).toBe(FIREWALL_CONNECTOR_TYPES.length);
     for (const specifier of dynamicSpecifiers) {
-      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+      expect(specifier).toMatch(
+        /^\.\/permission-details\/[a-z0-9][a-z0-9-]*\.generated$/,
+      );
     }
   });
 
