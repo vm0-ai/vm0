@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.370.7](https://github.com/vm0-ai/vm0/compare/core-v8.370.6...core-v8.370.7) (2026-06-26)
+
+
+### Bug Fixes
+
+* restore presentation deck QA flow ([#19008](https://github.com/vm0-ai/vm0/issues/19008)) ([2a137bb](https://github.com/vm0-ai/vm0/commit/2a137bb3e5849bc5d9a569ed96d62285d2add574))
+
 ## [8.370.6](https://github.com/vm0-ai/vm0/compare/core-v8.370.5...core-v8.370.6) (2026-06-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.25...runner-rs-v0.129.26) (2026-06-26)
+
+
+### Performance Improvements
+
+* **runner:** add pre-spawn phase timing ([#19001](https://github.com/vm0-ai/vm0/issues/19001)) ([73cd372](https://github.com/vm0-ai/vm0/commit/73cd372420e29f7d261377760896361bb93728d4))
+
 ## [0.129.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.24...runner-rs-v0.129.25) (2026-06-25)
 
 

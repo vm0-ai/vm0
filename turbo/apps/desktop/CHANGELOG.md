@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.2...desktop-v0.20.3) (2026-06-26)
+
+
+### Bug Fixes
+
+* **desktop:** isolate helper command timeouts ([#19011](https://github.com/vm0-ai/vm0/issues/19011)) ([c31ea83](https://github.com/vm0-ai/vm0/commit/c31ea832f87871d2c4332bae25bfece4628aef5f))
+
 ## [0.20.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.20.1...desktop-v0.20.2) (2026-06-25)
 
 
