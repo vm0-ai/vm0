@@ -590,6 +590,9 @@ where
         // Cancellation switches to a zero-timeout final drain instead of
         // waiting for EOF from those descendants.
         let cancelled = cancel.load(Ordering::Acquire);
+        if cancelled && stream.truncated {
+            break;
+        }
         let timeout_ms = if cancelled {
             0
         } else {
