@@ -338,7 +338,11 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("No session ID found"),
+        "expected recovery checkpoint to fail on missing session ID, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
@@ -368,7 +372,11 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("Failed to read session history"),
+        "expected recovery checkpoint to fail on missing derived history, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
@@ -398,7 +406,12 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
 
-    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Failed to derive session history marker from session ID"),
+        "expected recovery checkpoint to fail on invalid session ID, got: {err}"
+    );
     assert!(
         !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
