@@ -48,6 +48,9 @@ export function formatEventTime(isoString: string): string {
 
 // Exported for reuse
 export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
   if (ms < 1000) {
     return `${ms}ms`;
   }

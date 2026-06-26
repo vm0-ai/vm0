@@ -46,7 +46,7 @@ function formatTime(timestamp: string): string {
 }
 
 function formatLatency(ms: number | undefined | null): string {
-  if (ms === null || ms === undefined) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return "—";
   }
   if (ms < 1000) {
@@ -109,7 +109,7 @@ function statusColor(status: number | undefined): string {
 }
 
 function latencyColor(ms: number | undefined | null): string {
-  if (ms === null || ms === undefined) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return "text-muted-foreground";
   }
   if (ms < 500) {

@@ -174,10 +174,18 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
   }
 
   const meta: ToolResultMeta = {};
-  if (typeof value.bytes === "number") {
+  if (
+    typeof value.bytes === "number" &&
+    Number.isFinite(value.bytes) &&
+    value.bytes >= 0
+  ) {
     meta.bytes = value.bytes;
   }
-  if (typeof value.durationMs === "number") {
+  if (
+    typeof value.durationMs === "number" &&
+    Number.isFinite(value.durationMs) &&
+    value.durationMs >= 0
+  ) {
     meta.durationMs = value.durationMs;
   }
   return meta.bytes === undefined && meta.durationMs === undefined

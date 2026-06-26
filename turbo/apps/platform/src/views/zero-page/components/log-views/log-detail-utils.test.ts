@@ -549,6 +549,56 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
   });
 });
 
+describe("groupEventsIntoMessages tool result metadata", () => {
+  it("ignores negative tool result duration and bytes", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "tool-negative-meta",
+                name: "Bash",
+                input: { command: "echo meta" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tool-negative-meta",
+                content: "done",
+              },
+            ],
+          },
+          tool_use_result: { durationMs: -5, bytes: -10 },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages[0]?.toolOperations?.[0]?.result).toMatchObject({
+      content: "done",
+      isError: false,
+    });
+    expect(
+      messages[0]?.toolOperations?.[0]?.result?.durationMs,
+    ).toBeUndefined();
+    expect(messages[0]?.toolOperations?.[0]?.result?.bytes).toBeUndefined();
+  });
+});
+
 describe("groupEventsIntoMessages TodoWrite snapshots", () => {
   it("renders malformed TodoWrite calls as ordinary tools", () => {
     const messages = groupEventsIntoMessages([

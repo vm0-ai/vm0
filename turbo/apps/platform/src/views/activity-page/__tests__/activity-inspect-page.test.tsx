@@ -345,6 +345,18 @@ function malformedInspectFile(): File {
             },
             createdAt: "bad-created-at",
           },
+          {
+            sequenceNumber: 1,
+            eventType: "result",
+            eventData: {
+              type: "result",
+              is_error: false,
+              result: "Negative duration result survives.",
+              duration_ms: -100,
+              num_turns: 1,
+            },
+            createdAt: "2026-03-10T17:00:03Z",
+          },
         ],
         context: { bad: true },
         networkLogs: [
@@ -354,6 +366,7 @@ function malformedInspectFile(): File {
             type: "http",
             method: "GET",
             url: "https://example.com/imported-valid-network-log",
+            latency_ms: -5,
           },
           {
             timestamp: { nested: true },
@@ -617,6 +630,9 @@ describe("activity inspect page", () => {
       screen.getByText("Valid imported event survives."),
     ).toBeInTheDocument();
     expect(
+      screen.getByText("Negative duration result survives."),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByText("Invalid event is dropped."),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
@@ -624,6 +640,7 @@ describe("activity inspect page", () => {
     expect(screen.getAllByText("bad-created-at").length).toBeGreaterThan(0);
     expect(screen.queryByText("Invalid Date")).not.toBeInTheDocument();
     expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("-100ms")).not.toBeInTheDocument();
 
     click(getTabByText("Context"));
 
@@ -641,6 +658,7 @@ describe("activity inspect page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("not-a-date")).toBeInTheDocument();
+    expect(screen.queryByText("-5ms")).not.toBeInTheDocument();
     expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
     expect(
       screen.queryByText("https://example.com/invalid-network-log"),
