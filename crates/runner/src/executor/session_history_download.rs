@@ -478,9 +478,16 @@ mod tests {
     async fn materializer_reports_cancelled_download() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            let (_stream, _) = listener.accept().await.unwrap();
-            futures_util::future::pending::<io::Result<()>>().await
+        let shutdown = CancellationToken::new();
+        let shutdown_for_server = shutdown.clone();
+        let server = tokio::spawn(async move {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let (_stream, _) = accepted.unwrap();
+                    shutdown_for_server.cancelled().await;
+                }
+                _ = shutdown_for_server.cancelled() => {}
+            }
         });
         let session = ref_session(
             format!("http://{address}/history.blob?token=secret"),
@@ -500,6 +507,8 @@ mod tests {
             }
             _ => panic!("expected cancelled download"),
         }
+        shutdown.cancel();
+        server.await.unwrap();
     }
 
     #[tokio::test]
