@@ -381,6 +381,111 @@ describe("groupEventsIntoMessages sequence ordering", () => {
   });
 });
 
+describe("groupEventsIntoMessages split sequence ordering", () => {
+  it("keeps split orphan tool results before the next fractional sequence", () => {
+    const nextSequenceNumber = 9.000_001;
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 9,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              { type: "tool_result", content: "first orphan" },
+              { type: "tool_result", content: "second orphan" },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: nextSequenceNumber,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Next fractional sequence." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return (
+          message.textBefore ?? message.toolOperations?.[0]?.result?.content
+        );
+      }),
+    ).toEqual(["first orphan", "second orphan", "Next fractional sequence."]);
+    expect(messages[0]?.sequenceNumber).toBeGreaterThan(9);
+    expect(messages[1]?.sequenceNumber).toBeGreaterThan(
+      messages[0]?.sequenceNumber ?? 9,
+    );
+    expect(messages[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
+    expect(messages[2]?.sequenceNumber).toBe(nextSequenceNumber);
+  });
+
+  it("keeps split TodoWrite cards before the next fractional sequence", () => {
+    const nextSequenceNumber = 7.000_001;
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-before-next-1",
+                name: "TodoWrite",
+                input: {
+                  todos: [{ content: "First task", status: "in_progress" }],
+                },
+              },
+              {
+                type: "tool_use",
+                id: "todo-before-next-2",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "First task", status: "completed" },
+                    { content: "Second task", status: "in_progress" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: nextSequenceNumber,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Next fractional sequence." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.type === "todo"
+          ? message.todoState?.at(-1)?.content
+          : message.textBefore;
+      }),
+    ).toEqual(["First task", "Second task", "Next fractional sequence."]);
+    expect(messages[0]?.sequenceNumber).toBeGreaterThan(7);
+    expect(messages[1]?.sequenceNumber).toBeGreaterThan(
+      messages[0]?.sequenceNumber ?? 7,
+    );
+    expect(messages[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
+    expect(messages[2]?.sequenceNumber).toBe(nextSequenceNumber);
+  });
+});
+
 describe("groupedMessageMatchesSearch", () => {
   it("matches text nested in task child messages", () => {
     const messages = groupEventsIntoMessages([

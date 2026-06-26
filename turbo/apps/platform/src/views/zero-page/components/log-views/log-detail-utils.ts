@@ -223,7 +223,7 @@ interface GroupEventsIntoMessagesOptions {
   framework?: string | null;
 }
 
-const CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
+const FALLBACK_CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
 
 // ============ EVENT GROUPING ============
 
@@ -517,11 +517,21 @@ function takePendingToolUse(
   return matched;
 }
 
-function sequenceNumberWithContentOffset(
-  sequenceNumber: number,
-  contentIndex: number,
-): number {
-  return sequenceNumber + (contentIndex + 1) / CONTENT_SEQUENCE_OFFSET_SCALE;
+function sequenceNumberWithContentOffset(params: {
+  sequenceNumber: number;
+  contentIndex: number;
+  contentCount: number;
+  nextSequenceNumber?: number;
+}): number {
+  const { sequenceNumber, contentIndex, contentCount, nextSequenceNumber } =
+    params;
+  const nextGap =
+    nextSequenceNumber !== undefined ? nextSequenceNumber - sequenceNumber : 0;
+  const hasBoundedGap = Number.isFinite(nextGap) && nextGap > 0;
+  const offset = hasBoundedGap
+    ? (nextGap * (contentIndex + 1)) / (contentCount + 1)
+    : (contentIndex + 1) / FALLBACK_CONTENT_SEQUENCE_OFFSET_SCALE;
+  return sequenceNumber + offset;
 }
 
 function parseAssistantContent(
@@ -893,6 +903,7 @@ function processAssistantEvent(
   event: AgentEvent,
   eventData: GroupingEventData,
   ctx: GroupingContext,
+  nextSequenceNumber: number | undefined,
 ): void {
   // Route child events into their parent task
   const parentTask = findParentTask(eventData, ctx);
@@ -970,10 +981,12 @@ function processAssistantEvent(
   for (const [todoIndex, snapshot] of todoWriteSnapshots.entries()) {
     const todoMessage: GroupedMessage = {
       type: "todo",
-      sequenceNumber: sequenceNumberWithContentOffset(
-        event.sequenceNumber,
-        todoIndex,
-      ),
+      sequenceNumber: sequenceNumberWithContentOffset({
+        sequenceNumber: event.sequenceNumber,
+        contentIndex: todoIndex,
+        contentCount: todoWriteSnapshots.length,
+        nextSequenceNumber,
+      }),
       createdAt: event.createdAt,
       todoState: snapshot.todoState,
       toolOperations: [snapshot.operation],
@@ -992,6 +1005,7 @@ function processUserEvent(
   event: AgentEvent,
   eventData: GroupingEventData,
   ctx: GroupingContext,
+  nextSequenceNumber: number | undefined,
 ): void {
   // Child user events belong to a task — route orphan results there
   const parentTask = findParentTask(eventData, ctx);
@@ -999,11 +1013,16 @@ function processUserEvent(
 
   const contents = getMessageContents(eventData);
   const toolMeta = toToolResultMeta(eventData.tool_use_result);
+  const toolResults = contents.flatMap((content, contentIndex) => {
+    return isRecord(content) && content.type === "tool_result"
+      ? [{ content, contentIndex }]
+      : [];
+  });
 
-  for (const [contentIndex, content] of contents.entries()) {
-    if (!isRecord(content) || content.type !== "tool_result") {
-      continue;
-    }
+  for (const [
+    toolResultIndex,
+    { content, contentIndex },
+  ] of toolResults.entries()) {
     const resultContent: ToolResultContent = {
       type: "tool_result",
       content: content.content,
@@ -1018,10 +1037,12 @@ function processUserEvent(
       pendingToolUses: ctx.pendingToolUses,
       parentToolUseId: stringValue(eventData.parent_tool_use_id),
       event,
-      fallbackSequenceNumber: sequenceNumberWithContentOffset(
-        event.sequenceNumber,
-        contentIndex,
-      ),
+      fallbackSequenceNumber: sequenceNumberWithContentOffset({
+        sequenceNumber: event.sequenceNumber,
+        contentIndex: toolResultIndex,
+        contentCount: toolResults.length,
+        nextSequenceNumber,
+      }),
       fallbackToolUseIdValue: fallbackToolUseId(
         "orphan",
         event.sequenceNumber,
@@ -1088,7 +1109,8 @@ export function groupEventsIntoMessages(
     options,
   );
 
-  for (const event of normalizedEvents) {
+  for (const [eventIndex, event] of normalizedEvents.entries()) {
+    const nextSequenceNumber = normalizedEvents[eventIndex + 1]?.sequenceNumber;
     const eventData = toGroupingEventData(event.eventData);
 
     if (event.eventType === "system") {
@@ -1096,9 +1118,9 @@ export function groupEventsIntoMessages(
     } else if (event.eventType === "result") {
       processResultEvent(event, ctx);
     } else if (event.eventType === "assistant") {
-      processAssistantEvent(event, eventData, ctx);
+      processAssistantEvent(event, eventData, ctx, nextSequenceNumber);
     } else if (event.eventType === "user") {
-      processUserEvent(event, eventData, ctx);
+      processUserEvent(event, eventData, ctx, nextSequenceNumber);
     }
   }
 
