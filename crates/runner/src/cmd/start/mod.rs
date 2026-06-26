@@ -39,6 +39,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use crate::duration::duration_ms as saturated_duration_ms;
 use crate::ids::RunId;
 
 use crate::config::{self, ProfileConfig};
@@ -113,7 +114,7 @@ impl TeardownTimer {
     }
 
     fn duration_ms(duration: Duration) -> u64 {
-        duration.as_millis().min(u128::from(u64::MAX)) as u64
+        saturated_duration_ms(duration)
     }
 
     fn elapsed_ms(&self) -> u64 {

@@ -21,6 +21,7 @@ use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
     RunnerResult, SandboxPreparedNotifier, SandboxReuseResult,
 };
+use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
 use crate::paths::diagnostic_session_fingerprint;
@@ -697,10 +698,6 @@ pub(super) fn log_proxy_register_failure(
         error,
         "proxy register failed"
     );
-}
-
-fn duration_ms(duration: Duration) -> u64 {
-    duration.as_millis() as u64
 }
 
 /// Unregister a VM from the proxy registry.

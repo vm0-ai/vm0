@@ -29,6 +29,7 @@ use vsock_host::{
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
 use crate::api::{ApiError, BalloonStatistics};
+use crate::duration::duration_ms;
 use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
@@ -2978,8 +2979,7 @@ impl BalloonSettleSummary {
     }
 
     fn elapsed_ms(&self) -> u64 {
-        let elapsed_ms = self.started_at.elapsed().as_millis();
-        u64::try_from(elapsed_ms).unwrap_or(u64::MAX)
+        duration_ms(self.started_at.elapsed())
     }
 
     fn actual_delta_mib(&self) -> Option<i64> {
