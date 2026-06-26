@@ -194,6 +194,55 @@ describe("groupEventsIntoMessages event dedupe", () => {
   });
 });
 
+describe("groupEventsIntoMessages sequence ordering", () => {
+  it("keeps same-sequence events before the next fractional sequence", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 5,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "First duplicate sequence." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 5,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Second duplicate sequence." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 5.0005,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Next fractional sequence." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:23Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.textBefore;
+      }),
+    ).toEqual([
+      "First duplicate sequence.",
+      "Second duplicate sequence.",
+      "Next fractional sequence.",
+    ]);
+    expect(messages[1]?.sequenceNumber).toBeGreaterThan(5);
+    expect(messages[1]?.sequenceNumber).toBeLessThan(5.0005);
+  });
+});
+
 describe("groupEventsIntoMessages thinking content", () => {
   it("keeps Claude Code thinking content blocks visible", () => {
     const messages = groupEventsIntoMessages([

@@ -85,7 +85,6 @@ interface GroupEventsIntoMessagesOptions {
 }
 
 const CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
-const EVENT_SEQUENCE_OFFSET_SCALE = 1000;
 
 // ============ EVENT GROUPING ============
 
@@ -203,27 +202,45 @@ interface SeenSequenceEvents {
 function disambiguateDuplicateSequenceNumbers(
   events: readonly AgentEvent[],
 ): AgentEvent[] {
-  const usedSequenceNumbers = new Set<number>();
-  const nextDuplicateOffsetBySequence = new Map<number, number>();
+  const occurrenceCountBySequence = new Map<number, number>();
+  const distinctSequenceNumbers: number[] = [];
+  for (const event of events) {
+    const existing = occurrenceCountBySequence.get(event.sequenceNumber) ?? 0;
+    if (existing === 0) {
+      distinctSequenceNumbers.push(event.sequenceNumber);
+    }
+    occurrenceCountBySequence.set(event.sequenceNumber, existing + 1);
+  }
+
+  const nextSequenceNumberBySequence = new Map<number, number>();
+  for (let i = 0; i < distinctSequenceNumbers.length - 1; i++) {
+    nextSequenceNumberBySequence.set(
+      distinctSequenceNumbers[i]!,
+      distinctSequenceNumbers[i + 1]!,
+    );
+  }
+
+  const seenCountBySequence = new Map<number, number>();
 
   return events.map((event) => {
-    if (!usedSequenceNumbers.has(event.sequenceNumber)) {
-      usedSequenceNumbers.add(event.sequenceNumber);
+    const seenCount = seenCountBySequence.get(event.sequenceNumber) ?? 0;
+    seenCountBySequence.set(event.sequenceNumber, seenCount + 1);
+    if (seenCount === 0) {
       return event;
     }
 
-    let nextOffset =
-      nextDuplicateOffsetBySequence.get(event.sequenceNumber) ?? 1;
-    let sequenceNumber =
-      event.sequenceNumber + nextOffset / EVENT_SEQUENCE_OFFSET_SCALE;
-    while (usedSequenceNumbers.has(sequenceNumber)) {
-      nextOffset += 1;
-      sequenceNumber =
-        event.sequenceNumber + nextOffset / EVENT_SEQUENCE_OFFSET_SCALE;
-    }
-
-    nextDuplicateOffsetBySequence.set(event.sequenceNumber, nextOffset + 1);
-    usedSequenceNumbers.add(sequenceNumber);
+    const occurrenceCount = occurrenceCountBySequence.get(
+      event.sequenceNumber,
+    )!;
+    const nextSequenceNumber = nextSequenceNumberBySequence.get(
+      event.sequenceNumber,
+    );
+    const gap =
+      nextSequenceNumber !== undefined
+        ? nextSequenceNumber - event.sequenceNumber
+        : 1;
+    const sequenceNumber =
+      event.sequenceNumber + (gap * seenCount) / occurrenceCount;
 
     return {
       ...event,
