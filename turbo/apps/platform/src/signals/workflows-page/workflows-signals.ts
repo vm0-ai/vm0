@@ -202,9 +202,7 @@ function createAgentWorkflowsFactory(): (
     const atom$ = computed(async (get) => {
       get(internalWorkflowReload$);
       const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-      const result = await accept(client.list({ query: { agentId } }), [200], {
-        toast: false,
-      });
+      const result = await accept(client.list({ query: { agentId } }), [200]);
       return result.body;
     });
     cache.set(agentId, atom$);
@@ -250,7 +248,6 @@ function createWorkflowDetailFactory(): (
       const result = await accept(
         client.get({ params: { workflowId } }),
         [200, 404],
-        { toast: false },
       );
       if (result.status === 404) {
         return null;

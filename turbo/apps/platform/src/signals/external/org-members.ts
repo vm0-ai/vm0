@@ -22,7 +22,7 @@ const orgMembersResponse$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgMembersContract);
-  const result = await accept(client.members(), [200], { toast: false });
+  const result = await accept(client.members(), [200]);
   return result.body;
 });
 

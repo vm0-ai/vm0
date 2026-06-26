@@ -112,7 +112,6 @@ function createAgentGithubPrTrackingAvailableFactory(): (
       const result = await accept(
         client.get({ params: { id: agentId } }),
         [200],
-        { toast: false },
       );
       return result.body.enabledTypes.includes("github");
     });
@@ -203,7 +202,6 @@ function createChatThreadGithubPrsFactory(): (
             params: { threadId },
           }),
           [200],
-          { toast: false },
         );
         lastResolvedPrs = mergeGithubPrs(lastResolvedPrs, result.body.prs);
         return lastResolvedPrs;

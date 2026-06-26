@@ -44,9 +44,7 @@ function createAgentByIdFactory(): (
       get(internalAgentByIdReload$);
       const client = get(zeroClient$)(zeroAgentsByIdContract);
       const result = await retryTransientLoad(() => {
-        return accept(client.get({ params: { id } }), [200], {
-          toast: false,
-        });
+        return accept(client.get({ params: { id } }), [200]);
       });
       return result.body;
     });

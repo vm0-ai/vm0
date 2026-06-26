@@ -42,8 +42,8 @@ function extractError(
  * - Write-path commands (mutations): omit `options` or pass `{}` — the toast
  *   fires automatically. The thrown `ApiError` is swallowed by `detach()`, so
  *   there is no double-notification.
- * - Read-path computed signals: pass `{ toast: false }` — errors surface
- *   through the signal's error state rather than an ephemeral toast.
+ * - Use `{ toast: false }` only when the caller deliberately handles the error
+ *   in a non-toast UI flow or in a non-user-facing integration callback.
  */
 async function accept<
   T extends { status: number; body: unknown },

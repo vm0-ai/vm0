@@ -1,7 +1,8 @@
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -11,6 +12,10 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(() => {
+  toast.dismiss();
+});
 
 async function openGeneralTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -33,7 +38,7 @@ describe("organization general settings", () => {
       role: "admin",
     });
     context.mocks.http.get("*/api/zero/org/logo", () => {
-      return new Response(JSON.stringify({ logoUrl }), {
+      return new Response(JSON.stringify({ logoUrl, hasImage: true }), {
         headers: { "Content-Type": "application/json" },
       });
     });
@@ -78,6 +83,35 @@ describe("organization general settings", () => {
     });
   });
 
+  it("shows update failures through the API error toast", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Old Name",
+      slug: "old-slug",
+      role: "admin",
+    });
+    context.mocks.api(zeroOrgContract.update, ({ respond }) => {
+      return respond(409, {
+        error: {
+          code: "ORG_SLUG_TAKEN",
+          message: "Workspace slug is already taken",
+        },
+      });
+    });
+
+    await openGeneralTab();
+
+    await fill(screen.getByDisplayValue("old-slug"), "taken-slug");
+    click(screen.getByText("Save changes"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workspace slug is already taken"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
+    });
+  });
+
   it("uploads a workspace logo after validating image dimensions", async () => {
     const user = userEvent.setup({ delay: null });
     let capturedLogoName: string | null = null;
@@ -91,9 +125,12 @@ describe("organization general settings", () => {
       role: "admin",
     });
     context.mocks.http.get("*/api/zero/org/logo", () => {
-      return new Response(JSON.stringify({ logoUrl: initialLogoUrl }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ logoUrl: initialLogoUrl, hasImage: true }),
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     });
     context.mocks.http.post("*/api/zero/org/logo", async ({ request }) => {
       const formData = await request.formData();
@@ -102,9 +139,12 @@ describe("organization general settings", () => {
         throw new Error("Uploaded logo file not found");
       }
       capturedLogoName = file.name;
-      return new Response(JSON.stringify({ logoUrl: uploadedLogoUrl }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ logoUrl: uploadedLogoUrl, hasImage: true }),
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     });
 
     await openGeneralTab();

@@ -9,7 +9,8 @@ import {
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -20,6 +21,10 @@ import { nowDate } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(() => {
+  toast.dismiss();
+});
 
 function localDateDaysAgo(daysAgo: number): string {
   const date = nowDate();
@@ -347,7 +352,7 @@ describe("memory page", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a load-more failure and retries older memory updates", async () => {
+  it("toasts a load-more failure and retries older memory updates", async () => {
     let olderPageAttempts = 0;
 
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
@@ -385,6 +390,12 @@ describe("memory page", () => {
         screen.getByText("Failed to load older memory updates"),
       ).toBeInTheDocument();
     });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Failed to load older memory updates"),
+      ).not.toBeInTheDocument();
+    });
 
     click(getButtonContaining("Load more"));
     await waitFor(() => {
@@ -392,8 +403,5 @@ describe("memory page", () => {
         screen.getByText("1 memory file changed (+1)."),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.queryByText("Failed to load older memory updates"),
-    ).not.toBeInTheDocument();
   });
 });

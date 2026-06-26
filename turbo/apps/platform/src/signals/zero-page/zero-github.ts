@@ -82,7 +82,6 @@ export const githubIntegrationData$ = computed(
     const result = await accept(
       client.getInstallation({ headers: {} }),
       [200, 404],
-      { toast: false },
     );
 
     if (result.status === 404) {

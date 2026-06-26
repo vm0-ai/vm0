@@ -150,7 +150,6 @@ const startCodexDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
@@ -314,7 +313,7 @@ function createCodexRunFlow$(
       if (!started.ok) {
         set(ctx.internalFlowState$, {
           status: "error",
-          message: codexDeviceAuthErrorMessage(started.error),
+          message: "ChatGPT connection failed. Start again to retry.",
         });
         return false;
       }

@@ -89,9 +89,7 @@ export const computerUseHosts$ = computed(
     get(computerUseHostsReload$);
 
     const client = get(zeroClient$)(zeroComputerUseHostsContract);
-    const result = await accept(client.list({}), [200, 403], {
-      toast: false,
-    });
+    const result = await accept(client.list({}), [200, 403]);
     if (result.status !== 200) {
       return [];
     }

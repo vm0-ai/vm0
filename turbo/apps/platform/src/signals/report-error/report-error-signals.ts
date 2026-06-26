@@ -24,13 +24,7 @@ export const reportErrorRun$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(zeroRunsByIdContract);
-  const result = await accept(
-    client.getById({ params: { id: runId } }),
-    [200],
-    {
-      toast: false,
-    },
-  );
+  const result = await accept(client.getById({ params: { id: runId } }), [200]);
   return result.body;
 });
 
@@ -61,26 +55,14 @@ export const setReportDescription$ = command(({ set }, description: string) => {
 // Submission state
 // ---------------------------------------------------------------------------
 
-type ReportState = "idle" | "loading" | "success" | "error";
-
-const internalReportState$ = state<ReportState>("idle");
 const internalReportReference$ = state<string | null>(null);
-const internalReportErrorMessage$ = state<string | null>(null);
-
-export const reportState$ = computed((get) => {
-  return get(internalReportState$);
-});
 
 export const reportReference$ = computed((get) => {
   return get(internalReportReference$);
 });
 
-export const reportErrorMessage$ = computed((get) => {
-  return get(internalReportErrorMessage$);
-});
-
 export const submitErrorReport$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const runId = get(reportErrorRunId$);
     if (!runId) {
       return;
@@ -92,32 +74,21 @@ export const submitErrorReport$ = command(
       return;
     }
 
-    set(internalReportState$, "loading");
-    set(internalReportErrorMessage$, null);
-
     const client = get(zeroClient$)(zeroReportErrorContract);
-    const result = await client.submit({
-      body: { runId, title, description: description || undefined },
-    });
-
-    if (result.status === 200) {
-      set(internalReportState$, "success");
-      set(internalReportReference$, result.body.reference);
-    } else {
-      set(internalReportState$, "error");
-      const errorBody = result.body as { error?: { message?: string } };
-      set(
-        internalReportErrorMessage$,
-        errorBody.error?.message ?? "Failed to submit error report",
-      );
-    }
+    const result = await accept(
+      client.submit({
+        body: { runId, title, description: description || undefined },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalReportReference$, result.body.reference);
   },
 );
 
 export const resetReportState$ = command(({ set }) => {
-  set(internalReportState$, "idle");
   set(internalReportReference$, null);
-  set(internalReportErrorMessage$, null);
   set(internalReportTitle$, "");
   set(internalReportDescription$, "");
 });
