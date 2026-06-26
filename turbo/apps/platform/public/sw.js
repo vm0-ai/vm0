@@ -11,8 +11,7 @@ function isStaticAsset(url) {
 function isRevalidatedStaticAsset(url) {
   return (
     url.origin === self.location.origin &&
-    (url.pathname.startsWith("/firewall-metadata/") ||
-      url.pathname.startsWith("/firewall-runtime/"))
+    url.pathname.startsWith("/firewall-metadata/")
   );
 }
 

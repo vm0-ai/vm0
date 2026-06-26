@@ -10,8 +10,6 @@ import {
   loadFirewallRoutingMetadata,
   type FirewallRoutingMetadata,
 } from "../firewall-metadata/routing";
-import type { FirewallConfig } from "../firewall-types";
-import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
 
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
@@ -59,29 +57,6 @@ function assertNoForbiddenRoutingMetadata(
     }
     assertNoForbiddenRoutingMetadata(nested, `${location}.${key}`);
   }
-}
-
-function runtimeRoutingProjection(
-  type: FirewallConnectorType,
-  firewall: FirewallConfig,
-): FirewallRoutingMetadata {
-  return {
-    type,
-    label: FIREWALL_PERMISSION_METADATA_SUMMARIES[type].label,
-    apis: firewall.apis.map((api) => {
-      return {
-        base: api.base,
-        routes: (api.permissions ?? []).flatMap((permission) => {
-          return permission.rules.map((rule) => {
-            return {
-              permissionName: permission.name,
-              rule,
-            };
-          });
-        }),
-      };
-    }),
-  };
 }
 
 async function loadRequiredRoutingMetadata(
@@ -202,14 +177,6 @@ describe("firewall routing metadata", () => {
     ).toBeGreaterThan(100);
   });
 
-  it("preserves route-only data from runtime firewall configs", async () => {
-    for (const [type, firewall] of await loadRuntimeFirewallEntries()) {
-      const metadata = await loadRequiredRoutingMetadata(type);
-      expect(metadata).toStrictEqual(runtimeRoutingProjection(type, firewall));
-      assertNoForbiddenRoutingMetadata(metadata, type);
-    }
-  });
-
   it("represents large and shared routing surfaces", async () => {
     const googleCloud = await loadRequiredRoutingMetadata("google-cloud");
     const stripe = await loadRequiredRoutingMetadata("stripe");
@@ -234,6 +201,8 @@ describe("firewall routing metadata", () => {
     } | null = null;
     for (const type of FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES) {
       const metadata = await loadRequiredRoutingMetadata(type);
+      assertNoForbiddenRoutingMetadata(metadata, type);
+
       const apiCounts = new Map<string, number>();
       for (const api of metadata.apis) {
         const names = new Set(

@@ -39,9 +39,6 @@ function importsEagerConnectorRuntimeFirewall(source: string): boolean {
     if (specifier === "@vm0/connectors/firewalls") {
       return true;
     }
-    if (specifier === "@vm0/connectors/firewalls/runtime") {
-      return false;
-    }
     return specifier.startsWith("@vm0/connectors/firewalls/");
   });
 }
@@ -52,15 +49,19 @@ describe("firewall metadata import boundary", () => {
       `import { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `import type { FirewallConnectorType } from "@vm0/connectors/firewalls";`,
       `import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls/all";`,
+      `import { loadConnectorFirewall } from "@vm0/connectors/firewalls/runtime";`,
       `export { getConnectorFirewall } from "@vm0/connectors/firewalls";`,
       `await import("@vm0/connectors/firewalls/github.generated");`,
       `await import("@vm0/connectors/firewalls/index");`,
+      `await import("@vm0/connectors/firewalls/runtime");`,
       `import "@vm0/connectors/firewalls";`,
       `require("@vm0/connectors/firewalls/github.generated");`,
+      `require("@vm0/connectors/firewalls/runtime");`,
     ]) {
       expect(
         importsSpecifier(source, "@vm0/connectors/firewalls"),
       ).toBeTruthy();
+      expect(importsEagerConnectorRuntimeFirewall(source)).toBeTruthy();
     }
 
     expect(

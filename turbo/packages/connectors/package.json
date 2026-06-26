@@ -53,10 +53,6 @@
       "types": "./src/firewall-metadata/routing.ts"
     },
     "./firewalls": null,
-    "./firewalls/runtime": {
-      "import": "./src/firewall-runtime.ts",
-      "types": "./src/firewall-runtime.ts"
-    },
     "./firewalls/*": null,
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",
