@@ -76,6 +76,60 @@ describe("groupEventsIntoMessages progress events", () => {
   });
 });
 
+describe("groupEventsIntoMessages event dedupe", () => {
+  it("keeps distinct events that share a sequence number", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 3,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "First same-sequence event." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 3,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Second same-sequence event." }],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+    ]);
+
+    expect(
+      messages.map((message) => {
+        return message.textBefore;
+      }),
+    ).toEqual(["First same-sequence event.", "Second same-sequence event."]);
+  });
+
+  it("dedupes exact repeated events", () => {
+    const duplicateEvent: AgentEvent = {
+      sequenceNumber: 4,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [{ type: "text", text: "Repeated boundary event." }],
+        },
+      },
+      createdAt: "2026-06-26T02:31:21Z",
+    };
+
+    const messages = groupEventsIntoMessages([
+      duplicateEvent,
+      { ...duplicateEvent },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.textBefore).toBe("Repeated boundary event.");
+  });
+});
+
 describe("groupEventsIntoMessages thinking content", () => {
   it("keeps Claude Code thinking content blocks visible", () => {
     const messages = groupEventsIntoMessages([

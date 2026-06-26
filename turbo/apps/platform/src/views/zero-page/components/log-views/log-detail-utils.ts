@@ -168,6 +168,15 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
     : meta;
 }
 
+function eventDedupeKey(event: AgentEvent): string {
+  return JSON.stringify({
+    sequenceNumber: event.sequenceNumber,
+    eventType: event.eventType,
+    createdAt: event.createdAt,
+    eventData: event.eventData,
+  });
+}
+
 /**
  * Extract the key parameter from tool input for display in summary
  */
@@ -746,12 +755,13 @@ export function groupEventsIntoMessages(
     return a.sequenceNumber - b.sequenceNumber;
   });
 
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const deduped = sorted.filter((e) => {
-    if (seen.has(e.sequenceNumber)) {
+    const key = eventDedupeKey(e);
+    if (seen.has(key)) {
       return false;
     }
-    seen.add(e.sequenceNumber);
+    seen.add(key);
     return true;
   });
 
