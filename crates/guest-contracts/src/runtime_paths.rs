@@ -610,11 +610,11 @@ fn set_dir_private(_path: &Path) -> io::Result<()> {
 
 /// Ensure a runtime-private directory exists.
 ///
-/// On Unix, missing directories are created with `0700` permissions, existing
-/// directories are tightened to `0700`, parent-directory components are
-/// rejected, and symlinked parent components are rejected. On non-Unix targets,
-/// this creates the directory path without claiming equivalent permission or
-/// symlink guarantees.
+/// On Unix, missing directories are created with `0700` permissions, the final
+/// directory is tightened to `0700` when it already exists, parent-directory
+/// components are rejected, and symlinked parent components are rejected. On
+/// non-Unix targets, this creates the directory path without claiming
+/// equivalent permission or symlink guarantees.
 pub fn ensure_dir(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
     #[cfg(unix)]
