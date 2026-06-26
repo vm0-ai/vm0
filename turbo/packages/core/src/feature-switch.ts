@@ -323,8 +323,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorAccessManagement]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the Manage entry on connected connector cards for per-agent connector access and permission management.",
+      "Show connected connector filtering and per-agent connector access management on connected connector cards.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 
