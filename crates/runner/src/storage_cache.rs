@@ -24,7 +24,7 @@
 //! staged under [`GUEST_STAGE_DIR`]. `guest-download` supports that scheme and
 //! treats missing local archives as a broken staging contract.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -77,6 +77,18 @@ struct CacheTarget {
     name: String,
     version: String,
     archive_url: String,
+}
+
+struct CacheTargetGroup {
+    targets: Vec<CacheTarget>,
+}
+
+enum GroupOutcome {
+    Shared {
+        outcome_target_index: usize,
+        outcome: TargetOutcome,
+    },
+    PerTarget(Vec<TargetOutcome>),
 }
 
 #[derive(Clone, Copy)]
@@ -165,6 +177,7 @@ pub async fn populate_cache(
     if targets.is_empty() {
         return Ok(());
     }
+    let target_groups = group_targets(targets);
 
     let http = Client::builder()
         .build()
@@ -175,24 +188,50 @@ pub async fn populate_cache(
     // keeping their borrows alive on the caller's stack. Unlike
     // `tokio::task::JoinSet`, it does not require `'static` futures — which
     // matters because our `sandbox: &dyn Sandbox` is a borrow, not an Arc.
-    let outcomes: Vec<(CacheTarget, RunnerResult<TargetOutcome>)> = stream::iter(targets)
-        .map(|target| {
+    let outcomes: Vec<(CacheTargetGroup, RunnerResult<GroupOutcome>)> = stream::iter(target_groups)
+        .map(|group| {
             let http = http.clone();
             let guest_writes = &guest_writes;
             async move {
-                let res = process_one(&target, &http, home, sandbox, guest_writes).await;
-                (target, res)
+                let res = process_group(&group, &http, home, sandbox, guest_writes).await;
+                (group, res)
             }
         })
         .buffer_unordered(CONCURRENCY)
         .collect()
         .await;
 
-    for (target, outcome) in outcomes {
+    for (group, outcome) in outcomes {
         let outcome = outcome?;
-        apply_outcome(manifest, &target, &outcome, telemetry);
+        apply_group_outcome(manifest, &group, &outcome, telemetry);
     }
     Ok(())
+}
+
+fn group_targets(targets: Vec<CacheTarget>) -> Vec<CacheTargetGroup> {
+    let mut group_order = Vec::new();
+    let mut groups_by_key: HashMap<(String, String), Vec<CacheTarget>> = HashMap::new();
+
+    for target in targets {
+        let key = (target.name.clone(), target.version.clone());
+        match groups_by_key.entry(key.clone()) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().push(target);
+            }
+            Entry::Vacant(entry) => {
+                group_order.push(key);
+                entry.insert(vec![target]);
+            }
+        }
+    }
+
+    let mut groups = Vec::with_capacity(group_order.len());
+    for key in group_order {
+        if let Some(targets) = groups_by_key.remove(&key) {
+            groups.push(CacheTargetGroup { targets });
+        }
+    }
+    groups
 }
 
 fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
@@ -249,6 +288,35 @@ fn cache_target_from_entry(
         version: version.to_string(),
         archive_url: archive_url.to_string(),
     })
+}
+
+async fn process_group(
+    group: &CacheTargetGroup,
+    http: &Client,
+    home: &HomePaths,
+    sandbox: &dyn Sandbox,
+    guest_writes: &GuestWriteLocks,
+) -> RunnerResult<GroupOutcome> {
+    let mut head_failed_outcomes = Vec::new();
+    for (index, target) in group.targets.iter().enumerate() {
+        let outcome = process_one(target, http, home, sandbox, guest_writes).await?;
+        match outcome {
+            TargetOutcome::SkippedHeadFailed { .. } => {
+                head_failed_outcomes.push(outcome);
+                if head_failed_outcomes.len() == group.targets.len() {
+                    return Ok(GroupOutcome::PerTarget(head_failed_outcomes));
+                }
+            }
+            outcome => {
+                return Ok(GroupOutcome::Shared {
+                    outcome_target_index: index,
+                    outcome,
+                });
+            }
+        }
+    }
+
+    Ok(GroupOutcome::PerTarget(head_failed_outcomes))
 }
 
 async fn process_one(
@@ -860,6 +928,49 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
     final_dir.with_file_name(name)
 }
 
+fn apply_group_outcome(
+    manifest: &mut GuestDownloadManifest,
+    group: &CacheTargetGroup,
+    group_outcome: &GroupOutcome,
+    telemetry: &mut JobTelemetry,
+) {
+    match group_outcome {
+        GroupOutcome::Shared {
+            outcome_target_index,
+            outcome,
+        } => match outcome {
+            TargetOutcome::Hit => {
+                for target in &group.targets {
+                    apply_outcome(manifest, target, outcome, telemetry);
+                }
+            }
+            TargetOutcome::Miss { .. } => {
+                let hit = TargetOutcome::Hit;
+                for (index, target) in group.targets.iter().enumerate() {
+                    if index == *outcome_target_index {
+                        apply_outcome(manifest, target, outcome, telemetry);
+                    } else {
+                        apply_outcome(manifest, target, &hit, telemetry);
+                    }
+                }
+            }
+            TargetOutcome::SkippedOverSize
+            | TargetOutcome::SkippedHeadFailed { .. }
+            | TargetOutcome::SkippedInvalidDownload { .. } => {
+                for target in &group.targets {
+                    apply_outcome(manifest, target, outcome, telemetry);
+                }
+            }
+        },
+        GroupOutcome::PerTarget(outcomes) => {
+            debug_assert_eq!(group.targets.len(), outcomes.len());
+            for (target, outcome) in group.targets.iter().zip(outcomes) {
+                apply_outcome(manifest, target, outcome, telemetry);
+            }
+        }
+    }
+}
+
 fn apply_outcome(
     manifest: &mut GuestDownloadManifest,
     target: &CacheTarget,
@@ -1007,6 +1118,36 @@ mod tests {
                 vas_storage_name: name.to_string(),
                 vas_version_id: version.to_string(),
             }],
+            artifacts: Vec::new(),
+            cleanup_paths: Vec::new(),
+        }
+    }
+
+    fn manifest_duplicate_storages(
+        first_url: String,
+        second_url: String,
+        name: &str,
+        version: &str,
+    ) -> GuestDownloadManifest {
+        GuestDownloadManifest {
+            storages: vec![
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/duplicate-a".into(),
+                    archive_url: Some(first_url),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/duplicate-b".into(),
+                    archive_url: Some(second_url),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+            ],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
         }
@@ -2469,7 +2610,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn duplicate_same_key_targets_serialize_same_guest_path_write() {
+    async fn duplicate_same_key_targets_share_one_guest_path_write() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let name = "duplicate-key";
@@ -2483,28 +2624,12 @@ mod tests {
             let home = home.clone();
             let sandbox = Arc::clone(&sandbox);
             tokio::spawn(async move {
-                let mut manifest = GuestDownloadManifest {
-                    storages: vec![
-                        GuestDownloadStorageEntry {
-                            mount_path: "/mnt/duplicate-a".into(),
-                            archive_url: Some("https://r2.example.com/duplicate-a.tar.gz".into()),
-                            cached: false,
-                            instructions_target_filename: None,
-                            vas_storage_name: name.to_string(),
-                            vas_version_id: version.to_string(),
-                        },
-                        GuestDownloadStorageEntry {
-                            mount_path: "/mnt/duplicate-b".into(),
-                            archive_url: Some("https://r2.example.com/duplicate-b.tar.gz".into()),
-                            cached: false,
-                            instructions_target_filename: None,
-                            vas_storage_name: name.to_string(),
-                            vas_version_id: version.to_string(),
-                        },
-                    ],
-                    artifacts: Vec::new(),
-                    cleanup_paths: Vec::new(),
-                };
+                let mut manifest = manifest_duplicate_storages(
+                    "https://r2.example.com/duplicate-a.tar.gz".into(),
+                    "https://r2.example.com/duplicate-b.tar.gz".into(),
+                    name,
+                    version,
+                );
                 let mut telemetry = new_telemetry();
                 populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry).await?;
                 Ok::<GuestDownloadManifest, RunnerError>(manifest)
@@ -2515,17 +2640,15 @@ mod tests {
         assert_eq!(
             sandbox.write_file_calls().len(),
             1,
-            "first duplicate guest path write should be blocked in the sandbox"
+            "duplicate same-key guest path write should be blocked in the sandbox"
         );
 
-        gate.release_one();
-        gate.wait_entered(2, Duration::from_secs(5)).await.unwrap();
         gate.release_one();
         let manifest = task.await.unwrap().unwrap();
         assert_eq!(
             sandbox.write_file_calls().len(),
-            2,
-            "second duplicate guest path write should start after the first is released"
+            1,
+            "duplicate same-key targets should share one guest write"
         );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
@@ -2536,6 +2659,262 @@ mod tests {
         assert_eq!(
             manifest.storages[1].archive_url.as_deref(),
             Some(expected.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_same_key_cold_miss_downloads_and_stages_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-a.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-a.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+        let unused_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-b.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let unused_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/duplicate-b.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "duplicate-miss";
+        let version = "v1";
+        let mut manifest = manifest_duplicate_storages(
+            server.url("/duplicate-a.tar.gz"),
+            server.url("/duplicate-b.tar.gz"),
+            name,
+            version,
+        );
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_async().await;
+        unused_probe.assert_calls_async(0).await;
+        unused_full.assert_calls_async(0).await;
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "duplicate same-key cold miss should stage one guest archive"
+        );
+
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_miss")
+                .count(),
+            1,
+            "expected one representative miss in {ops:?}"
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_download")
+                .count(),
+            1,
+            "expected one representative download in {ops:?}"
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_hit")
+                .count(),
+            1,
+            "expected one hit-equivalent duplicate target in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_storage_and_artifact_key_share_warmed_guest_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+
+        let name = "shared-storage-artifact";
+        let version = "v1";
+        write_cached_archive(&home, name, version, &tarball_bytes());
+
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
+                mount_path: "/mnt/storage".into(),
+                archive_url: Some("https://r2.example.com/storage.tar.gz".into()),
+                cached: false,
+                instructions_target_filename: None,
+                vas_storage_name: name.to_string(),
+                vas_version_id: version.to_string(),
+            }],
+            artifacts: vec![GuestDownloadArtifactEntry {
+                mount_path: "/mnt/artifact".into(),
+                archive_url: Some("https://r2.example.com/artifact.tar.gz".into()),
+                cached: false,
+                vas_storage_name: name.to_string(),
+                vas_storage_id: "storage-id".into(),
+                vas_version_id: version.to_string(),
+                missing_root_policy: None,
+            }],
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "storage and artifact targets with the same key should share one guest write"
+        );
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest.artifacts[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_hit")
+                .count(),
+            2,
+            "expected entry-level hit telemetry for both duplicate targets in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_same_key_probe_failure_falls_back_to_next_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let failed_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(500);
+            })
+            .await;
+        let failed_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-fails.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+        let successful_probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-succeeds.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let successful_full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/probe-succeeds.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let name = "probe-fallback";
+        let version = "v1";
+        let mut manifest = manifest_duplicate_storages(
+            server.url("/probe-fails.tar.gz"),
+            server.url("/probe-succeeds.tar.gz"),
+            name,
+            version,
+        );
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        failed_probe.assert_async().await;
+        failed_full.assert_calls_async(0).await;
+        successful_probe.assert_async().await;
+        successful_full.assert_async().await;
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "fallback target should stage one guest archive for the whole group"
+        );
+
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(key, _, _)| key == "storage_cache_miss")
+                .count(),
+            1,
+            "expected one successful representative miss in {ops:?}"
+        );
+        assert!(
+            !ops.iter()
+                .any(|(key, _, _)| key == "storage_cache_skipped_head_failed"),
+            "transient representative probe failure should not be the final group outcome: {ops:?}"
         );
     }
 
