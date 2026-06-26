@@ -205,7 +205,7 @@ export async function setWorkflowTriggerEnabled(
   const request = params.enabled
     ? workflowTriggers.enable({ params: { id: params.triggerId } })
     : workflowTriggers.disable({ params: { id: params.triggerId } });
-  await accept(request, [200], { toast: false });
+  await accept(request, [200]);
 }
 
 async function createAutomation(
