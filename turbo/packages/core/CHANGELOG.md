@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.370.5](https://github.com/vm0-ai/vm0/compare/core-v8.370.4...core-v8.370.5) (2026-06-25)
+
+
+### Bug Fixes
+
+* refresh presentation template registry archives ([#18980](https://github.com/vm0-ai/vm0/issues/18980)) ([941727a](https://github.com/vm0-ai/vm0/commit/941727a14a176feb173f70c63843dafb027fe964))
+
 ## [8.370.4](https://github.com/vm0-ai/vm0/compare/core-v8.370.3...core-v8.370.4) (2026-06-25)
 
 

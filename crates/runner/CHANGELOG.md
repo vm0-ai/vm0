@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.24...runner-rs-v0.129.25) (2026-06-25)
+
+
+### Performance Improvements
+
+* **mitm-addon:** short-circuit connector diagnostics ([#18937](https://github.com/vm0-ai/vm0/issues/18937)) ([a6e1bea](https://github.com/vm0-ai/vm0/commit/a6e1beac6319fde73c5e7b4eed6803b87feb02cd))
+
 ## [0.129.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.23...runner-rs-v0.129.24) (2026-06-25)
 
 

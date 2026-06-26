@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.493.0](https://github.com/vm0-ai/vm0/compare/app-v0.492.1...app-v0.493.0) (2026-06-25)
+
+
+### Features
+
+* redesign workflow detail workspace ([#18985](https://github.com/vm0-ai/vm0/issues/18985)) ([ff808f7](https://github.com/vm0-ai/vm0/commit/ff808f7ad3e40a585998488ed055317adfc60a73))
+
+
+### Bug Fixes
+
+* roll up run group usage ([#18989](https://github.com/vm0-ai/vm0/issues/18989)) ([b46db5f](https://github.com/vm0-ai/vm0/commit/b46db5f29021cf1665d238cbeb1c9fa023e9a8be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.370.5
+
 ## [0.492.1](https://github.com/vm0-ai/vm0/compare/app-v0.492.0...app-v0.492.1) (2026-06-25)
 
 
