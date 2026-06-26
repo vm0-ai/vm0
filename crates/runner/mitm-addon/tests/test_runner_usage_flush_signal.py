@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import jsonl_writer
 import logging_utils
 import mitm_addon
 import usage
@@ -274,6 +275,59 @@ class TestRunnerUsageFlushSignal:
         assert "RuntimeError" in warning
         assert "secret" not in warning
 
+    def test_jsonl_flush_timeout_writes_pending_state_and_does_not_reprocess_request(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        log_path = runner_usage_flush_files.write_jsonl_flush_request()
+        append_started = threading.Event()
+        release_append = threading.Event()
+        original_append_lines = jsonl_writer._append_lines
+        log = MagicMock()
+
+        def append_lines(path: str, content: bytes) -> None:
+            append_started.set()
+            release_append.wait()
+            original_append_lines(path, content)
+
+        with (
+            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(jsonl_writer, "_append_lines", side_effect=append_lines),
+            patch.object(
+                mitm_addon,
+                "RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS",
+                0.01,
+                create=True,
+            ),
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+        ):
+            try:
+                logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+                assert append_started.wait(timeout=1)
+
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+                state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
+                assert state == {
+                    "pid": state["pid"],
+                    "usageStateId": "runner-state",
+                    "updatedAtMs": state["updatedAtMs"],
+                    "flushRequestId": "jsonl-request-1",
+                    "path": str(log_path),
+                    "pending": 1,
+                }
+
+                with patch.object(mitm_addon, "flush_log_path") as retry_flush:
+                    mitm_addon._handle_runner_usage_flush_signal(0, None)
+                    wait_for_usage_flush_worker_to_stop()
+
+                retry_flush.assert_not_called()
+            finally:
+                release_append.set()
+                jsonl_writer.reset_for_tests()
+
+        log.warn.assert_called_once_with("JSONL flush did not complete before timeout")
+
     def test_signal_handler_does_not_reprocess_acknowledged_jsonl_flush_request(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
@@ -289,7 +343,10 @@ class TestRunnerUsageFlushSignal:
             mitm_addon._handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
-        flush_log_path.assert_called_once_with(str(log_path))
+        flush_log_path.assert_called_once_with(
+            str(log_path),
+            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+        )
 
     def test_jsonl_flush_failure_is_retryable(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
@@ -312,8 +369,14 @@ class TestRunnerUsageFlushSignal:
                 mitm_addon._handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
-        failed_flush.assert_called_once_with(str(log_path))
-        retry_flush.assert_called_once_with(str(log_path))
+        failed_flush.assert_called_once_with(
+            str(log_path),
+            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+        )
+        retry_flush.assert_called_once_with(
+            str(log_path),
+            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+        )
         state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
         assert state["pending"] == 0
 
