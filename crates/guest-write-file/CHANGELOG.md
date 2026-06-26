@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.5...guest-write-file-v0.1.6) (2026-06-26)
+
+
+### Performance Improvements
+
+* batch storage cache warm-hit staging ([#19077](https://github.com/vm0-ai/vm0/issues/19077)) ([3f6743f](https://github.com/vm0-ai/vm0/commit/3f6743f9fd4a6c8fa0cdc5e6c1e50ef2042c924c))
+
 ## [0.1.5](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.4...guest-write-file-v0.1.5) (2026-06-26)
 
 ## [0.1.4](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.3...guest-write-file-v0.1.4) (2026-06-25)

@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.442.0](https://github.com/vm0-ai/vm0/compare/web-v12.441.7...web-v12.442.0) (2026-06-26)
+
+
+### Features
+
+* add html artifact comment editing ([#18895](https://github.com/vm0-ai/vm0/issues/18895)) ([bf57d75](https://github.com/vm0-ai/vm0/commit/bf57d759722059db48746bf7ef4d00993d007e62))
+* add workflow webhook trigger ([#19080](https://github.com/vm0-ai/vm0/issues/19080)) ([08fb467](https://github.com/vm0-ai/vm0/commit/08fb4674f43f0d910b5c3ed559811035079e9fa8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.119.0
+
 ## [12.441.7](https://github.com/vm0-ai/vm0/compare/web-v12.441.6...web-v12.441.7) (2026-06-26)
 
 
