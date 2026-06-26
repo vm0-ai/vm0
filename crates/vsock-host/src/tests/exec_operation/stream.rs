@@ -47,74 +47,155 @@ fn operation_request(label: &str) -> ExecOperationRequest<'_> {
     }
 }
 
-#[tokio::test]
-async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
+async fn assert_stream_request_rejected_without_frame(
+    request: ExecStreamRequest<'_>,
+    expected_message_substring: Option<&str>,
+) {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
+    let label = request.label;
 
-    let err = match host
-        .exec_operation_stream(ExecStreamRequest {
-            stream_queue_capacity: Some(0),
-            ..stream_request("zero-capacity")
-        })
-        .await
-    {
-        Ok(_) => panic!("zero stream capacity should be rejected"),
+    let err = match host.exec_operation_stream(request).await {
+        Ok(_) => panic!("stream request {label:?} should be rejected before sending a frame"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        err.kind(),
+        io::ErrorKind::InvalidInput,
+        "stream request {label:?} returned unexpected error: {err}",
+    );
+    if let Some(expected) = expected_message_substring {
+        assert!(
+            err.to_string().contains(expected),
+            "stream request {label:?} error should contain {expected:?}, got: {err}",
+        );
+    }
+    assert_eq!(
+        operation_count(&host),
+        0,
+        "stream request {label:?} should not register an operation",
+    );
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+async fn assert_start_request_rejected_without_frame(
+    request: ExecOperationRequest<'_>,
+    expected_message_substring: Option<&str>,
+) {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let label = request.label;
+
+    let err = match host.start_exec_operation(request).await {
+        Ok(_) => panic!("exec start request {label:?} should be rejected before sending a frame"),
+        Err(err) => err,
+    };
+    assert_eq!(
+        err.kind(),
+        io::ErrorKind::InvalidInput,
+        "exec start request {label:?} returned unexpected error: {err}",
+    );
+    if let Some(expected) = expected_message_substring {
+        assert!(
+            err.to_string().contains(expected),
+            "exec start request {label:?} error should contain {expected:?}, got: {err}",
+        );
+    }
+    assert_eq!(
+        operation_count(&host),
+        0,
+        "exec start request {label:?} should not register an operation",
+    );
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+struct StreamOutputFrame<'a> {
+    output_seq: u32,
+    stream: ExecOutputStream,
+    chunk: &'a [u8],
+    truncated: bool,
+}
+
+async fn assert_stream_output_frames_poison_connection(
+    request: ExecStreamRequest<'_>,
+    frames: &[StreamOutputFrame<'_>],
+) {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let label = request.label;
+    let handle = match host.exec_operation_stream(request).await {
+        Ok(handle) => handle,
+        Err(err) => panic!("stream request {label:?} should start before poison frames: {err}"),
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(
+        msg.msg_type, MSG_EXEC_START,
+        "stream request {label:?} should send an exec start before poison frames",
+    );
+    for frame in frames {
+        send_exec_output(
+            &mut guest,
+            msg.seq,
+            frame.output_seq,
+            frame.stream,
+            frame.chunk,
+            frame.truncated,
+        )
+        .await;
+    }
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap_or_else(|err| {
+            panic!("stream request {label:?} should close after poison frames: {err}")
+        });
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(
+        err.kind(),
+        io::ErrorKind::ConnectionReset,
+        "stream request {label:?} should resolve with ConnectionReset after poison frames: {err}",
+    );
+}
+
+#[tokio::test]
+async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
+    assert_stream_request_rejected_without_frame(
+        ExecStreamRequest {
+            stream_queue_capacity: Some(0),
+            ..stream_request("zero-capacity")
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    let err = match host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_request_rejected_without_frame(
+        ExecStreamRequest {
             stream_queue_capacity: Some(exec_operation_impl::test_support::MAX_STREAM_CAPACITY + 1),
             ..stream_request("oversized-capacity")
-        })
-        .await
-    {
-        Ok(_) => panic!("oversized stream capacity should be rejected"),
-        Err(err) => err,
-    };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_oversized_stdin_without_sending_frame() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
     let stdin_bytes = vec![0; vsock_proto::MAX_EXEC_STDIN_BYTES + 1];
 
-    let err = match host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_request_rejected_without_frame(
+        ExecStreamRequest {
             command: "cat",
             stdin_bytes: Some(&stdin_bytes),
             ..stream_request("stream-oversized-stdin")
-        })
-        .await
-    {
-        Ok(_) => panic!("oversized stdin should be rejected"),
-        Err(err) => err,
-    };
-
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert!(
-        err.to_string().contains("stdin_bytes"),
-        "unexpected error: {err}",
-    );
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        Some("stdin_bytes"),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -192,57 +273,36 @@ async fn exec_operation_stream_sends_stdin_bytes() {
 
 #[tokio::test]
 async fn exec_start_rejects_receiver_without_stream_policy() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    let err = match host
-        .start_exec_operation(ExecOperationRequest {
+    assert_start_request_rejected_without_frame(
+        ExecOperationRequest {
             command: "capture",
             stderr: ExecOutputPolicy::Discard,
             stream_queue_capacity: Some(1),
             ..operation_request("unexpected-receiver")
-        })
-        .await
-    {
-        Ok(_) => panic!("receiver without streaming output policy should be rejected"),
-        Err(err) => err,
-    };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_non_streaming_policy() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    let err = match host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_request_rejected_without_frame(
+        ExecStreamRequest {
             command: "capture",
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
             ..stream_request("non-streaming-helper")
-        })
-        .await
-    {
-        Ok(_) => panic!("exec_operation_stream should reject non-streaming output policies"),
-        Err(err) => err,
-    };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_start_encode_error_does_not_register_or_send_frame() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    let err = match host
-        .start_exec_operation(ExecOperationRequest {
+    assert_start_request_rejected_without_frame(
+        ExecOperationRequest {
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 0,
@@ -250,38 +310,23 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
             stderr: ExecOutputPolicy::Discard,
             stream_queue_capacity: Some(1),
             ..operation_request("bad-policy")
-        })
-        .await
-    {
-        Ok(_) => panic!("invalid exec output policy should be rejected"),
-        Err(err) => err,
-    };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_start_rejects_zero_timeout_without_sending_frame() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    let err = match host
-        .start_exec_operation(ExecOperationRequest {
+    assert_start_request_rejected_without_frame(
+        ExecOperationRequest {
             timeout_ms: 0,
             command: "sleep 60",
             ..operation_request("zero-timeout")
-        })
-        .await
-    {
-        Ok(_) => panic!("zero timeout exec operation should be rejected"),
-        Err(err) => err,
-    };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -526,9 +571,8 @@ async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result()
 
 #[tokio::test]
 async fn exec_output_for_non_streamed_side_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
@@ -536,55 +580,32 @@ async fn exec_output_for_non_streamed_side_poisons_connection() {
             },
             stream_queue_capacity: Some(1),
             ..stream_request("stream-side")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        0,
-        ExecOutputStream::Stdout,
-        b"unexpected",
-        false,
+        },
+        &[StreamOutputFrame {
+            output_seq: 0,
+            stream: ExecOutputStream::Stdout,
+            chunk: b"unexpected",
+            truncated: false,
+        }],
     )
     .await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]
 async fn exec_output_seq_gap_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stream_queue_capacity: Some(1),
             ..stream_request("stream-seq")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        1,
-        ExecOutputStream::Stdout,
-        b"gap",
-        false,
+        },
+        &[StreamOutputFrame {
+            output_seq: 1,
+            stream: ExecOutputStream::Stdout,
+            chunk: b"gap",
+            truncated: false,
+        }],
     )
     .await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]
@@ -622,132 +643,98 @@ async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
 
 #[tokio::test]
 async fn exec_output_empty_non_truncated_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stream_queue_capacity: Some(1),
             ..stream_request("stream-empty")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", false).await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+        },
+        &[StreamOutputFrame {
+            output_seq: 0,
+            stream: ExecOutputStream::Stdout,
+            chunk: b"",
+            truncated: false,
+        }],
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn exec_output_over_requested_chunk_limit_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
             stream_queue_capacity: Some(4),
             ..stream_request("stream-limits")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        0,
-        ExecOutputStream::Stdout,
-        b"abcd",
-        false,
+        },
+        &[StreamOutputFrame {
+            output_seq: 0,
+            stream: ExecOutputStream::Stdout,
+            chunk: b"abcd",
+            truncated: false,
+        }],
     )
     .await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]
 async fn exec_output_over_requested_stream_limit_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
             stream_queue_capacity: Some(4),
             ..stream_request("stream-total-limit")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        0,
-        ExecOutputStream::Stdout,
-        b"abc",
-        false,
+        },
+        &[
+            StreamOutputFrame {
+                output_seq: 0,
+                stream: ExecOutputStream::Stdout,
+                chunk: b"abc",
+                truncated: false,
+            },
+            StreamOutputFrame {
+                output_seq: 1,
+                stream: ExecOutputStream::Stdout,
+                chunk: b"de",
+                truncated: false,
+            },
+        ],
     )
     .await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        1,
-        ExecOutputStream::Stdout,
-        b"de",
-        false,
-    )
-    .await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]
 async fn exec_output_after_truncation_poisons_connection() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let handle = host
-        .exec_operation_stream(ExecStreamRequest {
+    assert_stream_output_frames_poison_connection(
+        ExecStreamRequest {
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 4,
             },
             stream_queue_capacity: Some(4),
             ..stream_request("stream-truncated")
-        })
-        .await
-        .unwrap();
-
-    let msg = read_guest_message(&mut guest).await;
-    send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", true).await;
-    send_exec_output(
-        &mut guest,
-        msg.seq,
-        1,
-        ExecOutputStream::Stdout,
-        b"late",
-        false,
+        },
+        &[
+            StreamOutputFrame {
+                output_seq: 0,
+                stream: ExecOutputStream::Stdout,
+                chunk: b"",
+                truncated: true,
+            },
+            StreamOutputFrame {
+                output_seq: 1,
+                stream: ExecOutputStream::Stdout,
+                chunk: b"late",
+                truncated: false,
+            },
+        ],
     )
     .await;
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
-    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]
