@@ -420,6 +420,8 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
     };
 
     assert!(error.to_string().contains("hash mismatch"));
+    assert!(!error.to_string().contains(&expected_hash));
+    assert!(!error.to_string().contains(&actual_hash));
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter().any(|op| {

@@ -213,10 +213,9 @@ async fn download_resume_session_history(
 
     let actual_hash = hex::encode(Sha256::digest(&bytes));
     if actual_hash != history_ref.hash {
-        return Err(RunnerError::Internal(format!(
-            "session history hash mismatch: expected {}, got {actual_hash}",
-            history_ref.hash
-        )));
+        return Err(RunnerError::Internal(
+            "session history hash mismatch".into(),
+        ));
     }
 
     let session_history = String::from_utf8(bytes)
@@ -388,9 +387,11 @@ mod tests {
 
     #[tokio::test]
     async fn materializer_rejects_hash_mismatch_and_redacts_url_query() {
+        let expected_hash = hex::encode(Sha256::digest(b"expected"));
+        let actual_hash = hex::encode(Sha256::digest(b"actual"));
         let session = ref_session(
             serve_once("200 OK", b"actual", Some(6)).await,
-            hex::encode(Sha256::digest(b"expected")),
+            expected_hash.clone(),
             Some(6),
         );
 
@@ -403,6 +404,8 @@ mod tests {
                 let message = error.to_string();
                 assert!(message.contains("hash mismatch"));
                 assert!(!message.contains("token=secret"));
+                assert!(!message.contains(&expected_hash));
+                assert!(!message.contains(&actual_hash));
             }
             _ => panic!("expected failed download"),
         }
