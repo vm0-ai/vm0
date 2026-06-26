@@ -24,6 +24,14 @@ const REPLY_MAGIC: u32 = 0x6744_6698;
 const REQUEST_HEADER_SIZE: usize = 28;
 const REPLY_HEADER_SIZE: usize = 16;
 const REQUEST_TYPE_COMMAND_MASK: u32 = 0x0000_FFFF;
+const REQUEST_MAGIC_OFFSET: usize = 0;
+const REQUEST_TYPE_OFFSET: usize = 4;
+const REQUEST_HANDLE_OFFSET: usize = 8;
+const REQUEST_OFFSET_FIELD_OFFSET: usize = 16;
+const REQUEST_LENGTH_OFFSET: usize = 24;
+const REPLY_MAGIC_OFFSET: usize = 0;
+const REPLY_ERROR_OFFSET: usize = 4;
+const REPLY_HANDLE_OFFSET: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
@@ -133,32 +141,12 @@ impl DispatchClient {
     pub async fn read_reply(&mut self) -> TestResult<NbdReply> {
         let mut reply_buf = [0u8; REPLY_HEADER_SIZE];
         self.reader.read_exact(&mut reply_buf).await?;
-        let [
-            magic_0,
-            magic_1,
-            magic_2,
-            magic_3,
-            error_0,
-            error_1,
-            error_2,
-            error_3,
-            handle_0,
-            handle_1,
-            handle_2,
-            handle_3,
-            handle_4,
-            handle_5,
-            handle_6,
-            handle_7,
-        ] = reply_buf;
-        let magic = u32::from_be_bytes([magic_0, magic_1, magic_2, magic_3]);
+        let magic = read_u32_be(&reply_buf, REPLY_MAGIC_OFFSET);
         assert_eq!(magic, REPLY_MAGIC);
 
         Ok(NbdReply {
-            error: u32::from_be_bytes([error_0, error_1, error_2, error_3]),
-            handle: u64::from_be_bytes([
-                handle_0, handle_1, handle_2, handle_3, handle_4, handle_5, handle_6, handle_7,
-            ]),
+            error: read_u32_be(&reply_buf, REPLY_ERROR_OFFSET),
+            handle: read_u64_be(&reply_buf, REPLY_HANDLE_OFFSET),
         })
     }
 
@@ -297,35 +285,55 @@ fn socketpair() -> std::io::Result<(OwnedFd, OwnedFd)> {
     Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
 }
 
-fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
-    let [magic_0, magic_1, magic_2, magic_3] = REQUEST_MAGIC.to_be_bytes();
-    let request_type = request.request_type_flags | request.command as u32;
-    let [type_0, type_1, type_2, type_3] = request_type.to_be_bytes();
-    let [
-        handle_0,
-        handle_1,
-        handle_2,
-        handle_3,
-        handle_4,
-        handle_5,
-        handle_6,
-        handle_7,
-    ] = request.handle.to_be_bytes();
-    let [
-        offset_0,
-        offset_1,
-        offset_2,
-        offset_3,
-        offset_4,
-        offset_5,
-        offset_6,
-        offset_7,
-    ] = request.offset.to_be_bytes();
-    let [length_0, length_1, length_2, length_3] = request.length.to_be_bytes();
+fn read_u32_be(buf: &[u8], offset: usize) -> u32 {
+    u32::from_be_bytes(read_bytes(buf, offset))
+}
 
-    [
-        magic_0, magic_1, magic_2, magic_3, type_0, type_1, type_2, type_3, handle_0, handle_1,
-        handle_2, handle_3, handle_4, handle_5, handle_6, handle_7, offset_0, offset_1, offset_2,
-        offset_3, offset_4, offset_5, offset_6, offset_7, length_0, length_1, length_2, length_3,
-    ]
+fn read_u64_be(buf: &[u8], offset: usize) -> u64 {
+    u64::from_be_bytes(read_bytes(buf, offset))
+}
+
+fn read_bytes<const N: usize>(buf: &[u8], offset: usize) -> [u8; N] {
+    let mut bytes = [0u8; N];
+    let copied = if let Some(slice) = offset.checked_add(N).and_then(|end| buf.get(offset..end)) {
+        bytes.copy_from_slice(slice);
+        true
+    } else {
+        false
+    };
+    assert!(copied, "NBD field offset must fit fixed header");
+    bytes
+}
+
+fn write_u32_be(buf: &mut [u8], offset: usize, value: u32) {
+    write_bytes(buf, offset, value.to_be_bytes());
+}
+
+fn write_u64_be(buf: &mut [u8], offset: usize, value: u64) {
+    write_bytes(buf, offset, value.to_be_bytes());
+}
+
+fn write_bytes<const N: usize>(buf: &mut [u8], offset: usize, bytes: [u8; N]) {
+    let copied = if let Some(dest) = offset
+        .checked_add(N)
+        .and_then(|end| buf.get_mut(offset..end))
+    {
+        dest.copy_from_slice(&bytes);
+        true
+    } else {
+        false
+    };
+    assert!(copied, "NBD field offset must fit fixed header");
+}
+
+fn serialize_request(request: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
+    let mut buf = [0u8; REQUEST_HEADER_SIZE];
+    let request_type = request.request_type_flags | request.command as u32;
+
+    write_u32_be(&mut buf, REQUEST_MAGIC_OFFSET, REQUEST_MAGIC);
+    write_u32_be(&mut buf, REQUEST_TYPE_OFFSET, request_type);
+    write_u64_be(&mut buf, REQUEST_HANDLE_OFFSET, request.handle);
+    write_u64_be(&mut buf, REQUEST_OFFSET_FIELD_OFFSET, request.offset);
+    write_u32_be(&mut buf, REQUEST_LENGTH_OFFSET, request.length);
+    buf
 }
