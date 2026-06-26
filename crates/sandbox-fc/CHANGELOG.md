@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.70](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.69...sandbox-fc-v0.37.70) (2026-06-26)
+
+
+### Bug Fixes
+
+* saturate telemetry duration milliseconds ([#19139](https://github.com/vm0-ai/vm0/issues/19139)) ([4db715c](https://github.com/vm0-ai/vm0/commit/4db715c9ed4a6469519e84bb83ff1b33917f1162))
+
 ## [0.37.69](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.68...sandbox-fc-v0.37.69) (2026-06-26)
 
 ## [0.37.68](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.67...sandbox-fc-v0.37.68) (2026-06-26)

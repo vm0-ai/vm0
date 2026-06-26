@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.499.0](https://github.com/vm0-ai/vm0/compare/app-v0.498.2...app-v0.499.0) (2026-06-26)
+
+
+### Features
+
+* add workflow trigger sidebar controls ([#19102](https://github.com/vm0-ai/vm0/issues/19102)) ([dd06b8d](https://github.com/vm0-ai/vm0/commit/dd06b8db7916473a6b87ed4edd3efb4f66c8e6a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.120.0
+    * @vm0/core bumped to 8.372.2
+
 ## [0.498.2](https://github.com/vm0-ai/vm0/compare/app-v0.498.1...app-v0.498.2) (2026-06-26)
 
 
