@@ -282,17 +282,22 @@ export function isTaskEventData(data: unknown): data is TaskEventData {
 }
 
 function toTaskEventData(data: TaskEventData): TaskEventData {
+  const subtype = stringValue(data.subtype);
   const status = stringValue(data.status);
   const summary = stringValue(data.summary);
+  const notificationStatus =
+    subtype === "task_notification" ? status : undefined;
+  const notificationSummary =
+    subtype === "task_notification" ? summary : undefined;
   return {
     task_id: data.task_id,
-    subtype: stringValue(data.subtype),
+    subtype,
     tool_use_id: stringValue(data.tool_use_id),
     description: stringValue(data.description),
     status,
     summary,
-    task_status: stringValue(data.task_status) ?? status,
-    task_summary: stringValue(data.task_summary) ?? summary,
+    task_status: stringValue(data.task_status) ?? notificationStatus,
+    task_summary: stringValue(data.task_summary) ?? notificationSummary,
     task_completed_at: stringValue(data.task_completed_at),
   };
 }
@@ -755,8 +760,8 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
     if (pending) {
       // Merge notification into the existing task_started message
       const existingData = pending.eventData as TaskEventData;
-      existingData.task_status = taskData.status;
-      existingData.task_summary = taskData.summary;
+      existingData.task_status = taskData.task_status;
+      existingData.task_summary = taskData.task_summary;
       existingData.task_completed_at = event.createdAt;
       ctx.pendingTasks.delete(taskId);
       return;

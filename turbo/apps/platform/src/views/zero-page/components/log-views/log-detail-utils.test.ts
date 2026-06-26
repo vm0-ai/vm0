@@ -490,7 +490,31 @@ describe("groupEventsIntoMessages split sequence ordering", () => {
   });
 });
 
-describe("groupedMessageMatchesSearch", () => {
+describe("groupEventsIntoMessages task event data", () => {
+  it("does not treat task_started status as a terminal task status", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-started",
+          status: "running",
+          description: "Started task",
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+    ]);
+
+    const taskMessage = messages[0];
+    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+      throw new Error("expected task started message");
+    }
+
+    expect(taskMessage.eventData.status).toBe("running");
+    expect(taskMessage.eventData.task_status).toBeUndefined();
+  });
+
   it("keeps orphan task notification status and summary searchable", () => {
     const messages = groupEventsIntoMessages([
       {
@@ -516,6 +540,46 @@ describe("groupedMessageMatchesSearch", () => {
     expect(groupedMessageMatchesSearch(taskMessage, "orphan task")).toBe(true);
   });
 
+  it("merges task notifications that already use task status fields", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-1",
+          tool_use_id: "task-tool-1",
+          description: "Parent task",
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "system",
+        eventData: {
+          subtype: "task_notification",
+          task_id: "task-1",
+          task_status: "completed",
+          task_summary: "Task finished through normalized fields",
+        },
+        createdAt: "2026-06-26T02:31:23Z",
+      },
+    ]);
+
+    const taskMessage = messages[0];
+    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+      throw new Error("expected merged task message");
+    }
+
+    expect(messages).toHaveLength(1);
+    expect(taskMessage.eventData.task_status).toBe("completed");
+    expect(taskMessage.eventData.task_summary).toBe(
+      "Task finished through normalized fields",
+    );
+  });
+});
+
+describe("groupedMessageMatchesSearch", () => {
   it("matches text nested in task child messages", () => {
     const messages = groupEventsIntoMessages([
       {
