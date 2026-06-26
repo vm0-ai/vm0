@@ -68,7 +68,6 @@ export const setupRedeemCampaignPage$ = command(
         },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     set(setRedeemResponse$, result.body);

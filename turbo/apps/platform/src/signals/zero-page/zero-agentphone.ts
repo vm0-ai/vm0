@@ -90,9 +90,7 @@ export const agentPhoneLinkStatus$ = computed(
     const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
       apiBase: "api",
     });
-    const result = await accept(client.getLinkStatus({ headers: {} }), [200], {
-      toast: false,
-    });
+    const result = await accept(client.getLinkStatus({ headers: {} }), [200]);
     return result.body;
   },
 );

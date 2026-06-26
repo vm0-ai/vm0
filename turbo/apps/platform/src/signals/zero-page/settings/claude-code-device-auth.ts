@@ -108,7 +108,6 @@ const startClaudeCodeDeviceAuth$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return result.body;
@@ -197,7 +196,7 @@ function createClaudeCodeRunFlow$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       if (!started.ok) {
         set(ctx.internalFlowState$, {
           status: "error",
-          message: claudeCodeDeviceAuthErrorMessage(started.error),
+          message: "Claude Code connection failed. Start again to retry.",
         });
         return false;
       }

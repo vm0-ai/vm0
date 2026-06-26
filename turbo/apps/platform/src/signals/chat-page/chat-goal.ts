@@ -13,7 +13,6 @@ export const pauseChatThreadGoal$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
   },

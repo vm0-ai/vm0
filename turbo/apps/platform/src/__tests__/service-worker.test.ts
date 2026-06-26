@@ -1,7 +1,5 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as vm from "node:vm";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
+import serviceWorkerSource from "../../public/sw.js?raw";
 
 interface FetchListenerEvent {
   readonly request: Request;
@@ -9,11 +7,49 @@ interface FetchListenerEvent {
 }
 
 type FetchListener = (event: FetchListenerEvent) => void;
+type TestFetch = (request: Request, init?: RequestInit) => Promise<Response>;
+
+interface TestClients {
+  readonly claim: Mock<() => Promise<void>>;
+  readonly matchAll: Mock<() => Promise<readonly unknown[]>>;
+  readonly openWindow: Mock<() => Promise<null>>;
+}
+
+interface TestServiceWorkerGlobal {
+  readonly clients: TestClients;
+  readonly location: URL;
+  readonly registration: {
+    readonly showNotification: Mock<() => Promise<void>>;
+  };
+  readonly skipWaiting: Mock<() => void>;
+  addEventListener(type: string, listener: unknown): void;
+}
+
+interface TestCacheStorage {
+  readonly delete: Mock<() => Promise<boolean>>;
+  readonly keys: Mock<() => Promise<readonly string[]>>;
+  readonly match: Mock<(request: Request) => Promise<Response | undefined>>;
+  readonly open: Mock<() => Promise<TestCache>>;
+}
+
+type ServiceWorkerScriptArgs = readonly [
+  eventConstructor: typeof Event,
+  promiseConstructor: PromiseConstructor,
+  requestConstructor: typeof Request,
+  responseConstructor: typeof Response,
+  urlConstructor: typeof URL,
+  cacheStorage: TestCacheStorage,
+  clients: TestClients,
+  consoleObject: typeof console,
+  fetchFn: TestFetch,
+  selfObject: TestServiceWorkerGlobal,
+];
+type ServiceWorkerScript = (...args: ServiceWorkerScriptArgs) => void;
 
 interface TestRuntime {
   readonly cache: TestCache;
   readonly fetchListener: FetchListener;
-  readonly fetchMock: ReturnType<typeof vi.fn>;
+  readonly fetchMock: Mock<TestFetch>;
 }
 
 class TestCache {
@@ -39,10 +75,47 @@ function isFetchListener(value: unknown): value is FetchListener {
   return typeof value === "function";
 }
 
+function runServiceWorkerScript({
+  cacheStorage,
+  fetchMock,
+  self,
+}: {
+  readonly cacheStorage: TestCacheStorage;
+  readonly fetchMock: TestFetch;
+  readonly self: TestServiceWorkerGlobal;
+}): void {
+  const executeServiceWorker = new Function(
+    "Event",
+    "Promise",
+    "Request",
+    "Response",
+    "URL",
+    "caches",
+    "clients",
+    "console",
+    "fetch",
+    "self",
+    `${serviceWorkerSource}\n//# sourceURL=platform-service-worker-test.js`,
+  ) as ServiceWorkerScript;
+
+  executeServiceWorker(
+    Event,
+    Promise,
+    Request,
+    Response,
+    URL,
+    cacheStorage,
+    self.clients,
+    console,
+    fetchMock,
+    self,
+  );
+}
+
 function createServiceWorkerRuntime(): TestRuntime {
   const cache = new TestCache();
   const listeners = new Map<string, unknown[]>();
-  const fetchMock = vi.fn(
+  const fetchMock = vi.fn<TestFetch>(
     (_request: Request, _init?: RequestInit): Promise<Response> => {
       return Promise.resolve(
         new Response("ok", {
@@ -51,7 +124,7 @@ function createServiceWorkerRuntime(): TestRuntime {
       );
     },
   );
-  const self = {
+  const self: TestServiceWorkerGlobal = {
     clients: {
       claim: vi.fn((): Promise<void> => Promise.resolve()),
       matchAll: vi.fn((): Promise<readonly unknown[]> => Promise.resolve([])),
@@ -66,25 +139,19 @@ function createServiceWorkerRuntime(): TestRuntime {
       listeners.set(type, [...(listeners.get(type) ?? []), listener]);
     },
   };
-  const context = vm.createContext({
-    Event,
-    Promise,
-    Request,
-    Response,
-    URL,
-    caches: {
-      delete: vi.fn((): Promise<boolean> => Promise.resolve(true)),
-      keys: vi.fn((): Promise<readonly string[]> => Promise.resolve([])),
-      open: vi.fn((): Promise<TestCache> => Promise.resolve(cache)),
-    },
-    clients: self.clients,
-    console,
-    fetch: fetchMock,
+  const cacheStorage: TestCacheStorage = {
+    delete: vi.fn((): Promise<boolean> => Promise.resolve(true)),
+    keys: vi.fn((): Promise<readonly string[]> => Promise.resolve([])),
+    match: vi.fn(
+      (_request: Request): Promise<Response | undefined> =>
+        Promise.resolve(undefined),
+    ),
+    open: vi.fn((): Promise<TestCache> => Promise.resolve(cache)),
+  };
+  runServiceWorkerScript({
+    cacheStorage,
+    fetchMock,
     self,
-  });
-  const swPath = path.resolve(import.meta.dirname, "../../public/sw.js");
-  vm.runInContext(fs.readFileSync(swPath, "utf8"), context, {
-    filename: swPath,
   });
 
   const fetchListener = listeners.get("fetch")?.find(isFetchListener);

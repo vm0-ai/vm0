@@ -294,9 +294,7 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
 export const telegramBots$ = computed(async (get): Promise<TelegramBot[]> => {
   get(internalReload$);
   const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-  const result = await accept(client.list({ headers: {} }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.list({ headers: {} }), [200]);
   return result.body.bots;
 });
 
@@ -353,7 +351,6 @@ const checkTelegramBotSetupStatus$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     return (result as { body: TelegramSetupStatus }).body;
