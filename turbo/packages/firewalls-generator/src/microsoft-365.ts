@@ -135,5 +135,5 @@ function generateTypeScript(): string {
 
 export async function generate(): Promise<void> {
   console.error("Generating Microsoft 365 firewall config...");
-  writeOutput("microsoft-365", generateTypeScript(), import.meta.dirname);
+  writeOutput("microsoft-365", generateTypeScript());
 }

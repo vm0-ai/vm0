@@ -64,5 +64,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Make firewall config...");
   const ts = generateTypeScript();
-  writeOutput("make", ts, import.meta.dirname);
+  writeOutput("make", ts);
 }

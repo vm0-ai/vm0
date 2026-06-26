@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Intervals.icu firewall config...");
   const ts = generateTypeScript();
-  writeOutput("intervals-icu", ts, import.meta.dirname);
+  writeOutput("intervals-icu", ts);
 }

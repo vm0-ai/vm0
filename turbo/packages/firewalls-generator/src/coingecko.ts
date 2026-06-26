@@ -60,5 +60,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating CoinGecko firewall config...");
   const ts = generateTypeScript();
-  writeOutput("coingecko", ts, import.meta.dirname);
+  writeOutput("coingecko", ts);
 }

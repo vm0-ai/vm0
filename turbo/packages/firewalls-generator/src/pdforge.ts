@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating PDForge firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pdforge", ts, import.meta.dirname);
+  writeOutput("pdforge", ts);
 }

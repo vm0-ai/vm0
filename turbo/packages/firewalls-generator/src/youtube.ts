@@ -762,5 +762,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("youtube", ts, import.meta.dirname);
+  writeOutput("youtube", ts);
 }

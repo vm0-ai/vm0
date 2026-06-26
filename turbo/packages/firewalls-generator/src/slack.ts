@@ -909,5 +909,5 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
-  writeOutput("slack", ts, import.meta.dirname);
+  writeOutput("slack", ts);
 }

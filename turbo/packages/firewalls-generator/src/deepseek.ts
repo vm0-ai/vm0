@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating DeepSeek firewall config...");
   const ts = generateTypeScript();
-  writeOutput("deepseek", ts, import.meta.dirname);
+  writeOutput("deepseek", ts);
 }

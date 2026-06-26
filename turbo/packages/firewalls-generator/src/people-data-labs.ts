@@ -48,5 +48,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating People Data Labs firewall config...");
   const ts = generateTypeScript();
-  writeOutput("people-data-labs", ts, import.meta.dirname);
+  writeOutput("people-data-labs", ts);
 }

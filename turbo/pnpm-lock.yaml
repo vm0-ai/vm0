@@ -1030,6 +1030,9 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../connectors
     devDependencies:
       '@types/node':
         specifier: 24.3.0

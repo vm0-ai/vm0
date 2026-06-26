@@ -82,5 +82,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating DocuSign firewall config...");
   const ts = generateTypeScript();
-  writeOutput("docusign", ts, import.meta.dirname);
+  writeOutput("docusign", ts);
 }

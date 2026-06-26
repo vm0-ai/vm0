@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating SimilarWeb firewall config...");
   const ts = generateTypeScript();
-  writeOutput("similarweb", ts, import.meta.dirname);
+  writeOutput("similarweb", ts);
 }

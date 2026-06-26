@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating SerpApi firewall config...");
   const ts = generateTypeScript();
-  writeOutput("serpapi", ts, import.meta.dirname);
+  writeOutput("serpapi", ts);
 }

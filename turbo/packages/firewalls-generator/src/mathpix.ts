@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Mathpix firewall config...");
   const ts = generateTypeScript();
-  writeOutput("mathpix", ts, import.meta.dirname);
+  writeOutput("mathpix", ts);
 }

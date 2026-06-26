@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Podchaser firewall config...");
   const ts = generateTypeScript();
-  writeOutput("podchaser", ts, import.meta.dirname);
+  writeOutput("podchaser", ts);
 }

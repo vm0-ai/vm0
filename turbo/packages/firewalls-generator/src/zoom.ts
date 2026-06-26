@@ -42,5 +42,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Zoom firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zoom", ts, import.meta.dirname);
+  writeOutput("zoom", ts);
 }

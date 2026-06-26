@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating HTML/CSS to Image firewall config...");
   const ts = generateTypeScript();
-  writeOutput("htmlcsstoimage", ts, import.meta.dirname);
+  writeOutput("htmlcsstoimage", ts);
 }

@@ -1,6 +1,6 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
-// triggers, visibility controls, metadata editing, run-once, copy, and delete.
+// triggers, visibility controls, metadata editing, slash use, copy, and delete.
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -111,6 +111,12 @@ import {
 } from "../../signals/zero-page/cron.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { Link } from "../router/link.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
 import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
@@ -223,31 +229,29 @@ function WorkflowDetailContent({
 
   return (
     <div className="flex min-h-0 flex-1" style={shellStyle}>
-      <div
+      <DetailPageShell
+        scroll={false}
         className={cn(
-          "min-h-0 min-w-0 flex-col",
+          "min-w-0",
           triggerSidebarOpen ? "hidden flex-1 basis-0 xl:flex" : "flex flex-1",
         )}
       >
+        <WorkflowBreadcrumb detail={detail} />
         <DetailHeader
           detail={detail}
           triggerSidebarOpen={triggerSidebarOpen}
           onTriggerSidebarOpenChange={setTriggerSidebarOpen}
         />
-        <main className="min-h-0 flex-1 overflow-auto px-4 pb-10 pt-4 sm:px-6">
-          <div className="mx-auto w-full max-w-[900px]">
-            {detail ? (
-              <WorkflowDetailBody detail={detail} />
-            ) : detailLoadable.state === "hasData" ? (
-              <p className="text-sm text-muted-foreground">
-                Workflow not found.
-              </p>
-            ) : (
-              <DetailSkeleton />
-            )}
-          </div>
-        </main>
-      </div>
+        <DetailPageMain scrollable constrainContent>
+          {detail ? (
+            <WorkflowDetailBody detail={detail} />
+          ) : detailLoadable.state === "hasData" ? (
+            <p className="text-sm text-muted-foreground">Workflow not found.</p>
+          ) : (
+            <DetailSkeleton />
+          )}
+        </DetailPageMain>
+      </DetailPageShell>
       {triggerSidebarOpen && detail ? (
         <div className="hidden w-px shrink-0 bg-border/60 xl:block" />
       ) : null}
@@ -294,15 +298,14 @@ function WorkflowBreadcrumb({
 }) {
   if (!detail) {
     return (
-      <div className="h-7 w-56 rounded-md bg-muted/50" aria-hidden="true" />
+      <DetailPageBreadcrumbBar>
+        <div className="h-4 w-56 rounded-md bg-muted/50" aria-hidden="true" />
+      </DetailPageBreadcrumbBar>
     );
   }
 
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className="hidden min-w-0 items-center gap-1 text-sm text-muted-foreground sm:flex"
-    >
+    <DetailPageBreadcrumbBar>
       <BreadcrumbLink
         pathname={ROUTES.agents}
         icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
@@ -327,9 +330,7 @@ function WorkflowBreadcrumb({
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
         {workflowTitle(detail)}
       </span>
-      <span className="select-none text-muted-foreground/40">/</span>
-      <WorkflowFilePicker detail={detail} />
-    </nav>
+    </DetailPageBreadcrumbBar>
   );
 }
 
@@ -368,7 +369,7 @@ function WorkflowMobileCascade({
   if (!detail) {
     return (
       <div
-        className="h-8 w-48 rounded-md bg-muted/50 sm:hidden"
+        className="h-8 w-48 rounded-md bg-muted/50 md:hidden"
         aria-hidden="true"
       />
     );
@@ -379,7 +380,7 @@ function WorkflowMobileCascade({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:hidden"
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted md:hidden"
         >
           <IconFileText size={14} stroke={1.5} className="shrink-0" />
           <span className="min-w-0 truncate">
@@ -468,77 +469,92 @@ function DetailHeader({
   readonly onTriggerSidebarOpenChange: (open: boolean) => void;
 }) {
   return (
-    <header className="flex shrink-0 items-center justify-between gap-3 px-4 pt-4 sm:px-6">
-      <div className="min-w-0 flex-1">
-        <WorkflowBreadcrumb detail={detail} />
-        <WorkflowMobileCascade detail={detail} />
+    <DetailPageHeader>
+      <div className="flex min-h-16 items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <WorkflowMobileCascade detail={detail} />
+          {detail ? (
+            <div className="hidden min-w-0 flex-col justify-center md:flex">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                {workflowTitle(detail)}
+              </h1>
+              <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
+                {detail.description ?? detail.name}
+              </p>
+            </div>
+          ) : (
+            <div
+              className="hidden min-w-0 animate-pulse flex-col gap-2 md:flex"
+              aria-hidden="true"
+            >
+              <div className="h-5 w-48 rounded bg-muted" />
+              <div className="h-4 w-72 rounded bg-muted" />
+            </div>
+          )}
+        </div>
       </div>
-      {detail ? (
-        <div className="flex shrink-0 items-center gap-2">
-          <WorkflowRunOnceButton detail={detail} />
-          <button
-            type="button"
-            className={cn(
-              "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
-              triggerSidebarOpen ? "bg-muted" : "",
-            )}
-            aria-pressed={triggerSidebarOpen}
-            onClick={() => {
-              onTriggerSidebarOpenChange(!triggerSidebarOpen);
-            }}
+      <div className="mt-4 flex items-center gap-2 sm:mt-6">
+        <div className="hidden min-w-0 flex-1 md:block">
+          {detail ? (
+            <WorkflowFilePicker detail={detail} />
+          ) : (
+            <div className="h-9 w-44 rounded-md bg-muted/50" />
+          )}
+        </div>
+        {detail ? (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <WorkflowUseThisButton detail={detail} />
+            <button
+              type="button"
+              className={cn(
+                "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
+                triggerSidebarOpen ? "bg-muted" : "",
+              )}
+              aria-pressed={triggerSidebarOpen}
+              onClick={() => {
+                onTriggerSidebarOpenChange(!triggerSidebarOpen);
+              }}
+            >
+              <IconClock size={14} stroke={1.5} />
+              <span className="hidden sm:inline">Trigger</span>
+            </button>
+            <WorkflowActionsMenu detail={detail} />
+          </div>
+        ) : (
+          <div
+            className="ml-auto flex shrink-0 items-center gap-2"
+            aria-hidden="true"
           >
-            <IconClock size={14} stroke={1.5} />
-            <span className="hidden sm:inline">Trigger</span>
-          </button>
-          <WorkflowActionsMenu detail={detail} />
-        </div>
-      ) : (
-        <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
-          <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-24" />
-          <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-20" />
-          <div className="size-9 rounded-md bg-muted/50" />
-        </div>
-      )}
-    </header>
+            <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-24" />
+            <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-20" />
+            <div className="size-9 rounded-md bg-muted/50" />
+          </div>
+        )}
+      </div>
+    </DetailPageHeader>
   );
 }
 
-function WorkflowRunOnceButton({
+function WorkflowUseThisButton({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
-  const [runLoadable, runWorkflow] = useLoadableSet(runWorkflow$);
-  const running = runLoadable.state === "loading";
 
   return (
     <button
       type="button"
-      disabled={running}
-      className={cn(
-        "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
-        running ? "cursor-not-allowed opacity-60" : "",
-      )}
+      className="zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm"
       onClick={() => {
-        detach(
-          (async () => {
-            const result = await runWorkflow(detail.id, pageSignal);
-            navigate(ROUTES.chat, {
-              pathParams: { threadId: result.chatThreadId },
-            });
-          })(),
-          Reason.DomCallback,
-        );
+        navigate(ROUTES.agentChat, {
+          pathParams: { agentId: detail.agentId },
+          searchParams: new URLSearchParams({ prompt: `/${detail.name}` }),
+        });
       }}
     >
-      {running ? (
-        <IconLoader2 size={14} className="animate-spin" />
-      ) : (
-        <IconClock size={14} stroke={1.5} />
-      )}
-      <span className="hidden sm:inline">Run once</span>
+      <IconPlus size={14} stroke={1.5} />
+      <span className="hidden sm:inline">Use this</span>
     </button>
   );
 }
@@ -1122,8 +1138,10 @@ function WorkflowFilePicker({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-muted"
+          aria-label="Workflow files"
+          className="zero-btn-morandi inline-flex h-9 max-w-full items-center gap-1.5 rounded-lg px-3 text-sm"
         >
+          <IconFileText size={14} stroke={1.5} className="shrink-0" />
           <span className="min-w-0 truncate">{selectedLabel}</span>
           <IconChevronDown
             size={14}

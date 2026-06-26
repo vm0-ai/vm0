@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Clearbit firewall config...");
   const ts = generateTypeScript();
-  writeOutput("clearbit", ts, import.meta.dirname);
+  writeOutput("clearbit", ts);
 }

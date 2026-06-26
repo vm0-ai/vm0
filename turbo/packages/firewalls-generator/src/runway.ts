@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Runway firewall config...");
   const ts = generateTypeScript();
-  writeOutput("runway", ts, import.meta.dirname);
+  writeOutput("runway", ts);
 }

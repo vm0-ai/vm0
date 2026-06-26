@@ -40,5 +40,5 @@ export async function generate(): Promise<void> {
     "",
   ].join("\n");
 
-  writeOutput("hubspot", ts, import.meta.dirname);
+  writeOutput("hubspot", ts);
 }

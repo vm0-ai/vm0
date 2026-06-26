@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ScrapeNinja firewall config...");
   const ts = generateTypeScript();
-  writeOutput("scrapeninja", ts, import.meta.dirname);
+  writeOutput("scrapeninja", ts);
 }

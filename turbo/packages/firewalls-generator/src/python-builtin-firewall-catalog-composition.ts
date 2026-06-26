@@ -1,5 +1,3 @@
-import * as path from "node:path";
-
 import {
   type BuiltinFirewallRuntimeApi,
   type BuiltinFirewallRuntimeFirewall,
@@ -8,10 +6,7 @@ import {
   type PythonBuiltinFirewallCatalogFile,
   renderPythonBuiltinFirewallCatalogFiles,
 } from "./python-builtin-firewall-catalog";
-import {
-  type ConnectorFirewallSourceSetOptions,
-  loadConnectorFirewallSourceSet,
-} from "./connector-firewall-sources";
+import { loadConnectorFirewallSourceSet } from "./connector-firewall-sources";
 
 export type { PythonBuiltinFirewallCatalogFile };
 
@@ -43,19 +38,6 @@ interface ComposePythonBuiltinFirewallCatalogOptions {
 interface RenderComposedPythonBuiltinFirewallCatalogOptions extends ComposePythonBuiltinFirewallCatalogOptions {
   readonly generatedHeader: readonly string[];
   readonly maxJsonChunkLength?: number;
-}
-
-function defaultConnectorSourceSetOptions(): ConnectorFirewallSourceSetOptions {
-  return {
-    firewallsDir: path.resolve(
-      import.meta.dirname,
-      "../../connectors/src/firewalls",
-    ),
-    connectorsDir: path.resolve(
-      import.meta.dirname,
-      "../../connectors/src/connectors",
-    ),
-  };
 }
 
 function runtimePermission(
@@ -94,9 +76,7 @@ function runtimeFirewall(
 async function connectorFirewallEntries(): Promise<
   readonly PythonBuiltinFirewallCatalogEntry[]
 > {
-  const { sources } = await loadConnectorFirewallSourceSet(
-    defaultConnectorSourceSetOptions(),
-  );
+  const { sources } = await loadConnectorFirewallSourceSet();
   return sources.map((source) => {
     return {
       firewall: runtimeFirewall(source.firewall),

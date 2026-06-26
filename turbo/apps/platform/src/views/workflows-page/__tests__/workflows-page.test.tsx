@@ -21,8 +21,9 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { search } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { PLACEHOLDER } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -600,7 +601,7 @@ describe("workflow detail page", () => {
     });
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
       expect(
@@ -622,6 +623,31 @@ describe("workflow detail page", () => {
       screen.getByPlaceholderText("Search connectors"),
     ).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("prefills a new agent chat with the workflow slash command", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Use this"));
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(search()).toBe("");
+    expect(textarea).toHaveValue("/sales-research");
   });
 
   it("orders workflow actions menu sections with audit metadata last", async () => {
@@ -1114,10 +1140,9 @@ describe("workflow detail page", () => {
         screen.getByText("Gather CRM context before outreach."),
       ).toBeInTheDocument();
     });
-    const breadcrumb = screen.getByLabelText("Breadcrumb");
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
-    click(buttonByText(/config\/settings\.json/, breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     click(screen.getByLabelText("Delete config/settings.json"));
 
     await waitFor(() => {
@@ -1147,8 +1172,7 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
 
-    const breadcrumb = screen.getByLabelText("Breadcrumb");
-    click(buttonByText("instructions", breadcrumb));
+    click(screen.getByLabelText("Workflow files"));
     const input = screen.getByLabelText("Upload workflow files");
     fireEvent.change(input, {
       target: {

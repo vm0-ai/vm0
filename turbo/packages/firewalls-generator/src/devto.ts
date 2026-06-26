@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating DEV.to firewall config...");
   const ts = generateTypeScript();
-  writeOutput("devto", ts, import.meta.dirname);
+  writeOutput("devto", ts);
 }

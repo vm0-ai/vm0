@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Brave Search firewall config...");
   const ts = generateTypeScript();
-  writeOutput("brave-search", ts, import.meta.dirname);
+  writeOutput("brave-search", ts);
 }

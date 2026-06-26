@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Printful firewall config...");
   const ts = generateTypeScript();
-  writeOutput("printful", ts, import.meta.dirname);
+  writeOutput("printful", ts);
 }

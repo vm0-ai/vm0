@@ -55,5 +55,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Base44 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("base44", ts, import.meta.dirname);
+  writeOutput("base44", ts);
 }

@@ -51,5 +51,5 @@ export async function generate(): Promise<void> {
     "",
   ].join("\n");
 
-  writeOutput("atlassian", ts, import.meta.dirname);
+  writeOutput("atlassian", ts);
 }

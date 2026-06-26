@@ -57,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Whale Alert firewall config...");
   const ts = generateTypeScript();
-  writeOutput("whale-alert", ts, import.meta.dirname);
+  writeOutput("whale-alert", ts);
 }
