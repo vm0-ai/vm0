@@ -50,19 +50,12 @@ import {
   IconCoins,
   IconHourglass,
   IconKey,
-  IconPencil,
 } from "@tabler/icons-react";
 import {
   cn,
   isEditableTarget,
   matchShortcut,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   Skeleton,
   DropdownMenu,
   DropdownMenuContent,
@@ -201,8 +194,6 @@ import {
   headerWorkflowTriggersForThread,
   reloadHeaderAutomationMenu$,
   toggleWorkflowTriggerEnabled$,
-  updateHeaderWorkflowGmailLabelAppliedTrigger$,
-  updateHeaderWorkflowGmailNewMessageTrigger$,
   automationsForThread,
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
@@ -227,12 +218,8 @@ import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
 import {
-  buildGmailLabelAppliedEventConfig,
-  buildGmailNewMessageEventConfig,
-  gmailMatcherDefaultValue,
   gmailTriggerSummary,
   gmailTriggerTitle,
-  GMAIL_TEXT_FIELDS,
 } from "../workflows-page/workflow-shared.tsx";
 
 import type {
@@ -2019,9 +2006,6 @@ function automationDescription(automation: HeaderAutomationEntry): string {
   return description && description.length > 0 ? description : "No description";
 }
 
-const HEADER_WORKFLOW_TRIGGER_FIELD_CLASS =
-  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
-
 function formatHeaderWorkflowTriggerRun(value: string | null): string {
   if (!value) {
     return "No runs yet";
@@ -2043,185 +2027,83 @@ function workflowTriggerConnectorLabel(ref: string): string {
   return ref;
 }
 
-function workflowTriggerPermissionPreview(
+function workflowTriggerAllowedPermissionNames(
   trigger: HeaderWorkflowTriggerEntry,
-): string {
-  if (trigger.trigger.unattendedConnectorRefs.length === 0) {
-    return "None";
-  }
-  return trigger.trigger.unattendedConnectorRefs
-    .map(workflowTriggerConnectorLabel)
-    .join(", ");
+  connectorRef: string,
+): readonly string[] {
+  const policies =
+    trigger.trigger.unattendedPermissionPolicy?.[connectorRef]?.policies ?? {};
+  return Object.entries(policies)
+    .filter(([, action]) => {
+      return action === "allow";
+    })
+    .map(([permission]) => {
+      return permission;
+    })
+    .sort((left, right) => {
+      return left.localeCompare(right);
+    });
 }
 
-type HeaderEditableWorkflowTrigger = Extract<
-  HeaderWorkflowTriggerEntry["trigger"],
-  { kind: "event" }
->;
-
-function HeaderWorkflowTriggerEditFields({
-  saving,
-  triggerSummary,
+function HeaderWorkflowPermissionPreview({
+  permissions,
 }: {
-  readonly saving: boolean;
-  readonly triggerSummary: HeaderEditableWorkflowTrigger;
+  readonly permissions: readonly string[];
 }) {
-  if (triggerSummary.eventType === "gmail-label-applied") {
-    return (
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Label name
-        <input
-          name="labelName"
-          aria-label="Label name"
-          required
-          defaultValue={triggerSummary.eventConfig.labelName}
-          disabled={saving}
-          placeholder="Support"
-          className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
-        />
-      </label>
-    );
-  }
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
-        return (
-          <div key={field} className="grid gap-2">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {label} contains
-              <input
-                name={`${field}Contains`}
-                aria-label={`${label} contains`}
-                defaultValue={gmailMatcherDefaultValue(
-                  triggerSummary.eventConfig,
-                  field,
-                  "contains",
-                )}
-                disabled={saving}
-                placeholder={`${label} contains`}
-                className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {label} does not contain
-              <input
-                name={`${field}DoesNotContain`}
-                aria-label={`${label} does not contain`}
-                defaultValue={gmailMatcherDefaultValue(
-                  triggerSummary.eventConfig,
-                  field,
-                  "doesNotContain",
-                )}
-                disabled={saving}
-                placeholder={`${label} does not contain`}
-                className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
-              />
-            </label>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function HeaderWorkflowTriggerEditDialog({
-  trigger,
-  open,
-  onOpenChange,
-}: {
-  readonly trigger: HeaderWorkflowTriggerEntry;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [newMessageLoadable, updateNewMessageTrigger] = useLoadableSet(
-    updateHeaderWorkflowGmailNewMessageTrigger$,
-  );
-  const [labelLoadable, updateLabelTrigger] = useLoadableSet(
-    updateHeaderWorkflowGmailLabelAppliedTrigger$,
-  );
-  const triggerSummary = trigger.trigger;
-  const saving =
-    newMessageLoadable.state === "loading" || labelLoadable.state === "loading";
-
-  if (triggerSummary.kind !== "event") {
+  if (permissions.length === 0) {
     return null;
   }
+  return (
+    <span className="flex min-w-0 flex-wrap justify-end gap-1">
+      {permissions.slice(0, 2).map((permission) => {
+        return (
+          <code
+            key={permission}
+            className="max-w-[116px] truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            title={permission}
+          >
+            {permission}
+          </code>
+        );
+      })}
+      {permissions.length > 2 ? (
+        <span className="text-[11px] text-muted-foreground">
+          +{permissions.length - 2} permissions
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function HeaderWorkflowTriggerPermissions({
+  trigger,
+}: {
+  readonly trigger: HeaderWorkflowTriggerEntry;
+}) {
+  if (trigger.trigger.unattendedConnectorRefs.length === 0) {
+    return <span className="font-medium text-foreground">None</span>;
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
-        <DialogHeader>
-          <DialogTitle>Edit trigger</DialogTitle>
-          <DialogDescription>
-            Update when this workflow trigger should run.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          aria-label="Edit workflow trigger"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            detach(
-              (async () => {
-                if (triggerSummary.eventType === "gmail-new-message") {
-                  await updateNewMessageTrigger(
-                    {
-                      triggerId: triggerSummary.id,
-                      eventConfig: buildGmailNewMessageEventConfig(
-                        form,
-                        triggerSummary.eventConfig,
-                      ),
-                    },
-                    pageSignal,
-                  );
-                } else {
-                  const eventConfig = buildGmailLabelAppliedEventConfig(form);
-                  if (!eventConfig) {
-                    return;
-                  }
-                  await updateLabelTrigger(
-                    {
-                      triggerId: triggerSummary.id,
-                      eventConfig,
-                    },
-                    pageSignal,
-                  );
-                }
-                onOpenChange(false);
-              })(),
-              Reason.DomCallback,
-              "update header workflow trigger",
-            );
-          }}
-        >
-          <HeaderWorkflowTriggerEditFields
-            saving={saving}
-            triggerSummary={triggerSummary}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={saving}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <span className="flex min-w-0 flex-col gap-1.5 text-right">
+      {trigger.trigger.unattendedConnectorRefs.map((connectorRef) => {
+        const permissions = workflowTriggerAllowedPermissionNames(
+          trigger,
+          connectorRef,
+        );
+        return (
+          <span
+            key={connectorRef}
+            className="flex min-w-0 items-center justify-end gap-2"
+          >
+            <span className="shrink-0 font-medium text-foreground">
+              {workflowTriggerConnectorLabel(connectorRef)}
+            </span>
+            <HeaderWorkflowPermissionPreview permissions={permissions} />
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -2347,17 +2229,12 @@ function HeaderAutomationSidebarCard({
 }
 
 function HeaderWorkflowTriggerDetails({
-  onEditPermissions,
-  title,
   trigger,
 }: {
-  readonly onEditPermissions: () => void;
-  readonly title: string;
   readonly trigger: HeaderWorkflowTriggerEntry;
 }) {
   const triggerTitle = gmailTriggerTitle(trigger.trigger);
   const triggerSummary = gmailTriggerSummary(trigger.trigger);
-  const permissionPreview = workflowTriggerPermissionPreview(trigger);
   const summaryLabel =
     trigger.trigger.kind === "event" &&
     trigger.trigger.eventType === "gmail-label-applied"
@@ -2385,21 +2262,10 @@ function HeaderWorkflowTriggerDetails({
           </dd>
         </div>
       ) : null}
-      <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+      <div className="flex items-start justify-between gap-3 border-b border-border/50 py-2.5">
         <dt className="shrink-0 text-muted-foreground">Permissions</dt>
-        <dd className="flex min-w-0 items-center justify-end gap-2 text-right text-foreground">
-          <span className="min-w-0 truncate font-medium">
-            {permissionPreview}
-          </span>
-          <button
-            type="button"
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={`Edit permissions for ${title}`}
-            onClick={onEditPermissions}
-          >
-            <IconKey size={12} stroke={1.5} />
-            Edit
-          </button>
+        <dd className="min-w-0 flex-1 text-right text-foreground">
+          <HeaderWorkflowTriggerPermissions trigger={trigger} />
         </dd>
       </div>
       <div className="flex items-center justify-between gap-3 py-2.5">
@@ -2414,15 +2280,23 @@ function HeaderWorkflowTriggerDetails({
 
 function HeaderWorkflowTriggerActions({
   onEditPermissions,
-  onEditTrigger,
   trigger,
 }: {
   readonly onEditPermissions: () => void;
-  readonly onEditTrigger: () => void;
   readonly trigger: HeaderWorkflowTriggerEntry;
 }) {
   return (
-    <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+    <div className="mt-4 grid min-w-0 grid-cols-2 gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
+        onClick={onEditPermissions}
+      >
+        <IconKey size={13} stroke={1.5} />
+        Edit permissions
+      </Button>
       <Link
         pathname={ROUTES.agentWorkflowDetail}
         options={{
@@ -2431,29 +2305,11 @@ function HeaderWorkflowTriggerActions({
             workflowId: trigger.workflowId,
           },
         }}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="zero-btn-morandi inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
       >
         <IconArrowUpRight size={13} stroke={1.5} />
-        Open workflow
+        Edit workflow
       </Link>
-      {trigger.trigger.kind === "event" ? (
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          onClick={onEditTrigger}
-        >
-          <IconPencil size={13} stroke={1.5} />
-          Edit
-        </button>
-      ) : null}
-      <button
-        type="button"
-        className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        onClick={onEditPermissions}
-      >
-        <IconKey size={13} stroke={1.5} />
-        Edit permissions
-      </button>
     </div>
   );
 }
@@ -2473,8 +2329,6 @@ function HeaderWorkflowTriggerCard({
   const toggling = togglingLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
   const description = trigger.workflowDescription?.trim();
-  const editOpen =
-    activeDialog?.kind === "edit" && activeDialog.triggerId === trigger.id;
   const permissionsOpen =
     activeDialog?.kind === "permissions" &&
     activeDialog.triggerId === trigger.id;
@@ -2522,28 +2376,12 @@ function HeaderWorkflowTriggerCard({
           />
         </div>
 
-        <HeaderWorkflowTriggerDetails
-          onEditPermissions={editPermissions}
-          title={title}
-          trigger={trigger}
-        />
+        <HeaderWorkflowTriggerDetails trigger={trigger} />
         <HeaderWorkflowTriggerActions
           onEditPermissions={editPermissions}
-          onEditTrigger={() => {
-            setActiveDialog({ kind: "edit", triggerId: trigger.id });
-          }}
           trigger={trigger}
         />
       </article>
-      <HeaderWorkflowTriggerEditDialog
-        trigger={trigger}
-        open={editOpen}
-        onOpenChange={(open) => {
-          setActiveDialog(
-            open ? { kind: "edit", triggerId: trigger.id } : null,
-          );
-        }}
-      />
       <TriggerPermissionsDialog
         agentId={trigger.workflowAgentId}
         workflowId={trigger.workflowId}

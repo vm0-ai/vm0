@@ -19,11 +19,9 @@ import {
 import {
   IconAlertTriangle,
   IconArrowLeft,
-  IconBan,
   IconChevronRight,
   IconCheck,
-  IconCircleHalf2,
-  IconSettings,
+  IconAdjustmentsHorizontal,
   IconLoader2,
   IconSearch,
   IconX,
@@ -81,6 +79,10 @@ import { VM0Logo } from "../components/vm0-logo.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import {
+  PermissionPolicyMixedBadge,
+  PermissionPolicyToggle,
+} from "../zero-page/components/settings/permission-policy-toggle.tsx";
 
 const TRIGGER_PERMISSION_CONNECTORS = [...CONNECTOR_TYPE_KEYS]
   .filter((type) => {
@@ -291,15 +293,11 @@ function ConnectorAllowedPermissions({
   readonly allowedPermissions: readonly string[];
 }) {
   if (allowedPermissions.length === 0) {
-    return (
-      <span className="text-xs text-muted-foreground">
-        No allowed permissions
-      </span>
-    );
+    return null;
   }
 
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1">
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
       {allowedPermissions.slice(0, 3).map((permission) => {
         return (
           <code
@@ -313,20 +311,14 @@ function ConnectorAllowedPermissions({
       })}
       {allowedPermissions.length > 3 ? (
         <span className="text-[11px] text-muted-foreground">
-          +{allowedPermissions.length - 3} more
+          +{allowedPermissions.length - 3} permissions
         </span>
       ) : null}
     </span>
   );
 }
 
-function ConnectorPickerRowContent({
-  allowedPermissions,
-  type,
-}: {
-  readonly allowedPermissions?: readonly string[];
-  readonly type: ConnectorType;
-}) {
+function ConnectorPickerRowContent({ type }: { readonly type: ConnectorType }) {
   const config = CONNECTOR_TYPES[type];
 
   return (
@@ -338,11 +330,7 @@ function ConnectorPickerRowContent({
         <span className="text-sm font-medium text-foreground">
           {config.label}
         </span>
-        {allowedPermissions ? (
-          <ConnectorAllowedPermissions
-            allowedPermissions={allowedPermissions}
-          />
-        ) : config.helpText ? (
+        {config.helpText ? (
           <span className="line-clamp-1 text-xs text-muted-foreground">
             {config.helpText}
           </span>
@@ -407,14 +395,11 @@ function ConnectorPickerRow({
   ) => void;
 }) {
   const config = CONNECTOR_TYPES[type];
+  const canConfigurePermissions = isFirewallMetadataConnectorType(type);
+  const showPermissionRow = connectorEnabled && canConfigurePermissions;
   const rowClass =
     "flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/40";
-  const content = (
-    <ConnectorPickerRowContent
-      allowedPermissions={allowedPermissions}
-      type={type}
-    />
-  );
+  const content = <ConnectorPickerRowContent type={type} />;
   const toggle = (
     <ConnectorPickerRowToggle
       connectorEnabled={connectorEnabled}
@@ -448,21 +433,38 @@ function ConnectorPickerRow({
 
   if (onConfigureConnector) {
     return (
-      <div className={rowClass}>
-        <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          {content}
+      <div className="flex flex-col gap-3 border-b border-border/50 px-3 py-3 last:border-b-0">
+        <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            {content}
+          </div>
+          <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            {connectorEnabled ? "Authorized" : "Not authorized"}
+          </p>
+          {toggle}
         </div>
-        <button
-          type="button"
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label={`Configure ${config.label} permissions`}
-          onClick={() => {
-            onConfigureConnector(type);
-          }}
-        >
-          <IconSettings size={15} stroke={1.5} />
-        </button>
-        {toggle}
+        {showPermissionRow ? (
+          <div className="ml-12 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <ConnectorAllowedPermissions
+                allowedPermissions={allowedPermissions ?? []}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5"
+              aria-label={`Edit ${config.label} permissions`}
+              onClick={() => {
+                onConfigureConnector(type);
+              }}
+            >
+              <IconAdjustmentsHorizontal size={14} stroke={1.5} />
+              Permissions
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -495,10 +497,7 @@ function visibleConnectedTriggerPermissionConnectors(
 ): readonly ConnectorType[] {
   return connectors
     .filter((connector) => {
-      if (
-        !connector.connected ||
-        !isFirewallMetadataConnectorType(connector.type)
-      ) {
+      if (!connector.connected) {
         return false;
       }
       if (!normalizedQuery) {
@@ -694,14 +693,33 @@ function ConnectorPicker({
   return (
     <div className={containerClass}>
       <ConnectorPickerIntro layout={layout} />
-      <input
-        value={query}
-        onChange={(event) => {
-          setQuery(event.currentTarget.value);
-        }}
-        placeholder="Search connectors"
-        className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
-      />
+      <div className="relative w-full">
+        <IconSearch
+          size={15}
+          stroke={1.5}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        />
+        <input
+          value={query}
+          onChange={(event) => {
+            setQuery(event.currentTarget.value);
+          }}
+          placeholder="Search connectors"
+          className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+            }}
+            className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Clear connector search"
+          >
+            <IconX size={13} stroke={1.8} />
+          </button>
+        ) : null}
+      </div>
       <ConnectorPickerList
         agentId={agentId}
         connectorRefs={connectorRefs}
@@ -733,47 +751,17 @@ function PermissionToggle({
 }) {
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {action === "mixed" && (
-        <span className="inline-flex h-7 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
-          <IconCircleHalf2 size={12} className="shrink-0" />
-          Mixed
-        </span>
-      )}
-      <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
-        <button
-          type="button"
-          disabled={disabled}
-          aria-pressed={action === "allow"}
-          onClick={() => {
-            onChange("allow");
-          }}
-          className={`flex h-7 items-center gap-1 px-2.5 transition-colors disabled:opacity-50 ${
-            action === "allow"
-              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-          }`}
-        >
-          <IconCheck size={12} stroke={2.5} />
-          Allow
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-pressed={action === "deny"}
-          style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
-          onClick={() => {
-            onChange("deny");
-          }}
-          className={`flex h-7 items-center gap-1 px-2.5 transition-colors disabled:opacity-50 ${
-            action === "deny"
-              ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-          }`}
-        >
-          <IconBan size={12} stroke={2.5} />
-          Deny
-        </button>
-      </span>
+      {action === "mixed" && <PermissionPolicyMixedBadge />}
+      <PermissionPolicyToggle
+        policy={action}
+        disabled={disabled}
+        onAllow={() => {
+          onChange("allow");
+        }}
+        onDeny={() => {
+          onChange("deny");
+        }}
+      />
     </div>
   );
 }
@@ -1447,12 +1435,14 @@ function ConnectorPermissionEditorCard({
         layout={layout}
         onBackToConnectors={onBackToConnectors}
       />
-      <ConnectorAccessCard
-        connectorEnabled={connectorEnabled}
-        connectorLabel={connectorLabel}
-        saving={saving}
-        onToggle={handleToggleConnector}
-      />
+      {layout === "dialog" ? null : (
+        <ConnectorAccessCard
+          connectorEnabled={connectorEnabled}
+          connectorLabel={connectorLabel}
+          saving={saving}
+          onToggle={handleToggleConnector}
+        />
+      )}
       <TriggerPermissionSearchBar
         search={model.search}
         scrolled={model.scrolled}

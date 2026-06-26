@@ -34,7 +34,7 @@ export const closeHeaderAutomationSidebar$ = command(({ get, set }) => {
 });
 
 export type HeaderWorkflowTriggerDialog = {
-  readonly kind: "edit" | "permissions";
+  readonly kind: "permissions";
   readonly triggerId: string;
 } | null;
 
