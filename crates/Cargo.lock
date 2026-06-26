@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.28"
+version = "0.129.29"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.12"
+version = "0.19.13"
 dependencies = [
  "async-trait",
  "serde",
@@ -2749,7 +2749,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.64"
+version = "0.37.65"
 dependencies = [
  "async-trait",
  "base64",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "async-trait",
  "guest-contracts",
