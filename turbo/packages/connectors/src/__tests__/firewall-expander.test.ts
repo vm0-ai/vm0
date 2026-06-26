@@ -1734,6 +1734,14 @@ describe("firewallBaseUrlTemplateNeedsHostPolicy", () => {
       ),
     ).toBe(true);
     expect(
+      firewallBaseUrlTemplateNeedsHostPolicy(
+        "https://api.${{ vars.DOMAIN }}/v1",
+      ),
+    ).toBe(true);
+    expect(
+      firewallBaseUrlTemplateNeedsHostPolicy("https://api-${{ vars.HOST }}/v1"),
+    ).toBe(true);
+    expect(
       firewallBaseUrlTemplateNeedsHostPolicy("https://${{ vars.HOST }}.com/v1"),
     ).toBe(true);
   });

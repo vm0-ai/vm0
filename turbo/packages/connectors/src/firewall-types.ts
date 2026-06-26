@@ -1337,7 +1337,7 @@ export function firewallBaseUrlTemplateNeedsHostPolicy(base: string): boolean {
     if (prefixIsInsideAuthority(prefix) && !prefix.endsWith(":")) {
       const authoritySuffix = suffixAuthorityPrefix(suffix);
       if (
-        authoritySuffix !== "" &&
+        authoritySuffix === "" ||
         !authoritySuffixHasFixedHostOwnership(authoritySuffix)
       ) {
         return true;
