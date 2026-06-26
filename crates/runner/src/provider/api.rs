@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -11,8 +12,13 @@ use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::api_ably_supervisor::{AblySupervisor, PollOutcome, PollReason, PollWakeups};
-use super::{ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobProvider};
+use super::api_ably_supervisor::{
+    AblySupervisor, AblySupervisorConfig, DirectJobCandidate, PollDue, PollOutcome, PollReason,
+    PollWakeups,
+};
+use super::{
+    ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
+};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
@@ -32,6 +38,8 @@ struct ClaimRequestBody {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestTelemetry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    discovery_source: Option<&'static str>,
     job_discovered_to_claim_request_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_admission_to_claim_request_ms: Option<u64>,
@@ -59,6 +67,13 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
+const DIRECT_CANDIDATE_QUEUE_CAPACITY: usize = 128;
+
+enum DiscoveryWakeup {
+    Direct(DirectJobCandidate),
+    Poll(PollDue),
+}
+
 fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
     if states.len() <= MAX_HELD_SESSION_STATES {
         return Cow::Borrowed(states);
@@ -94,6 +109,9 @@ pub struct ApiProvider {
     profiles: Vec<String>,
     /// Coalesced poll wakeup state updated by the Ably supervisor.
     poll_wakeups: Arc<PollWakeups>,
+    /// Direct job candidates delivered by Ably notifications.
+    _direct_candidate_tx: mpsc::Sender<DirectJobCandidate>,
+    direct_candidate_rx: tokio::sync::Mutex<mpsc::Receiver<DirectJobCandidate>>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
     /// Session generations held in the idle pool, sent in poll requests for affinity ordering.
@@ -115,24 +133,56 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let ably_supervisor = AblySupervisor::spawn(
-            api.clone(),
-            group.clone(),
+        let (direct_candidate_tx, direct_candidate_rx) =
+            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
+        let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
+            api: api.clone(),
+            group: group.clone(),
             runner_id,
-            Arc::clone(&poll_wakeups),
+            profiles: profiles.clone(),
+            poll_wakeups: Arc::clone(&poll_wakeups),
+            direct_candidate_tx: direct_candidate_tx.clone(),
             cancel_tokens,
-            cancel.clone(),
-        );
+            provider_cancel: cancel.clone(),
+        });
 
         Arc::new(Self {
             api,
             group,
             profiles,
             poll_wakeups,
+            _direct_candidate_tx: direct_candidate_tx,
+            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
             ably_supervisor,
             held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
+    }
+
+    async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
+        loop {
+            let mut direct_candidate_rx = self.direct_candidate_rx.lock().await;
+            match direct_candidate_rx.try_recv() {
+                Ok(candidate) => return Some(DiscoveryWakeup::Direct(candidate)),
+                Err(mpsc::error::TryRecvError::Empty) => {}
+                Err(mpsc::error::TryRecvError::Disconnected) => {}
+            }
+
+            tokio::select! {
+                biased;
+                () = self.cancel.cancelled() => {
+                    return None;
+                }
+                candidate = direct_candidate_rx.recv() => {
+                    if let Some(candidate) = candidate {
+                        return Some(DiscoveryWakeup::Direct(candidate));
+                    }
+                }
+                due = self.poll_wakeups.wait_for_poll_due(&self.cancel, POLL_SLOW, POLL_FAST) => {
+                    return due.map(DiscoveryWakeup::Poll);
+                }
+            }
+        }
     }
 }
 
@@ -140,10 +190,22 @@ impl ApiProvider {
 impl JobProvider for ApiProvider {
     async fn discover(&self) -> Option<JobCandidate> {
         loop {
-            let due = self
-                .poll_wakeups
-                .wait_for_poll_due(&self.cancel, POLL_SLOW, POLL_FAST)
-                .await?;
+            let due = match self.wait_for_discovery_wakeup().await? {
+                DiscoveryWakeup::Direct(direct) => {
+                    let run_id = direct.run_id();
+                    let profile = direct.profile_name().to_owned();
+                    let targeted = direct.targeted();
+                    let candidate = direct.into_job_candidate();
+                    info!(
+                        run_id = %run_id,
+                        profile = %profile,
+                        targeted,
+                        "ably: direct job candidate discovered"
+                    );
+                    return Some(candidate);
+                }
+                DiscoveryWakeup::Poll(due) => due,
+            };
             let reason = due.reason();
             let poll_due_started_at = Instant::now();
 
@@ -184,6 +246,7 @@ impl JobProvider for ApiProvider {
                     info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
                     return Some(
                         JobCandidate::new(job.run_id, profile)
+                            .with_discovery_source(JobDiscoverySource::Poll)
                             .with_poll_reason(poll_reason_value(reason))
                             .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed),
                     );
@@ -443,6 +506,7 @@ impl ApiClient {
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
     ClaimRequestBody {
         telemetry: ClaimRequestTelemetry {
+            discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: duration_ms(candidate.job_discovered_elapsed()),
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
@@ -783,6 +847,8 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
+        let (direct_candidate_tx, direct_candidate_rx) =
+            mpsc::channel(DIRECT_CANDIDATE_QUEUE_CAPACITY);
         Arc::new(ApiProvider {
             api: ApiClient::new(
                 HttpClient::new(HttpClientConfig {
@@ -795,6 +861,8 @@ mod tests {
             group: "default".to_string(),
             profiles: Vec::new(),
             poll_wakeups,
+            _direct_candidate_tx: direct_candidate_tx,
+            direct_candidate_rx: tokio::sync::Mutex::new(direct_candidate_rx),
             ably_supervisor: AblySupervisor::disabled(),
             held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
@@ -917,11 +985,13 @@ mod tests {
             now.checked_sub(Duration::from_millis(25)).unwrap(),
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
+        .with_discovery_source(JobDiscoverySource::Poll)
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
+        assert_eq!(body["telemetry"]["discoverySource"], "poll");
         assert!(
             body["telemetry"]["jobDiscoveredToClaimRequestMs"]
                 .as_u64()
@@ -959,6 +1029,20 @@ mod tests {
                 .get("localAdmissionToClaimRequestMs")
                 .is_none()
         );
+        assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
+        assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
+        assert!(body["telemetry"].get("pollReason").is_none());
+    }
+
+    #[test]
+    fn claim_request_body_serializes_ably_discovery_source_without_poll_timing() {
+        let candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_discovery_source(JobDiscoverySource::Ably);
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
@@ -1045,9 +1129,54 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_some());
         assert!(discovered.poll_http_request_elapsed().is_some());
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_returns_ably_direct_candidate_without_polling() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-0000-0000-000000000006".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200)
+                    .json_body(serde_json::json!({ "job": null }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        provider
+            ._direct_candidate_tx
+            .try_send(DirectJobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                true,
+            ))
+            .unwrap();
+
+        let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should receive direct candidate")
+            .unwrap();
+
+        assert_eq!(discovered.run_id(), run_id);
+        assert_eq!(discovered.profile_name(), crate::profile::DEFAULT_PROFILE);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Ably)
+        );
+        assert!(discovered.poll_due_to_job_discovered_elapsed().is_none());
+        assert!(discovered.poll_http_request_elapsed().is_none());
+        poll_mock.assert_calls_async(0).await;
     }
 
     #[tokio::test]

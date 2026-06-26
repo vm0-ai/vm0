@@ -2512,6 +2512,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       [200],
       {
         telemetry: {
+          discoverySource: "poll",
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
           pollDueToJobDiscoveredMs: 789,
@@ -2569,6 +2570,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           runner_group: runnerGroup,
           profile: "vm0/default",
           auth_type: "user",
+          discovery_source: "poll",
           poll_reason: "deferred",
         }),
       );
@@ -2597,6 +2599,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: true,
         profile: "vm0/default",
         auth_type: "user",
+        discovery_source: "poll",
         poll_reason: "deferred",
       }),
     );
@@ -2613,6 +2616,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: true,
         profile: "vm0/default",
         auth_type: "user",
+        discovery_source: "poll",
         poll_reason: "deferred",
       }),
     );
@@ -2658,6 +2662,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           runner_group: runnerGroup,
           profile: "vm0/default",
           auth_type: "user",
+          discovery_source: "poll",
           poll_reason: "deferred",
         }),
       );

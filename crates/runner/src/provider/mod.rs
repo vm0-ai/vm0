@@ -22,6 +22,22 @@ use crate::active_input::ActiveInputSource;
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
+/// Low-cardinality source that first discovered a job candidate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum JobDiscoverySource {
+    Ably,
+    Poll,
+}
+
+impl JobDiscoverySource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Ably => "ably",
+            Self::Poll => "poll",
+        }
+    }
+}
+
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -30,6 +46,7 @@ pub struct JobCandidate {
     local_job_path: Option<PathBuf>,
     discovered_at: Instant,
     local_admission_started_at: Option<Instant>,
+    discovery_source: Option<JobDiscoverySource>,
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
@@ -43,6 +60,7 @@ impl JobCandidate {
             local_job_path: None,
             discovered_at: Instant::now(),
             local_admission_started_at: None,
+            discovery_source: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
@@ -56,6 +74,7 @@ impl JobCandidate {
             local_job_path: Some(job_path),
             discovered_at: Instant::now(),
             local_admission_started_at: None,
+            discovery_source: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
@@ -87,6 +106,10 @@ impl JobCandidate {
             .map(|started| started.elapsed())
     }
 
+    pub(crate) fn discovery_source(&self) -> Option<JobDiscoverySource> {
+        self.discovery_source
+    }
+
     pub(crate) fn poll_reason(&self) -> Option<&str> {
         self.poll_reason.as_deref()
     }
@@ -97,6 +120,11 @@ impl JobCandidate {
 
     pub(crate) fn poll_http_request_elapsed(&self) -> Option<Duration> {
         self.poll_http_request_elapsed
+    }
+
+    pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
+        self.discovery_source = Some(source);
+        self
     }
 
     pub(crate) fn with_poll_reason(mut self, poll_reason: impl Into<String>) -> Self {
@@ -127,6 +155,7 @@ impl JobCandidate {
             local_job_path: None,
             discovered_at,
             local_admission_started_at,
+            discovery_source: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
