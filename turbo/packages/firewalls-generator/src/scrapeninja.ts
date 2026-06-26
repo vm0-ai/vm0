@@ -26,6 +26,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     '          "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}",',
+    '          "X-RapidAPI-Host": "scrapeninja.p.rapidapi.com",',
     "        },",
     "      },",
     "      permissions: [],",

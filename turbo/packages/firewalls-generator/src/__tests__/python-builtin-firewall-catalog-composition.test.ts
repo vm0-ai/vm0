@@ -62,6 +62,44 @@ function findGeneratedContent(
   return file.content;
 }
 
+function jsonAssignmentFromContent(content: string, name: string): unknown {
+  const prefix = `${name} = `;
+  const start = content.indexOf(prefix);
+  if (start === -1) {
+    throw new Error(`missing ${name} assignment`);
+  }
+
+  const valueStart = start + prefix.length;
+  const nextAssignment = content.indexOf("\n\n", valueStart);
+  const literal = content
+    .slice(valueStart, nextAssignment === -1 ? content.length : nextAssignment)
+    .trim();
+  if (!literal.startsWith("json.loads(")) {
+    return JSON.parse(literal);
+  }
+
+  const chunks: string[] = [];
+  const stringLiteralPattern = /r"""([\s\S]*?)"""|"(?:\\.|[^"\\])*"/g;
+  for (
+    let match = stringLiteralPattern.exec(literal);
+    match !== null;
+    match = stringLiteralPattern.exec(literal)
+  ) {
+    const rawLiteral = match[1];
+    if (rawLiteral !== undefined) {
+      chunks.push(rawLiteral);
+      continue;
+    }
+    const parsedLiteral: unknown = JSON.parse(match[0]);
+    if (typeof parsedLiteral !== "string") {
+      throw new Error("invalid Python JSON string literal");
+    }
+    chunks.push(parsedLiteral);
+  }
+
+  return JSON.parse(chunks.join(""));
+}
+
 describe("Python builtin firewall catalog composition", () => {
   it(
     "composes connector and caller-provided model-provider firewalls",
@@ -113,6 +151,53 @@ describe("Python builtin firewall catalog composition", () => {
           sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
         },
       });
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps ScrapeNinja RapidAPI auth headers in the builtin catalog and diagnostics",
+    async () => {
+      const catalog = await buildPythonBuiltinFirewallCatalog({
+        modelProviderFirewalls: [],
+      });
+
+      expect(catalog.firewalls.scrapeninja?.apis[0]).toMatchObject({
+        base: "https://scrapeninja.p.rapidapi.com",
+        auth: {
+          headers: {
+            "X-RapidAPI-Host": "scrapeninja.p.rapidapi.com",
+            "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}",
+          },
+        },
+      });
+
+      const files = await renderComposedPythonBuiltinFirewallCatalogFiles({
+        modelProviderFirewalls: [],
+        generatedHeader: TEST_GENERATED_HEADER,
+      });
+      const diagnostics = findGeneratedContent(files, "diagnostics.py");
+
+      expect(
+        jsonAssignmentFromContent(
+          diagnostics,
+          "CONNECTOR_DIAGNOSTIC_FIREWALLS",
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          {
+            apis: [
+              {
+                authHeaderNames: ["X-RapidAPI-Host", "X-RapidAPI-Key"],
+                authQueryParamNames: [],
+                base: "https://scrapeninja.p.rapidapi.com",
+                envNames: ["SCRAPENINJA_TOKEN"],
+              },
+            ],
+            name: "scrapeninja",
+          },
+        ]),
+      );
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
