@@ -1,5 +1,7 @@
 use super::super::*;
 use super::shared::{ExecOutputLayout, set_byte_at};
+use crate::wire::MAX_PAYLOAD_SIZE;
+use crate::{MSG_EXEC_OUTPUT, encode};
 
 #[test]
 fn exec_output_roundtrip_stdout() {
@@ -24,6 +26,31 @@ fn exec_output_roundtrip_stderr_truncated() {
     assert_eq!(decoded.chunk, b"warn");
     assert!(decoded.truncated);
 }
+
+#[test]
+fn exec_output_frame_into_matches_composed_encoding() {
+    let payload = encode_exec_output(ExecOutputStream::Stderr, 8, b"warn", true).unwrap();
+    let expected = encode(MSG_EXEC_OUTPUT, 42, &payload).unwrap();
+    let mut frame = b"stale frame bytes".to_vec();
+
+    encode_exec_output_frame_into(&mut frame, 42, ExecOutputStream::Stderr, 8, b"warn", true)
+        .unwrap();
+
+    assert_eq!(frame, expected);
+}
+
+#[test]
+fn exec_output_frame_into_rejects_oversized_chunk() {
+    let chunk = vec![0u8; MAX_PAYLOAD_SIZE - 9];
+    let mut frame = b"stale frame bytes".to_vec();
+    let err =
+        encode_exec_output_frame_into(&mut frame, 42, ExecOutputStream::Stdout, 1, &chunk, false)
+            .unwrap_err();
+
+    assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+    assert!(frame.is_empty());
+}
+
 #[test]
 fn exec_output_rejects_invalid_stream_flags_and_trailing_bytes() {
     let payload = encode_exec_output(ExecOutputStream::Stdout, 1, b"chunk", false).unwrap();

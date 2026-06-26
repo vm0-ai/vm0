@@ -101,6 +101,7 @@ class ClaimRouteTimingCollector {
     readonly runnerGroup: string;
     readonly profile: string;
     readonly authType: RunnerAuthContext["type"];
+    readonly discoverySource: string | undefined;
     readonly pollReason: string | undefined;
   }): void {
     const records = this.records.splice(0);
@@ -109,6 +110,9 @@ class ClaimRouteTimingCollector {
       profile: args.profile,
       auth_type: args.authType,
     };
+    if (args.discoverySource) {
+      dimensions.discovery_source = args.discoverySource;
+    }
     if (args.pollReason) {
       dimensions.poll_reason = args.pollReason;
     }
@@ -834,6 +838,7 @@ function scheduleSuccessfulClaimSideEffects(args: {
   readonly claimResult: ClaimedTransitionResult;
   readonly telemetry:
     | {
+        readonly discoverySource?: string;
         readonly jobDiscoveredToClaimRequestMs?: number;
         readonly localAdmissionToClaimRequestMs?: number;
         readonly pollDueToJobDiscoveredMs?: number;
@@ -875,6 +880,7 @@ function scheduleSuccessfulClaimSideEffects(args: {
       args.telemetry?.jobDiscoveredToClaimRequestMs,
     localAdmissionToClaimRequestMs:
       args.telemetry?.localAdmissionToClaimRequestMs,
+    discoverySource: args.telemetry?.discoverySource,
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
@@ -895,6 +901,7 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
@@ -925,6 +932,7 @@ async function recordClaimTimingMetrics(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
@@ -936,6 +944,9 @@ async function recordClaimTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
   };
+  if (args.discoverySource) {
+    dimensions.discovery_source = args.discoverySource;
+  }
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
@@ -1004,6 +1015,7 @@ async function recordClaimTimingMetrics(args: {
     runnerGroup: args.runnerGroup,
     profile: args.profile,
     authType: args.authType,
+    discoverySource: args.discoverySource,
     pollReason: args.pollReason,
   });
 }

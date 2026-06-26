@@ -71,7 +71,7 @@ fn exec_operation_stream_only_stdout_stderr_success() {
 }
 
 #[test]
-fn exec_operation_stream_handles_more_chunks_than_output_queue_capacity() {
+fn exec_operation_stream_handles_many_small_chunks() {
     let (handle, mut host_stream) = start_guest_connection();
     let expected = "x".repeat(96);
     let command = format!("printf {expected}");
@@ -93,6 +93,39 @@ fn exec_operation_stream_handles_more_chunks_than_output_queue_capacity() {
     assert_eq!(stdout_data(&chunks), expected.as_bytes());
     assert_eq!(chunks.len(), expected.len());
     assert!(chunks.iter().all(|chunk| !chunk.truncated));
+    for (expected_seq, chunk) in chunks.iter().enumerate() {
+        assert_eq!(chunk.output_seq, expected_seq as u32);
+    }
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_stream_sequences_many_stdout_stderr_chunks() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let expected_stdout = "o".repeat(64);
+    let expected_stderr = "e".repeat(64);
+
+    send_exec_start(
+        &mut host_stream,
+        124,
+        "i=0; while [ \"$i\" -lt 64 ]; do printf o; printf e >&2; i=$((i + 1)); done",
+        5000,
+        ExecOutputPolicy::Stream {
+            limit_bytes: expected_stdout.len() as u32,
+            chunk_limit_bytes: 1,
+        },
+        ExecOutputPolicy::Stream {
+            limit_bytes: expected_stderr.len() as u32,
+            chunk_limit_bytes: 1,
+        },
+    );
+    let (chunks, result) = read_exec_result(&mut host_stream, 124);
+
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(stdout_data(&chunks), expected_stdout.as_bytes());
+    assert_eq!(stderr_data(&chunks), expected_stderr.as_bytes());
+    assert_eq!(chunks.len(), expected_stdout.len() + expected_stderr.len());
     for (expected_seq, chunk) in chunks.iter().enumerate() {
         assert_eq!(chunk.output_seq, expected_seq as u32);
     }

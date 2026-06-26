@@ -43,7 +43,10 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
+const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
+
 const runnerClaimTelemetrySchema = z.object({
+  discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),

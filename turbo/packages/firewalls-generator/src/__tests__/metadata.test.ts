@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   generatedFirewallExportName,
+  generatedFirewallFileName,
   loadConnectorFirewallSourceSet,
+  type ConnectorFirewallSource,
 } from "../connector-firewall-sources";
 import {
   BILLABLE_FIREWALL_CONNECTOR_TYPES,
@@ -76,31 +78,28 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function runtimeLoaderConnectorTypes(source: string): string[] {
-  const manifestMatch = source.match(
-    /export const RUNTIME_FIREWALL_CONNECTOR_TYPES = \[\n([\s\S]*?)\n\] as const;/s,
-  );
-  if (!manifestMatch) {
-    throw new Error("Unable to find runtime firewall connector manifest");
-  }
-
-  return [...manifestMatch[1]!.matchAll(/^\s*"([^"]+)",$/gm)]
-    .map((match) => {
-      return match[1]!;
-    })
-    .sort(compareStrings);
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
 }
 
-function runtimeLoaderExportNames(source: string): Map<string, string> {
-  return new Map(
-    [
-      ...source.matchAll(
-        /^\s+\["([^"]+)"\]: async \(\) => \{\n\s+return \(await import\("[^"]+"\)\)\["([^"]+)"\];\n\s+\},$/gm,
-      ),
-    ].map((match) => {
-      return [match[1]!, match[2]!] as const;
+function routingMetadataFromSource(source: ConnectorFirewallSource): unknown {
+  return {
+    type: source.type,
+    label: source.label,
+    apis: source.firewall.apis.map((api) => {
+      return {
+        base: api.base,
+        routes: (api.permissions ?? []).flatMap((permission) => {
+          return permission.rules.map((rule) => {
+            return {
+              permissionName: permission.name,
+              rule,
+            };
+          });
+        }),
+      };
     }),
-  );
+  };
 }
 
 function sourceHasObjectKey(source: string, key: string): boolean {
@@ -128,14 +127,6 @@ function assertRoutingMetadataSourceExcludesAuthData(
   }
   expect(source, filename).not.toContain(DEFAULT_FIREWALL_SECRET_PLACEHOLDER);
   expect(source, filename).not.toContain("${{ secrets.");
-}
-
-function manifestFirewallExportNames(): Map<FirewallConnectorType, string> {
-  return new Map(
-    [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings).map((type) => {
-      return [type, generatedFirewallExportName(type)] as const;
-    }),
-  );
 }
 
 describe("firewall metadata generator", () => {
@@ -310,45 +301,15 @@ describe("firewall metadata generator", () => {
     }
   });
 
-  it("keeps the generated runtime loader literal and registry-shaped", () => {
-    const loaderSource = fs.readFileSync(
-      path.resolve(
-        import.meta.dirname,
-        "../../../connectors/src/firewalls/runtime-loader.generated.ts",
+  it("does not keep the generated runtime loader", () => {
+    expect(
+      fs.existsSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../../connectors/src/firewalls/runtime-loader.generated.ts",
+        ),
       ),
-      "utf-8",
-    );
-    const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
-
-    expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
-    expect(runtimeLoaderConnectorTypes(loaderSource)).toStrictEqual(
-      [...FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
-    );
-    expect(runtimeLoaderExportNames(loaderSource)).toStrictEqual(
-      manifestFirewallExportNames(),
-    );
-    expect(dynamicSpecifiers).toContain("./slack.generated");
-    expect(dynamicSpecifiers).toContain("./github.generated");
-    expect(loaderSource).toContain("/firewall-runtime/v1/");
-    expect(loaderSource).toContain(
-      "export const RUNTIME_FIREWALL_CONNECTOR_TYPES",
-    );
-    expect(loaderSource).toContain(
-      "export function hasGeneratedRuntimeFirewall",
-    );
-    expect(loaderSource).toContain(
-      "export async function loadGeneratedRuntimeFirewall",
-    );
-    expect(loaderSource).toContain("Object.create(null)");
-    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
-    expect(dynamicSpecifiers.length).toBe(
-      runtimeLoaderConnectorTypes(loaderSource).length,
-    );
-    for (const specifier of dynamicSpecifiers) {
-      expect(specifier).toMatch(/^\.\/[a-z0-9][a-z0-9-]*\.generated$/);
-    }
-    expect(loaderSource).toContain('["slack"]: async () =>');
-    expect(loaderSource).toContain('))["slackFirewall"]');
+    ).toBe(false);
   });
 
   it("keeps generated routing index eager and base-only", () => {
@@ -427,5 +388,30 @@ describe("firewall metadata generator", () => {
       slackDetailSource,
       "routing-details/slack.generated.ts",
     );
+  });
+
+  it("projects all routing details from connector firewall route data", async () => {
+    const sourceSet = await loadConnectorFirewallSourceSet({
+      firewallsDir: FIREWALLS_DIR,
+      connectorsDir: CONNECTORS_DIR,
+    });
+
+    for (const source of sourceSet.sources) {
+      const filename = `routing-details/${generatedFirewallFileName(source.type)}`;
+      const detailSource = fs.readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../../connectors/src/firewall-metadata",
+          filename,
+        ),
+        "utf-8",
+      );
+      expect(detailSource, filename).toContain(
+        `export const firewallRoutingMetadata = ${stableJson(
+          routingMetadataFromSource(source),
+        )} as const satisfies FirewallRoutingMetadata;`,
+      );
+      assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
+    }
   });
 });
