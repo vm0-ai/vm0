@@ -242,6 +242,47 @@ function StepsTab({
   );
 }
 
+function InspectMissingPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-12">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground text-center max-w-sm">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function InspectContextTab({ data }: { data: InspectLogData }) {
+  if (!data.context) {
+    return (
+      <InspectMissingPanel
+        title="Context not available"
+        description="Execution context is not available in this imported log."
+      />
+    );
+  }
+  return <ContextContent context={data.context} />;
+}
+
+function InspectNetworkTab({ data }: { data: InspectLogData }) {
+  if (!data.networkLogs) {
+    return (
+      <InspectMissingPanel
+        title="Network logs not available"
+        description="Network logs are not available in this imported log."
+      />
+    );
+  }
+  return <NetworkContent networkLogs={data.networkLogs} />;
+}
+
 function InspectLogContent({ data }: { data: InspectLogData }) {
   const features = useLastResolved(featureSwitch$);
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
@@ -250,7 +291,9 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
   const updateParams = useSet(updateSearchParams$);
   const rawTab = params.get("tab");
   const activeTab: InspectTab =
-    rawTab === "context" || rawTab === "network" ? rawTab : "steps";
+    showDebugTabs && (rawTab === "context" || rawTab === "network")
+      ? rawTab
+      : "steps";
   const setActiveTab = (tab: InspectTab) => {
     const next = new URLSearchParams(params);
     if (tab === "steps") {
@@ -309,12 +352,8 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
 
           <div className="mt-6">
             {activeTab === "steps" && <StepsTab prepared={prepared} />}
-            {activeTab === "context" && data.context && (
-              <ContextContent context={data.context} />
-            )}
-            {activeTab === "network" && data.networkLogs && (
-              <NetworkContent networkLogs={data.networkLogs} />
-            )}
+            {activeTab === "context" && <InspectContextTab data={data} />}
+            {activeTab === "network" && <InspectNetworkTab data={data} />}
           </div>
         </div>
       </div>

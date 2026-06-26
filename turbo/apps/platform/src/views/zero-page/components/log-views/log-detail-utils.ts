@@ -502,6 +502,13 @@ function appendChildToTask(task: GroupedMessage, child: GroupedMessage): void {
   task.childMessages.push(child);
 }
 
+function getTaskChildren(task: GroupedMessage): GroupedMessage[] {
+  if (!task.childMessages) {
+    task.childMessages = [];
+  }
+  return task.childMessages;
+}
+
 /**
  * Merge tool-only operations into the last child assistant message of a task.
  * Returns true if merged, false if a new child should be created instead.
@@ -653,7 +660,7 @@ function processUserEvent(
 ): void {
   // Child user events belong to a task — route orphan results there
   const parentTask = findParentTask(eventData, ctx);
-  const target = parentTask?.childMessages ?? ctx.grouped;
+  const target = parentTask ? getTaskChildren(parentTask) : ctx.grouped;
 
   const contents = getMessageContents(eventData);
   const toolMeta = toToolResultMeta(eventData.tool_use_result);

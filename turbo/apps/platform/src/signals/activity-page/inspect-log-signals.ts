@@ -15,6 +15,7 @@ export interface InspectLogData {
 }
 
 const internalInspectLogData$ = state<InspectLogData | null>(null);
+const internalInspectStepSearch$ = state("");
 
 export const inspectLogData$ = computed((get) => {
   return get(internalInspectLogData$);
@@ -26,14 +27,13 @@ export const loadInspectLogFile$ = command(
     const data = parseInspectLog(text);
     L.info("Loaded inspect log file", file.name);
     set(internalInspectLogData$, data);
+    set(internalInspectStepSearch$, "");
   },
 );
 
 // ---------------------------------------------------------------------------
 // Inspect step search — component-local filter for the inspect detail view
 // ---------------------------------------------------------------------------
-
-const internalInspectStepSearch$ = state("");
 
 /** Current step search filter for the inspect detail view. */
 export const inspectStepSearch$ = computed((get) => {

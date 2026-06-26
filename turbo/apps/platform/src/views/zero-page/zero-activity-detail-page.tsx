@@ -666,9 +666,11 @@ function ActivityDetailContent({
 }) {
   const params = useGet(searchParams$);
   const updateParams = useSet(updateSearchParams$);
+  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
-    rawTab === "context" || rawTab === "runner" || rawTab === "network"
+    showDebugTabs &&
+    (rawTab === "context" || rawTab === "runner" || rawTab === "network")
       ? rawTab
       : "steps";
   const setActiveTab = (tab: ActivityTab) => {
@@ -694,8 +696,6 @@ function ActivityDetailContent({
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
-
-  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">

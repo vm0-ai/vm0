@@ -407,6 +407,35 @@ describe("activity inspect page", () => {
     expect(within(networkTable).getByText("github")).toBeInTheDocument();
   });
 
+  it("ignores debug tab query params when debug tabs are disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect?tab=context",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(getFileInput(), inspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Analysis" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Collected OAuth evidence from network logs."),
+    ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((element) => {
+        return element.textContent === "Context";
+      }),
+    ).toBeFalsy();
+    expect(screen.queryByText("github-token")).not.toBeInTheDocument();
+  });
+
   it("normalizes imported codex adapter events", async () => {
     detachedSetupPage({
       context,
@@ -503,7 +532,7 @@ describe("activity inspect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Imported Log" }),
+        screen.getByRole("heading", { name: "Context not available" }),
       ).toBeInTheDocument();
     });
 

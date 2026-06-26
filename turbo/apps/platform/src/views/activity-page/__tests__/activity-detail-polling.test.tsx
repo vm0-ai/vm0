@@ -568,14 +568,15 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 7,
-      eventType: "assistant",
+      eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
         message: {
           content: [
             {
-              type: "text",
-              text: "Child task found one risky deployment.",
+              type: "tool_result",
+              content: "child orphan cleanup result",
+              is_error: false,
             },
           ],
         },
@@ -590,10 +591,8 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         message: {
           content: [
             {
-              type: "tool_use",
-              id: "tool-child-bash",
-              name: "Bash",
-              input: { command: "zero deploy status --json" },
+              type: "text",
+              text: "Child task found one risky deployment.",
             },
           ],
         },
@@ -602,6 +601,24 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 9,
+      eventType: "assistant",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-child-bash",
+              name: "Bash",
+              input: { command: "zero deploy status --json" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
       eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
@@ -616,10 +633,10 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
           ],
         },
       },
-      createdAt: "2026-03-10T17:00:10Z",
+      createdAt: "2026-03-10T17:00:11Z",
     },
     {
-      sequenceNumber: 10,
+      sequenceNumber: 11,
       eventType: "result",
       eventData: {
         type: "result",
@@ -628,7 +645,7 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         num_turns: 1,
         duration_ms: 1000,
       },
-      createdAt: "2026-03-10T17:00:11Z",
+      createdAt: "2026-03-10T17:00:12Z",
     },
   ];
 }
@@ -1811,6 +1828,8 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Child task found one risky deployment."),
     ).toBeInTheDocument();
+    expect(screen.getByText("2 steps")).toBeInTheDocument();
+    expect(screen.getByText("child orphan cleanup result")).toBeInTheDocument();
     expect(screen.getAllByText("zero deploy status --json")).not.toHaveLength(
       0,
     );
