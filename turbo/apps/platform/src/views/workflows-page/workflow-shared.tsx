@@ -166,9 +166,13 @@ export function gmailTriggerSummary(
   if (trigger.kind !== "event") {
     return null;
   }
-  return trigger.eventType === "gmail-label-applied"
-    ? `Label ${quote(trigger.eventConfig.labelName)}`
-    : formatGmailMatchSummary(trigger.eventConfig);
+  if (trigger.eventType === "gmail-label-applied") {
+    return `Label ${quote(trigger.eventConfig.labelName)}`;
+  }
+  if (trigger.eventType === "gmail-new-message") {
+    return formatGmailMatchSummary(trigger.eventConfig);
+  }
+  return null;
 }
 
 export function gmailMatcherDefaultValue(
