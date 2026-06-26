@@ -159,6 +159,7 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
     assert_eq!(
         result.stdout_stream_diagnostics,
         AgentStdoutStreamDiagnostics {
+            bytes_written: 14,
             chunk_truncated: true,
             stream_overflowed: false,
         }
@@ -520,6 +521,7 @@ async fn run_in_sandbox_cancels_guest_process_and_waits_for_terminal_status() {
     assert_eq!(
         result.stdout_stream_diagnostics,
         AgentStdoutStreamDiagnostics {
+            bytes_written: 14,
             chunk_truncated: true,
             stream_overflowed: true,
         }

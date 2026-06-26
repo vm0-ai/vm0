@@ -712,6 +712,7 @@ async fn post_job_cleanup_appends_stream_markers_after_guest_log_copy() {
         "10.0.0.1",
         false,
         AgentStdoutStreamDiagnostics {
+            bytes_written: 0,
             chunk_truncated: true,
             stream_overflowed: true,
         },
@@ -756,6 +757,7 @@ async fn drain_stdout_writes_chunks_to_file() {
 
     let content = tokio::fs::read_to_string(&path).await.unwrap();
     assert_eq!(content, "chunk 1\nchunk 2\n");
+    assert_eq!(report.bytes_written, 16);
     assert!(!report.chunk_truncated);
     assert_eq!(mode(&path), 0o600);
 }
@@ -778,6 +780,7 @@ async fn drain_stdout_reports_truncated_chunk_without_changing_bytes() {
 
     let content = tokio::fs::read(&path).await.unwrap();
     assert_eq!(content, b"partial chunk");
+    assert_eq!(report.bytes_written, 13);
     assert!(report.chunk_truncated);
 }
 
@@ -793,6 +796,7 @@ async fn drain_stdout_empty_channel() {
 
     let content = tokio::fs::read_to_string(&path).await.unwrap();
     assert!(content.is_empty());
+    assert_eq!(report.bytes_written, 0);
     assert!(!report.chunk_truncated);
 }
 
@@ -829,6 +833,7 @@ async fn append_stdout_stream_diagnostics_writes_markers() {
     append_stdout_stream_diagnostics(
         &path,
         AgentStdoutStreamDiagnostics {
+            bytes_written: 0,
             chunk_truncated: true,
             stream_overflowed: true,
         },

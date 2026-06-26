@@ -10,11 +10,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::diagnostics::{
-    AgentStdoutStreamDiagnostics, StdoutDrainReport, build_agent_env_diagnostics,
-    build_agent_env_key_diagnostics, check_host_oom, collect_agent_abnormal_exit_diagnostics,
-    dmesg_indicates_oom, drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
-    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
-    read_guest_error_file, read_guest_failure_diagnostic_file,
+    AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
+    build_agent_env_diagnostics, build_agent_env_key_diagnostics, check_host_oom,
+    collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom, drain_stdout_to_file,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
+    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
@@ -505,6 +505,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
     let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
+        bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: false,
     };
@@ -546,6 +547,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");
     }
     let stdout_stream_diagnostics = AgentStdoutStreamDiagnostics {
+        bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: exit.stream_overflowed,
     };
@@ -569,6 +571,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         start.reuse_result,
         &exit,
         &env_diagnostics,
+        stdout_stream_diagnostics,
     );
 
     // Check for OOM kill when process was terminated by SIGKILL.
@@ -647,13 +650,16 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
             if should_log_bootstrap_diagnostics {
                 log_agent_bootstrap_abnormal_exit_diagnostics(
-                    context.run_id,
-                    sandbox.id(),
-                    start.reuse_result,
-                    &exit,
-                    &env_diagnostics,
-                    &env_key_diagnostics,
-                    session_restore_diagnostics.as_ref(),
+                    AgentBootstrapAbnormalExitLogContext {
+                        run_id: context.run_id,
+                        sandbox_id: sandbox.id(),
+                        reuse_result: start.reuse_result,
+                        exit: &exit,
+                        env_diagnostics: &env_diagnostics,
+                        env_key_diagnostics: &env_key_diagnostics,
+                        stdout_stream_diagnostics,
+                        session_restore_diagnostics: session_restore_diagnostics.as_ref(),
+                    },
                 );
             }
             if should_collect_resource_diagnostics {

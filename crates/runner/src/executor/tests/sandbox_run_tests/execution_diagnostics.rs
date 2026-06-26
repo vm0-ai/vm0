@@ -138,7 +138,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_prepared_sandbox_run(
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
         PreparedSandboxRun {
             sandbox,
             source_ip,
@@ -153,7 +153,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
         },
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None),
-    )
+    ))
     .await;
 
     assert_eq!(outcome.exit_code(), 126);
@@ -164,6 +164,14 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
     assert_eq!(system_log, b"guest system log\n");
     let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
     assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
+    let bootstrap_event = captured_event(&events, "agent bootstrap abnormal exit diagnostics");
+    assert_eq!(
+        bootstrap_event
+            .fields
+            .get("stdout_stream_bytes")
+            .map(String::as_str),
+        Some("21")
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

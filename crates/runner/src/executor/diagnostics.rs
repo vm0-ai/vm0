@@ -53,6 +53,7 @@ const AGENT_ENV_VALUE_SIZE_DIAGNOSTIC_LIMIT: usize = 5;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AgentStdoutStreamDiagnostics {
+    pub(super) bytes_written: u64,
     pub(super) chunk_truncated: bool,
     pub(super) stream_overflowed: bool,
 }
@@ -342,6 +343,7 @@ pub(super) fn log_agent_process_exit_summary(
     reuse_result: SandboxReuseResult,
     exit: &sandbox::ProcessExit,
     env_diagnostics: &AgentEnvDiagnostics,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     info!(
         run_id = %run_id,
@@ -353,6 +355,7 @@ pub(super) fn log_agent_process_exit_summary(
         stderr_len = exit.stderr.len(),
         stdout_truncated = exit.stdout_truncated,
         stderr_truncated = exit.stderr_truncated,
+        stdout_stream_bytes = stdout_stream_diagnostics.bytes_written,
         diagnostic_present = !exit.diagnostic.is_empty(),
         stream_overflowed = exit.stream_overflowed,
         env_count = env_diagnostics.env_count,
@@ -389,46 +392,55 @@ pub(super) fn log_agent_abnormal_exit_env_diagnostics(
     );
 }
 
+pub(super) struct AgentBootstrapAbnormalExitLogContext<'a> {
+    pub(super) run_id: RunId,
+    pub(super) sandbox_id: &'a str,
+    pub(super) reuse_result: SandboxReuseResult,
+    pub(super) exit: &'a sandbox::ProcessExit,
+    pub(super) env_diagnostics: &'a AgentEnvDiagnostics,
+    pub(super) env_key_diagnostics: &'a AgentEnvKeyDiagnostics,
+    pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+    pub(super) session_restore_diagnostics: Option<&'a SessionRestoreDiagnostics>,
+}
+
 pub(super) fn log_agent_bootstrap_abnormal_exit_diagnostics(
-    run_id: RunId,
-    sandbox_id: &str,
-    reuse_result: SandboxReuseResult,
-    exit: &sandbox::ProcessExit,
-    env_diagnostics: &AgentEnvDiagnostics,
-    env_key_diagnostics: &AgentEnvKeyDiagnostics,
-    session_restore_diagnostics: Option<&SessionRestoreDiagnostics>,
+    context: AgentBootstrapAbnormalExitLogContext<'_>,
 ) {
-    let resume_session_framework = session_restore_diagnostics
+    let resume_session_framework = context
+        .session_restore_diagnostics
         .map(|diagnostics| diagnostics.framework)
         .unwrap_or("none");
-    let resume_session_fingerprint = session_restore_diagnostics
+    let resume_session_fingerprint = context
+        .session_restore_diagnostics
         .map(|diagnostics| diagnostics.session_fingerprint.as_str())
         .unwrap_or("");
-    let resume_session_bytes_in =
-        session_restore_diagnostics.map(|diagnostics| diagnostics.bytes_in);
+    let resume_session_bytes_in = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.bytes_in);
 
     warn!(
-        run_id = %run_id,
-        sandbox_id = %sandbox_id,
-        sandbox_reuse_result = reuse_result.as_wire(),
-        termination = ?exit.termination,
-        exit_code = ?process_exit_code(exit),
-        stdout_len = exit.stdout.len(),
-        stderr_len = exit.stderr.len(),
-        stdout_truncated = exit.stdout_truncated,
-        stderr_truncated = exit.stderr_truncated,
-        captured_stderr_present = !exit.stderr.is_empty(),
-        captured_stderr_truncated = exit.stderr_truncated,
-        diagnostic_present = !exit.diagnostic.is_empty(),
-        stream_overflowed = exit.stream_overflowed,
-        env_count = env_diagnostics.env_count,
-        env_bytes = env_diagnostics.env_bytes,
-        runner_owned_env_count = env_diagnostics.runner_owned_count,
-        external_env_count = env_diagnostics.external_count,
-        largest_env_value_lengths = %env_diagnostics.largest_entries_csv(),
-        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
-        env_keys = %env_key_diagnostics.logged_keys_csv(),
-        omitted_env_key_count = env_key_diagnostics.omitted_key_count,
+        run_id = %context.run_id,
+        sandbox_id = %context.sandbox_id,
+        sandbox_reuse_result = context.reuse_result.as_wire(),
+        termination = ?context.exit.termination,
+        exit_code = ?process_exit_code(context.exit),
+        stdout_len = context.exit.stdout.len(),
+        stderr_len = context.exit.stderr.len(),
+        stdout_truncated = context.exit.stdout_truncated,
+        stderr_truncated = context.exit.stderr_truncated,
+        stdout_stream_bytes = context.stdout_stream_diagnostics.bytes_written,
+        captured_stderr_present = !context.exit.stderr.is_empty(),
+        captured_stderr_truncated = context.exit.stderr_truncated,
+        diagnostic_present = !context.exit.diagnostic.is_empty(),
+        stream_overflowed = context.exit.stream_overflowed,
+        env_count = context.env_diagnostics.env_count,
+        env_bytes = context.env_diagnostics.env_bytes,
+        runner_owned_env_count = context.env_diagnostics.runner_owned_count,
+        external_env_count = context.env_diagnostics.external_count,
+        largest_env_value_lengths = %context.env_diagnostics.largest_entries_csv(),
+        suspicious_env_keys = %context.env_diagnostics.suspicious_keys_csv(),
+        env_keys = %context.env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = context.env_key_diagnostics.omitted_key_count,
         resume_session_framework = %resume_session_framework,
         resume_session_fingerprint = %resume_session_fingerprint,
         resume_session_bytes_in = ?resume_session_bytes_in,
@@ -687,6 +699,7 @@ pub(super) enum StdoutDrainError {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct StdoutDrainReport {
+    pub(super) bytes_written: u64,
     pub(super) chunk_truncated: bool,
 }
 
@@ -704,6 +717,9 @@ pub(super) async fn drain_stdout_to_file(
     };
     let mut report = StdoutDrainReport::default();
     while let Some(chunk) = rx.recv().await {
+        report.bytes_written = report
+            .bytes_written
+            .saturating_add(u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX));
         if chunk.truncated {
             report.chunk_truncated = true;
             warn!(path = %path.display(), "stdout stream chunk was truncated before host log write");
