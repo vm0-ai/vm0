@@ -56,6 +56,10 @@ type GmailWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "gmail-new-message" | "gmail-label-applied"
 >;
+type GmailWorkflowTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: GmailWorkflowEventType }
+>;
 
 /**
  * Outcome of a trigger mutation, mapped to an HTTP response by the route layer.
@@ -220,6 +224,12 @@ function supportedGmailEventType(
   return (
     eventType === "gmail-new-message" || eventType === "gmail-label-applied"
   );
+}
+
+function isGmailWorkflowTriggerSummary(
+  summary: ZeroWorkflowTriggerSummary,
+): summary is GmailWorkflowTriggerSummary {
+  return summary.kind === "event" && supportedGmailEventType(summary.eventType);
 }
 
 function rowSummaryBase(row: TriggerRow) {
@@ -466,48 +476,65 @@ export async function listThreadBoundWorkflowTriggers(
     }),
   );
 
-  return summaries.flatMap(({ trigger, workflow, summary }) => {
-    if (!summary || trigger.chatThreadId === null) {
-      return [];
-    }
-    const base = {
-      id: summary.id,
-      enabled: summary.enabled,
-      chatThreadId: trigger.chatThreadId,
-      nextRunAt: summary.nextRunAt,
-      lastRunAt: summary.lastRunAt,
-      ownerUserId: summary.ownerUserId,
-      unattendedConnectorRefs: summary.unattendedConnectorRefs,
-      unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
-      workflow: {
-        id: workflow.id,
-        agentId: workflow.agentId,
-        name: workflow.name,
-        displayName: workflow.displayName,
-        description: workflow.description,
-      },
-    };
-    if (summary.kind === "schedule") {
+  return summaries.flatMap<ChatThreadWorkflowTrigger>(
+    ({ trigger, workflow, summary }): readonly ChatThreadWorkflowTrigger[] => {
+      if (!summary || trigger.chatThreadId === null) {
+        return [];
+      }
+      const base = {
+        id: summary.id,
+        enabled: summary.enabled,
+        chatThreadId: trigger.chatThreadId,
+        nextRunAt: summary.nextRunAt,
+        lastRunAt: summary.lastRunAt,
+        ownerUserId: summary.ownerUserId,
+        unattendedConnectorRefs: summary.unattendedConnectorRefs,
+        unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
+        workflow: {
+          id: workflow.id,
+          agentId: workflow.agentId,
+          name: workflow.name,
+          displayName: workflow.displayName,
+          description: workflow.description,
+        },
+      };
+      if (summary.kind === "schedule") {
+        return [
+          {
+            ...base,
+            kind: "schedule",
+            schedule: summary.schedule,
+            scheduleSummary: summary.scheduleSummary,
+          },
+        ];
+      }
+      if (!isGmailWorkflowTriggerSummary(summary)) {
+        return [];
+      }
+      if (summary.eventType === "gmail-new-message") {
+        return [
+          {
+            ...base,
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: summary.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          },
+        ];
+      }
       return [
         {
           ...base,
-          kind: "schedule",
-          schedule: summary.schedule,
-          scheduleSummary: summary.scheduleSummary,
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: summary.eventConfig,
+          schedule: null,
+          scheduleSummary: null,
         },
       ];
-    }
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: summary.eventType,
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  });
+    },
+  );
 }
 
 /**

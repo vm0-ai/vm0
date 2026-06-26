@@ -93,9 +93,6 @@ function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
     if (trigger.eventType === "gmail-new-message") {
       return "Gmail new message";
     }
-    if (trigger.eventType === "webhook-received") {
-      return "Webhook";
-    }
     return "Event";
   }
   return trigger.scheduleSummary ?? "Schedule";

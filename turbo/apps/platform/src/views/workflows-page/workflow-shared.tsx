@@ -155,9 +155,13 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.kind === "schedule") {
     return trigger.scheduleSummary;
   }
-  return trigger.eventType === "gmail-label-applied"
-    ? "Gmail label applied"
-    : "Gmail new message";
+  if (trigger.eventType === "gmail-label-applied") {
+    return "Gmail label applied";
+  }
+  if (trigger.eventType === "gmail-new-message") {
+    return "Gmail new message";
+  }
+  return "Webhook trigger";
 }
 
 export function gmailTriggerSummary(
@@ -166,9 +170,13 @@ export function gmailTriggerSummary(
   if (trigger.kind !== "event") {
     return null;
   }
-  return trigger.eventType === "gmail-label-applied"
-    ? `Label ${quote(trigger.eventConfig.labelName)}`
-    : formatGmailMatchSummary(trigger.eventConfig);
+  if (trigger.eventType === "gmail-label-applied") {
+    return `Label ${quote(trigger.eventConfig.labelName)}`;
+  }
+  if (trigger.eventType === "gmail-new-message") {
+    return formatGmailMatchSummary(trigger.eventConfig);
+  }
+  return null;
 }
 
 export function gmailMatcherDefaultValue(
