@@ -49,55 +49,50 @@ function triggerSummary(
   if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     return {
       id: trigger.id,
-      ownerUserId: "test-user-123",
+      ownerUserId: trigger.ownerUserId,
       enabled: trigger.enabled,
       chatThreadId: trigger.chatThreadId,
       nextRunAt: trigger.nextRunAt,
       lastRunAt: trigger.lastRunAt,
       kind: "event",
       eventType: "gmail-new-message",
-      eventConfig: { provider: "gmail", event: "new_message" },
+      eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: ["gmail"],
-      unattendedPermissionPolicy: null,
+      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
+      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
   if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
     return {
       id: trigger.id,
-      ownerUserId: "test-user-123",
+      ownerUserId: trigger.ownerUserId,
       enabled: trigger.enabled,
       chatThreadId: trigger.chatThreadId,
       nextRunAt: trigger.nextRunAt,
       lastRunAt: trigger.lastRunAt,
       kind: "event",
       eventType: "gmail-label-applied",
-      eventConfig: {
-        provider: "gmail",
-        event: "label_applied",
-        labelName: "Support",
-        resolvedLabelId: "Label_support",
-      },
+      eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: ["gmail"],
-      unattendedPermissionPolicy: null,
+      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
+      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
 
   return {
     id: trigger.id,
-    ownerUserId: "test-user-123",
+    ownerUserId: trigger.ownerUserId,
     enabled: trigger.enabled,
     chatThreadId: trigger.chatThreadId,
     nextRunAt: trigger.nextRunAt,
     lastRunAt: trigger.lastRunAt,
     kind: "schedule",
-    schedule: { type: "loop", intervalSeconds: 60 },
-    scheduleSummary: trigger.scheduleSummary ?? "Every 60s",
-    unattendedConnectorRefs: [],
-    unattendedPermissionPolicy: null,
+    schedule: trigger.schedule,
+    scheduleSummary: trigger.scheduleSummary,
+    unattendedConnectorRefs: trigger.unattendedConnectorRefs,
+    unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
   };
 }
 
@@ -330,6 +325,53 @@ function visibilityHandlers() {
 }
 
 function workflowTriggerHandlers() {
+  const updateDetailTrigger = (
+    triggerId: string,
+    apply: (trigger: ZeroWorkflowTriggerSummary) => ZeroWorkflowTriggerSummary,
+  ): ZeroWorkflowTriggerSummary | null => {
+    for (const workflow of mockWorkflows) {
+      const triggerIndex = workflow.triggers.findIndex((trigger) => {
+        return trigger.id === triggerId;
+      });
+      if (triggerIndex === -1) {
+        continue;
+      }
+      const updated = apply(workflow.triggers[triggerIndex]!);
+      workflow.triggers = workflow.triggers.map((trigger) => {
+        return trigger.id === triggerId ? updated : trigger;
+      });
+      return updated;
+    }
+    return null;
+  };
+
+  const updateChatThreadTrigger = (
+    triggerId: string,
+    apply: (trigger: ChatThreadWorkflowTrigger) => ChatThreadWorkflowTrigger,
+  ): ZeroWorkflowTriggerSummary | null => {
+    const triggers = getMockWorkflowTriggers();
+    const trigger = triggers.find((item) => {
+      return item.id === triggerId;
+    });
+    if (!trigger) {
+      return null;
+    }
+    const updated = apply(trigger);
+    setMockWorkflowTriggers(
+      triggers.map((item) => {
+        return item.id === triggerId ? updated : item;
+      }),
+    );
+    return triggerSummary(updated);
+  };
+
+  const notFoundTrigger = {
+    error: {
+      message: "Workflow trigger not found",
+      code: "NOT_FOUND",
+    },
+  };
+
   return [
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
@@ -396,5 +438,77 @@ function workflowTriggerHandlers() {
       );
       return respond(200, triggerSummary(updated));
     }),
+
+    mockApi(
+      zeroWorkflowTriggersContract.update,
+      ({ body, params, respond }) => {
+        const updatedChatTrigger = updateChatThreadTrigger(
+          params.id,
+          (trigger) => {
+            if (trigger.kind !== "event" || !("eventConfig" in body)) {
+              return trigger;
+            }
+            return {
+              ...trigger,
+              eventConfig: body.eventConfig,
+            } as ChatThreadWorkflowTrigger;
+          },
+        );
+        if (updatedChatTrigger) {
+          return respond(200, updatedChatTrigger);
+        }
+
+        const updatedDetailTrigger = updateDetailTrigger(
+          params.id,
+          (trigger) => {
+            if (trigger.kind !== "event" || !("eventConfig" in body)) {
+              return trigger;
+            }
+            return {
+              ...trigger,
+              eventConfig: body.eventConfig,
+            } as ZeroWorkflowTriggerSummary;
+          },
+        );
+        return updatedDetailTrigger
+          ? respond(200, updatedDetailTrigger)
+          : respond(404, notFoundTrigger);
+      },
+    ),
+
+    mockApi(
+      zeroWorkflowTriggersContract.setPermissionPolicy,
+      ({ body, params, respond }) => {
+        const updatedChatTrigger = updateChatThreadTrigger(
+          params.id,
+          (trigger) => {
+            return {
+              ...trigger,
+              unattendedConnectorRefs:
+                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
+              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
+            };
+          },
+        );
+        if (updatedChatTrigger) {
+          return respond(200, updatedChatTrigger);
+        }
+
+        const updatedDetailTrigger = updateDetailTrigger(
+          params.id,
+          (trigger) => {
+            return {
+              ...trigger,
+              unattendedConnectorRefs:
+                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
+              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
+            };
+          },
+        );
+        return updatedDetailTrigger
+          ? respond(200, updatedDetailTrigger)
+          : respond(404, notFoundTrigger);
+      },
+    ),
   ];
 }

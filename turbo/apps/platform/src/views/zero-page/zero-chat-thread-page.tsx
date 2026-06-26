@@ -6,6 +6,7 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   useGet,
@@ -49,12 +50,20 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconPencil,
+  IconShieldLock,
 } from "@tabler/icons-react";
 import {
   cn,
   isEditableTarget,
   matchShortcut,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Skeleton,
   DropdownMenu,
   DropdownMenuContent,
@@ -193,6 +202,8 @@ import {
   headerWorkflowTriggersForThread,
   reloadHeaderAutomationMenu$,
   toggleWorkflowTriggerEnabled$,
+  updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  updateHeaderWorkflowGmailNewMessageTrigger$,
   automationsForThread,
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
@@ -212,6 +223,16 @@ import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
+import {
+  buildGmailLabelAppliedEventConfig,
+  buildGmailNewMessageEventConfig,
+  gmailMatcherDefaultValue,
+  gmailTriggerSummary,
+  gmailTriggerTitle,
+  GMAIL_TEXT_FIELDS,
+} from "../workflows-page/workflow-shared.tsx";
 
 import type {
   EnrichedChatMessage,
@@ -1997,6 +2018,190 @@ function automationDescription(automation: HeaderAutomationEntry): string {
   return description && description.length > 0 ? description : "No description";
 }
 
+const HEADER_WORKFLOW_TRIGGER_FIELD_CLASS =
+  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
+
+function formatHeaderWorkflowTriggerRun(value: string | null): string {
+  if (!value) {
+    return "No runs yet";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "No runs yet";
+  }
+  return date.toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function workflowTriggerConnectorLabel(ref: string): string {
+  if (Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, ref)) {
+    return CONNECTOR_TYPES[ref as keyof typeof CONNECTOR_TYPES].label;
+  }
+  return ref;
+}
+
+function workflowTriggerPermissionPreview(
+  trigger: HeaderWorkflowTriggerEntry,
+): string {
+  if (trigger.trigger.unattendedConnectorRefs.length === 0) {
+    return "None";
+  }
+  return trigger.trigger.unattendedConnectorRefs
+    .map(workflowTriggerConnectorLabel)
+    .join(", ");
+}
+
+function HeaderWorkflowTriggerEditDialog({
+  trigger,
+  open,
+  onOpenChange,
+}: {
+  readonly trigger: HeaderWorkflowTriggerEntry;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [newMessageLoadable, updateNewMessageTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailNewMessageTrigger$,
+  );
+  const [labelLoadable, updateLabelTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  );
+  const triggerSummary = trigger.trigger;
+  const saving =
+    newMessageLoadable.state === "loading" || labelLoadable.state === "loading";
+
+  if (triggerSummary.kind !== "event") {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Edit trigger</DialogTitle>
+          <DialogDescription>
+            Update when this workflow trigger should run.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          aria-label="Edit workflow trigger"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            detach(
+              (async () => {
+                if (triggerSummary.eventType === "gmail-new-message") {
+                  await updateNewMessageTrigger(
+                    {
+                      triggerId: triggerSummary.id,
+                      eventConfig: buildGmailNewMessageEventConfig(
+                        form,
+                        triggerSummary.eventConfig,
+                      ),
+                    },
+                    pageSignal,
+                  );
+                } else {
+                  const eventConfig = buildGmailLabelAppliedEventConfig(form);
+                  if (!eventConfig) {
+                    return;
+                  }
+                  await updateLabelTrigger(
+                    {
+                      triggerId: triggerSummary.id,
+                      eventConfig,
+                    },
+                    pageSignal,
+                  );
+                }
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+              "update header workflow trigger",
+            );
+          }}
+        >
+          {triggerSummary.eventType === "gmail-new-message" ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+                return (
+                  <div key={field} className="grid gap-2">
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {label} contains
+                      <input
+                        name={`${field}Contains`}
+                        aria-label={`${label} contains`}
+                        defaultValue={gmailMatcherDefaultValue(
+                          triggerSummary.eventConfig,
+                          field,
+                          "contains",
+                        )}
+                        disabled={saving}
+                        placeholder={`${label} contains`}
+                        className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {label} does not contain
+                      <input
+                        name={`${field}DoesNotContain`}
+                        aria-label={`${label} does not contain`}
+                        defaultValue={gmailMatcherDefaultValue(
+                          triggerSummary.eventConfig,
+                          field,
+                          "doesNotContain",
+                        )}
+                        disabled={saving}
+                        placeholder={`${label} does not contain`}
+                        className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Label name
+              <input
+                name="labelName"
+                aria-label="Label name"
+                required
+                defaultValue={triggerSummary.eventConfig.labelName}
+                disabled={saving}
+                placeholder="Support"
+                className={HEADER_WORKFLOW_TRIGGER_FIELD_CLASS}
+              />
+            </label>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function HeaderAutomationSidebarCard({
   automation,
 }: {
@@ -2124,12 +2329,27 @@ function HeaderWorkflowTriggerCard({
   trigger: HeaderWorkflowTriggerEntry;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const [editOpen, setEditOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
     toggleWorkflowTriggerEnabled$,
   );
   const toggling = togglingLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
   const description = trigger.workflowDescription?.trim();
+  const triggerTitle = gmailTriggerTitle(trigger.trigger);
+  const triggerSummary = gmailTriggerSummary(trigger.trigger);
+  const summaryLabel =
+    trigger.trigger.kind === "event" &&
+    trigger.trigger.eventType === "gmail-label-applied"
+      ? "Label"
+      : "Match";
+  const summaryValue =
+    trigger.trigger.kind === "event" &&
+    trigger.trigger.eventType === "gmail-label-applied"
+      ? trigger.trigger.eventConfig.labelName
+      : triggerSummary;
 
   const toggleEnabled = (enabled: boolean) => {
     detach(
@@ -2140,43 +2360,123 @@ function HeaderWorkflowTriggerCard({
   };
 
   return (
-    <article
-      className={cn(
-        "rounded-lg border border-border bg-background p-4 transition-colors",
-        !trigger.enabled && "opacity-75",
-      )}
-    >
-      <p
+    <>
+      <article
         className={cn(
-          "line-clamp-1 text-sm font-medium leading-snug",
-          trigger.enabled ? "text-foreground" : "text-muted-foreground",
+          "rounded-lg border border-border bg-background p-4 transition-colors",
+          !trigger.enabled && "opacity-75",
         )}
       >
-        {title}
-      </p>
-      {description ? (
-        <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-          {description}
-        </p>
-      ) : null}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p
+              className={cn(
+                "line-clamp-1 text-sm font-medium leading-snug",
+                trigger.enabled ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {title}
+            </p>
+            {description ? (
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          <LoadingSwitch
+            checked={trigger.enabled}
+            loading={toggling}
+            onCheckedChange={toggleEnabled}
+            ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+          />
+        </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3 text-xs">
-        <span
-          className={cn(
-            "font-medium",
-            trigger.enabled ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {trigger.enabled ? "Active" : "Inactive"}
-        </span>
-        <LoadingSwitch
-          checked={trigger.enabled}
-          loading={toggling}
-          onCheckedChange={toggleEnabled}
-          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
-        />
-      </div>
-    </article>
+        <dl className="mt-3 text-xs">
+          <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+            <dt className="shrink-0 text-muted-foreground">Trigger</dt>
+            <dd className="min-w-0 truncate text-right font-medium text-foreground">
+              {triggerTitle}
+            </dd>
+          </div>
+          {summaryValue ? (
+            <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+              <dt className="shrink-0 text-muted-foreground">{summaryLabel}</dt>
+              <dd className="min-w-0 truncate text-right font-medium text-foreground">
+                {summaryValue}
+              </dd>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
+            <dt className="shrink-0 text-muted-foreground">Permissions</dt>
+            <dd className="min-w-0 truncate text-right font-medium text-foreground">
+              {workflowTriggerPermissionPreview(trigger)}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <dt className="shrink-0 text-muted-foreground">Last run</dt>
+            <dd className="min-w-0 truncate text-right font-medium text-foreground">
+              {formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt)}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+          <Link
+            pathname={ROUTES.agentWorkflowDetail}
+            options={{
+              pathParams: {
+                agentId: trigger.workflowAgentId,
+                workflowId: trigger.workflowId,
+              },
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <IconArrowUpRight size={13} stroke={1.5} />
+            Open workflow
+          </Link>
+          {trigger.trigger.kind === "event" ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                setEditOpen(true);
+              }}
+            >
+              <IconPencil size={13} stroke={1.5} />
+              Edit
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              setPermissionsOpen(true);
+            }}
+          >
+            <IconShieldLock size={13} stroke={1.5} />
+            Manage
+          </button>
+        </div>
+      </article>
+      <HeaderWorkflowTriggerEditDialog
+        trigger={trigger}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
+      <TriggerPermissionsDialog
+        agentId={trigger.workflowAgentId}
+        workflowId={trigger.workflowId}
+        trigger={trigger.trigger}
+        open={permissionsOpen}
+        onOpenChange={(open) => {
+          setPermissionsOpen(open);
+          if (!open) {
+            reloadAutomations();
+          }
+        }}
+        onPolicyChanged={reloadAutomations}
+      />
+    </>
   );
 }
 

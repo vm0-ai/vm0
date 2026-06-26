@@ -382,6 +382,39 @@ function mockWorkflowApis(
   );
 }
 
+function mockConnectedTriggerConnectors(): void {
+  context.mocks.data.connectors([
+    {
+      id: "10000000-0000-4000-a000-000000000001",
+      type: "slack",
+      authMethod: "oauth",
+      externalId: "slack-workspace",
+      externalUsername: "workspace",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+    {
+      id: "10000000-0000-4000-a000-000000000002",
+      type: "gmail",
+      authMethod: "oauth",
+      externalId: "gmail-user",
+      externalUsername: "user@example.com",
+      externalEmail: "user@example.com",
+      oauthScopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
+}
+
 function mockCreateWorkflowTrigger(
   onCreate: (body: ZeroWorkflowTriggerCreateRequest) => void,
 ): void {
@@ -558,6 +591,7 @@ describe("agent workflows tab", () => {
 describe("workflow detail page", () => {
   it("renders the instruction, files, and triggers", async () => {
     mockWorkflowApis([salesResearch()]);
+    mockConnectedTriggerConnectors();
 
     detachedSetupPage({
       context,

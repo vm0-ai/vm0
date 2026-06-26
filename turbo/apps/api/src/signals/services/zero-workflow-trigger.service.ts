@@ -422,22 +422,41 @@ export async function listThreadBoundWorkflowTriggers(
     if (!summary || trigger.chatThreadId === null) {
       return [];
     }
+    const base = {
+      id: summary.id,
+      enabled: summary.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: summary.nextRunAt,
+      lastRunAt: summary.lastRunAt,
+      ownerUserId: summary.ownerUserId,
+      unattendedConnectorRefs: summary.unattendedConnectorRefs,
+      unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
+      workflow: {
+        id: workflow.id,
+        agentId: workflow.agentId,
+        name: workflow.name,
+        displayName: workflow.displayName,
+        description: workflow.description,
+      },
+    };
+    if (summary.kind === "schedule") {
+      return [
+        {
+          ...base,
+          kind: "schedule",
+          schedule: summary.schedule,
+          scheduleSummary: summary.scheduleSummary,
+        },
+      ];
+    }
     return [
       {
-        id: summary.id,
-        kind: summary.kind,
-        scheduleSummary: summary.scheduleSummary,
-        eventType: summary.kind === "event" ? summary.eventType : null,
-        enabled: summary.enabled,
-        chatThreadId: trigger.chatThreadId,
-        nextRunAt: summary.nextRunAt,
-        lastRunAt: summary.lastRunAt,
-        workflow: {
-          id: workflow.id,
-          name: workflow.name,
-          displayName: workflow.displayName,
-          description: workflow.description,
-        },
+        ...base,
+        kind: "event",
+        eventType: summary.eventType,
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
       },
     ];
   });

@@ -102,7 +102,7 @@ import {
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
-import { TriggerPermissionsDrawer } from "../trigger-permissions/trigger-permissions-page.tsx";
+import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import {
@@ -216,7 +216,7 @@ function WorkflowDetailContent({
         ) : null}
       </div>
       {permissionTrigger && detail ? (
-        <TriggerPermissionsDrawer
+        <TriggerPermissionsDialog
           agentId={detail.agentId}
           workflowId={detail.id}
           trigger={permissionTrigger}
