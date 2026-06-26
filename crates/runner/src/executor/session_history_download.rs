@@ -73,6 +73,7 @@ impl SessionHistoryMaterializer {
                 match cancel {
                     Some(cancel) => {
                         tokio::select! {
+                            biased;
                             _ = cancel.cancelled() => {
                                 SessionHistoryDownloadTaskResult::cancelled(started_at)
                             }
@@ -98,6 +99,10 @@ impl SessionHistoryMaterializer {
             Self::Ready => SessionHistoryMaterialization::Ready,
             Self::Downloading { started_at, task } => {
                 let started_at = *started_at;
+                if cancel.is_cancelled() {
+                    return SessionHistoryDownloadTaskResult::cancelled(started_at)
+                        .into_materialization();
+                }
                 let Some(mut task) = task.take() else {
                     return SessionHistoryMaterialization::Failed {
                         elapsed: Duration::ZERO,
@@ -107,6 +112,7 @@ impl SessionHistoryMaterializer {
                     };
                 };
                 let result = tokio::select! {
+                    biased;
                     _ = cancel.cancelled() => {
                         task.abort();
                         let _ = task.await;
@@ -123,22 +129,26 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
-                match result.result {
-                    Ok(session) => SessionHistoryMaterialization::Downloaded {
-                        session,
-                        elapsed: result.elapsed,
-                    },
-                    Err(error) => SessionHistoryMaterialization::Failed {
-                        elapsed: result.elapsed,
-                        error,
-                    },
-                }
+                result.into_materialization()
             }
         }
     }
 }
 
 impl SessionHistoryDownloadTaskResult {
+    fn into_materialization(self) -> SessionHistoryMaterialization {
+        match self.result {
+            Ok(session) => SessionHistoryMaterialization::Downloaded {
+                session,
+                elapsed: self.elapsed,
+            },
+            Err(error) => SessionHistoryMaterialization::Failed {
+                elapsed: self.elapsed,
+                error,
+            },
+        }
+    }
+
     fn cancelled(started_at: Instant) -> Self {
         Self {
             elapsed: started_at.elapsed(),
@@ -552,6 +562,36 @@ mod tests {
             .unwrap();
         assert_eq!(closed, 0);
         let result = materializer.finish(&CancellationToken::new()).await;
+        match result {
+            SessionHistoryMaterialization::Failed { error, .. } => {
+                assert!(error.to_string().contains("cancelled"));
+            }
+            _ => panic!("expected cancelled download"),
+        }
+    }
+
+    #[tokio::test]
+    async fn finish_prefers_cancel_over_completed_download_task() {
+        let task = tokio::spawn(async {
+            SessionHistoryDownloadTaskResult {
+                elapsed: Duration::from_millis(1),
+                result: Ok(ResumeSession::inline(
+                    "sess-123".to_string(),
+                    r#"{"type":"init"}"#.to_string(),
+                )),
+            }
+        });
+        while !task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let materializer = SessionHistoryMaterializer::Downloading {
+            started_at: Instant::now(),
+            task: Some(task),
+        };
+
+        let result = materializer.finish(&cancel).await;
         match result {
             SessionHistoryMaterialization::Failed { error, .. } => {
                 assert!(error.to_string().contains("cancelled"));
