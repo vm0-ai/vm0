@@ -210,6 +210,16 @@ function clerkUserDisplayName(user: User): string | null {
   return name || user.username || clerkUserPrimaryEmail(user);
 }
 
+function isClerkUserListResponse(
+  value: unknown,
+): value is { readonly data: readonly User[] } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const data = (value as { readonly data?: unknown }).data;
+  return Array.isArray(data);
+}
+
 async function fetchWorkflowOwnerProfiles(
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
@@ -219,10 +229,10 @@ async function fetchWorkflowOwnerProfiles(
     return profiles;
   }
 
-  const users = await settle(
+  const users = await settle<unknown>(
     client.users.getUserList({ userId: [...userIds] }),
   );
-  if (!users.ok) {
+  if (!users.ok || !isClerkUserListResponse(users.value)) {
     return profiles;
   }
 
