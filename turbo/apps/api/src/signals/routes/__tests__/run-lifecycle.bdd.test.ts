@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { DecryptCommand } from "@aws-sdk/client-kms";
 import {
   getProviderRuntimeModel,
   getModelProviderFirewall,
@@ -29,6 +30,11 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import {
+  resetSecretKmsClientForTests,
+  setSecretKmsClientForTests,
+} from "../../services/crypto.utils";
+import { settle } from "../../utils";
+import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
@@ -44,6 +50,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { fakeKmsClient } from "./helpers/fake-kms-client";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -1729,6 +1736,127 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, withHost.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("decrypts multiple stored connector secrets with bounded concurrency", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await seedVm0ManagedDefaultModelKey();
+
+    await connectors.connectManualGrant(actor, "agora", "api-token", {
+      AGORA_CUSTOMER_ID: "agora-customer-id",
+      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
+      AGORA_APP_ID: "agora-app-id",
+      AGORA_APP_CERTIFICATE: "agora-app-certificate",
+    });
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd-parallel",
+    });
+    await connectors.connectManualGrant(actor, "figma", "api-token", {
+      FIGMA_TOKEN: "figd_bdd-parallel",
+    });
+    await api.enableAgentConnectors(actor, agentId, [
+      "agora",
+      "gitlab",
+      "figma",
+    ]);
+
+    let releaseDecrypts: (() => void) | undefined;
+    const decryptGate = new Promise<void>((resolve) => {
+      releaseDecrypts = resolve;
+    });
+    const kms = fakeKmsClient({
+      onDecrypt: () => {
+        return decryptGate;
+      },
+    });
+    setSecretKmsClientForTests(kms.client);
+    onTestFinished(() => {
+      releaseDecrypts?.();
+      resetSecretKmsClientForTests();
+    });
+
+    const createRunResultPromise = settle(
+      api.createRun(actor, {
+        agentId,
+        prompt: "use agora credentials",
+        modelProvider: "vm0",
+      }),
+    );
+
+    const concurrencyResult = await settle(
+      expect
+        .poll(
+          () => {
+            return kms.getMaxInFlightDecrypts();
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(4),
+    );
+    releaseDecrypts?.();
+
+    const createRunResult = await createRunResultPromise;
+    if (!createRunResult.ok) {
+      throw createRunResult.error;
+    }
+    if (!concurrencyResult.ok) {
+      throw concurrencyResult.error;
+    }
+    const run = createRunResult.value;
+    expect(kms.getMaxInFlightDecrypts()).toBeLessThanOrEqual(4);
+    expect(
+      kms.calls.filter((call) => {
+        return call instanceof DecryptCommand;
+      }),
+    ).toHaveLength(5);
+
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
+    );
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
+    );
+    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
+    );
+    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
+    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
+      "agora-app-certificate",
+    );
+    expect(claim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(claim.environment?.FIGMA_TOKEN).toBe(
+      connectorPlaceholder("figma", "FIGMA_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({
+      AGORA_CUSTOMER_ID: "agora",
+      AGORA_CUSTOMER_SECRET: "agora",
+      AGORA_APP_CERTIFICATE: "agora",
+      GITLAB_TOKEN: "gitlab",
+      FIGMA_TOKEN: "figma",
+    });
+    expect(claim.secretConnectorMap).not.toHaveProperty("AGORA_APP_ID");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
   });
 
   it("uses the builtin Figma firewall for personal access tokens", async () => {
