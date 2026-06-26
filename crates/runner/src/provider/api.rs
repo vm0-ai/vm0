@@ -1288,12 +1288,10 @@ mod tests {
             .expect("first poll should reach the server")
             .unwrap();
         wakeups
-            .request_deferred_poll_after_for_test(Duration::from_millis(10))
+            .request_deferred_poll_after_for_test(Duration::ZERO)
             .await;
         release_first_tx.send(()).unwrap();
-        tokio::task::yield_now().await;
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
         let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
             .await
             .expect("discover should retry after target-other defer")
