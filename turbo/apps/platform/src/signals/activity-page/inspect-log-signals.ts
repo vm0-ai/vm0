@@ -7,6 +7,7 @@ import { logger } from "../log.ts";
 import { settle } from "../utils.ts";
 
 const L = logger("InspectLogSignals");
+const MAX_INSPECT_LOG_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 function inspectLogLoadErrorMessage(): string {
   return "Could not load JSON file. Upload an exported activity log JSON file.";
@@ -14,6 +15,10 @@ function inspectLogLoadErrorMessage(): string {
 
 function invalidInspectLogMessage(): string {
   return "Invalid JSON file. Upload an exported activity log JSON file.";
+}
+
+function oversizedInspectLogMessage(): string {
+  return "JSON file is too large. Upload an exported activity log JSON file under 25 MB.";
 }
 
 export interface InspectLogData {
@@ -41,6 +46,14 @@ export const loadInspectLogFile$ = command(
     const generation = get(internalInspectLogLoadGeneration$) + 1;
     set(internalInspectLogLoadGeneration$, generation);
     set(internalInspectLogLoadError$, null);
+
+    if (file.size > MAX_INSPECT_LOG_FILE_SIZE_BYTES) {
+      L.warn("Inspect log file is too large", file.name, file.size);
+      set(internalInspectLogData$, null);
+      set(internalInspectLogLoadError$, oversizedInspectLogMessage());
+      set(internalInspectStepSearch$, "");
+      return;
+    }
 
     const textResult = await settle(file.text(), signal);
     signal.throwIfAborted();

@@ -380,6 +380,21 @@ function malformedInspectFile(): File {
   );
 }
 
+function oversizedInspectFile(): File {
+  const file = new File(["{}"], "oversized-activity-log.json", {
+    type: "application/json",
+  });
+  Object.defineProperty(file, "size", {
+    value: 26 * 1024 * 1024,
+  });
+  Object.defineProperty(file, "text", {
+    value: () => {
+      return Promise.reject(new Error("oversized file should not be read"));
+    },
+  });
+  return file;
+}
+
 function getFileInput(): HTMLInputElement {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) {
@@ -662,6 +677,30 @@ describe("activity inspect page", () => {
     expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
     expect(
       screen.queryByText("https://example.com/invalid-network-log"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("rejects oversized imported logs before reading them", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(getFileInput(), oversizedInspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "JSON file is too large. Upload an exported activity log JSON file under 25 MB.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Imported Log" }),
     ).not.toBeInTheDocument();
   });
 
