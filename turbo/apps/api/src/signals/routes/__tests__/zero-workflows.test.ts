@@ -786,14 +786,14 @@ describe("zero workflows", () => {
       detailClient().update({
         headers: authHeaders(),
         params: { workflowId },
-        body: { description: "Updated by admin" },
+        body: { displayName: "Updated Audit Workflow" },
       }),
       [200],
     );
     expect(updated.body).toMatchObject({
       createdByUserId: fixture.userId,
       updatedByUserId: updaterId,
-      description: "Updated by admin",
+      displayName: "Updated Audit Workflow",
     });
 
     const demoted = await accept(

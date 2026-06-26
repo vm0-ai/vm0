@@ -112,13 +112,6 @@ const TRIGGER_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const TRIGGER_TIMEZONE = "UTC";
 const WORKFLOW_SIDEBAR_WIDTH = "min(520px, 42vw)";
-const WORKFLOW_AUDIT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
@@ -648,7 +641,13 @@ function orgMemberDisplayName(member: OrgMember): string {
 }
 
 function formatWorkflowAuditDate(value: string): string {
-  return WORKFLOW_AUDIT_DATE_FORMATTER.format(new Date(value));
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function WorkflowEditDialog({
