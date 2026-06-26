@@ -49,11 +49,12 @@
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
-//! covers `write_file`, `exec_start`, `exec_cancel`, and `exec_control`; guest
-//! exec lifecycle frames reuse the original non-zero request sequence.
-//! `exec_output.output_seq` is per exec operation and starts at 0,
-//! incrementing by 1 for each output frame across stdout and stderr.
-//! `write_file_result.success` uses 0=false and 1=true.
+//! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`, and
+//! `exec_control`; guest exec lifecycle frames reuse the original non-zero
+//! request sequence. `exec_output.output_seq` is per exec operation and starts
+//! at 0, incrementing by 1 for each output frame across stdout and stderr.
+//! `write_file_result.success` / `write_files_result.success` use 0=false and
+//! 1=true.
 //! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
 //! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response
