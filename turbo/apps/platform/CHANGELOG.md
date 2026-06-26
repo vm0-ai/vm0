@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.498.1](https://github.com/vm0-ai/vm0/compare/app-v0.498.0...app-v0.498.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* sharpen artifact template thumbnails ([#18704](https://github.com/vm0-ai/vm0/issues/18704)) ([06935cd](https://github.com/vm0-ai/vm0/commit/06935cd7ca3b0e9ad76b3b365fe467d854cf5a1c))
+* update workflow edit metadata ([#19100](https://github.com/vm0-ai/vm0/issues/19100)) ([c88e78f](https://github.com/vm0-ai/vm0/commit/c88e78f14c7f6670b99fc2a7b7d27b1947fb4349))
+
+
+### Refactoring
+
+* align firewall permission metadata artifacts ([#19114](https://github.com/vm0-ai/vm0/issues/19114)) ([27c96bf](https://github.com/vm0-ai/vm0/commit/27c96bfa12d02302d22256d271f5aed31a8a02ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.119.0
+    * @vm0/connectors bumped to 1.110.0
+    * @vm0/core bumped to 8.372.1
+
 ## [0.498.0](https://github.com/vm0-ai/vm0/compare/app-v0.497.0...app-v0.498.0) (2026-06-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.2...guest-mock-claude-v0.21.3) (2026-06-26)
+
+
+### Bug Fixes
+
+* clean up mock claude shell process groups ([#19091](https://github.com/vm0-ai/vm0/issues/19091)) ([221a5af](https://github.com/vm0-ai/vm0/commit/221a5afbbc0f05078bd873b4ac1b81b568a079c8))
+
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.1...guest-mock-claude-v0.21.2) (2026-06-22)
 
 

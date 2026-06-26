@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.182.2](https://github.com/vm0-ai/vm0/compare/api-v1.182.1...api-v1.182.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* update workflow edit metadata ([#19100](https://github.com/vm0-ai/vm0/issues/19100)) ([c88e78f](https://github.com/vm0-ai/vm0/commit/c88e78f14c7f6670b99fc2a7b7d27b1947fb4349))
+
+
+### Performance Improvements
+
+* split create-run pre-create timing ([#19103](https://github.com/vm0-ai/vm0/issues/19103)) ([0bd906c](https://github.com/vm0-ai/vm0/commit/0bd906c02f3acc99a7df51e07793ad55941da188))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.119.0
+    * @vm0/connectors bumped to 1.110.0
+    * @vm0/core bumped to 8.372.1
+    * @vm0/db bumped to 1.74.3
+
 ## [1.182.1](https://github.com/vm0-ai/vm0/compare/api-v1.182.0...api-v1.182.1) (2026-06-26)
 
 
