@@ -2,8 +2,10 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../__tests__/mock-auth.ts";
 import { resolveWebAuthUrl, resolveWebOrigin } from "../auth.ts";
 import { testContext } from "./test-helpers.ts";
+import { redirectToConfiguredOnboarding$ } from "../zero-page/onboard-guard.ts";
 
 const context = testContext();
 
@@ -44,6 +46,26 @@ describe("platform auth URLs", () => {
 });
 
 describe("platform auth redirects", () => {
+  it("adds Clerk auth handoff to the paid onboarding target URL", async () => {
+    setBrowserUrl("https://app.vm7.ai:8443/");
+
+    await context.store.set(
+      redirectToConfiguredOnboarding$,
+      new URLSearchParams({ prompt: "hello" }),
+      context.signal,
+    );
+
+    expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledOnce();
+    const redirectUrl = new URL(window.location.href);
+    expect(redirectUrl.origin).toBe("https://so.vm7.ai:8443");
+    expect(redirectUrl.pathname).toBe("/onboarding/2afcf6");
+    expect(redirectUrl.searchParams.get("prompt")).toBe("hello");
+    expect(redirectUrl.searchParams.get("domain")).toBe("api.vm7.ai:8443");
+    expect(redirectUrl.searchParams.get("__clerk_db_jwt")).toBe(
+      "test-dev-browser-jwt",
+    );
+  });
+
   it("redirects unauthenticated preview users to web sign-in with API domain override", async () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
 

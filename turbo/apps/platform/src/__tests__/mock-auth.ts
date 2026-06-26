@@ -162,6 +162,8 @@ export function clearMockedAuth() {
     status: "complete",
     createdSessionId: "test-created-session-id",
   });
+  mockedClerk.buildUrlWithAuth.mockReset();
+  mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -183,6 +185,12 @@ const clientSignInCreate = vi.fn(
     });
   },
 );
+const defaultBuildUrlWithAuthImpl = (targetUrl: string): string => {
+  const url = new URL(targetUrl);
+  url.searchParams.set("__clerk_db_jwt", "test-dev-browser-jwt");
+  return url.toString();
+};
+const buildUrlWithAuth = vi.fn(defaultBuildUrlWithAuthImpl);
 
 export const mockedClerk = {
   get user() {
@@ -199,6 +207,7 @@ export const mockedClerk = {
   },
   sessionGetToken,
   clientSignInCreate,
+  buildUrlWithAuth,
   client: {
     get sessions() {
       return internalMockedClientSessions;

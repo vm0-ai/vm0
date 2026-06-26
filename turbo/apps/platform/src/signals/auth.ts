@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { Clerk } from "@clerk/clerk-js";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
@@ -54,6 +55,13 @@ export function resolveWebAuthUrl(
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
   return url.toString();
+}
+
+export function resolveClerkHandoffUrl(
+  clerk: Pick<Clerk, "buildUrlWithAuth">,
+  targetUrl: string,
+): string {
+  return clerk.buildUrlWithAuth(targetUrl);
 }
 
 /**

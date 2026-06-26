@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { clerk$, resolveWebAuthUrl } from "../auth.ts";
+import { clerk$, resolveClerkHandoffUrl, resolveWebAuthUrl } from "../auth.ts";
 import { searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
@@ -31,23 +31,34 @@ function paidOnboardingUrl(searchParams: URLSearchParams): string {
 }
 
 const redirectToPaidOnboarding$ = command(
-  ({ get }, searchParams?: URLSearchParams) => {
-    window.location.href = paidOnboardingUrl(
-      searchParams ?? get(searchParams$),
-    );
+  async (
+    { get },
+    searchParams: URLSearchParams | undefined,
+    signal: AbortSignal,
+  ) => {
+    const targetUrl = paidOnboardingUrl(searchParams ?? get(searchParams$));
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    window.location.href = resolveClerkHandoffUrl(clerk, targetUrl);
   },
 );
 
 export const redirectToConfiguredOnboarding$ = command(
-  ({ set }, searchParams?: URLSearchParams) => {
-    set(redirectToPaidOnboarding$, searchParams);
+  async (
+    { set },
+    searchParams: URLSearchParams | undefined,
+    signal: AbortSignal,
+  ) => {
+    await set(redirectToPaidOnboarding$, searchParams, signal);
+    signal.throwIfAborted();
   },
 );
 
 export const setupOnboardingRedirectPage$ = command(
-  ({ set }, signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    set(redirectToConfiguredOnboarding$);
+    await set(redirectToConfiguredOnboarding$, undefined, signal);
+    signal.throwIfAborted();
   },
 );
 
@@ -86,7 +97,8 @@ export const onboardGuard$ = command(
       }
     }
 
-    set(redirectToConfiguredOnboarding$);
+    await set(redirectToConfiguredOnboarding$, undefined, signal);
+    signal.throwIfAborted();
     return true;
   },
 );
