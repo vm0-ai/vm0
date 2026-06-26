@@ -12,7 +12,7 @@ use vsock_proto::{
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, RawMessage,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
@@ -149,6 +149,8 @@ fn message_type_name(msg_type: u8) -> &'static str {
         MSG_OPERATIONS_RESUMED => "operations_resumed",
         MSG_WRITE_FILE => "write_file",
         MSG_WRITE_FILE_RESULT => "write_file_result",
+        MSG_WRITE_FILES => "write_files",
+        MSG_WRITE_FILES_RESULT => "write_files_result",
         MSG_EXEC_START => "exec_start",
         MSG_EXEC_STARTED => "exec_started",
         MSG_EXEC_OUTPUT => "exec_output",

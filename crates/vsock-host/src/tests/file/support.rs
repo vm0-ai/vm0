@@ -8,11 +8,11 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use vsock_proto::{
     DecodedExecStart, ExecOutputPolicy, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, RawMessage,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
 };
 
 use super::super::support::read_guest_message;
-use crate::{CopyFileOptions, CopyFileResult, VsockHost};
+use crate::{CopyFileOptions, CopyFileResult, VsockHost, WriteFileEntry};
 
 pub(super) struct HostTempDir {
     path: PathBuf,
@@ -127,6 +127,22 @@ pub(super) fn spawn_write_private_file(
     tokio::spawn(async move { host.write_private_file(path, &content).await })
 }
 
+pub(super) fn spawn_write_files(
+    host: Arc<VsockHost>,
+    files: Vec<(&'static str, Vec<u8>)>,
+) -> JoinHandle<io::Result<()>> {
+    tokio::spawn(async move {
+        let entries = files
+            .iter()
+            .map(|(path, content)| WriteFileEntry {
+                path,
+                content: content.as_slice(),
+            })
+            .collect::<Vec<_>>();
+        host.write_files(&entries).await
+    })
+}
+
 pub(super) struct ExecStartFrame {
     pub(super) msg: RawMessage,
     pub(super) command: String,
@@ -196,6 +212,17 @@ impl WriteFileFrame {
     }
 }
 
+pub(super) struct WriteFilesFrame {
+    pub(super) msg: RawMessage,
+    pub(super) files: Vec<(String, Vec<u8>)>,
+}
+
+impl WriteFilesFrame {
+    pub(super) fn seq(&self) -> u32 {
+        self.msg.seq
+    }
+}
+
 pub(super) async fn expect_write_file(guest: &mut UnixStream) -> WriteFileFrame {
     let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
@@ -212,6 +239,17 @@ pub(super) async fn expect_write_file(guest: &mut UnixStream) -> WriteFileFrame 
         append,
         private,
     }
+}
+
+pub(super) async fn expect_write_files(guest: &mut UnixStream) -> WriteFilesFrame {
+    let msg = read_guest_message(guest).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILES);
+    let files = vsock_proto::decode_write_files(&msg.payload)
+        .unwrap()
+        .into_iter()
+        .map(|file| (file.path.to_string(), file.content.to_vec()))
+        .collect();
+    WriteFilesFrame { msg, files }
 }
 
 pub(super) async fn send_write_file_success(guest: &mut UnixStream, seq: u32) {
@@ -231,6 +269,27 @@ pub(super) async fn send_write_file_result(
     let payload = vsock_proto::encode_write_file_result(success, message);
     guest
         .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).unwrap())
+        .await
+        .unwrap();
+}
+
+pub(super) async fn send_write_files_success(guest: &mut UnixStream, seq: u32) {
+    send_write_files_result(guest, seq, true, "").await;
+}
+
+pub(super) async fn send_write_files_failure(guest: &mut UnixStream, seq: u32, message: &str) {
+    send_write_files_result(guest, seq, false, message).await;
+}
+
+pub(super) async fn send_write_files_result(
+    guest: &mut UnixStream,
+    seq: u32,
+    success: bool,
+    message: &str,
+) {
+    let payload = vsock_proto::encode_write_files_result(success, message);
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).unwrap())
         .await
         .unwrap();
 }

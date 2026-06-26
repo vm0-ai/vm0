@@ -7,6 +7,7 @@ description = "Write guest files from stdin without shell startup overhead"
 [dependencies]
 guest-contracts.workspace = true
 libc.workspace = true
+vsock-proto.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

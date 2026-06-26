@@ -210,6 +210,13 @@ pub struct WriteFileCall {
     pub content: Vec<u8>,
 }
 
+/// Captured `write_files` batch request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFilesCall {
+    /// Guest files passed to `write_files`.
+    pub files: Vec<WriteFileCall>,
+}
+
 /// Captured `read_file` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReadFileCall {
@@ -472,6 +479,8 @@ pub struct MockSandboxOverrides {
     exec_calls: Mutex<Vec<ExecCall>>,
     /// Recorded write_file calls across all sandboxes built from this override set.
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    /// Recorded write_files calls across all sandboxes built from this override set.
+    write_files_calls: Mutex<Vec<WriteFilesCall>>,
     /// Recorded write_private_file calls across all sandboxes built from this override set.
     private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
@@ -568,6 +577,7 @@ impl MockSandboxOverrides {
             exec_matchers: Mutex::new(Vec::new()),
             exec_calls: Mutex::new(Vec::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            write_files_calls: Mutex::new(Vec::new()),
             private_write_file_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
@@ -702,6 +712,12 @@ impl MockSandboxOverrides {
     /// result queue.
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return recorded write-files batch calls across all sandboxes built from
+    /// this override set.
+    pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.write_files_calls.lock_ignoring_poison().clone()
     }
 
     /// Return recorded private write-file calls across all sandboxes built
@@ -1038,6 +1054,7 @@ pub struct MockSandbox {
     copy_file_calls: Mutex<Vec<CopyFileCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    write_files_calls: Mutex<Vec<WriteFilesCall>>,
     private_write_file_results: Mutex<VecDeque<Result<()>>>,
     private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     write_file_gate: Mutex<Option<MockLifecycleGate>>,
@@ -1073,6 +1090,7 @@ impl MockSandbox {
             copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            write_files_calls: Mutex::new(Vec::new()),
             private_write_file_results: Mutex::new(VecDeque::new()),
             private_write_file_calls: Mutex::new(Vec::new()),
             write_file_gate: Mutex::new(None),
@@ -1155,6 +1173,14 @@ impl MockSandbox {
     /// recorded in [`MockSandboxOverrides::write_file_calls`].
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return this sandbox's recorded write-files batch calls.
+    ///
+    /// Batch entries are also expanded into [`Self::write_file_calls`] so tests
+    /// that only need path/content assertions can use one observation surface.
+    pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.write_files_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a write_private_file result. Results are consumed in FIFO order.
@@ -1456,6 +1482,43 @@ impl Sandbox for MockSandbox {
             .push(call.clone());
         if let Some(overrides) = &self.overrides {
             overrides.write_file_calls.lock_ignoring_poison().push(call);
+        }
+        let gate = self.write_file_gate.lock_ignoring_poison().clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
+        }
+        self.write_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
+    async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> Result<()> {
+        let calls = files
+            .iter()
+            .map(|file| WriteFileCall {
+                path: file.path.to_string(),
+                content: file.content.to_vec(),
+            })
+            .collect::<Vec<_>>();
+        let batch_call = WriteFilesCall {
+            files: calls.clone(),
+        };
+        self.write_files_calls
+            .lock_ignoring_poison()
+            .push(batch_call.clone());
+        self.write_file_calls
+            .lock_ignoring_poison()
+            .extend(calls.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .write_files_calls
+                .lock_ignoring_poison()
+                .push(batch_call);
+            overrides
+                .write_file_calls
+                .lock_ignoring_poison()
+                .extend(calls);
         }
         let gate = self.write_file_gate.lock_ignoring_poison().clone();
         if let Some(gate) = gate {
@@ -3885,6 +3948,42 @@ mod tests {
 
         // Falls back to default Ok.
         sandbox.write_file("/tmp/test.txt", b"data").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_write_files_records_batch_and_consumes_one_result() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_write_file_result(Err(SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: "disk full".into(),
+        }));
+
+        let files = [
+            WriteFileEntry {
+                path: "/tmp/a.txt",
+                content: b"a",
+            },
+            WriteFileEntry {
+                path: "/tmp/b.txt",
+                content: b"b",
+            },
+        ];
+        let result = sandbox.write_files(&files).await;
+        assert!(result.is_err());
+
+        sandbox.write_files(&files).await.unwrap();
+
+        let batch_calls = sandbox.write_files_calls();
+        assert_eq!(batch_calls.len(), 2);
+        assert_eq!(batch_calls[0].files.len(), 2);
+        assert_eq!(batch_calls[0].files[0].path, "/tmp/a.txt");
+        assert_eq!(batch_calls[0].files[0].content, b"a");
+        assert_eq!(batch_calls[0].files[1].path, "/tmp/b.txt");
+        assert_eq!(batch_calls[0].files[1].content, b"b");
+
+        let write_calls = sandbox.write_file_calls();
+        assert_eq!(write_calls.len(), 4);
     }
 
     #[tokio::test]

@@ -69,6 +69,12 @@ pub const MSG_EXEC_CONTROL: u8 = 0x10;
 /// Guest-to-host exec control delivery result.
 pub const MSG_EXEC_CONTROL_RESULT: u8 = 0x11;
 
+/// Host-to-guest multi-file write request.
+pub const MSG_WRITE_FILES: u8 = 0x12;
+
+/// Guest-to-host multi-file write completion response.
+pub const MSG_WRITE_FILES_RESULT: u8 = 0x13;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -120,6 +126,8 @@ mod tests {
             MSG_EXEC_CANCEL,
             MSG_EXEC_CONTROL,
             MSG_EXEC_CONTROL_RESULT,
+            MSG_WRITE_FILES,
+            MSG_WRITE_FILES_RESULT,
         ];
 
         for (expected, actual) in (0_u8..).zip(non_error_types) {

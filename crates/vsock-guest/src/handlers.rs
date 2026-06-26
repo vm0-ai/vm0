@@ -7,7 +7,8 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use vsock_proto::{
-    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT, RawMessage,
+    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILES_RESULT, RawMessage,
 };
 
 use crate::drain::drain_into_vec_cancellable;
@@ -41,6 +42,12 @@ pub(crate) struct DecodedWriteFileMessage<'a> {
     private: bool,
 }
 
+pub(crate) struct DecodedWriteFilesMessage<'a> {
+    payload: &'a [u8],
+    file_count: usize,
+    content_bytes: usize,
+}
+
 /// Handle write_file message
 fn handle_write_file(
     path: &str,
@@ -67,6 +74,20 @@ fn handle_write_file(
     };
 
     wait_write_file_child(child, content, SystemThreadSpawner)
+}
+
+fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -> (bool, String) {
+    log(
+        "INFO",
+        &format!("write_files: files={file_count} content_bytes={content_bytes}"),
+    );
+
+    let child = match spawn_write_files_command() {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
+    };
+
+    wait_write_file_child(child, payload, SystemThreadSpawner)
 }
 
 fn wait_write_file_child<S>(child: Child, content: &[u8], spawner: S) -> (bool, String)
@@ -233,6 +254,17 @@ fn spawn_write_file_command(
     spawn_in_own_process_group(&mut command)
 }
 
+fn spawn_write_files_command() -> io::Result<Child> {
+    let mut command = Command::new(guest_write_file_path());
+    command
+        .arg("--batch")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    apply_write_file_identity(&mut command, false)?;
+    spawn_in_own_process_group(&mut command)
+}
+
 fn guest_write_file_path() -> PathBuf {
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
@@ -269,6 +301,18 @@ pub(crate) fn decode_write_file_message(
     })
 }
 
+pub(crate) fn decode_write_files_message(
+    msg: &RawMessage,
+) -> Result<DecodedWriteFilesMessage<'_>, vsock_proto::ProtocolError> {
+    let files = vsock_proto::decode_write_files(&msg.payload)?;
+    let content_bytes = files.iter().map(|file| file.content.len()).sum();
+    Ok(DecodedWriteFilesMessage {
+        payload: &msg.payload,
+        file_count: files.len(),
+        content_bytes,
+    })
+}
+
 pub(crate) fn handle_decoded_write_file_message(
     seq: u32,
     decoded: DecodedWriteFileMessage<'_>,
@@ -282,6 +326,16 @@ pub(crate) fn handle_decoded_write_file_message(
     );
     let payload = vsock_proto::encode_write_file_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
+}
+
+pub(crate) fn handle_decoded_write_files_message(
+    seq: u32,
+    decoded: DecodedWriteFilesMessage<'_>,
+) -> io::Result<Vec<u8>> {
+    let (success, error) =
+        handle_write_files(decoded.payload, decoded.file_count, decoded.content_bytes);
+    let payload = vsock_proto::encode_write_files_result(success, &error);
+    vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
 }
 
 /// Handle basic incoming messages and return the connection-loop outcome.

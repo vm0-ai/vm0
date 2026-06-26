@@ -5,7 +5,10 @@ use std::time::Duration;
 use std::{fmt, io};
 
 use shell_quote::quote_shell_arg;
-use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
+use vsock_proto::{
+    ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
+    MSG_WRITE_FILES_RESULT,
+};
 
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
@@ -20,6 +23,13 @@ use super::{normalize_file_exec_stderr, validate_guest_file_path};
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
 pub(super) const WRITE_FILE_CHUNK_LIMIT: usize = 15 * 1024 * 1024;
 const WRITE_FILE_TERMINAL_MSG_TYPES: &[u8] = &[MSG_ERROR, MSG_WRITE_FILE_RESULT];
+const WRITE_FILES_TERMINAL_MSG_TYPES: &[u8] = &[MSG_ERROR, MSG_WRITE_FILES_RESULT];
+
+/// Maximum number of files in one write_files request.
+pub const WRITE_FILES_BATCH_FILE_LIMIT: usize = 64;
+
+/// Maximum total file content bytes in one write_files request.
+pub const WRITE_FILES_BATCH_CONTENT_LIMIT: usize = WRITE_FILE_CHUNK_LIMIT;
 
 /// Timeout (ms) for short helper commands (mv, rm) used during chunked writes.
 const HELPER_EXEC_TIMEOUT_MS: u32 = 5000;
@@ -61,6 +71,15 @@ impl<'a> WriteFileChunkRequest<'a> {
             private: true,
         }
     }
+}
+
+/// One ordinary guest file write entry for [`VsockHost::write_files`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WriteFileEntry<'a> {
+    /// Guest path to create or replace.
+    pub path: &'a str,
+    /// Bytes to write to the guest path.
+    pub content: &'a [u8],
 }
 
 #[derive(Debug)]
@@ -386,6 +405,17 @@ impl VsockHost {
             .await
     }
 
+    /// Write multiple ordinary files on the guest in one request.
+    ///
+    /// Every file uses non-sudo create-parent and truncate semantics. The
+    /// caller must use [`write_file`](Self::write_file) for private, sudo,
+    /// append, or larger individual writes. Empty batches are accepted as a
+    /// no-op to match the higher-level sandbox trait default.
+    pub async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
+        self.write_files_with_write_observer(files, FrameWriteObserver::default())
+            .await
+    }
+
     /// Write a private runtime file on the guest.
     ///
     /// Content larger than 15 MB is split into multiple messages. The first
@@ -541,6 +571,87 @@ impl VsockHost {
                 Err(err.error)
             }
         }
+    }
+
+    /// Write multiple ordinary files on the guest and report before the batch
+    /// frame is written.
+    pub async fn write_files_with_write_observer(
+        &self,
+        files: &[WriteFileEntry<'_>],
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        if files.len() > WRITE_FILES_BATCH_FILE_LIMIT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "write_files batch contains {} files, limit is {WRITE_FILES_BATCH_FILE_LIMIT}",
+                    files.len()
+                ),
+            ));
+        }
+
+        let mut total_content_len = 0usize;
+        let mut proto_entries = Vec::with_capacity(files.len());
+        for file in files {
+            validate_guest_file_path(file.path)?;
+            total_content_len = total_content_len
+                .checked_add(file.content.len())
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "write_files content length overflow",
+                    )
+                })?;
+            proto_entries.push(vsock_proto::WriteFileBatchEntry {
+                path: file.path,
+                content: file.content,
+            });
+        }
+        if total_content_len > WRITE_FILES_BATCH_CONTENT_LIMIT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "write_files batch contains {total_content_len} content bytes, limit is {WRITE_FILES_BATCH_CONTENT_LIMIT}"
+                ),
+            ));
+        }
+
+        let payload = vsock_proto::encode_write_files(&proto_entries)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        let timeout = Duration::from_secs(300);
+        let resp = normal_request_on_shared_with_write_observer(
+            &self.shared,
+            MSG_WRITE_FILES,
+            &payload,
+            WRITE_FILES_TERMINAL_MSG_TYPES,
+            timeout,
+            write_observer,
+        )
+        .await?;
+
+        if resp.msg_type == MSG_ERROR {
+            let msg = vsock_proto::decode_error(&resp.payload)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            return Err(write_file_guest_error(msg));
+        }
+
+        if resp.msg_type != MSG_WRITE_FILES_RESULT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected response type: 0x{:02X}", resp.msg_type),
+            ));
+        }
+
+        let (success, error) = vsock_proto::decode_write_files_result(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        if !success {
+            return Err(write_file_guest_error(error));
+        }
+
+        Ok(())
     }
 
     /// Send a single write_file message and validate the response.
