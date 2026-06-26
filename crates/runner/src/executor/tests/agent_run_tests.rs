@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,7 +9,9 @@ use api_contracts::generated::types::runners::storage::StorageManifest;
 use sandbox::{ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::MockSandboxFactory;
 
-use super::super::agent_run::{ProcessCancelTimeouts, RunControls, RunStart, run_in_sandbox};
+use super::super::agent_run::{
+    ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
+};
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
 use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT};
@@ -19,6 +24,91 @@ use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::SandboxReuseResult;
+
+#[test]
+fn agent_start_command_reports_missing_agent_on_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let agent_path = dir.path().join("missing-agent");
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(build_agent_start_command(agent_path.to_str().unwrap()))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(127));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "agent bootstrap failed: guest-agent is missing\n"
+    );
+}
+
+#[test]
+fn agent_start_command_reports_non_executable_agent_on_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let agent_path = dir.path().join("guest-agent");
+    fs::write(&agent_path, "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&agent_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(build_agent_start_command(agent_path.to_str().unwrap()))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(126));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "agent bootstrap failed: guest-agent is not executable\n"
+    );
+}
+
+#[test]
+fn agent_start_command_reports_non_file_agent_on_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let agent_path = dir.path().join("guest-agent");
+    fs::create_dir(&agent_path).unwrap();
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(build_agent_start_command(agent_path.to_str().unwrap()))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(126));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "agent bootstrap failed: guest-agent is not a regular file\n"
+    );
+}
+
+#[test]
+fn agent_start_command_keeps_agent_stderr_merged_into_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+    let agent_path = dir.path().join("guest-agent");
+    fs::write(
+        &agent_path,
+        "#!/bin/sh\nprintf 'agent stdout\\n'\nprintf 'agent stderr\\n' >&2\n",
+    )
+    .unwrap();
+    fs::set_permissions(&agent_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(build_agent_start_command(agent_path.to_str().unwrap()))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "agent stdout\nagent stderr\n"
+    );
+    assert!(output.stderr.is_empty());
+}
 
 #[tokio::test]
 async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
