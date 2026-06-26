@@ -54,7 +54,6 @@ struct FailingPendingSnapshotPublish {
 }
 
 #[async_trait]
-
 impl PendingSnapshotPublish for FailingPendingSnapshotPublish {
     async fn commit(&mut self) -> std::result::Result<SnapshotOutput, SnapshotError> {
         Err(SnapshotError::Teardown("commit failed".into()))
@@ -71,7 +70,6 @@ struct FailingSnapshotProvider {
 }
 
 #[async_trait]
-
 impl SnapshotProvider for FailingSnapshotProvider {
     async fn create_uncommitted_snapshot(
         &self,
