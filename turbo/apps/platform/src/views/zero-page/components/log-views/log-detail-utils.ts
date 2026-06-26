@@ -124,6 +124,12 @@ interface TaskEventData extends GroupingEventData {
   task_completed_at?: string;
 }
 
+interface PendingToolUse {
+  operation: ToolOperation;
+  message: GroupedMessage;
+  parentToolUseId?: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -327,6 +333,51 @@ function fallbackToolUseId(
   return `${prefix}-${sequenceNumber}-${contentIndex}`;
 }
 
+function registerPendingToolUse(
+  pendingToolUses: Map<string, PendingToolUse[]>,
+  operation: ToolOperation,
+  message: GroupedMessage,
+  parentToolUseId?: string,
+): void {
+  const pending = pendingToolUses.get(operation.toolUseId) ?? [];
+  pending.push({ operation, message, parentToolUseId });
+  pendingToolUses.set(operation.toolUseId, pending);
+}
+
+function takePendingToolUse(
+  pendingToolUses: Map<string, PendingToolUse[]>,
+  toolUseId: string,
+  parentToolUseId: string | undefined,
+): PendingToolUse | undefined {
+  const pending = pendingToolUses.get(toolUseId);
+  if (!pending) {
+    return undefined;
+  }
+
+  let index =
+    parentToolUseId !== undefined
+      ? pending.findIndex((item) => {
+          return item.parentToolUseId === parentToolUseId;
+        })
+      : -1;
+
+  if (index === -1 && pending.length === 1) {
+    index = 0;
+  } else if (index === -1 && parentToolUseId === undefined) {
+    index = 0;
+  }
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  const [matched] = pending.splice(index, 1);
+  if (pending.length === 0) {
+    pendingToolUses.delete(toolUseId);
+  }
+  return matched;
+}
+
 function sequenceNumberWithContentOffset(
   sequenceNumber: number,
   contentIndex: number,
@@ -388,10 +439,8 @@ function parseAssistantContent(
 function processToolResult(params: {
   resultContent: ToolResultContent;
   toolMeta: ToolResultMeta | undefined;
-  pendingToolUses: Map<
-    string,
-    { operation: ToolOperation; message: GroupedMessage }
-  >;
+  pendingToolUses: Map<string, PendingToolUse[]>;
+  parentToolUseId?: string;
   event: AgentEvent;
   fallbackSequenceNumber: number;
   fallbackToolUseIdValue: string;
@@ -401,13 +450,16 @@ function processToolResult(params: {
     resultContent,
     toolMeta,
     pendingToolUses,
+    parentToolUseId,
     event,
     fallbackSequenceNumber,
     fallbackToolUseIdValue,
     grouped,
   } = params;
   const toolUseId = resultContent.tool_use_id;
-  const pending = toolUseId ? pendingToolUses.get(toolUseId) : undefined;
+  const pending = toolUseId
+    ? takePendingToolUse(pendingToolUses, toolUseId, parentToolUseId)
+    : undefined;
 
   const content = normalizeToolResultContent(resultContent.content);
 
@@ -418,7 +470,6 @@ function processToolResult(params: {
       durationMs: toolMeta?.durationMs ?? undefined,
       bytes: toolMeta?.bytes ?? undefined,
     };
-    pendingToolUses.delete(toolUseId!);
     return;
   }
 
@@ -468,17 +519,15 @@ function getLastMergeableAssistant(
 function appendToolsToMessage(
   message: GroupedMessage,
   toolOperations: ToolOperation[],
-  pendingToolUses: Map<
-    string,
-    { operation: ToolOperation; message: GroupedMessage }
-  >,
+  pendingToolUses: Map<string, PendingToolUse[]>,
+  parentToolUseId?: string,
 ): void {
   if (!message.toolOperations) {
     message.toolOperations = [];
   }
   message.toolOperations.push(...toolOperations);
   for (const op of toolOperations) {
-    pendingToolUses.set(op.toolUseId, { operation: op, message });
+    registerPendingToolUse(pendingToolUses, op, message, parentToolUseId);
   }
 }
 
@@ -505,10 +554,7 @@ function processTodoWrite(op: ToolOperation): TodoItem[] | null {
 
 interface GroupingContext {
   grouped: GroupedMessage[];
-  pendingToolUses: Map<
-    string,
-    { operation: ToolOperation; message: GroupedMessage }
-  >;
+  pendingToolUses: Map<string, PendingToolUse[]>;
   todoState: TodoItem[];
   pendingTasks: Map<string, GroupedMessage>;
   // Map from tool_use_id (that spawned the task) → task GroupedMessage
@@ -597,7 +643,7 @@ function findParentTask(
   eventData: GroupingEventData,
   ctx: GroupingContext,
 ): GroupedMessage | null {
-  const parentId = eventData.parent_tool_use_id;
+  const parentId = stringValue(eventData.parent_tool_use_id);
   if (!parentId) {
     return null;
   }
@@ -629,6 +675,7 @@ function mergeToolsIntoLastChild(
   parentTask: GroupedMessage,
   toolOperations: ToolOperation[],
   pendingToolUses: GroupingContext["pendingToolUses"],
+  parentToolUseId: string | undefined,
 ): boolean {
   const lastChild =
     parentTask.childMessages?.[parentTask.childMessages.length - 1];
@@ -640,7 +687,7 @@ function mergeToolsIntoLastChild(
   }
   lastChild.toolOperations.push(...toolOperations);
   for (const op of toolOperations) {
-    pendingToolUses.set(op.toolUseId, { operation: op, message: lastChild });
+    registerPendingToolUse(pendingToolUses, op, lastChild, parentToolUseId);
   }
   return true;
 }
@@ -670,7 +717,12 @@ function processChildAssistantEvent(
   // Merge tool-only events into the last child assistant message
   if (!hasThinking && !hasText && hasTools) {
     if (
-      mergeToolsIntoLastChild(parentTask, toolOperations, ctx.pendingToolUses)
+      mergeToolsIntoLastChild(
+        parentTask,
+        toolOperations,
+        ctx.pendingToolUses,
+        stringValue(eventData.parent_tool_use_id),
+      )
     ) {
       return;
     }
@@ -687,7 +739,12 @@ function processChildAssistantEvent(
   };
   appendChildToTask(parentTask, child);
   for (const op of toolOperations) {
-    ctx.pendingToolUses.set(op.toolUseId, { operation: op, message: child });
+    registerPendingToolUse(
+      ctx.pendingToolUses,
+      op,
+      child,
+      stringValue(eventData.parent_tool_use_id),
+    );
   }
 }
 
@@ -764,7 +821,7 @@ function processAssistantEvent(
     };
     ctx.grouped.push(message);
     for (const op of otherToolOps) {
-      ctx.pendingToolUses.set(op.toolUseId, { operation: op, message });
+      registerPendingToolUse(ctx.pendingToolUses, op, message);
     }
   }
 
@@ -782,10 +839,11 @@ function processAssistantEvent(
       eventData: {},
     };
     ctx.grouped.push(todoMessage);
-    ctx.pendingToolUses.set(snapshot.operation.toolUseId, {
-      operation: snapshot.operation,
-      message: todoMessage,
-    });
+    registerPendingToolUse(
+      ctx.pendingToolUses,
+      snapshot.operation,
+      todoMessage,
+    );
   }
 }
 
@@ -817,6 +875,7 @@ function processUserEvent(
       resultContent,
       toolMeta,
       pendingToolUses: ctx.pendingToolUses,
+      parentToolUseId: stringValue(eventData.parent_tool_use_id),
       event,
       fallbackSequenceNumber: sequenceNumberWithContentOffset(
         event.sequenceNumber,

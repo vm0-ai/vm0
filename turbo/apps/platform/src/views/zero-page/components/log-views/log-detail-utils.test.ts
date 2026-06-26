@@ -370,6 +370,115 @@ describe("groupedMessageMatchesSearch", () => {
   });
 });
 
+describe("groupEventsIntoMessages duplicate tool ids", () => {
+  it("matches child tool results by parent task when tool ids repeat", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 0,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-a",
+          tool_use_id: "task-tool-a",
+          description: "Task A",
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 1,
+        eventType: "system",
+        eventData: {
+          subtype: "task_started",
+          task_id: "task-b",
+          tool_use_id: "task-tool-b",
+          description: "Task B",
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+      {
+        sequenceNumber: 2,
+        eventType: "assistant",
+        eventData: {
+          parent_tool_use_id: "task-tool-a",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "shared-tool-id",
+                name: "Bash",
+                input: { command: "echo task-a" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:22Z",
+      },
+      {
+        sequenceNumber: 3,
+        eventType: "assistant",
+        eventData: {
+          parent_tool_use_id: "task-tool-b",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "shared-tool-id",
+                name: "Bash",
+                input: { command: "echo task-b" },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:23Z",
+      },
+      {
+        sequenceNumber: 4,
+        eventType: "user",
+        eventData: {
+          parent_tool_use_id: "task-tool-a",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "shared-tool-id",
+                content: "result task-a",
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:24Z",
+      },
+      {
+        sequenceNumber: 5,
+        eventType: "user",
+        eventData: {
+          parent_tool_use_id: "task-tool-b",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "shared-tool-id",
+                content: "result task-b",
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:25Z",
+      },
+    ]);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.childMessages).toHaveLength(1);
+    expect(messages[1]?.childMessages).toHaveLength(1);
+    expect(
+      messages[0]?.childMessages?.[0]?.toolOperations?.[0]?.result?.content,
+    ).toBe("result task-a");
+    expect(
+      messages[1]?.childMessages?.[0]?.toolOperations?.[0]?.result?.content,
+    ).toBe("result task-b");
+  });
+});
+
 describe("groupEventsIntoMessages thinking content", () => {
   it("keeps Claude Code thinking content blocks visible", () => {
     const messages = groupEventsIntoMessages([
