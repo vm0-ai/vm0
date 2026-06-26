@@ -23,6 +23,7 @@ import {
 } from "../zero-page/zero-activity-detail-page.tsx";
 import {
   inspectLogData$,
+  inspectLogLoadError$,
   inspectStepSearch$,
   loadInspectLogFile$,
   setInspectStepSearch$,
@@ -120,6 +121,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
 function InspectEmptyState() {
   const loadFile = useSet(loadInspectLogFile$);
   const pageSignal = useGet(pageSignal$);
+  const loadError = useGet(inspectLogLoadError$);
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -130,6 +132,11 @@ function InspectEmptyState() {
         <p className="text-sm text-muted-foreground text-center max-w-sm">
           Upload an activity log JSON file to inspect it.
         </p>
+        {loadError && (
+          <p className="text-sm text-destructive text-center max-w-sm">
+            {loadError}
+          </p>
+        )}
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
             <IconUpload size={16} stroke={1.5} />

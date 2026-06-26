@@ -640,4 +640,46 @@ describe("activity inspect page", () => {
       screen.queryByText("https://example.com/invalid-network-log"),
     ).not.toBeInTheDocument();
   });
+
+  it("shows an upload error for invalid JSON and recovers on the next file", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(
+      getFileInput(),
+      new File(["{ invalid json"], "invalid-log.json", {
+        type: "application/json",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid JSON file. Upload an exported activity log JSON file.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Imported Analysis" }),
+    ).not.toBeInTheDocument();
+
+    await user.upload(getFileInput(), inspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Analysis" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(
+        "Invalid JSON file. Upload an exported activity log JSON file.",
+      ),
+    ).not.toBeInTheDocument();
+  });
 });

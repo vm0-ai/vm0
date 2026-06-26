@@ -7,8 +7,11 @@ import {
   type NetworkLogEntry,
 } from "@vm0/api-contracts/contracts/runs";
 import type { AgentEvent, LogDetail } from "../zero-page/log-types.ts";
+import { jsonParseOr } from "../utils.ts";
 
 export type InspectLogMeta = Partial<LogDetail>;
+
+const INVALID_JSON = Symbol("invalid-json");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -64,8 +67,14 @@ export function parseInspectLog(jsonText: string): {
   events: AgentEvent[];
   context: RunContextResponse | null;
   networkLogs: NetworkLogEntry[] | null;
-} {
-  const rawValue = JSON.parse(jsonText) as unknown;
+} | null {
+  const rawValue = jsonParseOr<unknown | typeof INVALID_JSON>(
+    jsonText,
+    INVALID_JSON,
+  );
+  if (rawValue === INVALID_JSON) {
+    return null;
+  }
   const raw = isRecord(rawValue) ? rawValue : {};
 
   return {
