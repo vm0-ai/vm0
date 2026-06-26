@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { DecryptCommand } from "@aws-sdk/client-kms";
 import {
   getProviderRuntimeModel,
   getModelProviderFirewall,
@@ -1749,7 +1750,17 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       AGORA_APP_ID: "agora-app-id",
       AGORA_APP_CERTIFICATE: "agora-app-certificate",
     });
-    await api.enableAgentConnectors(actor, agentId, ["agora"]);
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd-parallel",
+    });
+    await connectors.connectManualGrant(actor, "figma", "api-token", {
+      FIGMA_TOKEN: "figd_bdd-parallel",
+    });
+    await api.enableAgentConnectors(actor, agentId, [
+      "agora",
+      "gitlab",
+      "figma",
+    ]);
 
     let releaseDecrypts: (() => void) | undefined;
     const decryptGate = new Promise<void>((resolve) => {
@@ -1780,7 +1791,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
           },
           { timeout: 10_000 },
         )
-        .toBeGreaterThan(1),
+        .toBe(4),
     );
     releaseDecrypts?.();
 
@@ -1789,6 +1800,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       throw concurrencyResult.error;
     }
     expect(kms.getMaxInFlightDecrypts()).toBeLessThanOrEqual(4);
+    expect(
+      kms.calls.filter((call) => {
+        return call instanceof DecryptCommand;
+      }),
+    ).toHaveLength(5);
 
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
@@ -1817,10 +1833,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
       "agora-app-certificate",
     );
+    expect(claim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(claim.environment?.FIGMA_TOKEN).toBe(
+      connectorPlaceholder("figma", "FIGMA_TOKEN"),
+    );
     expect(claim.secretConnectorMap).toMatchObject({
       AGORA_CUSTOMER_ID: "agora",
       AGORA_CUSTOMER_SECRET: "agora",
       AGORA_APP_CERTIFICATE: "agora",
+      GITLAB_TOKEN: "gitlab",
+      FIGMA_TOKEN: "figma",
     });
     expect(claim.secretConnectorMap).not.toHaveProperty("AGORA_APP_ID");
 

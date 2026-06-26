@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-kms";
 
 import type { SecretKmsClient } from "../../../services/crypto.utils";
+import { onRejection } from "../../../utils";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
@@ -19,6 +20,13 @@ interface FakeKmsDecryptContext {
 
 interface FakeKmsClientOptions {
   readonly onDecrypt?: (context: FakeKmsDecryptContext) => void | Promise<void>;
+}
+
+async function runFakeKmsDecryptHook(
+  options: FakeKmsClientOptions,
+  context: FakeKmsDecryptContext,
+): Promise<void> {
+  await options.onDecrypt?.(context);
 }
 
 export function fakeKmsClient(options: FakeKmsClientOptions = {}): {
@@ -51,11 +59,13 @@ export function fakeKmsClient(options: FakeKmsClientOptions = {}): {
 
     inFlightDecrypts += 1;
     maxInFlightDecrypts = Math.max(maxInFlightDecrypts, inFlightDecrypts);
-    await Promise.resolve(
-      options.onDecrypt?.({ command, inFlightDecrypts }),
-    ).finally(() => {
-      inFlightDecrypts -= 1;
-    });
+    await onRejection(
+      runFakeKmsDecryptHook(options, { command, inFlightDecrypts }),
+      () => {
+        inFlightDecrypts -= 1;
+      },
+    );
+    inFlightDecrypts -= 1;
     return { $metadata: {}, Plaintext: dataKey };
   }
 

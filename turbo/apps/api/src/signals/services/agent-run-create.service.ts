@@ -121,7 +121,7 @@ import {
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
-import { settle, tapError } from "../utils";
+import { onRejection, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
   featureFlagsRecordToEntries,
@@ -1961,12 +1961,10 @@ async function mapWithBoundedConcurrency<TInput, TOutput>(
         return;
       }
 
-      const result = await settle(mapper(item.value, item.index));
-      if (!result.ok) {
+      const value = await onRejection(mapper(item.value, item.index), () => {
         stopped = true;
-        throw result.error;
-      }
-      results[item.index] = { value: result.value };
+      });
+      results[item.index] = { value };
     }
   }
 
