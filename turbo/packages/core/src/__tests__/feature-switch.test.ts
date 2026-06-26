@@ -130,6 +130,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -145,6 +148,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.VideoTemplatePicker]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
       true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
+      false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(

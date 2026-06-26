@@ -344,7 +344,7 @@ function AgentAccessList({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="h-full min-h-0 overflow-y-auto pr-1">
       {rows.map((row) => {
         return (
           <AgentAccessRow
@@ -414,7 +414,7 @@ function ConnectorAccessDialog({
       }}
     >
       <DialogContent className="!flex h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[720px] !flex-col !overflow-hidden">
-        <DialogHeader className="gap-2">
+        <DialogHeader className="shrink-0 gap-2">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <ConnectorIcon type={connectorType} size={22} />
@@ -430,12 +430,15 @@ function ConnectorAccessDialog({
           </div>
         </DialogHeader>
 
-        <ConnectorAccessSearch value={search} onChange={onSearchChange} />
+        <div className="shrink-0">
+          <ConnectorAccessSearch value={search} onChange={onSearchChange} />
+        </div>
 
         <div
           className={cn(
-            "min-h-0 flex-1 rounded-lg border-[0.7px] border-border px-3",
+            "min-h-0 flex-1 overflow-hidden rounded-lg border-[0.7px] border-border px-3",
             !rowsLoaded && "flex",
+            rowsLoaded && "flex flex-col",
           )}
         >
           {rowsLoaded ? (

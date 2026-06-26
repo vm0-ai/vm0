@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.48](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.47...nbd-cow-v0.4.48) (2026-06-26)
+
+
+### Refactoring
+
+* **nbd-cow:** split create transaction phases ([#19071](https://github.com/vm0-ai/vm0/issues/19071)) ([1f75431](https://github.com/vm0-ai/vm0/commit/1f7543124e35e9c6acbbb6dcacaf01627f6a725a))
+
 ## [0.4.47](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.46...nbd-cow-v0.4.47) (2026-06-25)
 
 

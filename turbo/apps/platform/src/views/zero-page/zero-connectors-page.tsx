@@ -16,6 +16,7 @@ import {
   IconLoader2,
   IconDotsVertical,
   IconInfoCircle,
+  IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
@@ -35,8 +36,10 @@ import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
   connectorsSearch$,
+  connectorsConnectionFilter$,
   disconnectConnector$,
   filteredConnectorTypes$,
+  setConnectorsConnectionFilter$,
   setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
@@ -55,6 +58,7 @@ import {
   connectorExpiryCountdownText,
   connectorReconnectReasonTooltipText,
   type ConnectorTypeWithStatus,
+  type ConnectorsConnectionFilter,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
   activeConnectorCategoryId$,
@@ -89,6 +93,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  cn,
 } from "@vm0/ui";
 
 // Callback ref that attaches scroll tracking while enabled. Each call returns
@@ -248,6 +253,52 @@ function ConnectorCategoryMenuItem({
         {menuLabel}
       </span>
     </button>
+  );
+}
+
+function ConnectorConnectionFilter({
+  value,
+  onChange,
+}: {
+  readonly value: ConnectorsConnectionFilter;
+  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+}) {
+  const options: readonly {
+    readonly value: ConnectorsConnectionFilter;
+    readonly label: string;
+  }[] = [
+    { value: "all", label: "All" },
+    { value: "connected", label: "Connected" },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label="Connector connection filter"
+      className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            className={cn(
+              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              active
+                ? "bg-background text-foreground shadow"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => {
+              onChange(option.value);
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -445,31 +496,49 @@ function GlobalConnectorCard({
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
         <div className="flex items-center gap-2 min-w-0">{status}</div>
         {connector.connected && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                aria-label="More options"
-              >
-                <IconDotsVertical size={14} stroke={1.5} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {showManageAccess && (
-                <DropdownMenuItem onClick={onManageAccess}>
-                  Manage
+          <div className="flex shrink-0 items-center gap-1">
+            {showManageAccess && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                      aria-label={`Manage ${connector.label} access`}
+                      onClick={onManageAccess}
+                    >
+                      <IconAdjustmentsHorizontal size={14} stroke={1.5} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Manage access
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                  aria-label="More options"
+                >
+                  <IconDotsVertical size={14} stroke={1.5} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onClick={onDisconnect}
+                  disabled={isDisconnecting}
+                >
+                  Disconnect
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                onClick={onDisconnect}
-                disabled={isDisconnecting}
-              >
-                Disconnect
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </div>
     </div>
@@ -575,12 +644,14 @@ function renderBuiltinList({
   filteredCount,
   renderCard,
   search,
+  connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
   grouped: ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
   filteredCount: number;
   renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
   search: string;
+  connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
   if (loadingState !== "hasData") {
     return (
@@ -606,7 +677,19 @@ function renderBuiltinList({
     );
   }
 
-  if (filteredCount === 0 && search) {
+  if (filteredCount === 0) {
+    const trimmedSearch = search.trim();
+    const message =
+      connectionFilter === "connected"
+        ? trimmedSearch
+          ? `No connected connectors matching "${trimmedSearch}"`
+          : "No connected connectors"
+        : trimmedSearch
+          ? `No connectors matching "${trimmedSearch}"`
+          : null;
+    if (!message) {
+      return null;
+    }
     return (
       <div className="flex flex-col items-center gap-3 py-12">
         <img
@@ -614,9 +697,7 @@ function renderBuiltinList({
           alt="No connectors"
           className="h-20 w-20 object-contain opacity-80"
         />
-        <p className="text-center text-sm text-muted-foreground">
-          No connectors matching &ldquo;{search}&rdquo;
-        </p>
+        <p className="text-center text-sm text-muted-foreground">{message}</p>
       </div>
     );
   }
@@ -667,6 +748,8 @@ export function ZeroConnectorsPage() {
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
+  const connectionFilter = useGet(connectorsConnectionFilter$);
+  const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
 
   const filteredConnectors =
     filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
@@ -769,6 +852,7 @@ export function ZeroConnectorsPage() {
     filteredCount: filteredConnectors.length,
     renderCard,
     search,
+    connectionFilter: showConnectorAccessManagement ? connectionFilter : "all",
   });
   return (
     <div
@@ -817,7 +901,7 @@ export function ZeroConnectorsPage() {
             )}
 
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => {
@@ -829,17 +913,25 @@ export function ZeroConnectorsPage() {
                   <TabsTrigger value="custom">Custom</TabsTrigger>
                 </TabsList>
               </Tabs>
-              {activeTab === "custom" && isAdmin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                  onClick={openCreateCustom}
-                >
-                  <IconPlus size={14} stroke={2} />
-                  New connector
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {activeTab === "builtin" && showConnectorAccessManagement && (
+                  <ConnectorConnectionFilter
+                    value={connectionFilter}
+                    onChange={setConnectionFilter}
+                  />
+                )}
+                {activeTab === "custom" && isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                    onClick={openCreateCustom}
+                  >
+                    <IconPlus size={14} stroke={2} />
+                    New connector
+                  </Button>
+                )}
+              </div>
             </div>
 
             {activeTab === "builtin" && builtinList}
