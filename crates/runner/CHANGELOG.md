@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.29...runner-rs-v0.129.30) (2026-06-26)
+
+
+### Bug Fixes
+
+* correct dropbox custom quota permission ([#19070](https://github.com/vm0-ai/vm0/issues/19070)) ([140f635](https://github.com/vm0-ai/vm0/commit/140f63556682d8e93aeadae3ab3bf24d087053fa))
+
 ## [0.129.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.28...runner-rs-v0.129.29) (2026-06-26)
 
 
