@@ -44,7 +44,8 @@ pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
-use telemetry::{record_api_latency, record_reuse_result};
+pub(crate) use telemetry::RunnerPreSpawnTiming;
+use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
 use api_contracts::generated::constants::runners::paths::{
@@ -188,6 +189,7 @@ impl SandboxPreparedNotifier {
 pub(crate) struct ExecutionHooks {
     pub(crate) sandbox_prepared: Option<SandboxPreparedNotifier>,
     pub(crate) active_input_source: Option<ActiveInputSource>,
+    pub(crate) pre_spawn_timing: Option<RunnerPreSpawnTiming>,
 }
 
 impl ExecutionHooks {
@@ -196,6 +198,7 @@ impl ExecutionHooks {
         Self {
             sandbox_prepared: None,
             active_input_source: None,
+            pre_spawn_timing: None,
         }
     }
 }
@@ -417,6 +420,8 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
+    let spawn_timing = RunnerSpawnTiming::start(hooks.pre_spawn_timing);
+    spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
@@ -445,7 +450,8 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
-                controls: RunControls::new(cancel, hooks.active_input_source),
+                controls: RunControls::new(cancel, hooks.active_input_source)
+                    .with_spawn_timing(spawn_timing),
                 sandbox_prepared: hooks.sandbox_prepared.as_ref(),
             },
         )
@@ -481,8 +487,16 @@ pub async fn execute_job_reuse(
     params: &JobParams,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
-    execute_job_reuse_with_active_input_source(idle_sandbox, context, config, params, cancel, None)
-        .await
+    execute_job_reuse_with_active_input_source(
+        idle_sandbox,
+        context,
+        config,
+        params,
+        cancel,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn execute_job_reuse_with_active_input_source(
@@ -492,10 +506,13 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
     params: &JobParams,
     cancel: CancellationToken,
     active_input_source: Option<ActiveInputSource>,
+    pre_spawn_timing: Option<RunnerPreSpawnTiming>,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
+    let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
+    spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
@@ -699,7 +716,7 @@ pub(crate) async fn execute_job_reuse_with_active_input_source(
             config,
             &prev_storage,
             &mut telemetry,
-            RunControls::new(cancel, active_input_source),
+            RunControls::new(cancel, active_input_source).with_spawn_timing(spawn_timing),
         )
         .await;
         outcome.workspace_image = workspace_image;

@@ -26,7 +26,7 @@ use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
-use crate::executor::{self, ExecutionFailureKind, ExecutorConfig};
+use crate::executor::{self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnTiming};
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -85,6 +85,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) job_profile: JobProfile,
     pub(super) reuse_entry: Option<ReusableIdleSandbox>,
     pub(super) reuse_result: SandboxReuseResult,
+    pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
 }
 
@@ -97,6 +98,7 @@ struct ExecutorInvocation {
     factory: SharedFactory,
     reuse_entry: Option<ReusableIdleSandbox>,
     reuse_result: SandboxReuseResult,
+    pre_spawn_timing: RunnerPreSpawnTiming,
     cancel: CancellationToken,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
@@ -121,6 +123,7 @@ impl ExecutorInvocation {
             factory,
             reuse_entry,
             reuse_result,
+            pre_spawn_timing,
             cancel,
             sandbox_token,
             sandbox_prepared,
@@ -140,6 +143,7 @@ impl ExecutorInvocation {
                     &params,
                     cancel_for_executor,
                     active_input_source,
+                    Some(pre_spawn_timing),
                 )
                 .await
             } else {
@@ -156,6 +160,7 @@ impl ExecutorInvocation {
                     executor::ExecutionHooks {
                         sandbox_prepared,
                         active_input_source,
+                        pre_spawn_timing: Some(pre_spawn_timing),
                     },
                 )
                 .await
@@ -434,6 +439,7 @@ pub(super) fn spawn_job(
         job_profile,
         reuse_entry,
         reuse_result,
+        pre_spawn_timing,
         active_cli_agent_session_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
@@ -522,6 +528,7 @@ pub(super) fn spawn_job(
         factory: Arc::clone(&factory),
         reuse_entry,
         reuse_result,
+        pre_spawn_timing,
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,

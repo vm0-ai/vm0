@@ -19,7 +19,7 @@ use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_restore::restore_session;
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
-use super::telemetry::record_api_latency;
+use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
@@ -190,6 +190,7 @@ pub(super) struct RunStart<'a> {
 pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
+    pub(super) spawn_timing: Option<RunnerSpawnTiming>,
 }
 
 impl RunControls {
@@ -200,7 +201,13 @@ impl RunControls {
         Self {
             cancel,
             active_input_source,
+            spawn_timing: None,
         }
+    }
+
+    pub(super) fn with_spawn_timing(mut self, spawn_timing: RunnerSpawnTiming) -> Self {
+        self.spawn_timing = Some(spawn_timing);
+        self
     }
 }
 
@@ -236,6 +243,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let RunControls {
         cancel,
         active_input_source,
+        spawn_timing,
     } = controls;
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
@@ -243,10 +251,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     //    When this exec already runs, fold best-effort timezone sync into it
     //    to avoid another pre-spawn guest round trip.
     if start.restore_guest_state {
-        restore_guest_state(sandbox, context).await?;
+        let t = Instant::now();
+        let result = restore_guest_state(sandbox, context).await;
+        let err = result.as_ref().err().map(|e| e.to_string());
+        telemetry.record(
+            "runner_guest_state_restore",
+            t.elapsed(),
+            result.is_ok(),
+            err.as_deref(),
+        );
+        result?;
     } else {
         // 2. Set guest timezone from user preference (best-effort, never fails).
+        let t = Instant::now();
         sync_guest_timezone(sandbox, context).await;
+        telemetry.record("runner_guest_timezone_sync", t.elapsed(), true, None);
     }
 
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
@@ -308,9 +327,42 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
     // user-provided env is passed through a private guest file and injected
     // into the CLI child after guest-agent has started.
+    let user_env_started = Instant::now();
     let user_env_map = build_user_env_json(context);
-    let user_env_file = write_user_env_file(sandbox, context.run_id, &user_env_map).await?;
-    let mut env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
+        Ok(user_env_file) => {
+            telemetry.record(
+                "runner_user_env_write",
+                user_env_started.elapsed(),
+                true,
+                None,
+            );
+            user_env_file
+        }
+        Err(error) => {
+            telemetry.record(
+                "runner_user_env_write",
+                user_env_started.elapsed(),
+                false,
+                None,
+            );
+            return Err(error);
+        }
+    };
+    let env_build_started = Instant::now();
+    let mut env_map =
+        match build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result) {
+            Ok(env_map) => env_map,
+            Err(error) => {
+                telemetry.record(
+                    "runner_agent_env_build",
+                    env_build_started.elapsed(),
+                    false,
+                    None,
+                );
+                return Err(error);
+            }
+        };
     if let Some(path) = user_env_file {
         env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
     }
@@ -320,6 +372,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
+    telemetry.record(
+        "runner_agent_env_build",
+        env_build_started.elapsed(),
+        true,
+        None,
+    );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
@@ -344,8 +402,20 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .await;
 
     let mut handle = match handle {
-        Ok(h) => h,
+        Ok(h) => {
+            telemetry.record("runner_agent_start_process", t.elapsed(), true, None);
+            if let Some(spawn_timing) = spawn_timing {
+                spawn_timing.record_spawn_success(telemetry);
+            }
+            h
+        }
         Err(e) => {
+            telemetry.record(
+                "runner_agent_start_process",
+                t.elapsed(),
+                false,
+                Some(&e.to_string()),
+            );
             telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
             return Err(e.into());
         }

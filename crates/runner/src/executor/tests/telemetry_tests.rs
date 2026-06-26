@@ -1,10 +1,14 @@
 use std::time::Duration;
 
 use sandbox::SandboxId;
+use sandbox::{ProcessOutputChunk, ProcessOutputMode};
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{elapsed_since_api_start_ms, record_reuse_result};
-use super::super::{NewSandboxDispatch, execute_job, execute_job_reuse};
+use super::super::{
+    ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming, execute_job, execute_job_reuse,
+    execute_job_reuse_with_active_input_source, execute_job_with_prepared_notifier,
+};
 use super::support::{
     default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
 };
@@ -45,6 +49,31 @@ fn new_telemetry() -> JobTelemetry {
     })
     .unwrap();
     JobTelemetry::new(http, RunId::nil(), "tok".to_string())
+}
+
+fn assert_has_action(telemetry: &JobTelemetry, action: &str) {
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().any(|op| op.0 == action),
+        "expected telemetry action {action}, got: {ops:?}"
+    );
+}
+
+fn assert_lacks_action(telemetry: &JobTelemetry, action: &str) {
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().all(|op| op.0 != action),
+        "unexpected telemetry action {action}, got: {ops:?}"
+    );
+}
+
+fn assert_action_success(telemetry: &JobTelemetry, action: &str, success: bool) {
+    let ops = telemetry.pending_ops_snapshot();
+    let op = ops
+        .iter()
+        .find(|op| op.0 == action)
+        .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
+    assert_eq!(op.1, success, "{action} success flag");
 }
 
 #[test]
@@ -143,4 +172,142 @@ async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
         .collect();
     assert_eq!(reuse_events.len(), 1);
     assert_eq!(reuse_events[0].0, "sandbox_reuse_hit");
+}
+
+#[tokio::test]
+async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = MockSandboxFactory::new();
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+        },
+    )
+    .await;
+
+    for action in [
+        "runner_claim_to_executor_start",
+        "runner_executor_start_to_spawn",
+        "runner_claim_to_spawn",
+        "runner_fresh_sandbox_prepare",
+        "runner_guest_timezone_sync",
+        "runner_user_env_write",
+        "runner_agent_env_build",
+        "runner_agent_start_process",
+        "sandbox_reuse_miss",
+        "vm_create",
+        "workspace_drive_mount",
+        "agent_execute",
+    ] {
+        assert_has_action(&telemetry, action);
+    }
+    assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = MockSandboxFactory::new();
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, _telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::NoSessionId,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+    let sandbox = outcome.sandbox.expect("sandbox should be alive");
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (idle_sandbox, _lease) =
+        make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
+    let (_outcome, telemetry) = execute_job_reuse_with_active_input_source(
+        idle_sandbox,
+        minimal_context(),
+        &config,
+        &default_params(),
+        cancel,
+        None,
+        Some(RunnerPreSpawnTiming::start_after_claim()),
+    )
+    .await;
+
+    for action in [
+        "runner_claim_to_executor_start",
+        "runner_executor_start_to_spawn",
+        "runner_claim_to_spawn",
+        "runner_reused_sandbox_prepare",
+        "runner_guest_state_restore",
+        "runner_user_env_write",
+        "runner_agent_env_build",
+        "runner_agent_start_process",
+        "sandbox_reuse_hit",
+        "workspace_drive_mount",
+        "agent_execute",
+    ] {
+        assert_has_action(&telemetry, action);
+    }
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
+    assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
+}
+
+#[tokio::test]
+async fn start_process_failure_records_phase_failure_without_spawn_completion() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = std::sync::Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_stdout_chunks(vec![
+        ProcessOutputChunk {
+            bytes: Vec::new(),
+            truncated: false,
+        };
+        ProcessOutputMode::DEFAULT_QUEUE_CAPACITY + 1
+    ]);
+    let factory = MockSandboxFactory::with_overrides(overrides);
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+        },
+    )
+    .await;
+
+    assert_action_success(&telemetry, "runner_agent_start_process", false);
+    assert_action_success(&telemetry, "agent_execute", false);
+    assert_lacks_action(&telemetry, "runner_executor_start_to_spawn");
+    assert_lacks_action(&telemetry, "runner_claim_to_spawn");
 }

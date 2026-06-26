@@ -77,6 +77,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         controls,
         sandbox_prepared,
     } = hooks;
+    let prepare_started = Instant::now();
     let mut workspace_image = prepare_workspace_image(
         context,
         sandbox_id,
@@ -121,7 +122,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
             );
             workspace_image = None;
-            create_started_sandbox(
+            match create_started_sandbox(
                 factory,
                 context,
                 sandbox_id,
@@ -134,10 +135,37 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 },
             )
             .await
-            .map_err(|e| e.error)?
+            {
+                Ok(prepared) => prepared,
+                Err(e) => {
+                    let error = e.error;
+                    telemetry.record(
+                        "runner_fresh_sandbox_prepare",
+                        prepare_started.elapsed(),
+                        false,
+                        Some(&error.to_string()),
+                    );
+                    return Err(error);
+                }
+            }
         }
-        Err(e) => return Err(e.error),
+        Err(e) => {
+            let error = e.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
     };
+    telemetry.record(
+        "runner_fresh_sandbox_prepare",
+        prepare_started.elapsed(),
+        true,
+        None,
+    );
 
     let mut outcome = execute_prepared_sandbox_run(
         prepared,
@@ -391,9 +419,16 @@ pub(super) async fn execute_reused_sandbox(
     );
 
     let source_ip = source_ip.to_string();
+    let prepare_started = Instant::now();
     let network_log_session = match register_proxy(config, context, &source_ip).await {
         Ok(session) => session,
         Err(e) => {
+            telemetry.record(
+                "runner_reused_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&e.to_string()),
+            );
             return ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
                 sandbox: Some(sandbox),
@@ -420,6 +455,12 @@ pub(super) async fn execute_reused_sandbox(
                 "failed to unregister VM from proxy after reused sandbox mount failure"
             );
         }
+        telemetry.record(
+            "runner_reused_sandbox_prepare",
+            prepare_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
         return ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(e.to_string())),
             sandbox: Some(sandbox),
@@ -430,6 +471,12 @@ pub(super) async fn execute_reused_sandbox(
         };
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
+    telemetry.record(
+        "runner_reused_sandbox_prepare",
+        prepare_started.elapsed(),
+        true,
+        None,
+    );
 
     execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -463,6 +510,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         source_ip,
         network_log_session,
     } = run;
+    let cleanup_cancel = controls.cancel.clone();
 
     let result = run_in_sandbox(
         sandbox.as_ref(),
@@ -470,7 +518,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         config,
         start,
         telemetry,
-        RunControls::new(controls.cancel.clone(), controls.active_input_source),
+        controls,
     )
     .await;
 
@@ -484,7 +532,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         config,
         context,
         &source_ip,
-        controls.cancel.is_cancelled(),
+        cleanup_cancel.is_cancelled(),
         stdout_stream_diagnostics,
     )
     .await;
