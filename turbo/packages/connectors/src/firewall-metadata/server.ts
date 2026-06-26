@@ -3,14 +3,14 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "../firewall-types";
-import { loadGeneratedFirewallPermissionMetadata } from "./loader.generated";
+import { loadGeneratedFirewallPermissionMetadata } from "./permission-detail-loader.generated";
+import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./permission-summaries.generated";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyResolver,
 } from "./policy-resolver";
 import { FIREWALL_SERVER_EXECUTION_METADATA } from "./server-execution.generated";
 import { BUILTIN_FIREWALL_FIXED_HOST_OWNERS } from "./server.generated";
-import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./summary.generated";
 import type {
   FirewallExecutionMetadata,
   FirewallPermissionDefaultPolicyMetadata,
