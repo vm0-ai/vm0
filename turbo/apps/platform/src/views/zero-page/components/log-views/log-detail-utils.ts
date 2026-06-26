@@ -770,6 +770,7 @@ function processAssistantEvent(
       ),
       createdAt: event.createdAt,
       todoState: snapshot.todoState,
+      toolOperations: [snapshot.operation],
       eventData: {},
     };
     ctx.grouped.push(todoMessage);
@@ -913,6 +914,18 @@ function getToolSearchText(operations: ToolOperation[] | undefined): string[] {
   return parts;
 }
 
+function getToolErrorSearchText(
+  operations: ToolOperation[] | undefined,
+): string[] {
+  const parts: string[] = [];
+  for (const op of operations ?? []) {
+    if (op.result?.isError) {
+      parts.push(op.result.content.trim() || `${op.toolName} failed`);
+    }
+  }
+  return parts;
+}
+
 function getTodoSearchText(todos: TodoItem[] | undefined): string[] {
   return (
     todos?.flatMap((todo) => {
@@ -972,7 +985,11 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
     parts.push(message.textBefore);
   }
 
-  parts.push(...getToolSearchText(message.toolOperations));
+  parts.push(
+    ...(message.type === "todo"
+      ? getToolErrorSearchText(message.toolOperations)
+      : getToolSearchText(message.toolOperations)),
+  );
 
   if (message.textAfter) {
     parts.push(message.textAfter);

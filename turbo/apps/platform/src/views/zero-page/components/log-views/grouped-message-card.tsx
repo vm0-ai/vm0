@@ -427,6 +427,21 @@ function isSubtask(content: string): boolean {
   return /^\s{2,}|^\s*[-*]\s/.test(content);
 }
 
+function getTodoOperationErrors(message: GroupedMessage): {
+  content: string;
+  key: string;
+}[] {
+  return (message.toolOperations ?? []).flatMap((operation) => {
+    if (!operation.result?.isError) {
+      return [];
+    }
+
+    const content =
+      operation.result.content.trim() || `${operation.toolName} failed`;
+    return [{ content, key: operation.toolUseId }];
+  });
+}
+
 function TodoCard({
   message,
   searchTerm,
@@ -437,6 +452,7 @@ function TodoCard({
   showConnector?: boolean;
 }) {
   const todoItems = message.todoState ?? [];
+  const operationErrors = getTodoOperationErrors(message);
   // Filter out subtasks for count - only count top-level tasks
   const topLevelTodos = todoItems.filter((t) => {
     return !isSubtask(t.content);
@@ -448,14 +464,17 @@ function TodoCard({
     return t.status === "completed";
   }).length;
   const totalCount = topLevelTodos.length;
+  const normalizedSearchTerm = searchTerm?.trim().toLowerCase();
 
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
-    searchTerm &&
-    searchTerm.trim() &&
-    todoItems.some((t) => {
-      return t.content.toLowerCase().includes(searchTerm.toLowerCase());
-    }),
+    normalizedSearchTerm &&
+    (todoItems.some((t) => {
+      return t.content.toLowerCase().includes(normalizedSearchTerm);
+    }) ||
+      operationErrors.some((error) => {
+        return error.content.toLowerCase().includes(normalizedSearchTerm);
+      })),
   );
 
   const timestamp = formatEventTime(message.createdAt);
@@ -525,6 +544,20 @@ function TodoCard({
             );
           })}
         </div>
+        {operationErrors.length > 0 && (
+          <div className="mt-2 space-y-1.5 ml-[18px]">
+            {operationErrors.map((error) => {
+              return (
+                <div
+                  key={error.key}
+                  className="rounded-md border border-destructive/20 bg-destructive/10 px-2 py-1 text-xs text-destructive whitespace-pre-wrap break-words"
+                >
+                  {error.content}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </details>
     </div>
   );

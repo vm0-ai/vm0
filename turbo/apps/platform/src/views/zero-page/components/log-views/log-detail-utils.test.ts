@@ -600,6 +600,71 @@ describe("groupEventsIntoMessages TodoWrite snapshots", () => {
     });
   });
 
+  it("keeps TodoWrite errors attached to todo cards", () => {
+    const messages = groupEventsIntoMessages([
+      {
+        sequenceNumber: 7,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "todo-error",
+                name: "TodoWrite",
+                input: {
+                  todos: [{ content: "Check failure", status: "pending" }],
+                },
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:20Z",
+      },
+      {
+        sequenceNumber: 8,
+        eventType: "user",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "todo-error",
+                content: "todo write failed",
+                is_error: true,
+              },
+            ],
+          },
+        },
+        createdAt: "2026-06-26T02:31:21Z",
+      },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    const [message] = messages;
+    if (!message) {
+      throw new Error("expected todo message");
+    }
+
+    expect(message.type).toBe("todo");
+    expect(message.todoState).toEqual([
+      { content: "Check failure", status: "pending" },
+    ]);
+    expect(message.toolOperations?.[0]).toMatchObject({
+      toolName: "TodoWrite",
+      result: {
+        content: "todo write failed",
+        isError: true,
+      },
+    });
+    expect(groupedMessageMatchesSearch(message, "todo write failed")).toBe(
+      true,
+    );
+    expect(groupedMessageMatchesSearch(message, "TodoWrite")).toBe(false);
+  });
+});
+
+describe("groupEventsIntoMessages TodoWrite state", () => {
   it("treats TodoWrite input as the latest ordered todo snapshot", () => {
     const messages = groupEventsIntoMessages([
       {
