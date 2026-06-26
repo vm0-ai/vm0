@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Apollo firewall config...");
   const ts = generateTypeScript();
-  writeOutput("apollo", ts, import.meta.dirname);
+  writeOutput("apollo", ts);
 }

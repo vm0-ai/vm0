@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating SociaVault firewall config...");
   const ts = generateTypeScript();
-  writeOutput("sociavault", ts, import.meta.dirname);
+  writeOutput("sociavault", ts);
 }

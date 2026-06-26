@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Atlas Cloud firewall config...");
   const ts = generateTypeScript();
-  writeOutput("atlascloud", ts, import.meta.dirname);
+  writeOutput("atlascloud", ts);
 }

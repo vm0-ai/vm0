@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating tl;dv firewall config...");
   const ts = generateTypeScript();
-  writeOutput("tldv", ts, import.meta.dirname);
+  writeOutput("tldv", ts);
 }

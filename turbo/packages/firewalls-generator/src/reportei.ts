@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Reportei firewall config...");
   const ts = generateTypeScript();
-  writeOutput("reportei", ts, import.meta.dirname);
+  writeOutput("reportei", ts);
 }

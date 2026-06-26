@@ -1,17 +1,16 @@
 # Firewalls Generator
 
-Generates firewall configs for connector integrations. Each generator produces a `.generated.ts` file in `packages/connectors/src/firewalls/`.
-
-The full generator also writes:
+Generates connector firewall artifacts from generator-owned sources. The full generator writes:
 
 - browser-safe permission metadata under
   `packages/connectors/src/firewall-metadata/`
 - the runner Python builtin firewall package under
   `../crates/runner/mitm-addon/src/generated/builtin_firewalls/`
 
-The metadata output is for UI and other metadata-only callers; it is not a
-runtime enforcement source and does not include HTTP rules, auth config, base
-URLs, or placeholder values. The Python package is the runner runtime catalog.
+The metadata output is for UI, routing lookup, and server-side connector
+selection. It only contains narrow projections of the full firewall definitions.
+The Python package is the runner runtime catalog. Full connector firewall config
+source is not written into `@vm0/connectors`.
 
 ## Usage
 
@@ -19,7 +18,7 @@ URLs, or placeholder values. The Python package is the runner runtime catalog.
 # Generate all (reads from local spec cache, no network)
 cd turbo && pnpm -F @vm0/firewalls-generator generate
 
-# Generate one
+# Generate one connector source and rebuild derived artifacts
 cd turbo && pnpm -F @vm0/firewalls-generator generate:github
 ```
 

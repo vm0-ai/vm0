@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Duffel firewall config...");
   const ts = generateTypeScript();
-  writeOutput("duffel", ts, import.meta.dirname);
+  writeOutput("duffel", ts);
 }

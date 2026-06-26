@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Mem0 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("mem0", ts, import.meta.dirname);
+  writeOutput("mem0", ts);
 }

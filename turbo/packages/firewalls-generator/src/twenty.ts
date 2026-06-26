@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Twenty CRM firewall config...");
   const ts = generateTypeScript();
-  writeOutput("twenty", ts, import.meta.dirname);
+  writeOutput("twenty", ts);
 }

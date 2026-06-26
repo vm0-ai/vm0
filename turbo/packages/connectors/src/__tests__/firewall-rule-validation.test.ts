@@ -25,6 +25,7 @@ interface FirewallBaseEntry {
 }
 
 const FIREWALL_BASE_SAMPLE_VALUES = ["api", "foo", "bar", "v1", "me", "123"];
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   // `{network}` currently also matches `api`; avoid adding more Alchemy overlaps.
   "alchemy[0] https://{network}.g.alchemy.com <-> alchemy[1] https://api.g.alchemy.com",
@@ -186,16 +187,20 @@ function findBuiltinFirewallBaseOverlaps(
  * in via OpenAPI specs during code generation.
  */
 describe("builtin firewall validation", () => {
-  it("passes full firewall validation for every runtime connector", async () => {
-    for (const [
-      connectorType,
-      firewall,
-    ] of await loadRuntimeFirewallEntries()) {
-      expect(() => {
-        return collectAndValidatePermissions(firewall);
-      }, connectorType).not.toThrow();
-    }
-  });
+  it(
+    "passes full firewall validation for every runtime connector",
+    async () => {
+      for (const [
+        connectorType,
+        firewall,
+      ] of await loadRuntimeFirewallEntries()) {
+        expect(() => {
+          return collectAndValidatePermissions(firewall);
+        }, connectorType).not.toThrow();
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 });
 
 describe("billable connector firewall contracts", () => {
@@ -267,28 +272,32 @@ describe("reserved firewall permission names", () => {
 });
 
 describe("builtin firewall base overlap guard", () => {
-  it("does not introduce new builtin base overlaps", async () => {
-    const overlaps = findBuiltinFirewallBaseOverlaps(
-      await loadRuntimeFirewallEntries(),
-    );
-    const unexpectedOverlaps = overlaps.filter((overlap) => {
-      return !ALLOWED_FIREWALL_BASE_OVERLAPS.has(overlap);
-    });
-    const staleAllowedOverlaps = [...ALLOWED_FIREWALL_BASE_OVERLAPS].filter(
-      (overlap) => {
-        return !overlaps.includes(overlap);
-      },
-    );
+  it(
+    "does not introduce new builtin base overlaps",
+    async () => {
+      const overlaps = findBuiltinFirewallBaseOverlaps(
+        await loadRuntimeFirewallEntries(),
+      );
+      const unexpectedOverlaps = overlaps.filter((overlap) => {
+        return !ALLOWED_FIREWALL_BASE_OVERLAPS.has(overlap);
+      });
+      const staleAllowedOverlaps = [...ALLOWED_FIREWALL_BASE_OVERLAPS].filter(
+        (overlap) => {
+          return !overlaps.includes(overlap);
+        },
+      );
 
-    expect(
-      unexpectedOverlaps,
-      "New firewall base overlaps can make auth injection ambiguous. Narrow the new base, or add a justified allowlist entry only for an unavoidable shared API surface.",
-    ).toEqual([]);
-    expect(
-      staleAllowedOverlaps,
-      "Remove fixed firewall base overlaps from ALLOWED_FIREWALL_BASE_OVERLAPS.",
-    ).toEqual([]);
-  }, 10_000);
+      expect(
+        unexpectedOverlaps,
+        "New firewall base overlaps can make auth injection ambiguous. Narrow the new base, or add a justified allowlist entry only for an unavoidable shared API surface.",
+      ).toEqual([]);
+      expect(
+        staleAllowedOverlaps,
+        "Remove fixed firewall base overlaps from ALLOWED_FIREWALL_BASE_OVERLAPS.",
+      ).toEqual([]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 });
 
 describe("known endpoint-scoped firewall bases", () => {

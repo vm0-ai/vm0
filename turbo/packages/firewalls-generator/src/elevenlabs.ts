@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ElevenLabs firewall config...");
   const ts = generateTypeScript();
-  writeOutput("elevenlabs", ts, import.meta.dirname);
+  writeOutput("elevenlabs", ts);
 }

@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Apify firewall config...");
   const ts = generateTypeScript();
-  writeOutput("apify", ts, import.meta.dirname);
+  writeOutput("apify", ts);
 }

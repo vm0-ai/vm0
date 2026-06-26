@@ -507,5 +507,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-drive", ts, import.meta.dirname);
+  writeOutput("google-drive", ts);
 }

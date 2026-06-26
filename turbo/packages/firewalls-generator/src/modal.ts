@@ -54,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Modal firewall config...");
   const ts = generateTypeScript();
-  writeOutput("modal", ts, import.meta.dirname);
+  writeOutput("modal", ts);
 }

@@ -251,5 +251,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-search-console", ts, import.meta.dirname);
+  writeOutput("google-search-console", ts);
 }

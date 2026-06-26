@@ -57,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Snowflake firewall config...");
   const ts = generateTypeScript();
-  writeOutput("snowflake", ts, import.meta.dirname);
+  writeOutput("snowflake", ts);
 }

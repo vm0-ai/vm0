@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Todoist firewall config...");
   const ts = generateTypeScript();
-  writeOutput("todoist", ts, import.meta.dirname);
+  writeOutput("todoist", ts);
 }

@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating DefiLlama firewall config...");
   const ts = generateTypeScript();
-  writeOutput("defillama", ts, import.meta.dirname);
+  writeOutput("defillama", ts);
 }

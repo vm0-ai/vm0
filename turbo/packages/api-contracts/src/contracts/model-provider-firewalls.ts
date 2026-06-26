@@ -37,7 +37,7 @@ export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
   // provider-specific secrets into ANTHROPIC_AUTH_TOKEN.
   ANTHROPIC_AUTH_TOKEN: "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   // Placeholder: sk-proj-{chars}T3BlbkFJ{chars} (typical project key shape)
-  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
+  // Source: mirrors the OpenAI connector firewall placeholder shape.
   OPENAI_API_KEY:
     "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   // Opaque fake marker, not a JWT. Codex ChatGPT mode reads auth.json, while

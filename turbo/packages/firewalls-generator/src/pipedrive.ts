@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Pipedrive firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pipedrive", ts, import.meta.dirname);
+  writeOutput("pipedrive", ts);
 }

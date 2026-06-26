@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Gumroad firewall config...");
   const ts = generateTypeScript();
-  writeOutput("gumroad", ts, import.meta.dirname);
+  writeOutput("gumroad", ts);
 }

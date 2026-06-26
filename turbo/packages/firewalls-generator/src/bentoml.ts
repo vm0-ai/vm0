@@ -73,5 +73,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating BentoML firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bentoml", ts, import.meta.dirname);
+  writeOutput("bentoml", ts);
 }

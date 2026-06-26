@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Adzuna firewall config...");
   const ts = generateTypeScript();
-  writeOutput("adzuna", ts, import.meta.dirname);
+  writeOutput("adzuna", ts);
 }

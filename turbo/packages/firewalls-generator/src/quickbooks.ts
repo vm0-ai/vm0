@@ -134,5 +134,5 @@ function generateTypeScript(): string {
 
 export async function generate(): Promise<void> {
   console.error("Generating QuickBooks firewall config...");
-  writeOutput("quickbooks", generateTypeScript(), import.meta.dirname);
+  writeOutput("quickbooks", generateTypeScript());
 }

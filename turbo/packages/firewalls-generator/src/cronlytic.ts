@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Cronlytic firewall config...");
   const ts = generateTypeScript();
-  writeOutput("cronlytic", ts, import.meta.dirname);
+  writeOutput("cronlytic", ts);
 }

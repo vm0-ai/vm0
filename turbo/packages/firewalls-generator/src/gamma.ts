@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Gamma firewall config...");
   const ts = generateTypeScript();
-  writeOutput("gamma", ts, import.meta.dirname);
+  writeOutput("gamma", ts);
 }

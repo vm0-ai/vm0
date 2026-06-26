@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Miro firewall config...");
   const ts = generateTypeScript();
-  writeOutput("miro", ts, import.meta.dirname);
+  writeOutput("miro", ts);
 }

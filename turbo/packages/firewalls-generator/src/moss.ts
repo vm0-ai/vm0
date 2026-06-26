@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Moss firewall config...");
   const ts = generateTypeScript();
-  writeOutput("moss", ts, import.meta.dirname);
+  writeOutput("moss", ts);
 }

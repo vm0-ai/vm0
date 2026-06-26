@@ -964,6 +964,31 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "Authorization"
         ],
         "authQueryParamNames": [],
+        "base": "https://app.daytona.io/api",
+        "envNames": [
+          "DAYTONA_API_KEY"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://proxy.app.daytona.io/toolbox",
+        "envNames": [
+          "DAYTONA_API_KEY"
+        ]
+      }
+    ],
+    "name": "daytona"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
         "base": "https://api.db9.ai",
         "envNames": [
           "DB9_API_KEY"
@@ -2904,6 +2929,23 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
       }
     ],
     "name": "mixpanel"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
+          "x-modal-token-id",
+          "x-modal-token-secret"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://api.modal.com",
+        "envNames": [
+          "MODAL_TOKEN_ID",
+          "MODAL_TOKEN_SECRET"
+        ]
+      }
+    ],
+    "name": "modal"
   },
   {
     "apis": [

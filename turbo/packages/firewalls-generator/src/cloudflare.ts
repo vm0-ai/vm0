@@ -1328,5 +1328,5 @@ export async function generate(): Promise<void> {
   console.error(
     `  ${result.stats.mappedOperations}/${result.stats.totalOperations} operations mapped`,
   );
-  writeOutput("cloudflare", ts, import.meta.dirname);
+  writeOutput("cloudflare", ts);
 }

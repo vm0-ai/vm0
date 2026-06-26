@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Imgur firewall config...");
   const ts = generateTypeScript();
-  writeOutput("imgur", ts, import.meta.dirname);
+  writeOutput("imgur", ts);
 }

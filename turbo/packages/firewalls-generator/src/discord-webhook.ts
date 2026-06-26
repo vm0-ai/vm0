@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Discord Webhook firewall config...");
   const ts = generateTypeScript();
-  writeOutput("discord-webhook", ts, import.meta.dirname);
+  writeOutput("discord-webhook", ts);
 }

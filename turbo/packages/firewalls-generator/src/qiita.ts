@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Qiita firewall config...");
   const ts = generateTypeScript();
-  writeOutput("qiita", ts, import.meta.dirname);
+  writeOutput("qiita", ts);
 }

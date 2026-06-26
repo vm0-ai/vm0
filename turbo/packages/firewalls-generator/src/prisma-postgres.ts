@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Prisma Postgres firewall config...");
   const ts = generateTypeScript();
-  writeOutput("prisma-postgres", ts, import.meta.dirname);
+  writeOutput("prisma-postgres", ts);
 }

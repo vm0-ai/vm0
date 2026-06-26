@@ -1352,9 +1352,5 @@ export async function generate(): Promise<void> {
   console.error(
     `  ${stats.mappedOperations}/${stats.totalOperations} operations mapped`,
   );
-  writeOutput(
-    "google-cloud",
-    generateTypeScript(apiPermissions, stats),
-    import.meta.dirname,
-  );
+  writeOutput("google-cloud", generateTypeScript(apiPermissions, stats));
 }

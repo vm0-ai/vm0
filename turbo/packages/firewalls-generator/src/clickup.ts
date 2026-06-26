@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ClickUp firewall config...");
   const ts = generateTypeScript();
-  writeOutput("clickup", ts, import.meta.dirname);
+  writeOutput("clickup", ts);
 }

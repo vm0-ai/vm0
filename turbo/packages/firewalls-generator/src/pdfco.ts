@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating PDF.co firewall config...");
   const ts = generateTypeScript();
-  writeOutput("pdfco", ts, import.meta.dirname);
+  writeOutput("pdfco", ts);
 }

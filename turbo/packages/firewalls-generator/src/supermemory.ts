@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Supermemory firewall config...");
   const ts = generateTypeScript();
-  writeOutput("supermemory", ts, import.meta.dirname);
+  writeOutput("supermemory", ts);
 }
