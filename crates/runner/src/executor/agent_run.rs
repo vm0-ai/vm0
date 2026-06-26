@@ -20,6 +20,7 @@ use super::diagnostics::{
 };
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
+use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
 use super::session_restore::restore_session;
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
@@ -269,6 +270,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         active_input_source,
         spawn_timing,
     } = controls;
+    let session_history_materializer =
+        SessionHistoryMaterializer::start(&config.http, context.resume_session.as_ref());
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -334,9 +337,31 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result?;
     }
 
-    // 4. Restore session history
+    // 4. Restore session history. Hash-backed history downloads start before
+    // guest prep/storage download, then materialize here right before restore.
+    let downloaded_resume_session = match session_history_materializer.finish(&cancel).await {
+        SessionHistoryMaterialization::Missing => None,
+        SessionHistoryMaterialization::Ready => None,
+        SessionHistoryMaterialization::Downloaded { session, elapsed } => {
+            telemetry.record("session_history_download", elapsed, true, None);
+            Some(session)
+        }
+        SessionHistoryMaterialization::Failed { elapsed, error } => {
+            let error_message = error.to_string();
+            telemetry.record(
+                "session_history_download",
+                elapsed,
+                false,
+                Some(&error_message),
+            );
+            return Err(error);
+        }
+    };
+    let resume_session = downloaded_resume_session
+        .as_ref()
+        .or(context.resume_session.as_ref());
     let mut session_restore_diagnostics = None;
-    if let Some(session) = &context.resume_session {
+    if let Some(session) = resume_session {
         let t = Instant::now();
         let result = restore_session(sandbox, context, session).await;
         let err = result.as_ref().err().map(|e| e.to_string());

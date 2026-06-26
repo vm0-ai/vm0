@@ -42,6 +42,7 @@ import {
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { signGithubConnectParams } from "../../../services/github-oauth.service";
 import type { ApiTestUser } from "./api-bdd";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 export const GITHUB_APP_SLUG = "vm0-test";
@@ -166,10 +167,13 @@ export function acceptGithubRunObjectStorage(context: TestContext): void {
     const input = commandInput(command);
     const key = typeof input.Key === "string" ? input.Key : "";
     if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+      const body = sessionHistoryBlobBodyForKey(context, key);
       return Promise.resolve({
         Body: {
           async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-            yield Buffer.from(`bdd github session history ${key}`, "utf8");
+            if (body) {
+              yield body;
+            }
           },
         },
       });

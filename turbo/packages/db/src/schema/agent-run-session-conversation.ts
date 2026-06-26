@@ -156,7 +156,8 @@ export const agentSessions = pgTable(
  * Session history storage strategy:
  * - New records use cliAgentSessionHistoryHash (R2 blob reference)
  * - Legacy records use cliAgentSessionHistory (TEXT field)
- * - Read logic: prioritize hash, fallback to TEXT
+ * - Read logic: use the hash-backed path when present; use TEXT only for
+ *   legacy rows that do not have a hash
  */
 export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),

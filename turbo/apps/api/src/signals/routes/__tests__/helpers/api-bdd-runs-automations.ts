@@ -69,6 +69,9 @@ import { createZeroRouteMocks } from "./zero-route-test";
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type RunnerJobClaimRequest = z.infer<
+  (typeof runnersJobClaimContract.claim)["body"]
+>;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
@@ -495,12 +498,12 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
-    async claimRunnerJob(runId: string) {
+    async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
       const response = await accept(
         setupApp({ context })(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body: {},
+          body,
         }),
         [200],
       );
