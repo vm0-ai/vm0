@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating OpenWeather firewall config...");
   const ts = generateTypeScript();
-  writeOutput("openweather", ts, import.meta.dirname);
+  writeOutput("openweather", ts);
 }

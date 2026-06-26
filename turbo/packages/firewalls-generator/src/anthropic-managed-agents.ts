@@ -82,5 +82,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Anthropic Managed Agents firewall config...");
   const ts = generateTypeScript();
-  writeOutput("anthropic-managed-agents", ts, import.meta.dirname);
+  writeOutput("anthropic-managed-agents", ts);
 }

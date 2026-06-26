@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use vsock_proto::{
     self, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_WRITE_FILE, RawMessage,
+    MSG_WRITE_FILE, MSG_WRITE_FILES, RawMessage,
 };
 
 use crate::error::to_io_error;
@@ -18,8 +18,8 @@ use crate::exec_operation::{
     start_exec_operation,
 };
 use crate::handlers::{
-    MessageOutcome, decode_write_file_message, handle_basic_message,
-    handle_decoded_write_file_message,
+    MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
+    handle_decoded_write_file_message, handle_decoded_write_files_message,
 };
 use crate::log::log;
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
@@ -119,6 +119,7 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_EXEC_CANCEL
             | MSG_EXEC_CONTROL
             | MSG_WRITE_FILE
+            | MSG_WRITE_FILES
             | MSG_QUIESCE_OPERATIONS
             | MSG_RESUME_OPERATIONS
     )
@@ -257,6 +258,7 @@ impl ConnectionDispatcher {
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
             MSG_WRITE_FILE => self.handle_write_file(msg)?,
+            MSG_WRITE_FILES => self.handle_write_files(msg)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
             _ => return self.handle_basic_message(msg),
@@ -379,6 +381,31 @@ impl ConnectionDispatcher {
             return Ok(());
         };
         let response = handle_decoded_write_file_message(msg.seq, decoded)?;
+        self.writer.write_frame_after_lock(&response, || {
+            operation_guard.release();
+        })
+    }
+
+    fn handle_write_files(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "write_files", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let decoded = match decode_write_files_message(msg) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        let response = handle_decoded_write_files_message(msg.seq, decoded)?;
         self.writer.write_frame_after_lock(&response, || {
             operation_guard.release();
         })

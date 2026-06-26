@@ -496,5 +496,5 @@ export async function generate(): Promise<void> {
 
   const allPerms = [...hostGroups.values()].flat();
   logStats(allPerms);
-  writeOutput("xero", ts, import.meta.dirname);
+  writeOutput("xero", ts);
 }

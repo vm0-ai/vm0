@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Ashby firewall config...");
   const ts = generateTypeScript();
-  writeOutput("ashby", ts, import.meta.dirname);
+  writeOutput("ashby", ts);
 }

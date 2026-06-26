@@ -484,7 +484,7 @@ async function generateGoogleFirewall(
   const ts = generateTypeScript(apis, config);
 
   logStats(allPermissions);
-  writeOutput(config.serviceName, ts, import.meta.dirname);
+  writeOutput(config.serviceName, ts);
 }
 
 // ── Service configs ──────────────────────────────────────────────────────

@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Zep firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zep", ts, import.meta.dirname);
+  writeOutput("zep", ts);
 }

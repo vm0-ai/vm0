@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Dify firewall config...");
   const ts = generateTypeScript();
-  writeOutput("dify", ts, import.meta.dirname);
+  writeOutput("dify", ts);
 }

@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Browserbase firewall config...");
   const ts = generateTypeScript();
-  writeOutput("browserbase", ts, import.meta.dirname);
+  writeOutput("browserbase", ts);
 }

@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Hume AI firewall config...");
   const ts = generateTypeScript();
-  writeOutput("hume", ts, import.meta.dirname);
+  writeOutput("hume", ts);
 }

@@ -173,5 +173,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("google-docs", ts, import.meta.dirname);
+  writeOutput("google-docs", ts);
 }

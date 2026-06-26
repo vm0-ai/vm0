@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Outlook Mail firewall config...");
   const ts = generateTypeScript();
-  writeOutput("outlook-mail", ts, import.meta.dirname);
+  writeOutput("outlook-mail", ts);
 }

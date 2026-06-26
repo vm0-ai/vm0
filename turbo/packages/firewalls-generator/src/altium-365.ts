@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Altium 365 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("altium-365", ts, import.meta.dirname);
+  writeOutput("altium-365", ts);
 }

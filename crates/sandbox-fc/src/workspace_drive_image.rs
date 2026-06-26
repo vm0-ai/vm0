@@ -88,13 +88,12 @@ pub(crate) async fn prepare_workspace_drive_image(
         message: format!("workspace image path is not UTF-8: {}", path.display()),
     })?;
     let stage_started = Instant::now();
-    let result = command::exec_with_timeout(
+    let result = command::exec_status_with_timeout(
         "mkfs.ext4",
         &["-F", "-q", path_str],
         Duration::from_secs(60),
     )
     .await
-    .map(|_| ())
     .map_err(|e| SandboxError::Initialization {
         phase: SandboxInitializationPhase::SandboxAllocation,
         message: format!("format workspace image: {e}"),
@@ -133,13 +132,12 @@ async fn copy_workspace_drive_seed_image(
         })?;
 
     let stage_started = Instant::now();
-    let result = command::exec_with_timeout(
+    let result = command::exec_status_with_timeout(
         "cp",
         &["--sparse=always", "--", source_str, target_str],
         Duration::from_secs(300),
     )
     .await
-    .map(|_| ())
     .map_err(|e| SandboxError::Initialization {
         phase: SandboxInitializationPhase::SandboxAllocation,
         message: format!("copy workspace seed image: {e}"),

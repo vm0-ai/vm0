@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Airtable firewall config...");
   const ts = generateTypeScript();
-  writeOutput("airtable", ts, import.meta.dirname);
+  writeOutput("airtable", ts);
 }

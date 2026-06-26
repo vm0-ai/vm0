@@ -76,5 +76,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Test OAuth firewall config...");
   const ts = generateTypeScript();
-  writeOutput("test-oauth", ts, import.meta.dirname);
+  writeOutput("test-oauth", ts);
 }

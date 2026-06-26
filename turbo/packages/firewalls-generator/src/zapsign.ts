@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ZapSign firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zapsign", ts, import.meta.dirname);
+  writeOutput("zapsign", ts);
 }

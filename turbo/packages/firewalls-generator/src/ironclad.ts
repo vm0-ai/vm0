@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Ironclad firewall config...");
   const ts = generateTypeScript();
-  writeOutput("ironclad", ts, import.meta.dirname);
+  writeOutput("ironclad", ts);
 }

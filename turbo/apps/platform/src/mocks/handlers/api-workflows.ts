@@ -80,6 +80,31 @@ function triggerSummary(
       unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
+  if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
+    return {
+      id: trigger.id,
+      ownerUserId: "test-user-123",
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      webhookUrl:
+        "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
+      secretLastFour: "abcd",
+      lastReceivedAt: null,
+      unattendedConnectorRefs: [],
+      unattendedPermissionPolicy: null,
+    };
+  }
 
   return {
     id: trigger.id,

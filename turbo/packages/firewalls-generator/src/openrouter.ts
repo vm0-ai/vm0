@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating OpenRouter firewall config...");
   const ts = generateTypeScript();
-  writeOutput("openrouter", ts, import.meta.dirname);
+  writeOutput("openrouter", ts);
 }

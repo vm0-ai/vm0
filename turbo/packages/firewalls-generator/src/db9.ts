@@ -41,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating db9 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("db9", ts, import.meta.dirname);
+  writeOutput("db9", ts);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.372.0](https://github.com/vm0-ai/vm0/compare/core-v8.371.2...core-v8.372.0) (2026-06-26)
+
+
+### Features
+
+* improve connector access management ([#19081](https://github.com/vm0-ai/vm0/issues/19081)) ([a82dd27](https://github.com/vm0-ai/vm0/commit/a82dd27967519c1c191af3233c4d7261c4a13efb))
+
 ## [8.371.2](https://github.com/vm0-ai/vm0/compare/core-v8.371.1...core-v8.371.2) (2026-06-26)
 
 

@@ -61,5 +61,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Wrike firewall config...");
   const ts = generateTypeScript();
-  writeOutput("wrike", ts, import.meta.dirname);
+  writeOutput("wrike", ts);
 }

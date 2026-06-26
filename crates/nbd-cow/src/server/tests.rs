@@ -40,6 +40,48 @@ async fn setup_dispatch(
     CancellationToken,
 ) {
     let shutdown = CancellationToken::new();
+    let (reader, writer, server_fd) = setup_dispatch_socket();
+
+    let cow_clone = cow.clone();
+    let shutdown_clone = shutdown.clone();
+    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
+
+    (reader, writer, task, shutdown)
+}
+
+async fn setup_observed_dispatch(
+    cow: Arc<RwLock<CowLayer>>,
+) -> (
+    tokio::net::unix::OwnedReadHalf,
+    tokio::net::unix::OwnedWriteHalf,
+    tokio::task::JoinHandle<crate::error::Result<()>>,
+    CancellationToken,
+    tokio::sync::mpsc::UnboundedReceiver<DispatchReadEvent>,
+) {
+    let shutdown = CancellationToken::new();
+    let (reader, writer, server_fd) = setup_dispatch_socket();
+    let (event_sender, read_events) = tokio::sync::mpsc::unbounded_channel();
+
+    let cow_clone = cow.clone();
+    let shutdown_clone = shutdown.clone();
+    let task = tokio::spawn(async move {
+        dispatch_with_read_observer(
+            server_fd,
+            cow_clone,
+            shutdown_clone,
+            DispatchReadObserver::new(event_sender),
+        )
+        .await
+    });
+
+    (reader, writer, task, shutdown, read_events)
+}
+
+fn setup_dispatch_socket() -> (
+    tokio::net::unix::OwnedReadHalf,
+    tokio::net::unix::OwnedWriteHalf,
+    OwnedFd,
+) {
     let (client_fd, server_fd) = {
         let mut fds = [0i32; 2];
         let ret =
@@ -47,10 +89,6 @@ async fn setup_dispatch(
         assert_eq!(ret, 0);
         unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
     };
-
-    let cow_clone = cow.clone();
-    let shutdown_clone = shutdown.clone();
-    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
 
     let client_std =
         unsafe { std::os::unix::net::UnixStream::from_raw_fd(client_fd.into_raw_fd()) };
@@ -64,7 +102,7 @@ async fn setup_dispatch(
     );
 
     let (reader, writer) = client_stream.into_split();
-    (reader, writer, task, shutdown)
+    (reader, writer, server_fd)
 }
 
 async fn send_and_recv_reply(
@@ -146,9 +184,22 @@ async fn assert_dispatch_exits_after_shutdown(
     must(result, "dispatch should not fail");
 }
 
-async fn yield_to_dispatch() {
-    for _ in 0..10 {
-        tokio::task::yield_now().await;
+async fn wait_for_read_event(
+    read_events: &mut tokio::sync::mpsc::UnboundedReceiver<DispatchReadEvent>,
+    expected: DispatchReadEvent,
+) {
+    let observed = tokio::time::timeout(Duration::from_secs(1), async {
+        while let Some(event) = read_events.recv().await {
+            if event == expected {
+                return;
+            }
+        }
+        panic!("dispatch read observer closed before {expected:?}");
+    })
+    .await;
+    match observed {
+        Ok(()) => {}
+        Err(_) => panic!("dispatch should reach {expected:?}"),
     }
 }
 
@@ -286,7 +337,7 @@ async fn dispatch_shutdown_while_write_payload_pending_exits() {
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
     let cow = Arc::new(RwLock::new(cow));
 
-    let (_reader, mut writer, task, shutdown) = setup_dispatch(cow).await;
+    let (_reader, mut writer, task, shutdown, mut read_events) = setup_observed_dispatch(cow).await;
 
     let write_req = NbdRequest {
         command: Command::Write,
@@ -303,7 +354,14 @@ async fn dispatch_shutdown_while_write_payload_pending_exits() {
         writer.write_all(&partial_payload).await,
         "write partial payload",
     );
-    yield_to_dispatch().await;
+    wait_for_read_event(
+        &mut read_events,
+        DispatchReadEvent {
+            kind: DispatchReadEventKind::WritePayload,
+            handle: 1,
+        },
+    )
+    .await;
 
     shutdown.cancel();
     assert_dispatch_exits_after_shutdown(task).await;
@@ -315,7 +373,7 @@ async fn dispatch_shutdown_while_oversized_write_discard_pending_exits() {
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
     let cow = Arc::new(RwLock::new(cow));
 
-    let (_reader, mut writer, task, shutdown) = setup_dispatch(cow).await;
+    let (_reader, mut writer, task, shutdown, mut read_events) = setup_observed_dispatch(cow).await;
 
     let write_req = NbdRequest {
         command: Command::Write,
@@ -327,12 +385,19 @@ async fn dispatch_shutdown_while_oversized_write_discard_pending_exits() {
         writer.write_all(&serialize_request(&write_req)).await,
         "write oversized request",
     );
-    let partial_payload = vec![0xAA; 64 * 1024];
+    let partial_payload = vec![0xAA; 512];
     must(
         writer.write_all(&partial_payload).await,
         "write oversized partial payload",
     );
-    yield_to_dispatch().await;
+    wait_for_read_event(
+        &mut read_events,
+        DispatchReadEvent {
+            kind: DispatchReadEventKind::OversizedDiscard,
+            handle: 1,
+        },
+    )
+    .await;
 
     shutdown.cancel();
     assert_dispatch_exits_after_shutdown(task).await;
@@ -344,7 +409,8 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
     let (_base, _cow_file, cow) = create_test_cow(&base_data);
     let cow = Arc::new(RwLock::new(cow));
 
-    let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
+    let (mut reader, mut writer, task, shutdown, mut read_events) =
+        setup_observed_dispatch(cow.clone()).await;
 
     let accepted_write = NbdRequest {
         command: Command::Write,
@@ -376,7 +442,14 @@ async fn dispatch_shutdown_during_partial_write_flushes_accepted_data() {
         writer.write_all(&partial_payload).await,
         "write partial payload",
     );
-    yield_to_dispatch().await;
+    wait_for_read_event(
+        &mut read_events,
+        DispatchReadEvent {
+            kind: DispatchReadEventKind::WritePayload,
+            handle: 2,
+        },
+    )
+    .await;
 
     shutdown.cancel();
     assert_dispatch_exits_after_shutdown(task).await;

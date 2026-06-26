@@ -18,6 +18,7 @@ import {
   zeroRunRunner,
 } from "../services/zero-runs.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import type { RouteEntry } from "../route";
 
 const createRunBody$ = bodyResultOf(zeroRunsMainContract.create);
@@ -73,18 +74,29 @@ const getRunQueueInner$ = computed(async (get) => {
 
 const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const apiStartTime = now();
-  const body = await get(createRunBody$);
+  const timing = new ApiDispatchTimingCollector();
+  const body = await timing.measure(
+    "api_dispatch_pre_create_zero_parse_body",
+    "nested",
+    async () => {
+      return await get(createRunBody$);
+    },
+  );
   signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
   }
 
-  const auth = get(organizationAuthContext$);
-  return await set(
-    createZeroRun$,
-    { auth, body: body.data, apiStartTime },
-    signal,
+  const args = await timing.measure(
+    "api_dispatch_pre_create_zero_prepare_args",
+    "nested",
+    () => {
+      const auth = get(organizationAuthContext$);
+      return { auth, body: body.data, apiStartTime, timing };
+    },
   );
+  signal.throwIfAborted();
+  return await set(createZeroRun$, args, signal);
 });
 
 export const zeroRunsRoutes: readonly RouteEntry[] = [

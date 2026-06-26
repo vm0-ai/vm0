@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating MiniMax firewall config...");
   const ts = generateTypeScript();
-  writeOutput("minimax", ts, import.meta.dirname);
+  writeOutput("minimax", ts);
 }

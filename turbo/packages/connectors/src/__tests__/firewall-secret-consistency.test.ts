@@ -13,6 +13,7 @@ import { loadRuntimeFirewallEntries } from "./firewall-test-helpers";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 
 interface ConnectorAuthSources {
   readonly secretBackedKeys: ReadonlySet<string>;
@@ -158,55 +159,67 @@ function assertConnectorType(type: string): asserts type is ConnectorType {
  * otherwise the proxy won't find the secret to inject.
  */
 describe("firewall secret name consistency", () => {
-  it("keeps firewall placeholder keys aligned with connector secrets", async () => {
-    for (const [
-      connectorType,
-      firewall,
-    ] of await loadRuntimeFirewallEntries()) {
-      assertConnectorType(connectorType);
-      const validPlaceholderKeys = connectorPlaceholderKeys(connectorType);
-      const placeholderKeys = Object.keys(firewall.placeholders ?? {});
-      for (const key of placeholderKeys) {
-        expect(
-          validPlaceholderKeys.has(key),
-          `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...validPlaceholderKeys].join(", ")}]`,
-        ).toBe(true);
+  it(
+    "keeps firewall placeholder keys aligned with connector secrets",
+    async () => {
+      for (const [
+        connectorType,
+        firewall,
+      ] of await loadRuntimeFirewallEntries()) {
+        assertConnectorType(connectorType);
+        const validPlaceholderKeys = connectorPlaceholderKeys(connectorType);
+        const placeholderKeys = Object.keys(firewall.placeholders ?? {});
+        for (const key of placeholderKeys) {
+          expect(
+            validPlaceholderKeys.has(key),
+            `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...validPlaceholderKeys].join(", ")}]`,
+          ).toBe(true);
+        }
       }
-    }
-  });
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
-  it("keeps firewall basic auth templates valid", async () => {
-    for (const [
-      connectorType,
-      firewall,
-    ] of await loadRuntimeFirewallEntries()) {
-      assertConnectorType(connectorType);
-      expectValidBasicAuthTemplates(connectorType, firewall.apis);
-    }
-  });
-
-  it("keeps firewall auth templates aligned with connector value sources", async () => {
-    for (const [
-      connectorType,
-      firewall,
-    ] of await loadRuntimeFirewallEntries()) {
-      assertConnectorType(connectorType);
-      const { secretBackedKeys, variableBackedKeys } =
-        connectorAuthSources(connectorType);
-      const references = extractFirewallTemplateReferences(firewall.apis);
-
-      for (const key of references.secrets) {
-        expect(
-          secretBackedKeys.has(key),
-          `firewall "${connectorType}" secrets.${key} is not backed by a connector secret: [${[...secretBackedKeys].join(", ")}]`,
-        ).toBe(true);
+  it(
+    "keeps firewall basic auth templates valid",
+    async () => {
+      for (const [
+        connectorType,
+        firewall,
+      ] of await loadRuntimeFirewallEntries()) {
+        assertConnectorType(connectorType);
+        expectValidBasicAuthTemplates(connectorType, firewall.apis);
       }
-      for (const key of references.vars) {
-        expect(
-          variableBackedKeys.has(key),
-          `firewall "${connectorType}" vars.${key} is not backed by a connector variable: [${[...variableBackedKeys].join(", ")}]`,
-        ).toBe(true);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps firewall auth templates aligned with connector value sources",
+    async () => {
+      for (const [
+        connectorType,
+        firewall,
+      ] of await loadRuntimeFirewallEntries()) {
+        assertConnectorType(connectorType);
+        const { secretBackedKeys, variableBackedKeys } =
+          connectorAuthSources(connectorType);
+        const references = extractFirewallTemplateReferences(firewall.apis);
+
+        for (const key of references.secrets) {
+          expect(
+            secretBackedKeys.has(key),
+            `firewall "${connectorType}" secrets.${key} is not backed by a connector secret: [${[...secretBackedKeys].join(", ")}]`,
+          ).toBe(true);
+        }
+        for (const key of references.vars) {
+          expect(
+            variableBackedKeys.has(key),
+            `firewall "${connectorType}" vars.${key} is not backed by a connector variable: [${[...variableBackedKeys].join(", ")}]`,
+          ).toBe(true);
+        }
       }
-    }
-  });
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 });

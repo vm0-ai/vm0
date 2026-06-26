@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Groq firewall config...");
   const ts = generateTypeScript();
-  writeOutput("groq", ts, import.meta.dirname);
+  writeOutput("groq", ts);
 }

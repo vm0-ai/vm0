@@ -58,5 +58,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Freshdesk firewall config...");
   const ts = generateTypeScript();
-  writeOutput("freshdesk", ts, import.meta.dirname);
+  writeOutput("freshdesk", ts);
 }

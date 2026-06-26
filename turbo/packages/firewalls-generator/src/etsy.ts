@@ -39,5 +39,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Etsy firewall config...");
   const ts = generateTypeScript();
-  writeOutput("etsy", ts, import.meta.dirname);
+  writeOutput("etsy", ts);
 }

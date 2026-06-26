@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Replicate firewall config...");
   const ts = generateTypeScript();
-  writeOutput("replicate", ts, import.meta.dirname);
+  writeOutput("replicate", ts);
 }

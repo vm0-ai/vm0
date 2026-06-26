@@ -4,6 +4,8 @@
 //! layout, and installs the pinned Firecracker, kernel, and mitmdump artifacts
 //! used by sandbox startup.
 
+mod artifacts;
+
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -16,12 +18,7 @@ use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
-use crate::deps::{
-    FIRECRACKER_SHA256_AARCH64, FIRECRACKER_SHA256_X86_64, FIRECRACKER_VERSION,
-    KERNEL_SHA256_AARCH64, KERNEL_SHA256_X86_64, KERNEL_VERSION, MITMDUMP_SHA256_AARCH64,
-    MITMDUMP_SHA256_X86_64, MITMDUMP_TAR_ENTRY, MITMPROXY_VERSION, SYSTEM_CA_BUNDLE,
-    firecracker_tar_entry, firecracker_url, kernel_url, mitmdump_url,
-};
+use crate::deps::{FIRECRACKER_VERSION, MITMPROXY_VERSION, SYSTEM_CA_BUNDLE};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
@@ -52,9 +49,9 @@ pub async fn run_setup() -> RunnerResult<()> {
 
     let paths = HomePaths::new()?;
     create_directories(&paths).await?;
-    download_firecracker(&paths, arch).await?;
-    download_kernel(&paths, arch).await?;
-    download_mitmdump(&paths, arch).await?;
+    artifacts::install_firecracker(&paths, arch).await?;
+    artifacts::install_kernel(&paths, arch).await?;
+    artifacts::install_mitmdump(&paths, arch).await?;
     check_system_ca_bundle()?;
     check_kvm();
 
@@ -975,87 +972,6 @@ async fn ensure_artifact_installed(
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("artifact validation task failed: {e}")))?
-}
-
-async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
-    let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
-
-    if ensure_artifact_installed(&bin_path, expected_sha, SETUP_EXECUTABLE_ARTIFACT_MODE).await? {
-        tracing::info!(
-            "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
-        );
-        return Ok(());
-    }
-
-    let url = firecracker_url(arch);
-    tracing::info!("downloading firecracker from {url}");
-
-    let fc_entry = firecracker_tar_entry(arch);
-    let artifact = download_and_extract(&url, "firecracker", &fc_entry, &bin_path).await?;
-
-    verify_and_install(
-        artifact,
-        expected_sha,
-        "firecracker",
-        &bin_path,
-        SETUP_EXECUTABLE_ARTIFACT_MODE,
-    )
-    .await?;
-    tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
-    Ok(())
-}
-
-async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    let kernel_path = paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION);
-    let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
-
-    if ensure_artifact_installed(&kernel_path, expected_sha, SETUP_KERNEL_ARTIFACT_MODE).await? {
-        tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} already installed, skipping download");
-        return Ok(());
-    }
-
-    let url = kernel_url(arch);
-    tracing::info!("downloading kernel from {url}");
-
-    let artifact = download_to_temp(&url, &kernel_path, "download", "kernel").await?;
-
-    verify_and_install(
-        artifact,
-        expected_sha,
-        "kernel",
-        &kernel_path,
-        SETUP_KERNEL_ARTIFACT_MODE,
-    )
-    .await?;
-    tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
-    Ok(())
-}
-
-async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    let bin_path = paths.mitmdump_bin(MITMPROXY_VERSION);
-    let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
-
-    if ensure_artifact_installed(&bin_path, expected_sha, SETUP_EXECUTABLE_ARTIFACT_MODE).await? {
-        tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} already installed, skipping download");
-        return Ok(());
-    }
-
-    let url = mitmdump_url(arch);
-    tracing::info!("downloading mitmdump from {url}");
-
-    let artifact = download_and_extract(&url, "mitmdump", MITMDUMP_TAR_ENTRY, &bin_path).await?;
-
-    verify_and_install(
-        artifact,
-        expected_sha,
-        "mitmdump",
-        &bin_path,
-        SETUP_EXECUTABLE_ARTIFACT_MODE,
-    )
-    .await?;
-    tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed");
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------

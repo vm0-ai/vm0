@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Zapier firewall config...");
   const ts = generateTypeScript();
-  writeOutput("zapier", ts, import.meta.dirname);
+  writeOutput("zapier", ts);
 }

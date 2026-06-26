@@ -78,5 +78,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Amplitude firewall config...");
   const ts = generateTypeScript();
-  writeOutput("amplitude", ts, import.meta.dirname);
+  writeOutput("amplitude", ts);
 }

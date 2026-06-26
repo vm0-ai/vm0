@@ -1364,6 +1364,7 @@ dependencies = [
  "guest-contracts",
  "libc",
  "tempfile",
+ "vsock-proto",
 ]
 
 [[package]]
@@ -2528,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.31"
+version = "0.129.32"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2749,7 +2750,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.67"
+version = "0.37.68"
 dependencies = [
  "async-trait",
  "base64",

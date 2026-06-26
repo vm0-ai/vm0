@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Loops firewall config...");
   const ts = generateTypeScript();
-  writeOutput("loops", ts, import.meta.dirname);
+  writeOutput("loops", ts);
 }

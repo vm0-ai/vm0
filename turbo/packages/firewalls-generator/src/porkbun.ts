@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Porkbun firewall config...");
   const ts = generateTypeScript();
-  writeOutput("porkbun", ts, import.meta.dirname);
+  writeOutput("porkbun", ts);
 }

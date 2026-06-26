@@ -16,7 +16,7 @@ use sandbox::{
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
     SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, StartProcessRequest,
+    SandboxOperationReason, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -2167,6 +2167,22 @@ impl Sandbox for FirecrackerSandbox {
 
         self.run_bounded_guest_operation(operation, |guest| async move {
             guest.write_file(path, content, false).await
+        })
+        .await
+    }
+
+    async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> sandbox::Result<()> {
+        let operation = SandboxOperation::WriteFile;
+        let files = files
+            .iter()
+            .map(|file| vsock_host::WriteFileEntry {
+                path: file.path,
+                content: file.content,
+            })
+            .collect::<Vec<_>>();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_files(&files).await
         })
         .await
     }

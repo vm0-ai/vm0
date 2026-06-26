@@ -50,5 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Fireflies.ai firewall config...");
   const ts = generateTypeScript();
-  writeOutput("fireflies", ts, import.meta.dirname);
+  writeOutput("fireflies", ts);
 }

@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Outlook Calendar firewall config...");
   const ts = generateTypeScript();
-  writeOutput("outlook-calendar", ts, import.meta.dirname);
+  writeOutput("outlook-calendar", ts);
 }

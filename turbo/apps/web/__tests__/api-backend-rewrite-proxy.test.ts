@@ -1439,6 +1439,12 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/presentation-html/redeploy"),
     ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/host/html-edit-draft")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/host/html/redeploy")).toBe(
+      true,
+    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/host/sites/demo-site-a1b2c3d4-release-01/files",
@@ -1640,6 +1646,20 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+  });
+
+  it("matches the workflow trigger webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/workflow-triggers/whk_test"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/workflow-triggers/whk_test/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/workflow-triggers"),
+    ).toBe(false);
   });
 
   it("matches the agent checkpoint prepare-history webhook rewrite path exactly", () => {

@@ -42,5 +42,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Browser Use firewall config...");
   const ts = generateTypeScript();
-  writeOutput("browser-use", ts, import.meta.dirname);
+  writeOutput("browser-use", ts);
 }

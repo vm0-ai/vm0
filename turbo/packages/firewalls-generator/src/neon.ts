@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Neon firewall config...");
   const ts = generateTypeScript();
-  writeOutput("neon", ts, import.meta.dirname);
+  writeOutput("neon", ts);
 }
