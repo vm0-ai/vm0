@@ -956,15 +956,18 @@ function normalizeCodexRunEvent(
     case "turn.plan.updated": {
       const lines = formatPlanLines(eventData.plan);
       const explanation = trimmedStringValue(eventData.explanation);
-      const text = ["[plan]", explanation, ...lines]
-        .filter((line): line is string => {
+      const contentLines = [explanation, ...lines].filter(
+        (line): line is string => {
           return line !== undefined && line.length > 0;
-        })
-        .join("\n");
+        },
+      );
       return {
         event:
-          text.trim().length > 0
-            ? makeCodexAssistantTextEvent(event, text)
+          contentLines.length > 0
+            ? makeCodexAssistantTextEvent(
+                event,
+                ["[plan]", ...contentLines].join("\n"),
+              )
             : null,
         codexType,
         turnId,

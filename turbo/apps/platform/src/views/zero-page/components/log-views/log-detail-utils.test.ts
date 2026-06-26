@@ -80,6 +80,49 @@ describe("groupEventsIntoMessages progress events", () => {
   });
 });
 
+describe("groupEventsIntoMessages Codex plan events", () => {
+  it("drops empty Codex plan updates", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "turn.plan.updated",
+          eventData: {
+            type: "turn.plan.updated",
+            plan: [{ status: "pending" }, null],
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages).toEqual([]);
+  });
+
+  it("keeps Codex plan updates with content", () => {
+    const messages = groupEventsIntoMessages(
+      [
+        {
+          sequenceNumber: 0,
+          eventType: "turn.plan.updated",
+          eventData: {
+            type: "turn.plan.updated",
+            explanation: "Review edge cases",
+            plan: [{ status: "in_progress", step: "Check empty plans" }],
+          },
+          createdAt: "2026-06-26T02:31:20Z",
+        },
+      ],
+      { framework: "codex" },
+    );
+
+    expect(messages[0]?.textBefore).toBe(
+      "[plan]\nReview edge cases\n- in progress: Check empty plans",
+    );
+  });
+});
+
 describe("groupEventsIntoMessages event dedupe", () => {
   it("keeps distinct events that share a sequence number", () => {
     const messages = groupEventsIntoMessages([
