@@ -571,6 +571,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancellable_materializer_does_not_request_when_already_cancelled() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let session = ref_session(
+            format!("http://{address}/history.blob?token=secret"),
+            hex::encode(Sha256::digest(b"")),
+            None,
+        );
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            Some(&session),
+            cancel.clone(),
+        );
+        let result = materializer.finish(&cancel).await;
+        match result {
+            SessionHistoryMaterialization::Failed { error, .. } => {
+                assert!(error.to_string().contains("cancelled"));
+            }
+            _ => panic!("expected cancelled download"),
+        }
+        let accept_error = listener.accept().unwrap_err();
+        assert_eq!(accept_error.kind(), io::ErrorKind::WouldBlock);
+    }
+
+    #[tokio::test]
     async fn finish_prefers_cancel_over_completed_download_task() {
         let task = tokio::spawn(async {
             SessionHistoryDownloadTaskResult {
