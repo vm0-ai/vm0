@@ -165,10 +165,9 @@ async fn drain_without_active_jobs_exits_promptly() {
 /// it must not downgrade to a hard stop or disturb the in-flight job.
 #[tokio::test]
 async fn repeated_drain_while_draining_keeps_active_job_running() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&gate),
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
@@ -176,6 +175,10 @@ async fn repeated_drain_while_draining_keeps_active_job_running() {
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter the lifecycle gate");
 
     env.drain();
     wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
@@ -188,7 +191,7 @@ async fn repeated_drain_while_draining_keeps_active_job_running() {
         "repeat drain must not cancel the active job"
     );
 
-    gate.notify_one();
+    wait_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
