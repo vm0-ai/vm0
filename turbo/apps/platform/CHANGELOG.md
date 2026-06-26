@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.495.0](https://github.com/vm0-ai/vm0/compare/app-v0.494.0...app-v0.495.0) (2026-06-26)
+
+
+### Features
+
+* add connector access management ([#19035](https://github.com/vm0-ai/vm0/issues/19035)) ([8e78fe6](https://github.com/vm0-ai/vm0/commit/8e78fe6f5f7e141a93555f40f00cabe179eb4a06))
+* add Gmail label-applied workflow trigger ([#19045](https://github.com/vm0-ai/vm0/issues/19045)) ([6565e75](https://github.com/vm0-ai/vm0/commit/6565e75562c82e907449ffb8919011d680cdfd77))
+
+
+### Bug Fixes
+
+* align workflow breadcrumb style ([#19043](https://github.com/vm0-ai/vm0/issues/19043)) ([12fe49c](https://github.com/vm0-ai/vm0/commit/12fe49c88e034b63036b643b08820b2f69d140a0))
+* align workflow detail skeleton ([#19047](https://github.com/vm0-ai/vm0/issues/19047)) ([4dd1920](https://github.com/vm0-ai/vm0/commit/4dd19200702df5931aa6a9c1a9f283d596cc50ab))
+* close artifact sidebar on new chat ([#19039](https://github.com/vm0-ai/vm0/issues/19039)) ([1da34f1](https://github.com/vm0-ai/vm0/commit/1da34f14a0115c28970d6126711cbc4c8d0b1135))
+* remove agent workflows search ([#19042](https://github.com/vm0-ai/vm0/issues/19042)) ([43e3915](https://github.com/vm0-ai/vm0/commit/43e3915293b129980510104650e0136f3db0ccf2))
+* update workflows tab icon ([#19044](https://github.com/vm0-ai/vm0/issues/19044)) ([1606272](https://github.com/vm0-ai/vm0/commit/160627201a9e94a6926d7610f3940172e06eb280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.116.0
+    * @vm0/connectors bumped to 1.109.0
+    * @vm0/core bumped to 8.371.0
+
 ## [0.494.0](https://github.com/vm0-ai/vm0/compare/app-v0.493.3...app-v0.494.0) (2026-06-26)
 
 

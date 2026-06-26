@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.211.0](https://github.com/vm0-ai/vm0/compare/cli-v9.210.6...cli-v9.211.0) (2026-06-26)
+
+
+### Features
+
+* add Gmail label-applied workflow trigger ([#19045](https://github.com/vm0-ai/vm0/issues/19045)) ([6565e75](https://github.com/vm0-ai/vm0/commit/6565e75562c82e907449ffb8919011d680cdfd77))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.116.0
+    * @vm0/connectors bumped to 1.109.0
+    * @vm0/core bumped to 8.371.0
+
 ## [9.210.6](https://github.com/vm0-ai/vm0/compare/cli-v9.210.5...cli-v9.210.6) (2026-06-26)
 
 
